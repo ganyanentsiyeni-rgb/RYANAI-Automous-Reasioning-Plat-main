@@ -102,6 +102,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
+          import { readdir } from 'node:fs/promises';
           import pg from 'pg';
           const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
           await client.connect();
@@ -172,19 +173,29 @@ jobs:
               assert.ok(result.rows[0].relation, `Missing public.${table}`);
             }
 
+            const expectedMigrations = (await readdir('prisma/migrations', { withFileTypes: true }))
+              .filter((entry) => entry.isDirectory())
+              .map((entry) => entry.name)
+              .sort();
             const history = await client.query(`
-              SELECT COUNT(*)::int AS count
+              SELECT migration_name
               FROM public._prisma_migrations
               WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
+              ORDER BY migration_name
             `);
-            assert.equal(history.rows[0].count, 44, 'Expected all 45 Prisma migration folders to be recorded');
+            const appliedMigrations = history.rows.map((row) => row.migration_name);
+            assert.deepEqual(
+              appliedMigrations,
+              expectedMigrations,
+              'Applied Prisma migration names must match every committed migration directory exactly',
+            );
             const unfinished = await client.query(`
               SELECT COUNT(*)::int AS count
               FROM public._prisma_migrations
               WHERE finished_at IS NULL AND rolled_back_at IS NULL
             `);
             assert.equal(unfinished.rows[0].count, 0, 'No unfinished Prisma migrations may remain');
-            console.log('PASS: all 45 Prisma migrations completed; runtime and PA schema contracts exist.');
+            console.log(`PASS: all ${expectedMigrations.length} Prisma migration directories are recorded exactly once; runtime and PA schema contracts exist.`);
           } finally {
             await client.end();
           }
