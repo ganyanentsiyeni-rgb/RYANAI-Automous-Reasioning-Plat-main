@@ -93,7 +93,13 @@ jobs:
           }
           NODE
 
-      - name: Apply the complete Prisma migration chain from empty state
+      # The compatibility fixture pre-provisions Supabase-owned auth objects.
+      # Record the no-op Supabase baseline before applying RyanAI-owned migrations;
+      # this is not a copied production ledger or a claim that Prisma created auth.
+      - name: Mark the pre-provisioned Supabase platform baseline as applied
+        run: npx prisma migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
+
+      - name: Apply the complete RyanAI Prisma migration chain
         run: npx prisma migrate deploy --schema=prisma/schema.prisma
 
       - name: Verify Prisma reports zero pending migrations
