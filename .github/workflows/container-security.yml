@@ -185,7 +185,7 @@ jobs:
       - name: Download SARIF artifact
         id: download_sarif
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: trivy-${{ matrix.image }}-sarif
           path: sarif
