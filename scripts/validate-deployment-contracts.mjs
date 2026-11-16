@@ -5,7 +5,10 @@ import { parse as parseYaml } from 'yaml';
 const read = (path) => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
 const render = read('render.yaml');
 const renderConfig = parseYaml(render);
-const renderServices = Array.isArray(renderConfig.services) ? renderConfig.services : [];
+const renderProjects = Array.isArray(renderConfig.projects) ? renderConfig.projects : [];
+const renderServices = Array.isArray(renderConfig.services)
+  ? renderConfig.services
+  : renderProjects.flatMap((project) => (project.environments ?? []).flatMap((environment) => environment.services ?? []));
 const renderApi = renderServices.find((service) => service.name === 'ryanai-api');
 const renderWeb = renderServices.find((service) => service.name === 'ryanai-web');
 const renderRedis = renderServices.find((service) => service.name === 'ryanai-redis');
@@ -70,10 +73,10 @@ const hasLegacyVercelIntegration =
 
 const checks = [
   ['Vercel project, build package, deployment workflows, and CI credentials are absent', !hasLegacyVercelIntegration],
-  ['Render Blueprint uses a top-level services list', Array.isArray(renderConfig.services)],
+  ['Render Blueprint declares services through a supported top-level or project-environment list', Array.isArray(renderConfig.services) || renderProjects.some((project) => (project.environments ?? []).some((environment) => Array.isArray(environment.services)))],
   ['Render Blueprint declares exactly the API, web, and Redis resources', renderServices.length === 3 && expectedRenderServiceNames.every((name) => renderServiceNames.includes(name)) && new Set(renderServiceNames).size === 3],
   ['Render API and web environment variable keys are unique', hasUniqueEnvKeys(renderApi) && hasUniqueEnvKeys(renderWeb)],
-  ['Render API and web use the official repository and main branch', renderApi?.repo === 'https://github.com/RyanAI-Automated/RYANAI-Automous-Reasioning-Plat' && renderWeb?.repo === renderApi?.repo && renderApi?.branch === 'main' && renderWeb?.branch === 'main'],
+  ['Render API and web use the official repository and main branch', renderApi?.repo === 'https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main' && renderWeb?.repo === renderApi?.repo && renderApi?.branch === 'main' && renderWeb?.branch === 'main'],
   ['Render API uses the standalone Docker image and /health', renderApi?.runtime === 'docker' && renderApi?.dockerfilePath === './Dockerfile.api' && renderApi?.healthCheckPath === '/health'],
   ['Render web is the live-aligned Static Site and publishes the Vite dist output', renderWeb?.runtime === 'static' && renderWeb?.buildCommand === 'npm ci --legacy-peer-deps && npm run build:web' && renderWeb?.staticPublishPath === './dist' && !renderWeb?.dockerfilePath && !renderWeb?.dockerTarget && !renderWeb?.healthCheckPath],
   ['Render API, web, and Redis are in Oregon', renderApi?.region === 'oregon' && renderRedis?.region === 'oregon' && Array.isArray(renderRedis?.ipAllowList) && renderRedis.ipAllowList.length === 0],
