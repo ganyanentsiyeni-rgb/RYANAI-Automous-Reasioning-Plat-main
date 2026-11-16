@@ -18,6 +18,8 @@ import {
   ShieldCheck,
   Settings,
   ListChecks,
+  Menu,
+  X,
   ClipboardList,
   LogIn,
   LogOut,
@@ -118,6 +120,7 @@ const routeUiOptions: Partial<Record<Route, DashboardUiId>> = {
 
 export default function App() {
   const [route, setRoute] = useState<Route>(routeFromHash);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [verifiedIdentity, setVerifiedIdentity] = useState<{ userId: string; isOwner: boolean; displayName?: string; serverVerified: boolean } | null>(null);
   const { session, loading, error, signingOut, signOut } = useAuth();
   const isAuthRoute = route === 'signin' || route === 'signup';
@@ -196,6 +199,10 @@ export default function App() {
   }, [session, isAuthRoute, route]);
 
   useEffect(() => {
+    setMobileNavOpen(false);
+  }, [route]);
+
+  useEffect(() => {
     const syncRoute = () => setRoute(routeFromHash());
     window.addEventListener('hashchange', syncRoute);
     return () => window.removeEventListener('hashchange', syncRoute);
@@ -246,11 +253,15 @@ export default function App() {
           </div>
           <div className="flex min-h-[58px] items-center justify-between gap-3 px-4 md:hidden">
             <a href="#/" className="flex items-center gap-2 font-display text-sm font-black tracking-[0.18em] text-cyan-100"><NeuralIcon icon={BrainCircuit} active size="mobile-brand" />RYANAI</a>
+            <button type="button" aria-controls="mobile-navigation" aria-expanded={mobileNavOpen} onClick={() => setMobileNavOpen(open => !open)} className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-cyan-300/20 bg-cyan-300/[0.06] px-3 py-2 text-xs font-semibold text-cyan-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300">
+              {mobileNavOpen ? <X className="h-4 w-4" aria-hidden="true" /> : <Menu className="h-4 w-4" aria-hidden="true" />}
+              <span>{mobileNavOpen ? 'Close' : 'Menu'}</span>
+            </button>
             <div className="flex min-w-0 items-center gap-2">{user && <div className="flex min-w-0 flex-col items-end"><span className="max-w-[140px] truncate text-[11px] text-slate-500">{displayName}</span><a href="#/survey" aria-label="Open RyanAI Community Survey" className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-cyan-200"><ClipboardList className="h-3 w-3" /> Survey</a></div>}{user && <button type="button" onClick={() => void handleSignOut()} disabled={signingOut} aria-label="Sign out" className="rounded-lg border border-white/10 px-2.5 py-2 text-[11px] text-slate-300 disabled:opacity-50">{signingOut ? '…' : 'Sign out'}</button>}</div>
           </div>
-          <nav aria-label="Mobile navigation" className="flex gap-1 overflow-x-auto px-3 pb-3 md:hidden">
-            {visibleDestinations.map(({ id, path, label, icon: Icon }) => <a key={id} href={id === 'landing' ? '#/' : `#${path}`} aria-label={label} aria-current={route === id ? 'page' : undefined} className={`inline-flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-medium ${route === id ? 'border-cyan-300/25 bg-cyan-300/10 text-cyan-100' : 'border-white/5 text-slate-400 hover:bg-white/5'}`}><NeuralIcon icon={Icon} active={route === id} size="mobile" /><span>{label}</span></a>)}
-          </nav>
+          {mobileNavOpen && <nav id="mobile-navigation" aria-label="Mobile navigation" className="absolute inset-x-0 top-full z-40 grid max-h-[70dvh] grid-cols-1 gap-1 overflow-y-auto border-b border-cyan-300/15 bg-[#0a0d14] p-3 shadow-2xl shadow-black/40 sm:grid-cols-2 md:hidden">
+            {visibleDestinations.map(({ id, path, label, icon: Icon }) => <a key={id} href={id === 'landing' ? '#/' : `#${path}`} aria-current={route === id ? 'page' : undefined} onClick={() => setMobileNavOpen(false)} className={`flex min-h-11 items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300 ${route === id ? 'border-cyan-300/25 bg-cyan-300/10 text-cyan-100' : 'border-white/5 text-slate-300 hover:bg-white/5'}`}><NeuralIcon icon={Icon} active={route === id} size="mobile" /><span>{label}</span>{route === id && <span className="ml-auto text-[10px] font-semibold uppercase tracking-wider text-cyan-200">Current</span>}</a>)}
+          </nav>}
         </header>
         <Suspense fallback={<p role="status" className="p-8 text-slate-300">Loading RyanAI workspace…</p>}>
           <main id="main-content" key={user?.id ?? 'signed-out'} tabIndex={-1} className="min-h-0 flex-1 overflow-y-auto focus:outline-none">
