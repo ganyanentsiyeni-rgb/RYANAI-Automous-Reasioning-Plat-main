@@ -823,7 +823,7 @@ model QuantMarketDataEvent {
   eventTimestamp  DateTime @map("event_timestamp") @db.Timestamptz(6)
   receivedAt      DateTime @map("received_at") @db.Timestamptz(6)
   payloadHash     String   @map("payload_hash") @db.Char(64)
-  source          String   @db.VarChar(16)
+  source          String   @default("stream") @db.VarChar(16)
   bar             Json
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
@@ -839,7 +839,7 @@ model QuantStrategySignal {
   userId            String   @map("user_id")
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   marketDataImportId String  @map("market_data_import_id")
-  marketDataImport  QuantMarketDataImport @relation(fields: [marketDataImportId], references: [id], onDelete: Cascade)
+  marketDataImport  QuantMarketDataImport @relation(fields: [marketDataImportId], references: [id], onDelete: Cascade, map: "quant_strategy_signals_import_id_fkey")
   strategy          String   @db.VarChar(40)
   fastWindow        Int      @map("fast_window") @db.SmallInt
   slowWindow        Int      @map("slow_window") @db.SmallInt
@@ -883,8 +883,9 @@ model QuantPaperOrderProposal {
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   decidedAt          DateTime? @map("decided_at") @db.Timestamptz(6)
 
-  @@unique([userId, clientOrderId], map: "quant_paper_order_proposals_user_client_order_key")
+  @@unique([userId, clientOrderId], map: "quant_paper_order_proposals_idempotency_key")
   @@index([userId, status, createdAt(sort: Desc)], map: "quant_paper_order_proposals_user_status_created_idx")
+  @@index([status, expiresAt], map: "quant_paper_order_proposals_status_expiry_idx")
   @@map("quant_paper_order_proposals")
   @@schema("public")
 }
