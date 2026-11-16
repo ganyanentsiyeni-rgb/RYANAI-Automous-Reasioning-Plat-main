@@ -1,5 +1,5 @@
 // src/shared/config.ts - Unified configuration loader
-import { AppConfig } from './types.js';
+import type { AppConfig } from './types.js';
 
 /**
  * Merges partial overrides with environment variables and sane defaults to build a fully
