@@ -1,4 +1,4 @@
-name: Staging Prisma Migration Validation
+name: Staging Prisma Fresh-Install Migration Validation
 
 on:
   push:
@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   validate-legacy-upgrade:
-    name: Replay 37 pending Prisma migrations from the 8-entry ledger
+    name: Apply every committed Prisma migration to a fresh disposable database
     runs-on: ubuntu-latest
     timeout-minutes: 35
     services:
@@ -74,61 +74,26 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate --schema=prisma/schema.prisma
 
-      - name: Reproduce the eight completed production Prisma migrations
-        shell: bash
-        run: |
-          set -euo pipefail
-          baseline="$RUNNER_TEMP/ryanai-prisma-eight-migration-baseline"
-          mkdir -p "$baseline/migrations"
-          cp prisma/schema.prisma "$baseline/schema.prisma"
-          cp prisma/migrations/migration_lock.toml "$baseline/migrations/migration_lock.toml"
-          cp -a prisma/migrations/20261014000000_supabase_platform_baseline "$baseline/migrations/"
-          for migration in \
-            20261015081513_init_reasoning_platform \
-            20261030120000_agent_operations \
-            20261030130000_brain_knowledge \
-            20261030130500_agent_task_queue \
-            20261030153000_agent_run_retry_backoff \
-            20261101110000_communications_and_langgraph_checkpoint \
-            20261101111500_complete_supabase_models \
-            20261102123000_supabase_auth_identity_bridge; do
-            test -f "prisma/migrations/$migration/migration.sql"
-            cp -a "prisma/migrations/$migration" "$baseline/migrations/"
-          done
-          DATABASE_URL="$DATABASE_URL" npx prisma migrate resolve --applied 20261014000000_supabase_platform_baseline --schema="$baseline/schema.prisma"
-          DATABASE_URL="$DATABASE_URL" npx prisma migrate deploy --schema="$baseline/schema.prisma"
-
-      - name: Assert the disposable database starts with exactly eight finished Prisma migrations
+      - name: Confirm the disposable database has no application migration history
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
-          import { readdir } from 'node:fs/promises';
           import pg from 'pg';
           const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
           await client.connect();
           try {
-            const result = await client.query(`
-              SELECT
-                COUNT(*) FILTER (
-                  WHERE migration_name <> '20261014000000_supabase_platform_baseline'
-                )::int AS application_migrations,
-                COUNT(*) FILTER (
-                  WHERE migration_name = '20261014000000_supabase_platform_baseline'
-                )::int AS platform_baseline
-              FROM public._prisma_migrations
-              WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
-            `);
-            assert.equal(result.rows[0].application_migrations, 8,
-              'Expected the exact eight-migration production application starting ledger');
-            assert.equal(result.rows[0].platform_baseline, 1,
-              'Expected the separate Supabase platform baseline marker');
-            console.log('PASS: disposable database reproduces eight application migrations plus the platform baseline marker.');
+            const result = await client.query(
+              "SELECT to_regclass('public._prisma_migrations') AS ledger"
+            );
+            assert.equal(result.rows[0].ledger, null,
+              'Fresh-install validation must start without a copied production migration ledger');
+            console.log('PASS: disposable database starts with no production-derived migration history.');
           } finally {
             await client.end();
           }
           NODE
 
-      - name: Apply the complete remaining Prisma migration chain
+      - name: Apply the complete Prisma migration chain from empty state
         run: npx prisma migrate deploy --schema=prisma/schema.prisma
 
       - name: Verify Prisma reports zero pending migrations
