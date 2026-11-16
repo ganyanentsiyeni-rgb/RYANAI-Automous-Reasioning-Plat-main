@@ -85,7 +85,7 @@ for (const actionReference of collectActionReferences(document)) {
   }
 }
 
-  for (const match of text.matchAll(/(?:dockerfile|configuration-path|path|schema(?:-file)?):\s*['"]?([^'"\s${}]+)['"]?/gi)) {
+  for (const match of text.matchAll(/^\s*(?:dockerfile|configuration-path|path|schema(?:-file)?):\s*['"]?([^'"\s${}]+)['"]?/gim)) {
     const candidate = match[1];
     if (candidate.startsWith('.') && !candidate.includes('*') && !candidate.includes('/')) {
       const target = join(root, candidate);
