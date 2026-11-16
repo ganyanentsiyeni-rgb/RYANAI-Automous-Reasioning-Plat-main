@@ -98,7 +98,7 @@ jobs:
             --header "accept: application/json" > render-staging-service.json
           jq -e '
             (.name | startswith("ryanai-staging"))
-            and (.repo == "https://github.com/RyanAI-Automated/RYANAI-Automous-Reasioning-Plat")
+            and (.repo == "https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main")
             and (.autoDeployTrigger == "off")
           ' render-staging-service.json >/dev/null || {
             echo "::error::Render target is not a separately named, official-repository staging service with auto-deploy disabled."
