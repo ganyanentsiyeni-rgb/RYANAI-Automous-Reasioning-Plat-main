@@ -68,11 +68,11 @@ projects:
           - type: web
             name: ryanai-web
             runtime: static
-            repo: https://github.com/RyanAI-Automated/RYANAI-Automous-Reasioning-Plat
+            repo: https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main
             branch: main
             buildCommand: npm ci --legacy-peer-deps && npm run build:web
             staticPublishPath: ./dist
-            autoDeployTrigger: commit
+            autoDeployTrigger: off
             envVars:
               - fromGroup: ryanai-shared-production
               - fromGroup: ryanai-web-production
@@ -84,13 +84,13 @@ projects:
           - type: web
             name: ryanai-api
             runtime: docker
-            repo: https://github.com/RyanAI-Automated/RYANAI-Automous-Reasioning-Plat
+            repo: https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main
             branch: main
             region: oregon
             plan: free
             dockerfilePath: ./Dockerfile.api
             healthCheckPath: /health
-            autoDeployTrigger: commit
+            autoDeployTrigger: off
             envVars:
               - fromGroup: ryanai-shared-production
               - fromGroup: ryanai-api-production
