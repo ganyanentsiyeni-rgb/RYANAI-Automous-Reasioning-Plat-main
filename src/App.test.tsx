@@ -268,6 +268,35 @@ describe('application authentication boundary', () => {
     expect(enabledModules.phonelink).toBe(true);
   });
 
+  it('preserves explicit object-only dashboard visibility preferences', async () => {
+    const objectOnlySession = {
+      ...session,
+      user: {
+        ...session.user,
+        user_metadata: {
+          ryanai_dashboard_ui_preferences: {
+            pa: true,
+            workspace: true,
+            cockpit: false,
+            quant: false,
+            music: true,
+            phonelink: true,
+          },
+        },
+      },
+    } as Session;
+    auth.getSession.mockResolvedValue({ data: { session: objectOnlySession }, error: null });
+    await mount('/dashboard');
+    await expectContent('Private dashboard');
+
+    const dashboard = container.querySelector<HTMLElement>('[data-testid="private-dashboard"]');
+    const enabledModules = JSON.parse(dashboard?.dataset.enabledModules ?? '{}') as Record<string, boolean>;
+    expect(enabledModules.pa).toBe(true);
+    expect(enabledModules.workspace).toBe(true);
+    expect(enabledModules.cockpit).toBe(false);
+    expect(enabledModules.quant).toBe(false);
+  });
+
   it('hides disabled workspaces and blocks direct links using account dashboard preferences', async () => {
     const limitedSession = {
       ...session,
