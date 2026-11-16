@@ -51,7 +51,7 @@ test('detects schema and vector-memory drift, including runtime columns and inde
 });
 
 test('accepts a complete schema and vector-memory installation', () => {
-  const columns = ['execution_scope', 'approval_status', 'plan_snapshot', 'plan_hash', 'base_commit_sha',
+  const columns = ['queue_type', 'execution_scope', 'approval_status', 'plan_snapshot', 'plan_hash', 'base_commit_sha',
     'proposed_diff_hash', 'approved_plan_hash', 'approved_commit_sha', 'approved_diff_hash',
     'approved_by', 'approved_at', 'steering_notes', 'cancel_requested_at', 'requested_model'];
   const result = assessSchema({
