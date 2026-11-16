@@ -2,7 +2,7 @@
 
 # Targets: api (production API), web (nginx frontend), migrate (one-shot Prisma deploy).
 # Keep Node 24 and the root lockfile consistent across build and runtime stages.
-FROM node:26-alpine AS api-deps
+FROM node:24-alpine AS api-deps
 WORKDIR /app
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 RUN apk add --no-cache libc6-compat \
@@ -52,7 +52,7 @@ RUN npm run db:generate \
 # Keep the API runtime contract aligned with Dockerfile.api.
 # pg_dump is required by the optional, non-blocking startup backup.
 # The npm CLI is deliberately absent; Render must use this image's default CMD.
-FROM node:26-alpine AS api
+FROM node:24-alpine AS api
 LABEL org.opencontainers.image.description="RyanAI API runtime image"
 WORKDIR /app
 ENV NODE_ENV=production \
@@ -97,7 +97,7 @@ ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 CMD ["sh", "-c", "exec sh scripts/verify-node-ca.sh sh -c 'node scripts/backup-on-startup.mjs; exec node dist/server/server/launcher.js'"]
 
 # Build-time Vite configuration contains public browser values only.
-FROM node:26-alpine AS web-builder
+FROM node:24-alpine AS web-builder
 WORKDIR /app
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 COPY package.json package-lock.json ./
