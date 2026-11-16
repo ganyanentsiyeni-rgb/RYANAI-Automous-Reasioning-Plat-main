@@ -109,7 +109,7 @@ jobs:
         run: |
           set -euo pipefail
           desired='
-            .repo == "https://github.com/RyanAI-Automated/RYANAI-Automous-Reasioning-Plat" and
+            .repo == "https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main" and
             .branch == "main" and
             .rootDir == "." and
             .autoDeployTrigger == "off" and
@@ -122,7 +122,7 @@ jobs:
             echo "Existing API service already matches the required configuration; no update needed."
             exit 0
           fi
-          curl --fail-with-body --silent --show-error             --request PATCH             --url "https://api.render.com/v1/services/srv-dbk4giu7bikc7394a4r0"             --header "Authorization: Bearer ${RENDER_API_KEY}"             --header "accept: application/json"             --header "content-type: application/json"             --data '{"repo":"https://github.com/RyanAI-Automated/RYANAI-Automous-Reasioning-Plat","branch":"main","rootDir":".","autoDeployTrigger":"off","serviceDetails":{"dockerContext":".","dockerfilePath":"./Dockerfile.api","dockerCommand":"","healthCheckPath":"/health"}}'             --output render-service-update.json
+          curl --fail-with-body --silent --show-error             --request PATCH             --url "https://api.render.com/v1/services/srv-dbk4giu7bikc7394a4r0"             --header "Authorization: Bearer ${RENDER_API_KEY}"             --header "accept: application/json"             --header "content-type: application/json"             --data '{"repo":"https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main","branch":"main","rootDir":".","autoDeployTrigger":"off","serviceDetails":{"dockerContext":".","dockerfilePath":"./Dockerfile.api","dockerCommand":"","healthCheckPath":"/health"}}'             --output render-service-update.json
           jq -e "$desired" render-service-update.json
 
       - name: Read back and verify live API configuration
@@ -132,7 +132,7 @@ jobs:
           set -euo pipefail
           curl --fail-with-body --silent --show-error             --url "https://api.render.com/v1/services/srv-dbk4giu7bikc7394a4r0"             --header "Authorization: Bearer ${RENDER_API_KEY}"             --header "accept: application/json"             --output render-service-final.json
           jq -e '
-            .repo == "https://github.com/RyanAI-Automated/RYANAI-Automous-Reasioning-Plat" and
+            .repo == "https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main" and
             .branch == "main" and
             .rootDir == "." and
             .autoDeployTrigger == "off" and
