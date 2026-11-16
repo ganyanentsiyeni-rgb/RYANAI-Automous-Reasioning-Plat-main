@@ -148,9 +148,13 @@ export default function App() {
   // Keep dashboard cards aligned with the effective workspace list used by navigation.
   // This also preserves legacy accounts that have the array preference but no object preference yet.
   const effectiveDashboardUiPreferences = { ...dashboardUiPreferences };
-  for (const preferenceId of Object.values(routeUiOptions)) {
-    if (preferenceId) {
-      effectiveDashboardUiPreferences[preferenceId] = enabledUiIds.some((enabledId) => enabledId === preferenceId);
+  // The legacy array is authoritative only when it actually exists. Otherwise,
+  // retain explicit object preferences rather than treating every workspace as enabled.
+  if (Array.isArray(user?.user_metadata?.ryanai_dashboard_ui)) {
+    for (const preferenceId of Object.values(routeUiOptions)) {
+      if (preferenceId) {
+        effectiveDashboardUiPreferences[preferenceId] = enabledUiIds.some((enabledId) => enabledId === preferenceId);
+      }
     }
   }
   const audiobookSettings = normalizeAudiobookSettings(user?.user_metadata?.ryanai_audiobook_settings);
