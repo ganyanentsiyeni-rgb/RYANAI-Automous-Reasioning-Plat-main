@@ -108,9 +108,9 @@ export function resolveConnectionUrls(
 
 
 /**
- * Prevent a production API process from listening when required infrastructure
- * failed its startup connectivity check. Non-production environments retain
- * degraded-start behavior for local development and isolated tests.
+ * Prevent production and staging API processes from listening when required
+ * infrastructure failed its startup connectivity check. Local development and
+ * isolated tests retain degraded-start behavior.
  */
 export function assertProductionDependencies(
   nodeEnv: string,
@@ -126,7 +126,7 @@ export function assertProductionDependencies(
 
   if (unavailable.length) {
     throw new Error(
-      `Production startup blocked: required dependency checks failed for ${unavailable.join(', ')}. The API listener was not started.`,
+      `${nodeEnv} startup blocked: required dependency checks failed for ${unavailable.join(', ')}. The API listener was not started.`,
     );
   }
 }
