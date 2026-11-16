@@ -27,7 +27,7 @@ export function assessSchema({ columns, tables, indexes, extensions, memoryColum
     'approved_commit_sha', 'approved_diff_hash', 'approved_by',
     'approved_at', 'steering_notes', 'cancel_requested_at', 'queue_type',
   ];
-  const requiredTables = ['agent_run_evidence', 'jarvis_audit_events', 'profiles', 'conversations', 'messages', 'memory_entries', 'rooms', 'room_members', 'room_messages'];
+  const requiredTables = ['agent_run_evidence', 'jarvis_audit_events', 'coding_tasks', 'profiles', 'conversations', 'messages', 'memory_entries', 'rooms', 'room_members', 'room_messages'];
   const requiredSharedColumns = ['profiles.id', 'profiles.email', 'profiles.full_name', 'profiles.avatar_url', 'profiles.created_at', 'profiles.updated_at', 'conversations.id', 'conversations.user_id', 'conversations.title', 'conversations.model', 'conversations.created_at', 'conversations.updated_at', 'messages.id', 'messages.conversation_id', 'messages.role', 'messages.content', 'messages.model', 'messages.steps', 'messages.created_at', 'messages.metadata', 'memory_entries.id', 'memory_entries.user_id', 'memory_entries.key', 'memory_entries.value', 'memory_entries.category', 'memory_entries.created_at', 'rooms.id', 'rooms.name', 'rooms.created_by', 'rooms.created_at', 'room_members.room_id', 'room_members.user_id', 'room_members.joined_at', 'room_messages.id', 'room_messages.room_id', 'room_messages.sender_id', 'room_messages.body', 'room_messages.created_at'];
   const missingSharedColumns = requiredSharedColumns.filter((name) => !sharedColumns.has(name));
   const requiredVector = ['reasoning_cache', 'agent_memory'];
@@ -38,7 +38,7 @@ export function assessSchema({ columns, tables, indexes, extensions, memoryColum
   const requiredCacheColumns = ['id', 'prompt', 'response', 'embedding', 'created_at'];
   const missingMemoryColumns = requiredMemoryColumns.filter((name) => !memoryColumns.has(name));
   const missingCacheColumns = requiredCacheColumns.filter((name) => !cacheColumns.has(name));
-  const requiredIndexes = ['idx_reasoning_embedding', 'idx_agent_session'];
+  const requiredIndexes = ['idx_reasoning_embedding', 'idx_agent_session', 'coding_tasks_status_next_attempt_idx', 'coding_tasks_status_lease_expiry_idx', 'coding_tasks_user_created_idx', 'coding_tasks_workbench_run_idx', 'agent_runs_queue_type_status_created_idx'];
   const missingIndexes = requiredIndexes.filter((name) => !indexes.has(name));
   return {
     missingColumns,
