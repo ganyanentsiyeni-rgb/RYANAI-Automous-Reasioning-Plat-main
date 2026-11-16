@@ -145,6 +145,14 @@ export default function App() {
       ? user.user_metadata.full_name
       : user?.email?.split('@')[0];
   const dashboardUiPreferences = normalizeDashboardUiPreferences(user?.user_metadata?.ryanai_dashboard_ui_preferences);
+  // Keep dashboard cards aligned with the effective workspace list used by navigation.
+  // This also preserves legacy accounts that have the array preference but no object preference yet.
+  const effectiveDashboardUiPreferences = { ...dashboardUiPreferences };
+  for (const preferenceId of Object.values(routeUiOptions)) {
+    if (preferenceId) {
+      effectiveDashboardUiPreferences[preferenceId] = enabledUiIds.some((enabledId) => enabledId === preferenceId);
+    }
+  }
   const audiobookSettings = normalizeAudiobookSettings(user?.user_metadata?.ryanai_audiobook_settings);
   const inferenceSettings = normalizeInferenceSettings(user?.user_metadata?.ryanai_inference_settings, MODEL_LIST, DEFAULT_MODEL);
   const musicSettings = normalizeMusicSettings(user?.user_metadata?.ryanai_music_settings);
@@ -152,7 +160,7 @@ export default function App() {
   const ryanVoiceSettings = normalizeRyanVoiceSettings(user?.user_metadata?.ryanai_voice_settings);
   const copilotSettings = normalizeCopilotSettings(user?.user_metadata?.ryanai_copilot_settings);
   const activeUiOption = routeUiOptions[route];
-  const isDisabledUiRoute = Boolean(user && activeUiOption && !dashboardUiPreferences[activeUiOption]);
+  const isDisabledUiRoute = Boolean(user && activeUiOption && !effectiveDashboardUiPreferences[activeUiOption]);
 
   const handleSignOut = async () => {
     if (await signOut()) window.location.hash = '/signin';
@@ -214,7 +222,7 @@ export default function App() {
         && (id !== 'comms' || isOwner)
         && (id !== 'admin' || isAdmin)
         && (id === 'landing' || id === 'dashboard' || id === 'settings' || id === 'copilot' || id === 'survey' || enabledUiIds.some((enabledId) => enabledId === id))
-        && (!routeUiOptions[id] || dashboardUiPreferences[routeUiOptions[id] as DashboardUiId])
+        && (!routeUiOptions[id] || effectiveDashboardUiPreferences[routeUiOptions[id] as DashboardUiId])
       : id === 'landing' || id === 'signin' || id === 'signup' || id === 'survey',
   );
   const currentTitle = destinations.find(({ id }) => id === route)?.label ?? 'Workspace';
@@ -280,7 +288,7 @@ export default function App() {
                   <a href="#/settings" className="mt-4 inline-flex rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300">Open Settings</a>
                 </section>
               ) : <>
-                {route === 'dashboard' && <DashboardPage isOwner={isOwner} isAdmin={isAdmin} enabledModules={dashboardUiPreferences} musicSettings={musicSettings} />}
+                {route === 'dashboard' && <DashboardPage isOwner={isOwner} isAdmin={isAdmin} enabledModules={effectiveDashboardUiPreferences} musicSettings={musicSettings} />}
                 {route === 'copilot' && <DarksideCopilot onSignOut={() => void handleSignOut()} userId={user.id} userEmail={user.email ?? ''} userFullName={displayName} showInferenceConsole={dashboardUiPreferences.inferenceConsole} defaultInferenceModel={inferenceSettings.preferredModel as ModelId} voiceSettings={ryanVoiceSettings} copilotSettings={copilotSettings} />}
                 {route === 'pa' && <PAAgentPage />}
                 {route === 'settings' && <ProfileSettings key={user.id} userId={user.id} email={user.email ?? ''} initialDisplayName={displayName || ''} initialLanguage={typeof user.user_metadata?.ryanai_language === 'string' ? user.user_metadata.ryanai_language : isOwner ? OWNER_DEFAULT_LANGUAGE : DEFAULT_LANGUAGE} initialVoiceEnabled={typeof user.user_metadata?.ryanai_voice_enabled === 'boolean' ? user.user_metadata.ryanai_voice_enabled : undefined} initialRyanVoiceSettings={ryanVoiceSettings} initialCopilotSettings={copilotSettings} initialDashboardUiIds={enabledUiIds} initialDashboardUiPreferences={dashboardUiPreferences} initialAudiobookSettings={audiobookSettings} initialInferenceSettings={inferenceSettings} initialMusicSettings={user.user_metadata?.ryanai_music_settings} initialPhoneLinkSettings={phoneLinkSettings} initialPluginPreferences={user.user_metadata?.ryanai_plugin_preferences} isAdmin={isAdmin} isOwner={isOwner} onSignOut={() => void handleSignOut()} signingOut={signingOut} />}
