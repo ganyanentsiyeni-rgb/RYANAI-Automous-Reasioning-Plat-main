@@ -35,6 +35,7 @@ test('detects schema and vector-memory drift, including runtime columns and inde
   });
   assert.ok(result.missingColumns.includes('approval_status'));
   assert.ok(result.missingColumns.includes('requested_model'));
+  assert.ok(result.missingColumns.includes('queue_type'));
   assert.ok(result.missingTables.includes('agent_run_evidence'));
   assert.ok(result.missingTables.includes('profiles'));
   assert.ok(result.missingTables.includes('rooms'));
