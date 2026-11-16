@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "1.0.0",
+  "profile": "A-strict-offline-local-only",
+  "modelInvocation": false,
+  "container": {
+    "networkMode": "none",
+    "readOnlyRootFilesystem": true,
+    "dropAllCapabilities": true,
+    "noNewPrivileges": true,
+    "nonRootUid": 10001,
+    "memoryLimitMb": 256,
+    "cpuLimit": 1,
+    "pidsLimit": 64,
+    "repositoryMount": "three-file-allowlist",
+    "dockerSocketMounted": false,
+    "providerCredentialsPassed": false,
+    "hostEnvironmentPassed": false,
+    "mountedFiles": [
+      "scripts/benchmark-isolation-container.mjs",
+      "scripts/benchmark-endpoint-policy.mjs",
+      "benchmarks/contracts/local-isolation-policy.json"
+    ]
+  },
+  "requiredChecks": [
+    "ipv4-loopback-fixture",
+    "ipv6-loopback-fixture",
+    "public-ip-egress-denied",
+    "private-lan-egress-denied",
+    "public-dns-denied",
+    "docker-host-alias-denied",
+    "policy-endpoint-allowlist",
+    "credential-environment-absent",
+    "only-loopback-network-interface"
+  ],
+  "successMeaning": "HARNESS_PASS_ONLY_NOT_GATE_PASS",
+  "doesNotProve": [
+    "production-runner-isolation",
+    "ollama-runtime-isolation",
+    "model-identity-or-revision",
+    "held-out-dataset-integrity",
+    "six-gate-readiness"
+  ],
+  "failClosed": true,
+  "evidence": {
+    "file": "benchmark-isolation-evidence.json",
+    "format": "single-json-document",
+    "testedRevisionSource": "git-rev-parse-HEAD",
+    "requiredMetadata": [
+      "testedRevision.gitCommit",
+      "testedRevision.githubRunId",
+      "runtime.immutableContainerImageDigest",
+      "commands.imagePull.exitCode",
+      "commands.imageDigestInspection.exitCode",
+      "commands.isolatedContainer.argv",
+      "commands.isolatedContainer.exitCode",
+      "checks[].command",
+      "checks[].exitCode",
+      "checks[].observedCode",
+      "failureReasons"
+    ],
+    "stdoutAndStderrSeparated": true,
+    "validJsonRequiredOnFailure": true,
+    "uploadArtifactOnFailure": true
+  }
+}

@@ -1,0 +1,39 @@
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+}
+
+android {
+    buildFeatures { buildConfig = true }
+    namespace = "ai.ryanai.phonelink"
+    compileSdk = 35
+
+    defaultConfig {
+        applicationId = "ai.ryanai.phonelink"
+        minSdk = 26
+        targetSdk = 35
+        versionCode = 1
+        versionName = "0.1.0"
+        val phoneLinkHost = (project.findProperty("phonelinkRyanaiHost") as String?) ?: "ryanai-automous-reasioning-plat-uss1632.vercel.app"
+        buildConfigField("String", "RYANAI_HOST", "\"$phoneLinkHost\"")
+        buildConfigField("String", "RYANAI_BASE_URL", "\"https://$phoneLinkHost\"")
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = "17" }
+}
+
+dependencies {
+    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("androidx.activity:activity-ktx:1.10.1")
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
+    implementation("androidx.camera:camera-camera2:1.4.2")
+    implementation("androidx.camera:camera-lifecycle:1.4.2")
+    implementation("androidx.camera:camera-view:1.4.2")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+}

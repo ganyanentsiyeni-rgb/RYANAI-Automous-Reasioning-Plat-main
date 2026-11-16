@@ -1,0 +1,1329 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["public", "auth"]
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum Role {
+  USER
+  ASSISTANT
+  SYSTEM
+  TOOL
+  @@schema("public")
+}
+
+enum AgentStatus {
+  IDLE
+  RUNNING
+  COMPLETED
+  FAILED
+  PAUSED
+  @@schema("public")
+}
+
+// ==========================================
+// CUSTOM RYANAI BACKEND MODELS
+// ==========================================
+
+model User {
+  id            String          @id @default(uuid())
+  email         String          @unique
+  passwordHash  String?         @map("password_hash")
+  name          String?         @map("name")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+  sessions      Session[]
+  agentSessions AgentSession[]
+  memories      MemoryVault[]
+  agents        AgentInstance[]
+  agentRuns     AgentRun[]
+  codingTasks   CodingTask[]
+  quantExperiments QuantExperiment[]
+  marketDataImports QuantMarketDataImport[]
+  marketDataEvents QuantMarketDataEvent[]
+  strategySignals QuantStrategySignal[]
+  paperOrderProposals QuantPaperOrderProposal[]
+  quantPaperAccount QuantPaperAccount?
+  quantPaperDailyRiskStates QuantPaperDailyRiskState[]
+  quantPaperPositions QuantPaperPosition[]
+  quantPaperOrders QuantPaperOrder[]
+  quantPaperTrades QuantPaperTrade[]
+  quantPaperRiskPolicy QuantPaperRiskPolicy?
+  quantPaperStrategies QuantPaperStrategy[]
+  quantPaperPortfolioRiskState QuantPaperPortfolioRiskState?
+  audiobookProjects AudiobookProject[]
+  audiobookRenderJobs AudiobookRenderJob[]
+
+  @@map("users")
+  @@schema("public")
+}
+
+model Session {
+  id        String    @id @default(uuid())
+  title     String    @default("New Reasoning Session")
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  Message[]
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("sessions")
+  @@schema("public")
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  sessionId String   @map("session_id")
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      Role
+  content   String   @db.Text
+  reasoning String?  @db.Text
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([sessionId])
+  @@map("session_messages")
+  @@schema("public")
+}
+
+model AgentSession {
+  id          String         @id @default(uuid())
+  operator    String         @default("Ntsiyeni Ganyane")
+  activeGraph String         @default("ReAct-v2.1") @map("active_graph")
+  cudaActive  Boolean        @default(true) @map("cuda_active")
+  userId      String?        @map("user_id")
+  user        User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  messages    AgentMessage[]
+
+  @@index([createdAt])
+  @@index([userId])
+  @@map("agent_sessions")
+  @@schema("public")
+}
+
+model AgentMessage {
+  id             String       @id @default(uuid())
+  sessionId      String       @map("session_id")
+  session        AgentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role           Role         @default(USER)
+  content        String       @db.Text
+  reasoningSteps String       @db.Text @map("reasoning_steps")
+  latencyMs      Int          @default(14) @map("latency_ms")
+  timestamp      String
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  @@index([sessionId])
+  @@map("agent_messages")
+  @@schema("public")
+}
+
+model AgentInstance {
+  id          String      @id @default(uuid())
+  name        String
+  description String?
+  status      AgentStatus @default(IDLE)
+  userId      String      @map("user_id")
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  config      Json?
+  lastActive  DateTime    @default(now()) @map("last_active")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("agent_instances")
+  @@schema("public")
+}
+
+model MemoryVault {
+  id        String   @id @default(uuid())
+  title     String
+  content   String   @db.Text
+  category  String   @default("general")
+  tags      String[]
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("memory_vault")
+  @@schema("public")
+}
+
+model SystemTelemetry {
+  id          String   @id @default(uuid())
+  cpuUsage    Float?   @map("cpu_usage")
+  memoryUsage Float?   @map("memory_usage")
+  activeNodes Int?     @map("active_nodes")
+  status      String   @default("healthy")
+  payload     Json?
+  recordedAt  DateTime @default(now()) @map("recorded_at")
+
+  @@map("system_telemetry")
+  @@schema("public")
+}
+
+// ==========================================
+// SUPABASE INTEGRATED MODELS
+// ==========================================
+
+/// Shared-room metadata. Supabase Auth owns UUID identities and room RLS.
+model Room {
+  id        String        @id @db.Uuid
+  name      String
+  createdBy String        @map("created_by") @db.Uuid
+  createdAt DateTime      @map("created_at") @db.Timestamptz(6)
+
+  @@map("rooms")
+  @@schema("public")
+}
+
+model RoomMember {
+  roomId   String   @map("room_id") @db.Uuid
+  userId   String   @map("user_id") @db.Uuid
+  joinedAt DateTime @map("joined_at") @db.Timestamptz(6)
+
+  @@id([roomId, userId])
+  @@map("room_members")
+  @@schema("public")
+}
+
+model RoomMessage {
+  id        String   @id @db.Uuid
+  roomId    String   @map("room_id") @db.Uuid
+  senderId  String   @map("sender_id") @db.Uuid
+  body      String   @db.Text
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+
+  @@map("room_messages")
+  @@schema("public")
+}
+
+model Profile {
+  id        String    @id @db.Uuid
+  email     String?
+  fullName  String?   @map("full_name")
+  avatarUrl String?   @map("avatar_url")
+  createdAt DateTime? @default(now()) @map("created_at")
+  updatedAt DateTime? @default(now()) @map("updated_at")
+
+  @@map("profiles")
+  @@schema("public")
+}
+
+model Conversation {
+  id        String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  title     String           @default("New Thread")
+  model     String           @default("claude-sonnet-4.6")
+  createdAt DateTime?        @default(now()) @map("created_at")
+  updatedAt DateTime?        @default(now()) @map("updated_at")
+  messages  ChatSqlMessage[]
+
+  @@index([userId])
+  @@map("conversations")
+  @@schema("public")
+}
+
+model ChatSqlMessage {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversationId String       @map("conversation_id") @db.Uuid
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String
+  content        String       @db.Text
+  model          String?
+  steps          Json?
+  metadata       Json?
+  createdAt      DateTime?    @default(now()) @map("created_at")
+
+  @@index([conversationId])
+  @@map("messages")
+  @@schema("public")
+}
+
+model MemoryEntry {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  key       String
+  value     String    @db.Text
+  category  String    @default("preference")
+  createdAt DateTime? @default(now()) @map("created_at")
+
+  @@unique([userId, key])
+  @@index([userId])
+  @@map("memory_entries")
+  @@schema("public")
+}
+
+model ScheduledTask {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  prompt          String    @db.Text
+  runAt           DateTime  @map("run_at")
+  intervalMinutes Int?      @map("interval_minutes")
+  status          String    @default("active")
+  lastRunAt       DateTime? @map("last_run_at")
+  lastResult      String?   @map("last_result") @db.Text
+  lastError       String?   @map("last_error") @db.Text
+  lockedUntil     DateTime? @map("locked_until")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@index([status, runAt])
+  @@index([userId])
+  @@map("scheduled_tasks")
+  @@schema("public")
+}
+
+// An outbound action that the agent asked for. Nothing leaves the server until an
+// administrator approves it. status: pending, approved, rejected, executed, failed.
+model PendingAction {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tool      String
+  args      Json
+  summary   String    @db.Text
+  status    String    @default("pending")
+  createdAt DateTime  @default(now()) @map("created_at")
+  expiresAt DateTime  @map("expires_at")
+  decidedAt DateTime? @map("decided_at")
+  decidedBy String?   @map("decided_by")
+  result    String?   @db.Text
+
+  @@index([status, expiresAt])
+  @@index([userId])
+  @@map("pending_actions")
+  @@schema("public")
+}
+
+
+model QuantPaperAccount {
+  userId       String   @id @map("user_id")
+  cashBalance  Decimal  @default(100000) @map("cash_balance") @db.Decimal(24, 8)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@map("quant_paper_accounts")
+  @@schema("public")
+}
+
+model QuantPaperPosition {
+  userId            String  @map("user_id")
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  symbol            String  @db.VarChar(15)
+  quantity          Decimal @db.Decimal(24, 8)
+  averageEntryPrice Decimal @map("average_entry_price") @db.Decimal(24, 8)
+  lastPrice         Decimal @map("last_price") @db.Decimal(24, 8)
+  updatedAt         DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@id([userId, symbol])
+  @@map("quant_paper_positions")
+  @@schema("public")
+}
+
+model QuantPaperOrder {
+  id                  String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  userId              String   @map("user_id")
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clientOrderId       String   @map("client_order_id") @db.VarChar(64)
+  symbol              String   @db.VarChar(15)
+  side                String   @db.VarChar(4)
+  quantity             Decimal  @db.Decimal(24, 8)
+  referencePrice       Decimal  @map("reference_price") @db.Decimal(24, 8)
+  fillPrice            Decimal  @map("fill_price") @db.Decimal(24, 8)
+  fee                  Decimal  @db.Decimal(24, 8)
+  status               String   @default("filled") @db.VarChar(16)
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  filledQuantity       Decimal  @default(0) @map("filled_quantity") @db.Decimal(24, 8)
+  remainingQuantity    Decimal  @default(0) @map("remaining_quantity") @db.Decimal(24, 8)
+  averageFillPrice     Decimal? @map("average_fill_price") @db.Decimal(24, 8)
+  updatedAt            DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  trades              QuantPaperTrade[]
+  proposals           QuantPaperOrderProposal[]
+
+  @@unique([userId, clientOrderId], map: "quant_paper_orders_idempotency_key")
+  @@index([userId, createdAt(sort: Desc)], map: "quant_paper_orders_user_created_idx")
+  @@map("quant_paper_orders")
+  @@schema("public")
+}
+
+model QuantPaperTrade {
+  id           String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  orderId      String   @map("order_id")
+  userId       String   @map("user_id")
+  order        QuantPaperOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  symbol       String   @db.VarChar(15)
+  side         String   @db.VarChar(4)
+  quantity     Decimal  @db.Decimal(24, 8)
+  price        Decimal  @db.Decimal(24, 8)
+  fee          Decimal  @db.Decimal(24, 8)
+  realizedPnl  Decimal? @map("realized_pnl") @db.Decimal(24, 8)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  clientFillId String   @map("client_fill_id") @db.VarChar(96)
+
+  @@index([userId, createdAt(sort: Desc)], map: "quant_paper_trades_user_created_idx")
+  @@index([userId, orderId], map: "quant_paper_trades_user_order_idx")
+  @@unique([userId, clientFillId], map: "quant_paper_trades_user_client_fill_id_key")
+  @@map("quant_paper_trades")
+  @@schema("public")
+}
+
+model QuantPaperRiskPolicy {
+  userId              String   @id @map("user_id")
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  maxOrderNotional    Decimal  @default(10000) @map("max_order_notional") @db.Decimal(18, 2)
+  maxPositionNotional Decimal  @default(25000) @map("max_position_notional") @db.Decimal(18, 2)
+  maxGrossExposure    Decimal  @default(75000) @map("max_gross_exposure") @db.Decimal(18, 2)
+  tradingEnabled      Boolean  @default(true) @map("trading_enabled")
+  maxDailyLoss        Decimal  @default(5000) @map("max_daily_loss") @db.Decimal(18, 2)
+  maxDrawdownPct      Decimal  @default(10) @map("max_drawdown_pct") @db.Decimal(6, 2)
+  emergencyStop       Boolean  @default(false) @map("emergency_stop")
+  emergencyStopReason String?  @map("emergency_stop_reason") @db.Text
+  emergencyStoppedAt  DateTime? @map("emergency_stopped_at") @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("quant_paper_risk_policies")
+  @@schema("public")
+}
+
+model QuantPaperStrategy {
+  id            String          @id @default(dbgenerated("(gen_random_uuid())::text"))
+  userId        String          @map("user_id")
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  experimentId  String          @map("experiment_id")
+  experiment    QuantExperiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  allocationPct Decimal         @default(10) @map("allocation_pct") @db.Decimal(5, 2)
+  enabled       Boolean         @default(true)
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([userId, experimentId], map: "quant_paper_strategies_user_experiment_key")
+  @@index([userId, enabled, createdAt(sort: Desc)], map: "quant_paper_strategies_user_enabled_idx")
+  @@map("quant_paper_strategies")
+  @@schema("public")
+}
+
+model QuantPaperPortfolioRiskState {
+  userId         String   @id @map("user_id")
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  peakEquity     Decimal  @map("peak_equity") @db.Decimal(24, 8)
+  currentEquity  Decimal  @map("current_equity") @db.Decimal(24, 8)
+  maxDrawdownPct Decimal  @default(0) @map("max_drawdown_pct") @db.Decimal(8, 4)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("quant_paper_portfolio_risk_state")
+  @@schema("public")
+}
+
+model QuantPaperDailyRiskState {
+  userId         String   @map("user_id")
+  riskDate       DateTime @map("risk_date") @db.Date
+  startingEquity Decimal  @map("starting_equity") @db.Decimal(24, 8)
+  currentEquity  Decimal  @map("current_equity") @db.Decimal(24, 8)
+  dailyLoss      Decimal  @default(0) @map("daily_loss") @db.Decimal(24, 8)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([userId, riskDate])
+  @@index([riskDate(sort: Desc)], map: "quant_paper_daily_risk_state_date_idx")
+  @@map("quant_paper_daily_risk_state")
+  @@schema("public")
+}
+
+model AgentRun {
+  id String @id @default(uuid())
+  userId String @map("user_id")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  objective String @db.Text
+  requestedModel String? @map("requested_model")
+  traceContext Json? @map("trace_context")
+  executionScope Json @default("{}") @map("execution_scope")
+  approvalStatus String @default("approved") @map("approval_status")
+  planSnapshot Json? @map("plan_snapshot")
+  planHash String? @map("plan_hash")
+  baseCommitSha String? @map("base_commit_sha")
+  proposedDiffHash String? @map("proposed_diff_hash")
+  approvedPlanHash String? @map("approved_plan_hash")
+  approvedCommitSha String? @map("approved_commit_sha")
+  approvedDiffHash String? @map("approved_diff_hash")
+  approvedBy String? @map("approved_by")
+  approvedAt DateTime? @map("approved_at")
+  steeringNotes String? @db.Text @map("steering_notes")
+  cancelRequestedAt DateTime? @map("cancel_requested_at")
+  status String @default("queued")
+  result Json?
+  error String? @db.Text
+  attempts Int @default(0)
+  maxAttempts Int @default(3) @map("max_attempts")
+  workerId String? @map("worker_id")
+  lockedAt DateTime? @map("locked_at")
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+  completedAt DateTime? @map("completed_at")
+  handoffs AgentHandoff[]
+  evidence AgentRunEvidence[]
+  codingTasks CodingTask[]
+  paDelegation PaDelegation?
+  queueType String @default("reasoning") @map("queue_type")
+  @@index([queueType, status, createdAt], map: "agent_runs_queue_type_status_created_idx")
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([status, lockedAt])
+  @@index([status, nextAttemptAt])
+  @@index([approvalStatus, createdAt], map: "agent_runs_approval_status_created_idx")
+  @@map("agent_runs")
+  @@schema("public")
+}
+model PaIdentityNonce {
+  id String @id @default(uuid())
+  nonce String @unique
+  expiresAt DateTime @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  @@index([expiresAt])
+  @@map("pa_identity_nonces")
+  @@schema("public")
+}
+
+model PaDelegation {
+  id String @id @default(uuid())
+  ownerUserId String @map("owner_user_id")
+  objective String @db.Text
+  requestedCapabilities Json @map("requested_capabilities")
+  status String @default("queued")
+  traceId String @map("trace_id")
+  agentRunId String? @unique @map("agent_run_id")
+  agentRun AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
+  receipt PaExecutionReceipt?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  @@index([ownerUserId, createdAt])
+  @@index([status, createdAt])
+  @@map("pa_delegations")
+  @@schema("public")
+}
+
+model PaExecutionReceipt {
+  id String @id @default(uuid())
+  delegationId String @unique @map("delegation_id")
+  delegation PaDelegation @relation(fields: [delegationId], references: [id], onDelete: Cascade)
+  agentRunId String @map("agent_run_id")
+  status String
+  traceId String @map("trace_id")
+  attempt Int
+  result Json?
+  error String? @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  @@index([agentRunId, createdAt])
+  @@index([traceId, createdAt])
+  @@map("pa_execution_receipts")
+  @@schema("public")
+}
+
+model AgentRunEvidence {
+  id String @id @default(uuid())
+  runId String @map("run_id")
+  run AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  sequence Int
+  eventType String @map("event_type")
+  actorId String? @map("actor_id")
+  payload Json
+  previousHash String? @map("previous_hash")
+  hash String @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  @@unique([runId, sequence], map: "agent_run_evidence_run_sequence_key")
+  @@index([runId, sequence], map: "agent_run_evidence_run_sequence_idx")
+  @@map("agent_run_evidence")
+  @@schema("public")
+}
+model AgentHandoff {
+  id String @id @default(uuid())
+  runId String @map("run_id")
+  run AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  fromAgent String @map("from_agent")
+  toAgent String @map("to_agent")
+  status String @default("pending")
+  input String @db.Text
+  output String? @db.Text
+  error String? @db.Text
+  startedAt DateTime @default(now()) @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  @@index([runId, startedAt])
+  @@map("agent_handoffs")
+  @@schema("public")
+}
+model AgentBrainHealth {
+  id String @id @default(uuid())
+  brain String @unique
+  model String
+  status String
+  latencyMs Int? @map("latency_ms")
+  lastSuccessAt DateTime? @map("last_success_at")
+  lastError String? @db.Text @map("last_error")
+  checkedAt DateTime @default(now()) @map("checked_at")
+  @@map("agent_brain_health")
+  @@schema("public")
+}
+
+
+// Curated platform-wide knowledge supplied to every reasoning brain.
+model BrainKnowledge {
+  id          String   @id @default(uuid())
+  fingerprint String   @unique
+  title       String
+  content     String   @db.Text
+  source      String?
+  category    String   @default("general")
+  tags        String[]
+  confidence  Float    @default(0.5)
+  priority    Int      @default(0)
+  active      Boolean  @default(true)
+  expiresAt   DateTime? @map("expires_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([active, priority, updatedAt])
+  @@index([expiresAt])
+  @@map("brain_knowledge")
+  @@schema("public")
+}
+
+
+model CommunicationConversation {
+  id              String                   @id @default(uuid())
+  channel         String
+  externalAddress String                   @map("external_address")
+  ownerUserId     String?                  @db.Uuid @map("owner_user_id")
+  createdAt       DateTime                 @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt       DateTime                 @default(now()) @updatedAt @db.Timestamptz(6) @map("updated_at")
+  messages        CommunicationMessage[]
+
+  @@unique([channel, externalAddress], map: "communication_conversations_channel_address_key")
+  @@index([channel, updatedAt], map: "communication_conversations_channel_updated_idx")
+  @@map("communication_conversations")
+  @@schema("public")
+}
+
+model CommunicationMessage {
+  id                String                    @id @default(uuid())
+  conversationId    String                    @map("conversation_id")
+  conversation      CommunicationConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  direction         String
+  body              String                    @db.Text
+  providerMessageId String?                   @unique @map("provider_message_id")
+  idempotencyKey     String?                   @unique @map("idempotency_key")
+  status            String                    @default("received")
+  metadata          Json?
+  createdAt         DateTime                  @default(now()) @db.Timestamptz(6) @map("created_at")
+  attachments       CommunicationAttachment[]
+
+  @@index([conversationId, createdAt], map: "communication_messages_conversation_created_idx")
+  @@index([status, createdAt], map: "communication_messages_status_created_idx")
+  @@map("communication_messages")
+  @@schema("public")
+}
+
+
+model CommunicationAttachment {
+  id                     String                @id @default(uuid())
+  communicationMessageId String                @map("communication_message_id")
+  message                CommunicationMessage @relation(fields: [communicationMessageId], references: [id], onDelete: Cascade)
+  ownerUserId            String                @db.Uuid @map("owner_user_id")
+  bucketId               String                @default("ryanai-comms-attachments") @map("bucket_id")
+  objectName             String                @unique @map("object_name")
+  fileName               String                @map("file_name")
+  mimeType               String                @map("mime_type")
+  size                   BigInt
+  source                 String
+  providerMediaId        String?               @map("provider_media_id")
+  createdAt              DateTime              @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@index([ownerUserId, createdAt], map: "communication_attachments_owner_created_idx")
+  @@index([communicationMessageId, createdAt], map: "communication_attachments_message_created_idx")
+  @@map("communication_attachments")
+  @@schema("public")
+}
+
+model CommunicationAttachmentAudit {
+  id                        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  communicationAttachmentId String   @map("communication_attachment_id")
+  ownerUserId               String   @db.Uuid @map("owner_user_id")
+  event                     String
+  metadata                  Json?
+  createdAt                 DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@index([communicationAttachmentId, createdAt], map: "communication_attachment_audit_attachment_created_idx")
+  @@index([ownerUserId, createdAt], map: "communication_attachment_audit_owner_created_idx")
+  @@map("communication_attachment_audit")
+  @@schema("public")
+}
+
+// LangGraph's PostgresSaver owns these tables and their versioned DDL. They are
+// represented here so Prisma's schema-drift check includes the full public
+// schema without attempting to create or mutate them from application code.
+model LangGraphCheckpointMigration {
+  v Int @id
+
+  @@map("checkpoint_migrations")
+  @@schema("public")
+}
+
+model LangGraphCheckpoint {
+  threadId String @map("thread_id")
+  checkpointNs String @default("") @map("checkpoint_ns")
+  checkpointId String @map("checkpoint_id")
+  parentCheckpointId String? @map("parent_checkpoint_id")
+  type String?
+  checkpoint Json
+  metadata Json @default("{}")
+
+  @@id([threadId, checkpointNs, checkpointId])
+  @@map("checkpoints")
+  @@schema("public")
+}
+
+model LangGraphCheckpointBlob {
+  threadId String @map("thread_id")
+  checkpointNs String @default("") @map("checkpoint_ns")
+  channel String
+  version String
+  type String
+  blob Bytes?
+
+  @@id([threadId, checkpointNs, channel, version])
+  @@map("checkpoint_blobs")
+  @@schema("public")
+}
+
+model LangGraphCheckpointWrite {
+  threadId String @map("thread_id")
+  checkpointNs String @default("") @map("checkpoint_ns")
+  checkpointId String @map("checkpoint_id")
+  taskId String @map("task_id")
+  idx Int
+  channel String
+  type String?
+  blob Bytes
+  taskPath String @default("") @map("task_path")
+
+  @@id([threadId, checkpointNs, checkpointId, taskId, idx])
+  @@map("checkpoint_writes")
+  @@schema("public")
+}
+
+model JarvisAuditEvent {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorId    String   @map("actor_id")
+  eventType  String   @map("event_type")
+  resourceId String?  @map("resource_id")
+  details    Json     @default("{}")
+  createdAt  DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  @@index([createdAt(sort: Desc)])
+  @@index([actorId, createdAt(sort: Desc)], map: "jarvis_audit_events_actor_created_idx")
+  @@map("jarvis_audit_events")
+  @@schema("public")
+}
+
+/// Legacy vector-backed cache. The pgvector column is accessed through raw SQL;
+/// Prisma intentionally treats the extension type as unsupported.
+model ReasoningCache {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  prompt    String    @db.Text
+  response  String    @db.Text
+  embedding Unsupported("vector(1536)")?
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Preserve the SQL-defined HNSW index in Prisma drift comparisons.
+  @@index([embedding], map: "idx_reasoning_embedding")
+  @@map("reasoning_cache")
+  @@schema("public")
+}
+
+/// Session-scoped memory retained from the original vector bootstrap.
+model AgentMemory {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId String    @map("session_id") @db.VarChar(255)
+  role      String    @db.VarChar(50)
+  content   String    @db.Text
+  timestamp DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([sessionId, timestamp], map: "idx_agent_session")
+  @@map("agent_memory")
+  @@schema("public")
+}
+
+model QuantExperiment {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  strategy  String
+  status    String
+  input     Json
+  result    Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  strategies QuantPaperStrategy[]
+
+  @@index([userId, createdAt(sort: Desc)], map: "quant_experiments_user_created_idx")
+  @@map("quant_experiments")
+  @@schema("public")
+}
+
+model QuantMarketDataImport {
+  id          String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  symbol      String   @db.VarChar(15)
+  provider    String   @db.VarChar(32)
+  feed        String   @db.VarChar(16)
+  timeframe   String   @db.VarChar(16)
+  adjustment  String   @db.VarChar(16)
+  barCount    Int      @map("bar_count")
+  firstBarAt  DateTime @map("first_bar_at") @db.Timestamptz(6)
+  lastBarAt   DateTime @map("last_bar_at") @db.Timestamptz(6)
+  fetchedAt   DateTime @default(now()) @map("fetched_at") @db.Timestamptz(6)
+  isStale     Boolean  @default(false) @map("is_stale")
+  bars        Json
+  provenance  Json
+  signals     QuantStrategySignal[]
+  proposals   QuantPaperOrderProposal[]
+
+  @@index([userId, symbol, fetchedAt(sort: Desc)], map: "quant_market_data_imports_user_symbol_fetched_idx")
+  @@map("quant_market_data_imports")
+  @@schema("public")
+}
+
+model QuantMarketDataEvent {
+  id             BigInt   @id @default(autoincrement())
+  userId          String   @map("user_id")
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  symbol          String   @db.VarChar(15)
+  provider        String   @db.VarChar(32)
+  feed            String   @db.VarChar(16)
+  timeframe       String   @db.VarChar(16)
+  eventTimestamp  DateTime @map("event_timestamp") @db.Timestamptz(6)
+  receivedAt      DateTime @map("received_at") @db.Timestamptz(6)
+  payloadHash     String   @map("payload_hash") @db.Char(64)
+  source          String   @db.VarChar(16)
+  bar             Json
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([userId, provider, feed, timeframe, symbol, eventTimestamp, payloadHash], map: "quant_market_data_events_dedupe_key")
+  @@index([userId, symbol, id(sort: Asc)], map: "quant_market_data_events_user_symbol_cursor_idx")
+  @@index([userId, symbol, eventTimestamp(sort: Desc)], map: "quant_market_data_events_user_symbol_time_idx")
+  @@map("quant_market_data_events")
+  @@schema("public")
+}
+
+model QuantStrategySignal {
+  id                String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  userId            String   @map("user_id")
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  marketDataImportId String  @map("market_data_import_id")
+  marketDataImport  QuantMarketDataImport @relation(fields: [marketDataImportId], references: [id], onDelete: Cascade)
+  strategy          String   @db.VarChar(40)
+  fastWindow        Int      @map("fast_window") @db.SmallInt
+  slowWindow        Int      @map("slow_window") @db.SmallInt
+  action            String   @db.VarChar(8)
+  referencePrice    Decimal  @map("reference_price") @db.Decimal(18, 8)
+  previousFastSma   Decimal  @map("previous_fast_sma") @db.Decimal(18, 8)
+  previousSlowSma   Decimal  @map("previous_slow_sma") @db.Decimal(18, 8)
+  fastSma           Decimal  @map("fast_sma") @db.Decimal(18, 8)
+  slowSma           Decimal  @map("slow_sma") @db.Decimal(18, 8)
+  generatedAt       DateTime @map("generated_at") @db.Timestamptz(6)
+  metadata          Json
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  proposals         QuantPaperOrderProposal[]
+
+  @@unique([userId, marketDataImportId, strategy, fastWindow, slowWindow], map: "quant_strategy_signals_user_import_strategy_windows_key")
+  @@index([userId, generatedAt(sort: Desc)], map: "quant_strategy_signals_user_generated_idx")
+  @@map("quant_strategy_signals")
+  @@schema("public")
+}
+
+model QuantPaperOrderProposal {
+  id                 String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  userId             String   @map("user_id")
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  signalId           String   @map("signal_id")
+  signal             QuantStrategySignal @relation(fields: [signalId], references: [id], onDelete: Cascade)
+  marketDataImportId String   @map("market_data_import_id")
+  marketDataImport   QuantMarketDataImport @relation(fields: [marketDataImportId], references: [id], onDelete: Cascade)
+  symbol             String   @db.VarChar(15)
+  side               String   @db.VarChar(4)
+  quantity           Decimal  @db.Decimal(24, 8)
+  referencePrice     Decimal  @map("reference_price") @db.Decimal(24, 8)
+  notional           Decimal  @db.Decimal(24, 8)
+  clientOrderId      String   @map("client_order_id") @db.VarChar(64)
+  status             String   @default("pending") @db.VarChar(16)
+  expiresAt          DateTime @map("expires_at") @db.Timestamptz(6)
+  orderId            String?  @map("order_id")
+  order              QuantPaperOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  reason             String?  @db.Text
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  decidedAt          DateTime? @map("decided_at") @db.Timestamptz(6)
+
+  @@unique([userId, clientOrderId], map: "quant_paper_order_proposals_user_client_order_key")
+  @@index([userId, status, createdAt(sort: Desc)], map: "quant_paper_order_proposals_user_status_created_idx")
+  @@map("quant_paper_order_proposals")
+  @@schema("public")
+}
+
+model CodingTask {
+  id String @id @default(uuid())
+  userId String @map("user_id")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  workbenchRunId String @map("workbench_run_id")
+  workbenchRun AgentRun @relation(fields: [workbenchRunId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  approvalId String @map("approval_id")
+  planHash String @map("plan_hash")
+  baseCommitSha String @map("base_commit_sha")
+  proposedDiffHash String @map("proposed_diff_hash")
+  agent String
+  prompt String @db.Text
+  workspaceKey String @map("workspace_key")
+  status String @default("queued")
+  attempts Int @default(0)
+  maxAttempts Int @default(3) @map("max_attempts")
+  workerId String? @map("worker_id")
+  lockedAt DateTime? @map("locked_at") @db.Timestamptz(6)
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  cancelRequestedAt DateTime? @map("cancel_requested_at") @db.Timestamptz(6)
+  result Json?
+  error String? @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+
+  @@index([status, nextAttemptAt, createdAt], map: "coding_tasks_status_next_attempt_idx")
+  @@index([status, leaseExpiresAt], map: "coding_tasks_status_lease_expiry_idx")
+  @@index([userId, createdAt(sort: Desc)], map: "coding_tasks_user_created_idx")
+  @@index([workbenchRunId, createdAt(sort: Desc)], map: "coding_tasks_workbench_run_idx")
+  @@map("coding_tasks")
+  @@schema("public")
+}
+
+// Persistent audiobook manuscripts and durable render work.
+model AudiobookProject {
+  id        String                 @id @default(uuid())
+  userId    String                 @map("user_id")
+  user      User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String                 @db.VarChar(120)
+  language  String                 @default("en-ZA") @db.VarChar(16)
+  chapters  AudiobookChapter[]
+  renderJobs AudiobookRenderJob[]
+  createdAt DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId, updatedAt(sort: Desc)], map: "audiobook_projects_user_updated_idx")
+  @@map("audiobook_projects")
+  @@schema("public")
+}
+
+model AudiobookChapter {
+  id                 String          @id @default(uuid())
+  projectId          String          @map("project_id")
+  project            AudiobookProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title              String          @db.VarChar(120)
+  content            String          @default("") @db.Text
+  position           Int
+  narrationSettings  Json            @default("{}") @map("narration_settings")
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([projectId, position], map: "audiobook_chapters_project_position_key")
+  @@index([projectId, position], map: "audiobook_chapters_project_position_idx")
+  @@map("audiobook_chapters")
+  @@schema("public")
+}
+
+model GitHubAppConnection {
+  userId                 String   @id @map("user_id")
+  githubUserId           String   @map("github_user_id")
+  githubLogin            String   @map("github_login") @db.VarChar(120)
+  repositoryId           String   @map("repository_id")
+  repositoryFullName     String   @map("repository_full_name") @db.VarChar(255)
+  repositoryPermissions  Json     @default("{}") @map("repository_permissions")
+  encryptedAccessToken   String   @map("encrypted_access_token") @db.Text
+  encryptedRefreshToken  String?  @map("encrypted_refresh_token") @db.Text
+  accessTokenExpiresAt   DateTime? @map("access_token_expires_at") @db.Timestamptz(6)
+  refreshTokenExpiresAt  DateTime? @map("refresh_token_expires_at") @db.Timestamptz(6)
+  connectedAt            DateTime @default(now()) @map("connected_at") @db.Timestamptz(6)
+  updatedAt              DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("github_app_connections")
+  @@schema("public")
+}
+
+model GitHubOAuthState {
+  stateHash               String   @id @map("state_hash") @db.VarChar(64)
+  userId                  String   @map("user_id")
+  encryptedCodeVerifier   String   @map("encrypted_code_verifier") @db.Text
+  expiresAt               DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt               DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([expiresAt], map: "github_oauth_states_expires_idx")
+  @@index([userId], map: "github_oauth_states_user_idx")
+  @@map("github_oauth_states")
+  @@schema("public")
+}
+
+model AudiobookRenderJob {
+  id             String          @id @default(uuid())
+  userId         String          @map("user_id")
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projectId      String          @map("project_id")
+  project        AudiobookProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status         String          @default("queued") @db.VarChar(24)
+  idempotencyKey String          @map("idempotency_key") @db.VarChar(120)
+  request        Json
+  progress       Json            @default("{}")
+  result         Json?
+  error          String?         @db.Text
+  attempts       Int             @default(0)
+  maxAttempts    Int             @default(3) @map("max_attempts")
+  workerId       String?         @map("worker_id") @db.VarChar(120)
+  lockedAt       DateTime?       @map("locked_at") @db.Timestamptz(6)
+  leaseExpiresAt DateTime?       @map("lease_expires_at") @db.Timestamptz(6)
+  nextAttemptAt  DateTime        @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  cancelRequestedAt DateTime?    @map("cancel_requested_at") @db.Timestamptz(6)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  completedAt    DateTime?       @map("completed_at") @db.Timestamptz(6)
+
+  @@unique([userId, idempotencyKey], map: "audiobook_render_jobs_user_idempotency_key")
+  @@index([status, nextAttemptAt, createdAt], map: "audiobook_render_jobs_status_next_attempt_idx")
+  @@index([status, leaseExpiresAt], map: "audiobook_render_jobs_status_lease_idx")
+  @@index([userId, createdAt(sort: Desc)], map: "audiobook_render_jobs_user_created_idx")
+  @@index([projectId, createdAt(sort: Desc)], map: "audiobook_render_jobs_project_created_idx")
+  @@map("audiobook_render_jobs")
+  @@schema("public")
+}
+
+// Security Centre records. Operational audit events continue to use JarvisAuditEvent;
+// engineering execution evidence continues to use AgentRunEvidence.
+model SecurityScan {
+  id               String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerUserId      String?               @map("owner_user_id") @db.Uuid
+  initiatedBy      String                @map("initiated_by")
+  source           String
+  environment      String
+  targetRef        String?               @map("target_ref")
+  branch           String?
+  commitSha        String?               @map("commit_sha")
+  workflowRunId    String?               @map("workflow_run_id")
+  status           String                @default("queued")
+  toolchain        Json                  @default("{}")
+  summary          Json                  @default("{}")
+  approvalId       String?               @map("approval_id") @db.Uuid
+  startedAt        DateTime?             @map("started_at") @db.Timestamptz(6)
+  completedAt      DateTime?             @map("completed_at") @db.Timestamptz(6)
+  createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  approval         SecurityApproval?     @relation(fields: [approvalId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  findings         SecurityFinding[]
+  evidence         SecurityEvidence[]
+  verifiedRemediations SecurityRemediation[] @relation("SecurityRemediationVerification")
+
+  @@index([createdAt(sort: Desc)], map: "security_scans_created_idx")
+  @@index([commitSha, createdAt(sort: Desc)], map: "security_scans_commit_created_idx")
+  @@index([environment, status, createdAt(sort: Desc)], map: "security_scans_environment_status_idx")
+  @@index([ownerUserId, createdAt(sort: Desc)], map: "security_scans_owner_created_idx")
+  @@map("security_scans")
+  @@schema("public")
+}
+
+model SecurityFinding {
+  id                String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  scanId            String                @map("scan_id") @db.Uuid
+  fingerprint       String
+  sourceTool        String                @map("source_tool")
+  ruleId            String?               @map("rule_id")
+  severity          String
+  confidence        String                @default("unknown")
+  title             String
+  description       String?               @db.Text
+  affectedComponent String?               @map("affected_component")
+  filePath          String?               @map("file_path")
+  startLine         Int?                  @map("start_line")
+  endLine           Int?                  @map("end_line")
+  cve               String?
+  cwe               String?
+  cvss              Decimal?             @db.Decimal(4, 2)
+  status            String                @default("open")
+  firstSeenAt       DateTime              @default(now()) @map("first_seen_at") @db.Timestamptz(6)
+  lastSeenAt        DateTime              @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  scan              SecurityScan          @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  evidence          SecurityEvidence[]
+  remediations      SecurityRemediation[]
+
+  @@unique([scanId, fingerprint])
+  @@index([severity, status, lastSeenAt(sort: Desc)])
+  @@index([fingerprint, lastSeenAt(sort: Desc)])
+  @@index([affectedComponent, status])
+  @@map("security_findings")
+  @@schema("public")
+}
+
+model SecurityEvidence {
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  scanId         String          @map("scan_id") @db.Uuid
+  findingId      String?         @map("finding_id") @db.Uuid
+  evidenceType   String          @map("evidence_type")
+  artifactRef    String?         @map("artifact_ref")
+  sha256         String?
+  mediaType      String?         @map("media_type")
+  redactedExcerpt String?        @map("redacted_excerpt") @db.Text
+  metadata       Json            @default("{}")
+  capturedAt     DateTime        @default(now()) @map("captured_at") @db.Timestamptz(6)
+  scan           SecurityScan    @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  finding        SecurityFinding? @relation(fields: [findingId], references: [id], onDelete: Cascade)
+
+  @@index([scanId, capturedAt(sort: Desc)])
+  @@index([findingId, capturedAt(sort: Desc)])
+  @@map("security_evidence")
+  @@schema("public")
+}
+
+model SecurityRemediation {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  findingId          String           @map("finding_id") @db.Uuid
+  recommendation     String           @db.Text
+  rationale          String?          @db.Text
+  status             String           @default("proposed")
+  proposedBy         String           @map("proposed_by")
+  reviewedBy         String?          @map("reviewed_by")
+  reviewedAt         DateTime?        @map("reviewed_at") @db.Timestamptz(6)
+  verificationScanId String?          @map("verification_scan_id") @db.Uuid
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  finding            SecurityFinding  @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  verificationScan   SecurityScan?    @relation("SecurityRemediationVerification", fields: [verificationScanId], references: [id], onDelete: SetNull)
+
+  @@index([findingId, status, createdAt(sort: Desc)])
+  @@map("security_remediations")
+  @@schema("public")
+}
+
+model SecurityApproval {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  scope       String
+  environment String
+  targetRef   String         @map("target_ref")
+  commitSha   String?        @map("commit_sha")
+  requestHash String         @map("request_hash")
+  requestedBy String         @map("requested_by")
+  decidedBy   String?        @map("decided_by")
+  status      String         @default("pending")
+  reason      String?        @db.Text
+  expiresAt   DateTime       @map("expires_at") @db.Timestamptz(6)
+  usedAt      DateTime?      @map("used_at") @db.Timestamptz(6)
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  scans       SecurityScan[]
+
+  @@index([status, expiresAt])
+  @@index([targetRef, commitSha])
+  @@map("security_approvals")
+  @@schema("public")
+}
+
+/// Server-only provider credentials. Token ciphertext is never exposed through
+/// catalogue or user-facing profile APIs; access is owner-scoped in services.
+model PluginProviderConnection {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerUserId           String    @map("owner_user_id")
+  providerId            String    @map("provider_id") @db.VarChar(64)
+  externalAccountId     String?   @map("external_account_id")
+  displayLabel          String?   @map("display_label") @db.VarChar(255)
+  status                String    @default("connected") @db.VarChar(32)
+  encryptedAccessToken  String?   @map("encrypted_access_token") @db.Text
+  encryptedRefreshToken String?   @map("encrypted_refresh_token") @db.Text
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at") @db.Timestamptz(6)
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at") @db.Timestamptz(6)
+  grantedScopes         String[]  @default([]) @map("granted_scopes")
+  connectionMetadata    Json      @default("{}") @map("connection_metadata")
+  connectedAt           DateTime? @map("connected_at") @db.Timestamptz(6)
+  revokedAt             DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([ownerUserId, providerId], map: "plugin_provider_connections_owner_provider_key")
+  @@index([ownerUserId, status, updatedAt(sort: Desc)], map: "plugin_provider_connections_owner_status_idx")
+  @@index([providerId, status, updatedAt(sort: Desc)], map: "plugin_provider_connections_provider_status_idx")
+  @@map("plugin_provider_connections")
+  @@schema("public")
+}
+
+/// Short-lived one-use OAuth state. The raw state is never persisted.
+model PluginOAuthState {
+  stateHash             String   @id @map("state_hash") @db.VarChar(64)
+  ownerUserId           String   @map("owner_user_id")
+  providerId            String   @map("provider_id") @db.VarChar(64)
+  encryptedCodeVerifier String   @map("encrypted_code_verifier") @db.Text
+  requestedScopes       String[] @map("requested_scopes")
+  redirectUri           String   @map("redirect_uri") @db.Text
+  expiresAt             DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([expiresAt], map: "plugin_oauth_states_expires_idx")
+  @@index([ownerUserId, providerId], map: "plugin_oauth_states_owner_provider_idx")
+  @@map("plugin_oauth_states")
+  @@schema("public")
+}
+
+/// Append-only, redacted authorization lifecycle evidence. Never store tokens.
+model PluginAuthorizationEvent {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerUserId String   @map("owner_user_id")
+  providerId  String   @map("provider_id") @db.VarChar(64)
+  connectionId String? @map("connection_id") @db.Uuid
+  eventType   String   @map("event_type") @db.VarChar(64)
+  actorUserId String   @map("actor_user_id")
+  requestId   String?  @map("request_id") @db.VarChar(128)
+  details     Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([ownerUserId, createdAt(sort: Desc)], map: "plugin_authorization_events_owner_created_idx")
+  @@index([connectionId, createdAt(sort: Desc)], map: "plugin_authorization_events_connection_created_idx")
+  @@map("plugin_authorization_events")
+  @@schema("public")
+}
+
+
+/// RyanAI Studio owns project identity and lifecycle independently of agent runs.
+model StudioProject {
+  id          String   @id @default(uuid())
+  ownerUserId String   @map("owner_user_id")
+  title       String   @db.VarChar(200)
+  objective   String   @db.Text
+  projectType String   @map("project_type") @db.VarChar(32)
+  status      String   @default("draft") @db.VarChar(32)
+  priority    Int      @default(0)
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tasks       StudioTask[]
+  artifacts   StudioArtifact[]
+  events      StudioEvent[]
+
+  @@index([ownerUserId, status, updatedAt(sort: Desc)], map: "studio_projects_owner_status_updated_idx")
+  @@index([status, priority, createdAt], map: "studio_projects_status_priority_created_idx")
+  @@map("studio_projects")
+  @@schema("public")
+}
+
+/// Durable, dependency-aware Studio work item. Lease fields support competing workers safely.
+model StudioTask {
+  id                  String    @id @default(uuid())
+  projectId           String    @map("project_id")
+  project             StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  ownerUserId         String    @map("owner_user_id")
+  title               String    @db.VarChar(240)
+  objective           String    @db.Text
+  taskType            String    @map("task_type") @db.VarChar(48)
+  status              String    @default("queued") @db.VarChar(32)
+  priority            Int       @default(0)
+  requiredCapabilities String[] @default([]) @map("required_capabilities")
+  assignedWorkerId    String?   @map("assigned_worker_id") @db.VarChar(96)
+  dependsOnIds        String[]  @default([]) @map("depends_on_ids")
+  input               Json      @default("{}")
+  output              Json?
+  attempts            Int       @default(0)
+  maxAttempts         Int       @default(3) @map("max_attempts")
+  availableAt         DateTime  @default(now()) @map("available_at") @db.Timestamptz(6)
+  leaseOwner          String?   @map("lease_owner") @db.VarChar(128)
+  leaseExpiresAt      DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  heartbeatAt         DateTime? @map("heartbeat_at") @db.Timestamptz(6)
+  approvalRequired    Boolean   @default(false) @map("approval_required")
+  approvalStatus      String    @default("not_required") @map("approval_status") @db.VarChar(32)
+  idempotencyKey      String?   @unique @map("idempotency_key") @db.VarChar(160)
+  startedAt           DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt         DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  artifacts           StudioArtifact[]
+  events              StudioEvent[]
+
+  @@index([projectId, status, priority], map: "studio_tasks_project_status_priority_idx")
+  @@index([status, availableAt, priority], map: "studio_tasks_claim_idx")
+  @@index([leaseExpiresAt], map: "studio_tasks_lease_expiry_idx")
+  @@index([ownerUserId, createdAt(sort: Desc)], map: "studio_tasks_owner_created_idx")
+  @@map("studio_tasks")
+  @@schema("public")
+}
+
+/// Metadata and provenance for files stored by an approved storage adapter.
+model StudioArtifact {
+  id          String   @id @default(uuid())
+  projectId   String   @map("project_id")
+  project     StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  taskId      String?  @map("task_id")
+  task        StudioTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  ownerUserId String   @map("owner_user_id")
+  title       String   @db.VarChar(240)
+  kind        String   @db.VarChar(48)
+  storageProvider String @map("storage_provider") @db.VarChar(48)
+  storageKey  String   @map("storage_key") @db.Text
+  mimeType    String?  @map("mime_type") @db.VarChar(160)
+  byteSize    BigInt?  @map("byte_size")
+  sha256      String?  @db.VarChar(64)
+  provenance  Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([projectId, createdAt(sort: Desc)], map: "studio_artifacts_project_created_idx")
+  @@index([ownerUserId, createdAt(sort: Desc)], map: "studio_artifacts_owner_created_idx")
+  @@map("studio_artifacts")
+  @@schema("public")
+}
+
+/// Append-only lifecycle and verification evidence for Studio projects and tasks.
+model StudioEvent {
+  id          String   @id @default(uuid())
+  projectId   String   @map("project_id")
+  project     StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  taskId      String?  @map("task_id")
+  task        StudioTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  ownerUserId String   @map("owner_user_id")
+  actorId     String?  @map("actor_id")
+  eventType   String   @map("event_type") @db.VarChar(64)
+  payload     Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([projectId, createdAt], map: "studio_events_project_created_idx")
+  @@index([taskId, createdAt], map: "studio_events_task_created_idx")
+  @@index([ownerUserId, createdAt(sort: Desc)], map: "studio_events_owner_created_idx")
+  @@map("studio_events")
+  @@schema("public")
+}
+
+
+/// Durable liveness records for independently deployed Studio worker processes.
+model StudioWorkerHeartbeat {
+  workerId   String   @id @map("worker_id") @db.VarChar(160)
+  status     String   @default("starting") @db.VarChar(24)
+  startedAt  DateTime @default(now()) @map("started_at") @db.Timestamptz(6)
+  lastSeenAt DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  stoppedAt  DateTime? @map("stopped_at") @db.Timestamptz(6)
+  metadata   Json     @default("{}")
+
+  @@index([status, lastSeenAt(sort: Desc)], map: "studio_worker_heartbeats_status_seen_idx")
+  @@map("studio_worker_heartbeats")
+  @@schema("public")
+}

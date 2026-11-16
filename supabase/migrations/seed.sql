@@ -1,0 +1,4 @@
+-- RyanAI intentionally has no default seed data or generic grant helper.
+-- Do not add broad grants here. Database access belongs in reviewed migrations:
+-- revoke client privileges by default, then grant only the operations required
+-- by explicitly named application tables. Keep attachment scanner state private.

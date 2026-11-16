@@ -1,0 +1,474 @@
+// @vitest-environment happy-dom
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import App from './App';
+import { authenticatedFetch } from '@/lib/authenticatedFetch';
+
+const auth = vi.hoisted(() => ({
+  getSession: vi.fn(),
+  signOut: vi.fn(),
+  signInWithPassword: vi.fn(),
+  signUp: vi.fn(),
+  onAuthStateChange: vi.fn(),
+  unsubscribe: vi.fn(),
+  listener: null as
+    | ((event: AuthChangeEvent, session: Session | null) => void)
+    | null,
+}));
+vi.mock('@/lib/supabase', () => ({ supabase: { auth } }));
+vi.mock('@/lib/authenticatedFetch', () => ({
+  authenticatedFetch: vi.fn().mockRejectedValue(new Error('API unavailable')),
+}));
+vi.mock('@/components/Greeting', () => ({
+  default: () => <div data-testid="primary-multilingual-greeting">Primary multilingual greeting</div>,
+}));
+vi.mock('@/pages/LandingPage', () => ({
+  default: () => <div>Public landing</div>,
+}));
+vi.mock('@/pages/Dashboard', () => ({
+  default: () => <div>Private dashboard</div>,
+}));
+vi.mock('@/pages/OperatorConsole', () => ({
+  default: () => <div>Private operator console</div>,
+}));
+vi.mock('@/pages/OperationsCenter', () => ({
+  default: () => <div>Private operations center</div>,
+}));
+vi.mock('@/pages/ProfileSettings', () => ({
+  default: (props: { initialPhoneLinkSettings?: unknown }) => <div data-testid="profile-settings" data-phone-link-settings={JSON.stringify(props.initialPhoneLinkSettings)}>Private profile settings</div>,
+}));
+vi.mock('@/pages/AdminConsole', () => ({
+  default: ({ userId }: { userId: string }) => <div>Private admin console {userId}</div>,
+}));
+vi.mock('@/pages/QuantLab', () => ({
+  default: () => <div>Private quant lab</div>,
+}));
+vi.mock('@/pages/TradingTerminal', () => ({
+  default: () => <div>Private trading terminal</div>,
+}));
+vi.mock('@/components/CommunicationsCenter', () => ({
+  default: () => <div>Private communications</div>,
+}));
+vi.mock('@/pages/Calculator', () => ({
+  default: () => <div>Private calculator</div>,
+}));
+vi.mock('@/pages/MusicWorkspace', () => ({ default: () => <div>Private RyanAI Music workspace</div> }));
+vi.mock('@/pages/PhoneLinkWorkspace', () => ({ default: () => <div>Private PhoneLink workspace</div> }));
+vi.mock('@/pages/AudiobookStudio', () => ({
+  default: () => <div>Private audiobook studio</div>,
+}));
+vi.mock('@/pages/CodingStudio', () => ({
+  default: () => <div>Private RyanAI Studio</div>,
+}));
+vi.mock('@/components/dashboard/RyanAICockpit', () => ({
+  default: () => <div>Private cockpit</div>,
+}));
+vi.mock('@/pages/CommandCenter.tsx', () => ({
+  default: ({ userEmail }: { userEmail: string }) => (
+    <div>Private workspace {userEmail}</div>
+  ),
+}));
+vi.mock('@/components/RyanVoiceStream', () => ({
+  RyanVoiceStream: ({ language }: { language: string }) => (
+    <div data-testid="global-ryanai-voice">Global voice {language}</div>
+  ),
+}));
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+let container: HTMLDivElement;
+let root: Root;
+const session = {
+  user: { id: 'alice', email: 'alice@example.com', user_metadata: {} },
+} as Session;
+const ownerSession = {
+  user: {
+    id: 'owner',
+    email: 'owner@example.com',
+    user_metadata: {},
+    app_metadata: { owner: true },
+  },
+} as Session;
+const adminSession = {
+  user: {
+    id: 'admin-user',
+    email: 'admin@example.com',
+    user_metadata: {},
+    app_metadata: { role: 'admin' },
+  },
+} as Session;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  auth.listener = null;
+  auth.getSession.mockResolvedValue({ data: { session: null }, error: null });
+  auth.signOut.mockResolvedValue({ error: null });
+  auth.onAuthStateChange.mockImplementation((listener) => {
+    auth.listener = listener;
+    return { data: { subscription: { unsubscribe: auth.unsubscribe } } };
+  });
+  container = document.createElement('div');
+  document.body.appendChild(container);
+  root = createRoot(container);
+});
+afterEach(async () => {
+  await act(async () => root.unmount());
+  container.remove();
+});
+async function expectContent(text: string) {
+  await vi.waitFor(() => {
+    expect(container.textContent).toContain(text);
+  });
+}
+
+async function mount(hash: string) {
+  window.location.hash = hash;
+  await act(async () => {
+    root.render(<App />);
+  });
+}
+
+describe('application authentication boundary', () => {
+  it.each(['dashboard', 'calculator', 'cockpit', 'workspace', 'operator', 'operations', 'settings', 'admin', 'studio', 'music', 'phonelink'])(
+    'blocks anonymous direct access to %s',
+    async (route) => {
+      await mount(`/${route}`);
+      await expectContent('Sign in to RYANAI');
+      expect(container.textContent).not.toContain('Private');
+    },
+  );
+  it('rejects Supabase anonymous sessions during restoration and auth events', async () => {
+    const anonymousSession = {
+      ...session,
+      user: { ...session.user, is_anonymous: true },
+    } as Session;
+    auth.getSession.mockResolvedValue({
+      data: { session: anonymousSession },
+      error: null,
+    });
+    await mount('/dashboard');
+    await expectContent('Sign in to RYANAI');
+    expect(container.textContent).not.toContain('Private dashboard');
+    await act(async () => auth.listener?.('SIGNED_IN', session));
+    await expectContent('Private dashboard');
+    await act(async () => auth.listener?.('SIGNED_IN', anonymousSession));
+    await expectContent('Sign in to RYANAI');
+    expect(container.textContent).not.toContain('Private dashboard');
+  });
+  it('routes an authenticated sign-in session to the Commander Dashboard', async () => {
+    auth.getSession.mockResolvedValue({ data: { session }, error: null });
+    await mount('/signin');
+    await expectContent('Private dashboard');
+    await vi.waitFor(() => expect(window.location.hash).toBe('#/dashboard'));
+  });
+  it('keeps the authenticated realtime voice control mounted while navigating between modules', async () => {
+    auth.getSession.mockResolvedValue({ data: { session }, error: null });
+    vi.mocked(authenticatedFetch).mockResolvedValue({ ok: true, json: async () => ({ user: { isOwner: false, displayName: 'Alice' } }) } as Response);
+    await mount('/dashboard');
+    await expectContent('Private dashboard');
+    await vi.waitFor(() => expect(container.querySelector('[data-testid="global-ryanai-voice"]')?.textContent).toContain('Global voice en-ZA'));
+
+    const voiceControl = container.querySelector('[data-testid="global-ryanai-voice"]');
+    expect(voiceControl).not.toBeNull();
+
+    await act(async () => {
+      window.location.hash = '/operator';
+      window.dispatchEvent(new Event('hashchange'));
+    });
+    await expectContent('Private operator console');
+    expect(container.querySelector('[data-testid="global-ryanai-voice"]')).toBe(voiceControl);
+  });
+
+  it('does not mount realtime voice when the account preference disables it', async () => {
+    const voiceDisabledSession = {
+      ...session,
+      user: {
+        ...session.user,
+        user_metadata: { ryanai_voice_enabled: false },
+      },
+    } as Session;
+    auth.getSession.mockResolvedValue({ data: { session: voiceDisabledSession }, error: null });
+    vi.mocked(authenticatedFetch).mockResolvedValue({ ok: true, json: async () => ({ user: { isOwner: false, displayName: 'Alice' } }) } as Response);
+    await mount('/dashboard');
+    await expectContent('Private dashboard');
+    expect(container.querySelector('[data-testid="global-ryanai-voice"]')).toBeNull();
+  });
+
+  it('opens RyanAI Music for an authenticated user with the workspace enabled', async () => {
+    auth.getSession.mockResolvedValue({ data: { session }, error: null });
+    await mount('/music');
+    await expectContent('Private RyanAI Music workspace');
+    expect(container.querySelector('nav a[href="#/music"]')).not.toBeNull();
+  });
+  it('respects an explicit Music workspace visibility preference', async () => {
+    const optedOut = { ...session, user: { ...session.user, user_metadata: { ryanai_dashboard_ui: ['pa'], ryanai_dashboard_ui_preferences: { music: false } } } } as Session;
+    auth.getSession.mockResolvedValue({ data: { session: optedOut }, error: null });
+    await mount('/music');
+    await expectContent('Workspace disabled');
+    expect(container.textContent).not.toContain('Private RyanAI Music workspace');
+  });
+  it('keeps the landing page public', async () => {
+    await mount('/');
+    await expectContent('Public landing');
+    expect(container.querySelector('a[href="#/signup"]')).not.toBeNull();
+  });
+  it('keeps protected destinations out of anonymous navigation', async () => {
+    await mount('/');
+    expect(container.querySelector('nav a[href="#/dashboard"]')).toBeNull();
+    expect(container.querySelector('nav a[href="#/cockpit"]')).toBeNull();
+    expect(container.querySelector('nav a[href="#/workspace"]')).toBeNull();
+    expect(container.querySelector('nav a[href="#/operator"]')).toBeNull();
+    expect(container.querySelector('nav a[href="#/operations"]')).toBeNull();
+    expect(container.querySelector('nav a[href="#/settings"]')).toBeNull();
+    expect(container.querySelector('nav a[href="#/admin"]')).toBeNull();
+    expect(container.querySelector('a.skip-link[href="#main-content"]')).not.toBeNull();
+  });
+  it('renders one personalized multilingual greeting for an authenticated account', async () => {
+    auth.getSession.mockResolvedValue({ data: { session }, error: null });
+    await mount('/dashboard');
+    await expectContent('Primary multilingual greeting');
+    expect(container.querySelectorAll('[data-testid="primary-multilingual-greeting"]')).toHaveLength(1);
+    expect(container.textContent).not.toContain('RyanAI · Personal welcome');
+  });
+  it('makes every regular-account workspace reachable from authenticated navigation', async () => {
+    auth.getSession.mockResolvedValue({ data: { session }, error: null });
+    await mount('/dashboard');
+    await expectContent('Private dashboard');
+
+    for (const path of ['/dashboard', '/calculator', '/quant', '/cockpit', '/workspace', '/audiobook', '/operator', '/operations', '/settings', '/trading', '/studio']) {
+      expect(container.querySelector(`nav[aria-label="Main navigation"] a[href="#${path}"]`)).not.toBeNull();
+      expect(container.querySelector(`nav[aria-label="Mobile navigation"] a[href="#${path}"]`)).not.toBeNull();
+    }
+    expect(container.querySelector('nav[aria-label="Main navigation"] a[href="#/comms"]')).toBeNull();
+    expect(container.querySelector('nav[aria-label="Main navigation"] a[href="#/admin"]')).toBeNull();
+  });
+
+  it('hides disabled workspaces and blocks direct links using account dashboard preferences', async () => {
+    const limitedSession = {
+      ...session,
+      user: {
+        ...session.user,
+        user_metadata: { ryanai_dashboard_ui: ['pa', 'workspace'] },
+      },
+    } as Session;
+    auth.getSession.mockResolvedValue({ data: { session: limitedSession }, error: null });
+    await mount('/dashboard');
+    await expectContent('Private dashboard');
+
+    for (const navigation of ['Main navigation', 'Mobile navigation']) {
+      expect(container.querySelector(`nav[aria-label="${navigation}"] a[href="#/pa"]`)).not.toBeNull();
+      expect(container.querySelector(`nav[aria-label="${navigation}"] a[href="#/workspace"]`)).not.toBeNull();
+      expect(container.querySelector(`nav[aria-label="${navigation}"] a[href="#/cockpit"]`)).toBeNull();
+      expect(container.querySelector(`nav[aria-label="${navigation}"] a[href="#/settings"]`)).not.toBeNull();
+    }
+
+    await act(async () => {
+      window.location.hash = '/cockpit';
+      window.dispatchEvent(new Event('hashchange'));
+    });
+    await expectContent('Workspace disabled');
+    expect(container.textContent).not.toContain('Private cockpit');
+    expect(container.querySelector('a[href="#/settings"]')).not.toBeNull();
+  });
+
+  it('opens Profile & Settings for an authenticated account', async () => {
+    auth.getSession.mockResolvedValue({ data: { session }, error: null });
+    await mount('/settings');
+    await expectContent('Private profile settings');
+    expect(container.querySelectorAll('[data-testid="profile-settings"]')).toHaveLength(1);
+    expect(container.querySelector('nav[aria-label="Main navigation"] a[href="#/settings"]')).not.toBeNull();
+    expect(container.querySelector('nav[aria-label="Mobile navigation"] a[href="#/settings"]')).not.toBeNull();
+  });
+
+  it('hydrates saved PhoneLink preferences into the single Settings surface', async () => {
+    const phoneLinkSession = {
+      ...session,
+      user: {
+        ...session.user,
+        user_metadata: { ryanai_phonelink_settings: { autoReconnect: false } },
+      },
+    } as Session;
+    auth.getSession.mockResolvedValue({ data: { session: phoneLinkSession }, error: null });
+    await mount('/settings');
+    await expectContent('Private profile settings');
+    const settings = container.querySelector('[data-testid="profile-settings"]');
+    expect(settings).not.toBeNull();
+    expect(JSON.parse(settings?.getAttribute('data-phone-link-settings') ?? '{}')).toMatchObject({ autoReconnect: false });
+  });
+
+  it('opens the authenticated Operations Center route', async () => {
+    auth.getSession.mockResolvedValue({ data: { session }, error: null });
+    await mount('/operations');
+    await expectContent('Private operations center');
+    expect(container.querySelector('nav[aria-label="Main navigation"] a[href="#/operations"]')).not.toBeNull();
+    expect(container.querySelector('nav[aria-label="Mobile navigation"] a[href="#/operations"]')).not.toBeNull();
+  });
+
+  it('makes owner-only Comms available to an authenticated owner', async () => {
+    auth.getSession.mockResolvedValue({ data: { session: ownerSession }, error: null });
+    await mount('/comms');
+    await expectContent('Private communications');
+    expect(container.querySelector('nav[aria-label="Main navigation"] a[href="#/comms"]')).not.toBeNull();
+    expect(container.querySelector('nav[aria-label="Mobile navigation"] a[href="#/comms"]')).not.toBeNull();
+  });
+
+  it.each([
+    ['calculator', 'Private calculator'],
+    ['quant', 'Private quant lab'],
+    ['trading', 'Private trading terminal'],
+    ['audiobook', 'Private audiobook studio'],
+  ])('opens the %s workspace by its registered route', async (route, content) => {
+    auth.getSession.mockResolvedValue({ data: { session }, error: null });
+    await mount(`/${route}`);
+    await expectContent(content);
+  });
+
+  it('opens Operator for an authenticated regular account', async () => {
+    auth.getSession.mockResolvedValue({ data: { session }, error: null });
+    await mount('/operator');
+    await expectContent('Private operator console');
+  });
+
+  it('opens RyanAI Studio for an authenticated regular account without admin claims', async () => {
+    auth.getSession.mockResolvedValue({ data: { session }, error: null });
+    await mount('/studio');
+    await expectContent('Private RyanAI Studio');
+    for (const nav of ['Main navigation', 'Mobile navigation']) {
+      expect(container.querySelector(`nav[aria-label="${nav}"] a[href="#/studio"]`)).not.toBeNull();
+    }
+  });
+
+  it('blocks the Admin Console for authenticated non-admin users', async () => {
+    auth.getSession.mockResolvedValue({ data: { session }, error: null });
+    await mount('/admin');
+    await expectContent('Your account does not have permission to open this RyanAI workspace.');
+    expect(container.textContent).not.toContain('Private admin console');
+    expect(container.querySelector('nav a[href="#/admin"]')).toBeNull();
+  });
+
+  it('makes Admin Console available to an admin session', async () => {
+    auth.getSession.mockResolvedValue({ data: { session: adminSession }, error: null });
+    await mount('/admin');
+    await expectContent('Private admin console admin-user');
+    for (const nav of ['Main navigation', 'Mobile navigation']) {
+      expect(container.querySelector('nav[aria-label="' + nav + '"] a[href="#/admin"]')).not.toBeNull();
+      expect(container.querySelector('nav[aria-label="' + nav + '"] a[href="#/operator"]')).not.toBeNull();
+    }
+  });
+
+  it('shows protected destinations after an authenticated session is restored', async () => {
+    auth.getSession.mockResolvedValue({ data: { session }, error: null });
+    await mount('/dashboard');
+    await expectContent('Private dashboard');
+    expect(container.querySelector('nav a[href="#/dashboard"]')).not.toBeNull();
+    expect(container.querySelector('nav a[href="#/cockpit"]')).not.toBeNull();
+    expect(container.querySelector('nav a[href="#/workspace"]')).not.toBeNull();
+  });
+  it('renders the authenticated PhoneLink workspace and navigation destination', async () => {
+    auth.getSession.mockResolvedValue({ data: { session }, error: null });
+    await mount('/phonelink');
+    await expectContent('Private PhoneLink workspace');
+    expect(container.querySelector('nav a[href="#/phonelink"]')).not.toBeNull();
+  });
+
+  it('renders accessible desktop and mobile navigation for authenticated routes', async () => {
+    auth.getSession.mockResolvedValue({ data: { session }, error: null });
+    await mount('/dashboard');
+    await expectContent('Private dashboard');
+    const desktopNavigation = container.querySelector('nav[aria-label="Main navigation"]');
+    const mobileNavigation = container.querySelector('nav[aria-label="Mobile navigation"]');
+    expect(desktopNavigation?.querySelector('a[href="#/dashboard"]')?.getAttribute('aria-current')).toBe('page');
+    expect(mobileNavigation?.querySelector('a[href="#/dashboard"]')?.textContent).toContain('Dashboard');
+    expect(container.querySelector('a.skip-link[href="#main-content"]')).not.toBeNull();
+  });
+
+  it('does not mount protected content before restoration completes', async () => {
+    let restore!: (value: unknown) => void;
+    auth.getSession.mockReturnValue(
+      new Promise((resolve) => {
+        restore = resolve;
+      }),
+    );
+    await mount('/workspace');
+    expect(container.textContent).toContain('Restoring your session');
+    expect(container.textContent).not.toContain('Private workspace');
+    await act(async () => restore({ data: { session }, error: null }));
+    await expectContent('Private workspace alice@example.com');
+  });
+  it('clears protected views when the session expires and unsubscribes on unmount', async () => {
+    auth.getSession.mockResolvedValue({ data: { session }, error: null });
+    await mount('/dashboard');
+    await expectContent('Private dashboard');
+    await act(async () => auth.listener?.('SIGNED_OUT', null));
+    expect(container.textContent).not.toContain('Private dashboard');
+    await expectContent('Sign in to RYANAI');
+    await act(async () => root.unmount());
+    expect(auth.unsubscribe).toHaveBeenCalledOnce();
+  });
+  it('ignores stale restoration after a newer sign-out event', async () => {
+    let restore!: (value: unknown) => void;
+    auth.getSession.mockReturnValue(
+      new Promise((resolve) => {
+        restore = resolve;
+      }),
+    );
+    await mount('/workspace');
+    await act(async () => auth.listener?.('SIGNED_OUT', null));
+    await act(async () => restore({ data: { session }, error: null }));
+    expect(container.textContent).not.toContain('Private workspace');
+  });
+  it('remounts all protected view state when the account changes', async () => {
+    auth.getSession.mockResolvedValue({ data: { session }, error: null });
+    await mount('/workspace');
+    const previousView = container.querySelector('main');
+    const nextSession = {
+      ...session,
+      user: { ...session.user, id: 'bob', email: 'bob@example.com' },
+    } as Session;
+    await act(async () => auth.listener?.('SIGNED_IN', nextSession));
+    expect(container.querySelector('main')).not.toBe(previousView);
+    expect(container.textContent).not.toContain('alice@example.com');
+    await expectContent('Private workspace bob@example.com');
+  });
+  it('performs a real sign-out and removes protected content', async () => {
+    auth.getSession.mockResolvedValue({ data: { session }, error: null });
+    await mount('/workspace');
+    await act(async () =>
+      container
+        .querySelector('header button')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+    );
+    expect(auth.signOut).toHaveBeenCalledOnce();
+    expect(container.textContent).not.toContain('Private workspace');
+  });
+  it('reports sign-out failures without pretending the session was revoked', async () => {
+    auth.getSession.mockResolvedValue({ data: { session }, error: null });
+    auth.signOut.mockResolvedValue({ error: new Error('unavailable') });
+    await mount('/workspace');
+    await act(async () =>
+      container
+        .querySelector('header button')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+    );
+    await expectContent('Sign out failed');
+    await expectContent('Private workspace');
+  });
+
+  it('preserves the OAuth consent request path while requiring a signed-in user', async () => {
+    window.history.replaceState({}, '', '/oauth/consent?authorization_id=authorization-123');
+    await act(async () => root.render(<App />));
+    await expectContent('Sign in to RYANAI');
+    expect(container.textContent).not.toContain('Approve access');
+    expect(container.textContent).not.toContain('Private workspace');
+    expect(window.location.pathname).toBe('/oauth/consent');
+    expect(window.location.search).toContain('authorization_id=authorization-123');
+    window.history.replaceState({}, '', '/');
+  });
+
+  it('fails closed on restoration errors', async () => {
+    auth.getSession.mockRejectedValue(new Error('offline'));
+    await mount('/workspace');
+    expect(container.textContent).toContain('Unable to restore');
+    expect(container.textContent).not.toContain('Private workspace');
+  });
+});

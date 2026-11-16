@@ -1,0 +1,112 @@
+name: Optional Azure Kubernetes Service deployment
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: azure-aks-production
+  cancel-in-progress: false
+
+env:
+  AZURE_CONTAINER_REGISTRY: ${{ vars.AZURE_CONTAINER_REGISTRY }}
+  CONTAINER_NAME: ${{ vars.AZURE_CONTAINER_NAME }}
+  RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+  CLUSTER_NAME: ${{ vars.AZURE_CLUSTER_NAME }}
+  KUSTOMIZE_PATH: ${{ vars.AZURE_KUSTOMIZE_PATH }}
+
+jobs:
+  buildImage:
+    name: Build image for AKS
+    if: ${{ vars.AZURE_AKS_DEPLOY_ENABLED == 'true' }}
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Azure deployment configuration
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          set -eu
+          for name in AZURE_CONTAINER_REGISTRY CONTAINER_NAME RESOURCE_GROUP CLUSTER_NAME KUSTOMIZE_PATH AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
+            value="${!name:-}"
+            if [ -z "$value" ]; then
+              echo "::error::Missing required Azure deployment setting: $name"
+              exit 1
+            fi
+          done
+          if [ ! -f "$KUSTOMIZE_PATH/kustomization.yaml" ] && [ ! -f "$KUSTOMIZE_PATH/Kustomization" ]; then
+            echo "::error::KUSTOMIZE_PATH must point to a directory containing kustomization.yaml."
+            exit 1
+          fi
+
+      - name: Azure login
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push image to ACR
+        run: |
+          set -eu
+          az acr build --image "$AZURE_CONTAINER_REGISTRY.azurecr.io/$CONTAINER_NAME:$GITHUB_SHA" --registry "$AZURE_CONTAINER_REGISTRY" --resource-group "$RESOURCE_GROUP" .
+
+  deploy:
+    name: Deploy to AKS
+    if: ${{ vars.AZURE_AKS_DEPLOY_ENABLED == 'true' }}
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    environment: production
+    needs: [buildImage]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set up kubelogin
+        uses: azure/use-kubelogin@v1
+        with:
+          kubelogin-version: "v0.0.25"
+
+      - name: Get AKS context
+        uses: azure/aks-set-context@v4
+        with:
+          resource-group: ${{ env.RESOURCE_GROUP }}
+          cluster-name: ${{ env.CLUSTER_NAME }}
+          admin: "false"
+          use-kubelogin: "true"
+
+      - name: Bake deployment
+        id: bake
+        uses: azure/k8s-bake@v2
+        with:
+          renderEngine: kustomize
+          kustomizationPath: ${{ env.KUSTOMIZE_PATH }}
+          kubectl-version: latest
+
+      - name: Deploy application
+        uses: Azure/k8s-deploy@v7
+        with:
+          action: deploy
+          manifests: ${{ steps.bake.outputs.manifestsBundle }}
+          images: |
+            ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.CONTAINER_NAME }}:${{ github.sha }}

@@ -1,0 +1,468 @@
+name: Database Schema Validation
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: ryanai
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: ryanai_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ryanai -d ryanai_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://ryanai:ci_password@localhost:5432/ryanai_db
+      AUDIOBOOK_DATABASE_URL: postgresql://ryanai:ci_password@localhost:5432/ryanai_audiobook
+      AUDIOBOOK_DATABASE_URL_UNPOOLED: postgresql://ryanai:ci_password@localhost:5432/ryanai_audiobook
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Validate Prisma schemas
+        run: npm run db:validate
+
+      - name: Test read-only migration audit contracts
+        run: npm run test:migration:audit
+
+      - name: Create disposable audiobook database
+        env:
+          PGPASSWORD: ci_password
+        run: |
+          docker run --rm --network host -e PGPASSWORD \
+            postgres:16-alpine createdb -h 127.0.0.1 -U ryanai ryanai_audiobook
+
+      - name: Validate isolated Neon audiobook Prisma schema
+        env:
+          AUDIOBOOK_DATABASE_URL: postgresql://ryanai:ci_password@localhost:5432/ryanai_audiobook
+          AUDIOBOOK_DATABASE_URL_UNPOOLED: postgresql://ryanai:ci_password@localhost:5432/ryanai_audiobook
+        run: npx prisma validate --schema=prisma/audiobook/schema.prisma
+
+      - name: Generate platform and audiobook Prisma clients
+        run: npm run db:generate
+
+      - name: Apply isolated audiobook migrations to disposable PostgreSQL
+        env:
+          AUDIOBOOK_DATABASE_URL: postgresql://ryanai:ci_password@localhost:5432/ryanai_audiobook
+          AUDIOBOOK_DATABASE_URL_UNPOOLED: postgresql://ryanai:ci_password@localhost:5432/ryanai_audiobook
+        run: npm run db:audiobook:migrate
+
+      - name: Verify Neon audiobook identity bridge and ownership constraints
+        env:
+          PGPASSWORD: ci_password
+        run: |
+          docker run --rm --network host -e PGPASSWORD=ci_password \
+            -v "$GITHUB_WORKSPACE/tests/fixtures/neon-audiobook-identity-bridge-smoke.sql:/tmp/neon-audiobook-identity-bridge-smoke.sql:ro" \
+            postgres:16-alpine psql -h 127.0.0.1 -U ryanai -d ryanai_audiobook \
+              -v ON_ERROR_STOP=1 -f /tmp/neon-audiobook-identity-bridge-smoke.sql
+
+      - name: Verify Neon audiobook migrations match Prisma schema
+        env:
+          AUDIOBOOK_DATABASE_URL_UNPOOLED: postgresql://ryanai:ci_password@localhost:5432/ryanai_audiobook
+        run: npx prisma migrate diff --from-url "$AUDIOBOOK_DATABASE_URL_UNPOOLED" --to-schema-datamodel prisma/audiobook/schema.prisma --exit-code
+
+      - name: Provision minimal Supabase Auth roles and schema for CI
+        run: |
+          docker run --rm --network host -e PGPASSWORD=ci_password \
+            -v "$GITHUB_WORKSPACE/tests/fixtures/supabase-auth-ci-bootstrap.sql:/tmp/supabase-auth-ci-bootstrap.sql:ro" \
+            postgres:16-alpine psql -h 127.0.0.1 -U ryanai -d ryanai_db \
+              -v ON_ERROR_STOP=1 -f /tmp/supabase-auth-ci-bootstrap.sql
+
+      - name: Initialize Prisma ledger for the pre-provisioned Supabase Auth fixture
+        run: npx prisma migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
+
+      - name: Apply committed migrations to ephemeral PostgreSQL
+        run: npx prisma migrate deploy --schema=prisma/schema.prisma
+
+      - name: Verify standalone Prisma fresh-install ordering
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { Pool } from 'pg';
+          const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
+          try {
+            const schema = await pool.query(`
+              SELECT to_regclass('public.agent_runs') IS NOT NULL AS table_exists,
+                     EXISTS (
+                       SELECT 1 FROM information_schema.columns
+                       WHERE table_schema = 'public'
+                         AND table_name = 'agent_runs'
+                         AND column_name = 'requested_model'
+                     ) AS requested_model_exists
+            `);
+            assert.equal(schema.rows[0]?.table_exists, true, 'Prisma fresh install must create agent_runs');
+            assert.equal(schema.rows[0]?.requested_model_exists, true,
+              'Prisma fresh install must add requested_model after agent_runs exists');
+
+            const history = await pool.query(`
+              SELECT migration_name, finished_at
+              FROM public._prisma_migrations
+              WHERE migration_name IN (
+                '20261030120000_agent_operations',
+                '20261107160000_agent_requested_model'
+              )
+                AND finished_at IS NOT NULL
+                AND rolled_back_at IS NULL
+            `);
+            const applied = new Map(history.rows.map((row) => [row.migration_name, row.finished_at]));
+            assert.ok(applied.has('20261030120000_agent_operations'), 'agent_runs baseline migration must be applied');
+            assert.ok(applied.has('20261107160000_agent_requested_model'), 'requested_model migration must be applied');
+            assert.ok(applied.get('20261030120000_agent_operations') < applied.get('20261107160000_agent_requested_model'),
+              'agent_runs must be created before requested_model is added');
+            console.log('PASS: standalone Prisma install creates agent_runs before requested_model.');
+          } finally {
+            await pool.end();
+          }
+          NODE
+
+      - name: Verify Supabase Auth identity bridge insert, update, and delete
+        run: |
+          docker run --rm --network host -e PGPASSWORD=ci_password \
+            -v "$GITHUB_WORKSPACE/tests/fixtures/supabase-auth-ci-bridge-smoke.sql:/tmp/supabase-auth-ci-bridge-smoke.sql:ro" \
+            postgres:16-alpine psql -h 127.0.0.1 -U ryanai -d ryanai_db \
+              -v ON_ERROR_STOP=1 -f /tmp/supabase-auth-ci-bridge-smoke.sql
+
+      - name: Create a second disposable database for the migration image
+        env:
+          PGPASSWORD: ci_password
+          MIGRATION_DATABASE_URL: postgresql://ryanai:ci_password@127.0.0.1:5432/ryanai_migration_container
+        run: |
+          docker run --rm --network host -e PGPASSWORD \
+            postgres:16-alpine createdb -h 127.0.0.1 -U ryanai ryanai_migration_container
+          docker run --rm --network host -e PGPASSWORD \
+            -v "$GITHUB_WORKSPACE/tests/fixtures/supabase-auth-ci-bootstrap.sql:/tmp/supabase-auth-ci-bootstrap.sql:ro" \
+            postgres:16-alpine psql -h 127.0.0.1 -U ryanai -d ryanai_migration_container \
+              -v ON_ERROR_STOP=1 -f /tmp/supabase-auth-ci-bootstrap.sql
+          DATABASE_URL="$MIGRATION_DATABASE_URL" npx prisma migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
+
+      - name: Build and run the one-shot migration image twice
+        env:
+          MIGRATION_DATABASE_URL: postgresql://ryanai:ci_password@127.0.0.1:5432/ryanai_migration_container
+        run: |
+          set -euo pipefail
+          docker build --target migrate -t ryanai-migrate:ci .
+          docker run --rm --network host --env NODE_ENV=test --env DATABASE_URL="$MIGRATION_DATABASE_URL" ryanai-migrate:ci
+          # A second invocation must be a no-op, proving safe restart behavior.
+          docker run --rm --network host --env NODE_ENV=test --env DATABASE_URL="$MIGRATION_DATABASE_URL" ryanai-migrate:ci
+          npx prisma migrate diff --from-url "$MIGRATION_DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+
+      - name: Create a disposable upgrade-path database
+        env:
+          PGPASSWORD: ci_password
+          UPGRADE_DATABASE_URL: postgresql://ryanai:ci_password@127.0.0.1:5432/ryanai_upgrade
+        run: |
+          docker run --rm --network host -e PGPASSWORD \
+            postgres:16-alpine createdb -h 127.0.0.1 -U ryanai ryanai_upgrade
+          docker run --rm --network host -e PGPASSWORD=ci_password \
+            -v "$GITHUB_WORKSPACE/tests/fixtures/supabase-auth-ci-bootstrap.sql:/tmp/auth.sql:ro" \
+            postgres:16-alpine psql -h 127.0.0.1 -U ryanai -d ryanai_upgrade \
+              -v ON_ERROR_STOP=1 -f /tmp/auth.sql
+          DATABASE_URL="$UPGRADE_DATABASE_URL" npx prisma migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
+
+      - name: Create isolated agent-run runtime migration test database
+        env:
+          PGPASSWORD: ci_password
+        run: |
+          docker run --rm --network host -e PGPASSWORD \
+            postgres:16-alpine createdb -h 127.0.0.1 -U ryanai ryanai_disposable_agent_runs
+
+      - name: Verify agent-run runtime migration upgrade and lease recovery semantics
+        env:
+          DATABASE_URL: postgresql://ryanai:ci_password@127.0.0.1:5432/ryanai_disposable_agent_runs
+          RYANAI_DISPOSABLE_DB: '1'
+        run: node scripts/test-agent-runs-runtime-migration-upgrade.mjs
+
+      - name: Simulate an existing database before vector-memory and coding-queue migrations
+        env:
+          UPGRADE_DATABASE_URL: postgresql://ryanai:ci_password@127.0.0.1:5432/ryanai_upgrade
+        run: |
+          set -euo pipefail
+          cp -a prisma/migrations /tmp/prisma-migrations-full
+          restore_migrations() {
+            rm -rf prisma/migrations
+            cp -a /tmp/prisma-migrations-full prisma/migrations
+          }
+          trap restore_migrations EXIT
+          cutoff=20261102235000_engineering_evidence_workbench
+          for migration_dir in prisma/migrations/20*; do
+            migration_name="${migration_dir##*/}"
+            if [[ "$migration_name" > "$cutoff" ]]; then
+              rm -rf "$migration_dir"
+            fi
+          done
+          DATABASE_URL="$UPGRADE_DATABASE_URL" npx prisma migrate deploy --schema=prisma/schema.prisma
+          # This is the old Compose init script's effect, applied before the
+          # new ordered vector migration to prove the upgrade is idempotent.
+          docker run --rm --network host -e PGPASSWORD=ci_password \
+            -v "$GITHUB_WORKSPACE/tests/fixtures/legacy-vector-bootstrap.sql:/tmp/legacy-vector.sql:ro" \
+            postgres:16-alpine psql -h 127.0.0.1 -U ryanai -d ryanai_upgrade \
+              -v ON_ERROR_STOP=1 -f /tmp/legacy-vector.sql
+          psql "$UPGRADE_DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/fixtures/agent-queue-migration-upgrade.sql
+          restore_migrations
+          trap - EXIT
+          DATABASE_URL="$UPGRADE_DATABASE_URL" npx prisma migrate deploy --schema=prisma/schema.prisma
+          DATABASE_URL="$UPGRADE_DATABASE_URL" node scripts/test-agent-queue-migration-upgrade.mjs
+          DATABASE_URL="$UPGRADE_DATABASE_URL" node scripts/test-agent-runtime-contract.mjs
+          DATABASE_URL="$UPGRADE_DATABASE_URL" npx prisma migrate deploy --schema=prisma/schema.prisma
+          DATABASE_URL="$UPGRADE_DATABASE_URL" node scripts/test-agent-queue-migration-upgrade.mjs
+          docker run --rm --network host -e PGPASSWORD=ci_password \
+            postgres:16-alpine psql -h 127.0.0.1 -U ryanai -d ryanai_upgrade \
+              -v ON_ERROR_STOP=1 -c "SELECT 1 FROM public.agent_runs LIMIT 0" \
+              -c "SELECT 1 FROM public.agent_run_evidence LIMIT 0" \
+              -c "SELECT 1 FROM public.jarvis_audit_events LIMIT 0" \
+              -c "SELECT 1 FROM public.reasoning_cache LIMIT 0" \
+              -c "SELECT session_id FROM public.agent_memory LIMIT 0" \
+              -c "SELECT extname FROM pg_extension WHERE extname='vector'" \
+              -c "SELECT indexname FROM pg_indexes WHERE schemaname='public' AND indexname IN ('idx_reasoning_embedding','idx_agent_session') ORDER BY indexname" \
+              -c "SELECT 1 / COUNT(*)::int FROM public.agent_memory WHERE session_id='legacy-session' AND content='preserve me'"
+
+      - name: Verify migrations match the Prisma data model
+        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+
+      - name: Generate Prisma client and verify live agent notification delivery
+        run: |
+          npx prisma generate --schema=prisma/schema.prisma
+          node scripts/test-agent-queue.mjs
+          RYANAI_NOTIFICATION_TEST_DATABASE_URL="$DATABASE_URL" npm run test:agent-notifications
+
+  validate-supabase-prisma-fresh-stack:
+    name: Verify Supabase and Prisma fresh-stack migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # This URL is the disposable local Supabase database started below.
+      # Never replace it with a hosted project URL or a production secret.
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 3.0.0
+
+      - name: Start disposable local Supabase stack
+        run: supabase start
+
+      - name: Replay the Supabase-owned migration chain from an empty database
+        run: supabase db reset --local
+
+      - name: Initialize Prisma ledger for the Supabase platform baseline
+        run: npx prisma migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
+
+      - name: Confirm the Supabase baseline does not fabricate Prisma-owned application tables
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          const { Pool } = await import('pg');
+          const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
+          try {
+            const result = await pool.query(
+              "SELECT to_regclass('public.agent_runs') IS NULL AS prisma_table_absent"
+            );
+            assert.equal(result.rows[0]?.prisma_table_absent, true,
+              'agent_runs must be created by the Prisma migration history, not an optional Supabase no-op');
+            console.log('PASS: Supabase baseline and Prisma application schema ownership are distinct.');
+          } finally {
+            await pool.end();
+          }
+          NODE
+
+      - name: Apply the Prisma-owned application schema to the same local database
+        run: npx prisma migrate deploy --schema=prisma/schema.prisma
+
+      - name: Verify both migration ledgers and cross-system dependencies
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          const { Pool } = await import('pg');
+          const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
+          try {
+            const columns = await pool.query(`
+              SELECT table_name, column_name
+              FROM information_schema.columns
+              WHERE table_schema = 'public'
+                AND (table_name, column_name) IN (
+                  ('agent_runs', 'requested_model'),
+                  ('agent_runs', 'queue_type'),
+                  ('communication_messages', 'idempotency_key'),
+                  ('rooms', 'id'),
+                  ('rooms', 'created_by'),
+                  ('room_members', 'room_id'),
+                  ('room_members', 'user_id'),
+                  ('room_messages', 'id'),
+                  ('room_messages', 'sender_id')
+                )
+            `);
+            const present = new Set(columns.rows.map((row) => `${row.table_name}.${row.column_name}`));
+            assert.ok(present.has('agent_runs.requested_model'),
+              'Prisma must create agent_runs and its requested_model column after the Supabase baseline');
+            assert.ok(present.has('agent_runs.queue_type'),
+              'The complete Prisma queue migration must add the queue discriminator');
+            const codingTasks = await pool.query("SELECT to_regclass('public.coding_tasks') IS NOT NULL AS present");
+            assert.equal(codingTasks.rows[0]?.present, true,
+              'The complete Prisma queue migration must create coding_tasks');
+            assert.ok(present.has('communication_messages.idempotency_key'),
+              'The combined migration chain must preserve communication idempotency');
+            for (const column of [
+              'rooms.id', 'rooms.created_by', 'room_members.room_id', 'room_members.user_id',
+              'room_messages.id', 'room_messages.sender_id',
+            ]) {
+              assert.ok(present.has(column), `Supabase shared-room schema must include ${column}`);
+            }
+
+            const roomRls = await pool.query(`
+              SELECT tablename, rowsecurity
+              FROM pg_tables
+              WHERE schemaname = 'public'
+                AND tablename IN ('rooms', 'room_members', 'room_messages')
+            `);
+            assert.equal(roomRls.rowCount, 3,
+              'All three shared-room tables must exist in the Supabase fresh stack');
+            assert.ok(roomRls.rows.every((row) => row.rowsecurity),
+              'Shared-room tables must have RLS enabled');
+
+            const prisma = await pool.query(`
+              SELECT migration_name, finished_at
+              FROM public._prisma_migrations
+              WHERE migration_name IN (
+                '20261014000000_supabase_platform_baseline',
+                '20261015081513_init_reasoning_platform',
+                '20261030120000_agent_operations',
+                '20261107160000_agent_requested_model'
+              )
+                AND finished_at IS NOT NULL
+                AND rolled_back_at IS NULL
+            `);
+            const applied = new Map(prisma.rows.map((row) => [row.migration_name, row.finished_at]));
+            assert.ok(applied.has('20261014000000_supabase_platform_baseline'),
+              'The Supabase platform baseline must initialize the Prisma ledger first');
+            assert.ok(applied.has('20261015081513_init_reasoning_platform'),
+              'The initial Prisma application migration must be recorded');
+            assert.ok(applied.has('20261030120000_agent_operations'),
+              'The Prisma application migration must create agent_runs');
+            assert.ok(applied.has('20261107160000_agent_requested_model'),
+              'The Prisma requested-model migration must be recorded as successfully applied');
+            assert.ok(applied.get('20261014000000_supabase_platform_baseline') < applied.get('20261015081513_init_reasoning_platform'),
+              'The Supabase platform baseline marker must precede Prisma application migrations');
+            assert.ok(applied.get('20261015081513_init_reasoning_platform') < applied.get('20261030120000_agent_operations'),
+              'The initial Prisma schema must precede agent operations');
+            assert.ok(applied.get('20261030120000_agent_operations') < applied.get('20261107160000_agent_requested_model'),
+              'The combined Supabase + Prisma install must create agent_runs before requested_model');
+
+            const supabase = await pool.query(`
+              SELECT 1
+              FROM supabase_migrations.schema_migrations
+              WHERE version = '20261107150000'
+            `);
+            assert.equal(supabase.rowCount, 1,
+              'The Supabase-owned Comms idempotency migration must be recorded in the Supabase ledger');
+
+            console.log('PASS: Supabase migrations and Prisma migrations complete the same fresh local database.');
+          } finally {
+            await pool.end();
+          }
+          NODE
+
+      - name: Confirm the combined fresh install is restart-safe
+        run: |
+          npx prisma migrate deploy --schema=prisma/schema.prisma
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { Pool } from 'pg';
+          const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
+          try {
+            const result = await pool.query(`
+              SELECT
+                to_regclass('public.agent_runs') IS NOT NULL AS table_exists,
+                EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = 'public'
+                    AND table_name = 'agent_runs'
+                    AND column_name = 'requested_model'
+                ) AS column_exists
+            `);
+            assert.equal(result.rows[0]?.table_exists, true, 'agent_runs must remain present after a second deploy');
+            assert.equal(result.rows[0]?.column_exists, true,
+              'requested_model must remain present after a second deploy');
+            console.log('PASS: second Prisma deploy is a no-op and preserves the combined schema.');
+          } finally {
+            await pool.end();
+          }
+          NODE
+
+      - name: Compare the completed database schema with the Prisma data model
+        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+
+      - name: Audit the completed Prisma schema without modifying it
+        run: node scripts/audit-prisma-migration-readiness.mjs
+
+      - name: Stop disposable local Supabase stack
+        if: always()
+        run: supabase stop
+
+  validate-ephemeral-postgres-dry-run:
+    name: Ephemeral PostgreSQL integration dry-run
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Run disposable PostgreSQL queue and migration dry-run
+        env:
+          POSTGRES_TEST_PORT: '55432'
+          POSTGRES_TEST_IMAGE: pgvector/pgvector:pg15
+        run: npm run test:docker:postgres
+

@@ -1,0 +1,220 @@
+name: Staging Prisma Migration Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "prisma/migrations/**"
+      - "prisma/schema.prisma"
+      - ".github/workflows/staging-migration-validation.yml"
+      - "scripts/prepare-disposable-supabase-auth-fixture.sql"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-prisma-migrations-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  validate-legacy-upgrade:
+    name: Replay 37 pending Prisma migrations from the 8-entry ledger
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: ryanai_migration
+          POSTGRES_PASSWORD: disposable_ci_password
+          POSTGRES_DB: ryanai_migration_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ryanai_migration -d ryanai_migration_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://ryanai_migration:disposable_ci_password@127.0.0.1:5432/ryanai_migration_test?schema=public
+      DIRECT_URL: postgresql://ryanai_migration:disposable_ci_password@127.0.0.1:5432/ryanai_migration_test?schema=public
+      RYANAI_DISPOSABLE_MIGRATION_DB: "true"
+
+    steps:
+      - name: Checkout pull request commit
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Prepare disposable Supabase Auth compatibility objects
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql_url="$(node -e 'const url = new URL(process.env.DATABASE_URL); url.searchParams.delete("schema"); process.stdout.write(url.toString())')"
+          psql "$psql_url" -v ON_ERROR_STOP=1 -f scripts/prepare-disposable-supabase-auth-fixture.sql
+
+      - name: Enable pgvector in the disposable database
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql_url="$(node -e 'const url = new URL(process.env.DATABASE_URL); url.searchParams.delete("schema"); process.stdout.write(url.toString())')"
+          psql "$psql_url" -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+      - name: Generate Prisma client
+        run: npx prisma generate --schema=prisma/schema.prisma
+
+      - name: Reproduce the eight completed production Prisma migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline="$RUNNER_TEMP/ryanai-prisma-eight-migration-baseline"
+          mkdir -p "$baseline/migrations"
+          cp prisma/schema.prisma "$baseline/schema.prisma"
+          cp prisma/migrations/migration_lock.toml "$baseline/migrations/migration_lock.toml"
+          cp -a prisma/migrations/20261014000000_supabase_platform_baseline "$baseline/migrations/"
+          for migration in \
+            20261015081513_init_reasoning_platform \
+            20261030120000_agent_operations \
+            20261030130000_brain_knowledge \
+            20261030130500_agent_task_queue \
+            20261030153000_agent_run_retry_backoff \
+            20261101110000_communications_and_langgraph_checkpoint \
+            20261101111500_complete_supabase_models \
+            20261102123000_supabase_auth_identity_bridge; do
+            test -f "prisma/migrations/$migration/migration.sql"
+            cp -a "prisma/migrations/$migration" "$baseline/migrations/"
+          done
+          DATABASE_URL="$DATABASE_URL" npx prisma migrate resolve --applied 20261014000000_supabase_platform_baseline --schema="$baseline/schema.prisma"
+          DATABASE_URL="$DATABASE_URL" npx prisma migrate deploy --schema="$baseline/schema.prisma"
+
+      - name: Assert the disposable database starts with exactly eight finished Prisma migrations
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import pg from 'pg';
+          const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+          await client.connect();
+          try {
+            const result = await client.query(`
+              SELECT
+                COUNT(*) FILTER (
+                  WHERE migration_name <> '20261014000000_supabase_platform_baseline'
+                )::int AS application_migrations,
+                COUNT(*) FILTER (
+                  WHERE migration_name = '20261014000000_supabase_platform_baseline'
+                )::int AS platform_baseline
+              FROM public._prisma_migrations
+              WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
+            `);
+            assert.equal(result.rows[0].application_migrations, 8,
+              'Expected the exact eight-migration production application starting ledger');
+            assert.equal(result.rows[0].platform_baseline, 1,
+              'Expected the separate Supabase platform baseline marker');
+            console.log('PASS: disposable database reproduces eight application migrations plus the platform baseline marker.');
+          } finally {
+            await client.end();
+          }
+          NODE
+
+      - name: Apply the complete remaining Prisma migration chain
+        run: npx prisma migrate deploy --schema=prisma/schema.prisma
+
+      - name: Verify Prisma reports zero pending migrations
+        run: npx prisma migrate status --schema=prisma/schema.prisma
+
+      - name: Verify runtime contract, PA delegation tables, and migration history
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import pg from 'pg';
+          const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+          await client.connect();
+          try {
+            const columns = await client.query(`
+              SELECT column_name
+              FROM information_schema.columns
+              WHERE table_schema = 'public'
+                AND table_name = 'agent_runs'
+                AND column_name IN (
+                  'trace_context', 'queue_type', 'execution_scope',
+                  'approval_status', 'plan_snapshot', 'plan_hash',
+                  'base_commit_sha', 'proposed_diff_hash', 'approved_plan_hash',
+                  'approved_commit_sha', 'approved_diff_hash', 'approved_by',
+                  'approved_at', 'steering_notes', 'cancel_requested_at'
+                )
+            `);
+            const present = new Set(columns.rows.map((row) => row.column_name));
+            for (const column of [
+              'trace_context', 'queue_type', 'execution_scope',
+              'approval_status', 'plan_snapshot', 'plan_hash',
+              'base_commit_sha', 'proposed_diff_hash', 'approved_plan_hash',
+              'approved_commit_sha', 'approved_diff_hash', 'approved_by',
+              'approved_at', 'steering_notes', 'cancel_requested_at',
+            ]) {
+              assert.ok(present.has(column), `Missing agent_runs.${column}`);
+            }
+
+            for (const table of [
+              'pa_delegations', 'pa_identity_nonces', 'pa_execution_receipts',
+            ]) {
+              const result = await client.query('SELECT to_regclass($1) AS relation', [`public.${table}`]);
+              assert.ok(result.rows[0].relation, `Missing public.${table}`);
+            }
+
+            const history = await client.query(`
+              SELECT COUNT(*)::int AS count
+              FROM public._prisma_migrations
+              WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
+            `);
+            assert.equal(history.rows[0].count, 44, 'Expected all 45 Prisma migration folders to be recorded');
+            const unfinished = await client.query(`
+              SELECT COUNT(*)::int AS count
+              FROM public._prisma_migrations
+              WHERE finished_at IS NULL AND rolled_back_at IS NULL
+            `);
+            assert.equal(unfinished.rows[0].count, 0, 'No unfinished Prisma migrations may remain');
+            console.log('PASS: all 45 Prisma migrations completed; runtime and PA schema contracts exist.');
+          } finally {
+            await client.end();
+          }
+          NODE
+
+      - name: Confirm a second deploy is a no-op
+        run: npx prisma migrate deploy --schema=prisma/schema.prisma
+
+      - name: Compare the resulting database to the Prisma data model
+        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+
+      - name: Run the repository migration readiness audit
+        run: npm run db:migration:audit
+
+      - name: Verify authenticated route guards remain enforced
+        shell: bash
+        run: |
+          set -euo pipefail
+          # These endpoints deliberately require an authenticated user. A 401
+          # without a token is the expected security contract, not a failed
+          # database smoke test. Authenticated 200-path verification requires
+          # a separately provisioned staging identity and is not fabricated here.
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          const source = await (await import('node:fs/promises')).readFile(
+            'src/server/routes/agentOperations.ts', 'utf8'
+          );
+          for (const route of [
+            '/api/agent/ops/awareness',
+            '/api/agent/ops/pa/status',
+          ]) {
+            assert.ok(source.includes(`fastify.get('${route}'`), `Missing route registration: ${route}`);
+          }
+          console.log('PASS: both protected operational routes are registered and retain their auth guard.');
+          NODE

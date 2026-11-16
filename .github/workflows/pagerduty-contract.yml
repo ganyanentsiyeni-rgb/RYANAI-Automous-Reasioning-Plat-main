@@ -1,0 +1,42 @@
+name: PagerDuty Maintenance Manager Contract
+
+on:
+  pull_request:
+    paths:
+      - "scripts/pagerduty_manager.py"
+      - "scripts/test-pagerduty-manager.py"
+      - "requirements.txt"
+      - "docs/pagerduty-maintenance-windows.md"
+      - ".github/workflows/pagerduty-contract.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "scripts/pagerduty_manager.py"
+      - "scripts/test-pagerduty-manager.py"
+      - "requirements.txt"
+      - "docs/pagerduty-maintenance-windows.md"
+      - ".github/workflows/pagerduty-contract.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  pagerduty-contract:
+    name: Offline PagerDuty manager contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PagerDuty client dependency
+        run: python -m pip install --disable-pip-version-check "requests>=2.32.0"
+
+      - name: Run offline contract tests
+        run: python -m unittest discover -s scripts -p "test-pagerduty-manager.py"

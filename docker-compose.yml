@@ -1,0 +1,316 @@
+# RyanAI local/container stack. Copy .env.example to .env and set the
+# required secrets before running: docker compose up --build --detach --wait.
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ryanai-db
+    environment:
+      POSTGRES_USER: ryanai
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      POSTGRES_DB: ryanai_db
+    networks: [ryanai-net]
+    ports:
+      - "127.0.0.1:5432:5432"
+    # The bootstrap runs only when the local Postgres data volume is first initialized.
+    # Supabase remains the credential authority; this table contains no auth secrets.
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/docker-init/01-supabase-auth-compat.sql:/docker-entrypoint-initdb.d/01-supabase-auth-compat.sql:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          PGPASSWORD="$$POSTGRES_PASSWORD" psql -h 127.0.0.1
+          -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -w -c 'SELECT 1' >/dev/null
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    stop_grace_period: 1m
+
+  redis:
+    image: redis:7-alpine
+    container_name: ryanai-redis
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+    networks: [ryanai-net]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - redis-cli --no-auth-warning -a "$$REDIS_PASSWORD" ping | grep -q PONG
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    stop_grace_period: 1m
+
+  # Run committed Prisma migrations only when explicitly requested with --profile migrations.
+  # API liveness and MCP diagnostics remain available while the database is repaired.
+  migrate:
+    profiles: [migrations]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrate
+    container_name: ryanai-migrate
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # This migration service targets only the private disposable/local Compose Postgres service.
+      # Production migrations run separately through the reviewed production-migrations workflow.
+      NODE_ENV: test
+      DATABASE_URL: postgresql://ryanai:${DB_PASSWORD:?Set DB_PASSWORD in .env}@postgres:5432/ryanai_db
+    networks: [ryanai-net]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    container_name: ryanai-api
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      DATABASE_URL: postgresql://ryanai:${DB_PASSWORD:?Set DB_PASSWORD in .env}@postgres:5432/ryanai_db
+      RYANAI_MCP_HEALTH_URL: ${RYANAI_MCP_HEALTH_URL:-http://mcp-server:8765/health}
+      AUDIOBOOK_DATABASE_URL: ${AUDIOBOOK_DATABASE_URL:-}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}@redis:6379
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      RYANAI_OPENAI_GATEWAY_TOKEN: ${RYANAI_OPENAI_GATEWAY_TOKEN:-}
+      RYANAI_MCP_SERVICE_TOKEN: ${RYANAI_MCP_SERVICE_TOKEN:-}
+      RYANAI_MCP_DELEGATION_SECRET: ${RYANAI_MCP_DELEGATION_SECRET:-}
+      SUPABASE_URL: ${SUPABASE_URL:-https://narsvpwymvlrhurqbthu.supabase.co}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      ATTACHMENT_SCANNER_ENABLED: ${ATTACHMENT_SCANNER_ENABLED:-false}
+      CLAMAV_HOST: ${CLAMAV_HOST:-}
+      CLAMAV_PORT: ${CLAMAV_PORT:-3310}
+      CLAMAV_TIMEOUT_MS: ${CLAMAV_TIMEOUT_MS:-60000}
+      ATTACHMENT_SCAN_INTERVAL_MS: ${ATTACHMENT_SCAN_INTERVAL_MS:-5000}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL_ALLOWLIST: ${OPENAI_MODEL_ALLOWLIST:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_API_ENDPOINT: ${DEEPSEEK_API_ENDPOINT:-https://api.deepseek.com/v1}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-DeepSeek-V4.1-Flash-1017}
+      DEEPSEEK_MODEL_ALLOWLIST: ${DEEPSEEK_MODEL_ALLOWLIST:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_API_ENDPOINT: ${ANTHROPIC_API_ENDPOINT:-https://api.anthropic.com/v1}
+      ANTHROPIC_MODEL_ALLOWLIST: ${ANTHROPIC_MODEL_ALLOWLIST:-}
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+      NVIDIA_API_ENDPOINT: ${NVIDIA_API_ENDPOINT:-https://integrate.api.nvidia.com/v1}
+      NVIDIA_MODEL: ${NVIDIA_MODEL:-nvidia/nemotron-3-ultra-550b-a55b}
+      QWEN_API_KEY: ${QWEN_API_KEY:-}
+      QWEN_API_ENDPOINT: ${QWEN_API_ENDPOINT:-https://api.together.xyz/v1}
+      QWEN_MODEL: ${QWEN_MODEL:-Qwen/Qwen3-235B-A22B-Instruct-2507-tput}
+      LOGIC_API_KEY: ${LOGIC_API_KEY:-}
+      LOGIC_API_ENDPOINT: ${LOGIC_API_ENDPOINT:-https://api.openai.com/v1}
+      LOGIC_REASONING_MODEL: ${LOGIC_REASONING_MODEL:-gpt-4o-mini}
+      GROK_API_KEY: ${GROK_API_KEY:-}
+      GROK_API_ENDPOINT: ${GROK_API_ENDPOINT:-https://api.x.ai/v1}
+      GROK_MODEL: ${GROK_MODEL:-}
+      TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
+      TOGETHER_API_ENDPOINT: ${TOGETHER_API_ENDPOINT:-https://api.together.xyz/v1}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_API_ENDPOINT: ${OPENROUTER_API_ENDPOINT:-https://openrouter.ai/api/v1}
+      OPENROUTER_MODEL_ALLOWLIST: ${OPENROUTER_MODEL_ALLOWLIST:-}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      MODEL_GATEWAY_API_KEY: ${MODEL_GATEWAY_API_KEY:-}
+      MODEL_GATEWAY_URL: ${MODEL_GATEWAY_URL:-http://localhost:8000/v1}
+      LOCAL_API_KEY: ${LOCAL_API_KEY:-}
+      LOCAL_MODEL_URL: ${LOCAL_MODEL_URL:-http://localhost:8080/v1}
+      RYANAI_GITHUB_TOKEN: ${RYANAI_GITHUB_TOKEN:-}
+      RYANAI_GITHUB_REPOSITORY: ${RYANAI_GITHUB_REPOSITORY:-RyanAI-Automated/RYANAI-Automous-Reasioning-Plat}
+      RYANAI_GITHUB_BASE_BRANCH: ${RYANAI_GITHUB_BASE_BRANCH:-main}
+      JARVIS_BASE_URL: ${JARVIS_BASE_URL:-}
+      JARVIS_API_TOKEN: ${JARVIS_API_TOKEN:-}
+      JARVIS_SYNC_ENABLED: ${JARVIS_SYNC_ENABLED:-false}
+      JARVIS_ALLOW_PRODUCTION_SYNC: ${JARVIS_ALLOW_PRODUCTION_SYNC:-false}
+      JARVIS_PATCH_INGRESS_ENABLED: ${JARVIS_PATCH_INGRESS_ENABLED:-false}
+      JARVIS_INGRESS_TOKEN: ${JARVIS_INGRESS_TOKEN:-}
+      JARVIS_HEALTH_PATH: ${JARVIS_HEALTH_PATH:-/health}
+      JARVIS_PATCH_PATH: ${JARVIS_PATCH_PATH:-/api/v1/patches}
+      JARVIS_STACK_PATH: ${JARVIS_STACK_PATH:-/api/v1/stacks}
+    networks: [ryanai-net]
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/livez',{signal:AbortSignal.timeout(4000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    stop_grace_period: 1m
+
+  mcp-server:
+    build:
+      context: .
+      dockerfile: mcp-server/Dockerfile
+    container_name: ryanai-mcp
+    environment:
+      NODE_ENV: production
+      RYANAI_MCP_TRANSPORT: http
+      RYANAI_API_HEALTH_URL: http://api:3000/readyz
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8765
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:?Set MCP_AUTH_TOKEN in .env (at least 32 characters)}
+      RYANAI_API_BASE_URL: http://api:3000
+      RYANAI_MCP_SERVICE_TOKEN: ${RYANAI_MCP_SERVICE_TOKEN:-}
+      RYANAI_MCP_DELEGATION_SECRET: ${RYANAI_MCP_DELEGATION_SECRET:-}
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-localhost,127.0.0.1,[::1],mcp-server}
+      # Keep the default allowlist read-only; reasoning_route requires an explicit operator opt-in.
+      RYANAI_MCP_ENABLED_TOOLS: ${RYANAI_MCP_ENABLED_TOOLS:-platform_health,repository_status,ryanai_stack_manifest}
+    networks: [ryanai-net]
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8765:8765"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8765/health',{signal:AbortSignal.timeout(4000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  # Optional self-hosted MCP gateway. Enterprise mode is opt-in and uses its own DB.
+  # Start with: docker compose --profile mcp-gateway up -d mcpjungle-db mcpjungle
+  mcpjungle-db:
+    profiles: [mcp-gateway]
+    image: postgres:17-alpine
+    container_name: ryanai-mcpjungle-db
+    environment:
+      POSTGRES_USER: mcpjungle
+      POSTGRES_PASSWORD: ${MCPJUNGLE_DB_PASSWORD:-}
+      POSTGRES_DB: mcpjungle
+    networks: [ryanai-net]
+    volumes:
+      - mcpjungle_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U mcpjungle -d mcpjungle"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  mcpjungle:
+    profiles: [mcp-gateway]
+    image: ghcr.io/mcpjungle/mcpjungle:${MCPJUNGLE_IMAGE_TAG:-0.4.6}
+    container_name: ryanai-mcpjungle
+    environment:
+      DATABASE_URL: postgres://mcpjungle:${MCPJUNGLE_DB_PASSWORD:-}@mcpjungle-db:5432/mcpjungle?sslmode=disable
+      SERVER_MODE: enterprise
+      OTEL_ENABLED: "true"
+    networks: [ryanai-net]
+    ports:
+      - "127.0.0.1:${MCPJUNGLE_HOST_PORT:-8080}:8080"
+    depends_on:
+      mcpjungle-db:
+        condition: service_healthy
+      mcp-server:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  # Cloudflare-first edge connector. No host port is published.
+  # Configure the named Tunnel's public hostname to route to http://mcpjungle:8080.
+  # Start with BOTH profiles enabled after the Tunnel and Access policies are configured.
+  cloudflared:
+    profiles: [cloudflare-edge]
+    image: "${CLOUDFLARED_IMAGE:-cloudflare/cloudflared:2026.10.0}"
+    container_name: ryanai-cloudflared
+    command:
+      - tunnel
+      - --no-autoupdate
+      - run
+      - --token-file
+      - /run/secrets/cloudflare_tunnel_token
+    secrets:
+      - cloudflare_tunnel_token
+    networks: [ryanai-net]
+    depends_on:
+      mcpjungle:
+        condition: service_started
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-https://narsvpwymvlrhurqbthu.supabase.co}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+        VITE_SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY:-}
+    container_name: ryanai-web
+    environment:
+      PORT: 80
+      API_HOST: api
+      API_PORT: 3000
+    networks: [ryanai-net]
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:9090:80"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+networks:
+  ryanai-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  mcpjungle_data:
+
+secrets:
+  # Docker Compose mounts this host environment variable as a file in cloudflared.
+  # Keep the value only in the private runtime environment; never commit it.
+  cloudflare_tunnel_token:
+    environment: CLOUDFLARE_TUNNEL_TOKEN

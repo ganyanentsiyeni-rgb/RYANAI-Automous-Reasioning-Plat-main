@@ -1,0 +1,110 @@
+{
+  "defaultRoute": "landing",
+  "routes": [
+    {
+      "id": "landing",
+      "label": "Home",
+      "path": "/"
+    },
+    {
+      "id": "survey",
+      "label": "Community Survey",
+      "path": "/survey"
+    },
+    {
+      "id": "dashboard",
+      "label": "Commander Dashboard",
+      "path": "/dashboard"
+    },
+    {
+      "id": "copilot",
+      "label": "Darkside Copilot",
+      "path": "/copilot"
+    },
+    {
+      "id": "pa",
+      "label": "Personal Assistant",
+      "path": "/pa"
+    },
+    {
+      "id": "calculator",
+      "label": "Calculator",
+      "path": "/calculator"
+    },
+    {
+      "id": "settings",
+      "label": "Settings",
+      "path": "/settings"
+    },
+    {
+      "id": "operator",
+      "label": "Operator",
+      "path": "/operator"
+    },
+    {
+      "id": "operations",
+      "label": "Operations",
+      "path": "/operations"
+    },
+    {
+      "id": "admin",
+      "label": "Admin",
+      "path": "/admin"
+    },
+    {
+      "id": "quant",
+      "label": "Quant Lab",
+      "path": "/quant"
+    },
+    {
+      "id": "trading",
+      "label": "Trading",
+      "path": "/trading"
+    },
+    {
+      "id": "cockpit",
+      "label": "Cockpit",
+      "path": "/cockpit"
+    },
+    {
+      "id": "studio",
+      "label": "RyanAI Studio",
+      "path": "/studio"
+    },
+    {
+      "id": "comms",
+      "label": "Comms",
+      "path": "/comms"
+    },
+    {
+      "id": "audiobook",
+      "label": "Audiobooks",
+      "path": "/audiobook"
+    },
+    {
+      "id": "music",
+      "label": "Music",
+      "path": "/music"
+    },
+    {
+      "id": "phonelink",
+      "label": "PhoneLink",
+      "path": "/phonelink"
+    },
+    {
+      "id": "workspace",
+      "label": "Workspace",
+      "path": "/workspace"
+    },
+    {
+      "id": "signin",
+      "label": "Sign in",
+      "path": "/signin"
+    },
+    {
+      "id": "signup",
+      "label": "Sign up",
+      "path": "/signup"
+    }
+  ]
+}

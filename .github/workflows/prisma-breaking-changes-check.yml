@@ -1,0 +1,55 @@
+name: Prisma Schema Breaking Change Guard
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "prisma/schema.prisma"
+      - "prisma/migrations/**"
+      - "scripts/check_breaking_schema.py"
+      - "scripts/test_check_breaking_schema.py"
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  breaking-change-guard:
+    name: Validate Prisma schema compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install locked Node dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Fetch target branch
+        run: git fetch --no-tags origin main:refs/remotes/origin/main
+
+      - name: Validate Prisma schema
+        env:
+          DATABASE_URL: postgresql://schema_guard:unused@127.0.0.1:5432/schema_guard
+        run: npx prisma validate
+
+      - name: Test breaking-change detector
+        run: python -m unittest scripts/test_check_breaking_schema.py -v
+
+      - name: Compare base schema and inspect changed migration SQL
+        env:
+          GITHUB_BASE_REF: main
+        run: python scripts/check_breaking_schema.py

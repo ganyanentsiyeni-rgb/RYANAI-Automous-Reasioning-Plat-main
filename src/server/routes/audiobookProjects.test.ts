@@ -1,0 +1,176 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import Fastify, { type FastifyInstance } from 'fastify';
+import { audiobookProjectRoutes } from './audiobookProjects.js';
+
+const apps: FastifyInstance[] = [];
+const userId = '00000000-0000-4000-8000-000000000042';
+
+async function createApp(audiobookPrisma: Record<string, unknown> | null) {
+  const app = Fastify();
+  apps.push(app);
+  app.decorate('audiobookPrisma', audiobookPrisma as never);
+  app.decorateRequest('authUser', null);
+  app.addHook('onRequest', async (request) => {
+    if (request.headers.authorization === 'Bearer test-user') {
+      request.authUser = { id: userId, email: 'audio@example.test', role: 'user', isOwner: false };
+    }
+  });
+  await app.register(audiobookProjectRoutes);
+  await app.ready();
+  return app;
+}
+
+afterEach(async () => {
+  await Promise.all(apps.splice(0).map(app => app.close()));
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
+
+describe('RyanAI audiobook persistence routes', () => {
+  it('fails closed when the dedicated Neon audiobook database is not configured', async () => {
+    const findMany = vi.fn();
+    const app = await createApp(null);
+    const response = await app.inject({ method: 'GET', url: '/api/v1/audiobooks', headers: { authorization: 'Bearer test-user' } });
+    expect(response.statusCode).toBe(503);
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects unauthenticated project listing before querying the database', async () => {
+    const findMany = vi.fn();
+    const app = await createApp({ audiobookProject: { findMany } });
+    const response = await app.inject({ method: 'GET', url: '/api/v1/audiobooks' });
+    expect(response.statusCode).toBe(401);
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it('scopes project listing to the authenticated owner', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const app = await createApp({ audiobookProject: { findMany } });
+    const response = await app.inject({ method: 'GET', url: '/api/v1/audiobooks', headers: { authorization: 'Bearer test-user' } });
+    expect(response.statusCode).toBe(200);
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { userId }, take: 50, orderBy: { updatedAt: 'desc' } }));
+  });
+
+  it('does not disclose another user’s project when an ID is supplied', async () => {
+    const findFirst = vi.fn().mockResolvedValue(null);
+    const app = await createApp({ audiobookProject: { findFirst } });
+    const response = await app.inject({ method: 'GET', url: '/api/v1/audiobooks/foreign-project', headers: { authorization: 'Bearer test-user' } });
+    expect(response.statusCode).toBe(404);
+    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'foreign-project', userId } }));
+  });
+
+  it('fails closed when provider or private storage credentials are absent', async () => {
+    vi.stubEnv('OPENAI_API_KEY', '');
+    vi.stubEnv('SUPABASE_URL', '');
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', '');
+    const findFirst = vi.fn();
+    const app = await createApp({ audiobookProject: { findFirst } });
+    const response = await app.inject({
+      method: 'POST', url: '/api/v1/audiobooks/project-a/render',
+      headers: { authorization: 'Bearer test-user' }, payload: {},
+    });
+    expect(response.statusCode).toBe(503);
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+
+  it('returns an existing owner-scoped render job for a repeated idempotency key', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-provider-key');
+    vi.stubEnv('SUPABASE_URL', 'https://storage.example.test');
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'test-service-role');
+    const project = {
+      id: 'project-a', title: 'Test book', language: 'en-ZA', userId,
+      chapters: [{ id: 'chapter-a', title: 'Chapter 1', content: 'Hello world.', narrationSettings: { voice: 'coral', speed: 1, style: '' } }],
+    };
+    const findFirst = vi.fn().mockResolvedValue(project);
+    const existingJob = { id: 'job-existing', status: 'queued', userId };
+    const findUnique = vi.fn().mockResolvedValue(existingJob);
+    const create = vi.fn();
+    const app = await createApp({ audiobookProject: { findFirst }, audiobookRenderJob: { findUnique, create } });
+    const response = await app.inject({
+      method: 'POST', url: '/api/v1/audiobooks/project-a/render',
+      headers: { authorization: 'Bearer test-user' },
+      payload: { idempotencyKey: 'render-request-001' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ reused: true, job: { id: 'job-existing' } });
+    expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'project-a', userId } }));
+    expect(findUnique).toHaveBeenCalledWith({ where: { userId_idempotencyKey: { userId, idempotencyKey: 'render-request-001' } } });
+    expect(create).not.toHaveBeenCalled();
+  });
+  it('persists only the verified Supabase subject before creating a project', async () => {
+    const chapterId = '7f7a4d4e-4a76-4a2b-9e4a-1d3d8f12a4f0';
+    const identityUpsert = vi.fn().mockResolvedValue({ id: userId });
+    const create = vi.fn().mockResolvedValue({ id: 'project-new' });
+    const app = await createApp({
+      supabaseIdentity: { upsert: identityUpsert },
+      audiobookProject: { create },
+    });
+    const response = await app.inject({
+      method: 'POST', url: '/api/v1/audiobooks',
+      headers: { authorization: 'Bearer test-user' },
+      payload: { title: 'Stable IDs', language: 'en-ZA', chapters: [{ id: chapterId, title: 'Chapter 1', text: 'Hello.', voice: 'coral', speed: 1, style: '' }] },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(identityUpsert).toHaveBeenCalledExactlyOnceWith({
+      where: { id: userId },
+      create: { id: userId },
+      update: {},
+    });
+    expect(identityUpsert.mock.invocationCallOrder[0]).toBeLessThan(create.mock.invocationCallOrder[0]);
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ chapters: { create: [expect.objectContaining({ id: chapterId })] } }),
+    }));
+  });
+
+  it('fails closed when Neon cannot persist the verified identity', async () => {
+    const identityUpsert = vi.fn().mockRejectedValue(new Error('database unavailable'));
+    const create = vi.fn();
+    const app = await createApp({
+      supabaseIdentity: { upsert: identityUpsert },
+      audiobookProject: { create },
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/audiobooks',
+      headers: { authorization: 'Bearer test-user' },
+      payload: {
+        title: 'Bridge failure',
+        language: 'en-ZA',
+        chapters: [{ title: 'Chapter 1', text: 'Synthetic text.', voice: 'coral', speed: 1, style: '' }],
+      },
+    });
+    expect(response.statusCode).toBe(503);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a second render while a different project render is active', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-provider-key');
+    vi.stubEnv('SUPABASE_URL', 'https://storage.example.test');
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'test-service-role');
+    const project = {
+      id: 'project-a', title: 'Test book', language: 'en-ZA', userId,
+      chapters: [{ id: 'chapter-a', title: 'Chapter 1', content: 'Hello world.', narrationSettings: { voice: 'coral', speed: 1, style: '' } }],
+    };
+    const activeJob = { id: 'job-active', status: 'running', userId };
+    const projectFind = vi.fn().mockResolvedValue(project);
+    const jobFindUnique = vi.fn().mockResolvedValue(null);
+    const jobFindFirst = vi.fn().mockResolvedValue(activeJob);
+    const create = vi.fn();
+    const app = await createApp({
+      audiobookProject: { findFirst: projectFind },
+      audiobookRenderJob: { findUnique: jobFindUnique, findFirst: jobFindFirst, create },
+    });
+    const response = await app.inject({
+      method: 'POST', url: '/api/v1/audiobooks/project-a/render',
+      headers: { authorization: 'Bearer test-user' },
+      payload: { idempotencyKey: 'another-render-request' },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ jobId: 'job-active' });
+    expect(jobFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId, projectId: 'project-a', status: { in: ['queued', 'running', 'cancel_requested'] } },
+    }));
+    expect(create).not.toHaveBeenCalled();
+  });
+
+});

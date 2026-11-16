@@ -1,0 +1,16 @@
+FROM node:24-alpine
+
+ENV NODE_ENV=production
+WORKDIR /app/mcp-server
+
+COPY mcp-server/package.json mcp-server/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts \
+    && npm cache clean --force \
+    && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+
+COPY mcp-server/index.js mcp-server/http.js mcp-server/provider-router.js mcp-server/stdio.js mcp-server/health-url.js mcp-server/tool-registry.js ./
+COPY stacks/ryanai.stack.json /app/stacks/ryanai.stack.json
+
+USER node
+EXPOSE 8765
+CMD ["node", "http.js"]

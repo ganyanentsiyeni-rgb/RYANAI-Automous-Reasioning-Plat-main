@@ -1,0 +1,58 @@
+# syntax=docker/dockerfile:1
+# Dedicated runtime image for the separately deployed Studio queue worker.
+# Build this file directly; it has no API HTTP healthcheck or API startup command.
+
+FROM node:24-alpine AS worker-deps
+WORKDIR /app
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+RUN apk add --no-cache libc6-compat \
+    && apk upgrade --no-cache \
+    && apk add --no-cache 'libexpat>=2.10.0-r0'
+COPY package.json package-lock.json ./
+RUN npm ci --include=dev --legacy-peer-deps
+
+FROM worker-deps AS worker-builder
+COPY tsconfig*.json ./
+COPY src ./src
+COPY scripts/copy-server-assets.mjs ./scripts/copy-server-assets.mjs
+COPY models/catalog.json ./models/catalog.json
+COPY app/routes.json ./app/routes.json
+COPY prisma ./prisma
+COPY stacks ./stacks
+RUN npm run db:generate \
+    && npm run build:server \
+    && npm prune --omit=dev --legacy-peer-deps
+
+FROM node:24-alpine AS studio-worker
+LABEL org.opencontainers.image.description="RyanAI dedicated Studio worker runtime"
+WORKDIR /app
+ENV NODE_ENV=production \
+    PUPPETEER_SKIP_DOWNLOAD=true \
+    NODE_USE_SYSTEM_CA=1 \
+    NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/supabase-prod-ca-2021.crt \
+    SUPABASE_SSL_ROOT_CERT_PATH=/usr/local/share/ca-certificates/supabase-prod-ca-2021.crt
+COPY certs/supabase/prod-ca-2021.crt /usr/local/share/ca-certificates/supabase-prod-ca-2021.crt
+RUN apk add --no-cache ca-certificates dumb-init libstdc++ libc6-compat 'libexpat>=2.10.0-r0' \
+    && apk upgrade --no-cache \
+    && update-ca-certificates \
+    && test -s /etc/ssl/cert.pem \
+    && test -s /usr/local/share/ca-certificates/supabase-prod-ca-2021.crt \
+    && rm -rf /usr/local/lib/node_modules/npm \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx \
+    && mkdir -p /app/logs \
+    && chown -R node:node /app
+COPY --from=worker-builder --chown=node:node /app/package.json ./package.json
+COPY --from=worker-builder --chown=node:node /app/node_modules ./node_modules
+COPY --from=worker-builder --chown=node:node /app/dist/server ./dist/server
+COPY --from=worker-builder --chown=node:node /app/dist/app ./dist/app
+COPY --from=worker-builder --chown=node:node /app/dist/models ./dist/models
+COPY --from=worker-builder --chown=node:node /app/dist/stacks ./dist/stacks
+COPY --chown=node:node scripts/verify-node-ca.sh ./scripts/verify-node-ca.sh
+RUN test -s dist/server/server/engineering/studioWorker.js \
+    && node --check dist/server/server/engineering/studioWorker.js \
+    && sh -n scripts/verify-node-ca.sh \
+    && node --version
+USER node
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+HEALTHCHECK NONE
+CMD ["sh", "-c", "exec sh scripts/verify-node-ca.sh node dist/server/server/engineering/studioWorker.js"]

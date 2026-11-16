@@ -1,0 +1,49 @@
+name: Supabase Migration Replay
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "supabase/**"
+      - ".github/workflows/supabase-migrations.yml"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "supabase/**"
+      - ".github/workflows/supabase-migrations.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-migration-replay-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clean-migration-replay:
+    name: Replay Supabase migrations on a clean local stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pinned Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 3.0.0
+
+      - name: Start disposable local Supabase stack
+        run: supabase start
+
+      - name: Replay every committed Supabase migration from empty state
+        run: supabase db reset
+
+      - name: Lint the resulting local database
+        run: supabase db lint --fail-on error
+
+      - name: Stop disposable local Supabase stack
+        if: always()
+        run: supabase stop --no-backup
+        continue-on-error: true

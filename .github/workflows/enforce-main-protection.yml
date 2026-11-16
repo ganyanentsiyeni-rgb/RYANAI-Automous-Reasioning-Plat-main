@@ -1,0 +1,151 @@
+name: Enforce main branch protection
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type ENFORCE-MAIN-PROTECTION to update the main ruleset
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: enforce-main-protection
+  cancel-in-progress: false
+
+jobs:
+  enforce:
+    name: Apply and verify main protection ruleset
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate confirmation and administrator credential
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          GH_ADMIN_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          [[ "$CONFIRMATION" == "ENFORCE-MAIN-PROTECTION" ]] || { echo "::error::Confirmation string did not match"; exit 1; }
+          [[ -n "$GH_ADMIN_TOKEN" ]] || { echo "::error::GH_ADMIN_TOKEN secret is missing; ruleset was not changed"; exit 1; }
+
+          # Provider checks run on the exact main commit after merge. They are
+          # enforced by deploy-render.yml before any production deployment,
+          # rather than as PR contexts (the provider workflow is push/dispatch
+          # scoped and does not emit PR check runs).
+      - name: Locate and update the existing main-protection ruleset
+        env:
+          GH_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Resolve the existing ruleset by its current or corrected name.
+          # Fail closed if it is missing or ambiguous; never create a second ruleset.
+          RULESET_ID="$(gh api "repos/${GITHUB_REPOSITORY}/rulesets?per_page=100" |
+            jq -er '[.[] | select(.name == "main-protection" or .name == "main-protectiona")]
+              | if length == 1 then .[0].id else error("expected exactly one existing main-protection ruleset") end')"
+
+          jq -n '{
+            name: "main-protection",
+            target: "branch",
+            enforcement: "active",
+            conditions: {
+              ref_name: {
+                include: ["~DEFAULT_BRANCH", "refs/heads/main"],
+                exclude: []
+              }
+            },
+            bypass_actors: [],
+            rules: [
+              { type: "pull_request", parameters: {
+                required_approving_review_count: 1,
+                dismiss_stale_reviews_on_push: true,
+                require_code_owner_review: false,
+                require_last_push_approval: false,
+                required_review_thread_resolution: true,
+                allowed_merge_methods: ["squash", "merge"]
+              }},
+              { type: "required_status_checks", parameters: {
+                strict_required_status_checks_policy: true,
+                do_not_enforce_on_create: false,
+                required_status_checks: [
+                  { context: "Validate (typecheck, lint, test, build)" },
+                  { context: "MCP server and workflow worker" },
+                  { context: "Issue 435 migrations and attachment security" },
+                  { context: "validate-database" },
+                  { context: "Upgrade legacy pgvector database safely (quoted)" },
+                  { context: "Upgrade legacy pgvector database safely (unquoted)" },
+                  { context: "Test agent API contracts" },
+                  { context: "Dependency audit" },
+                  { context: "Trivy filesystem scan" },
+                  { context: "Analyze (javascript-typescript)" },
+                  { context: "Analyze (python)" },
+                  { context: "TruffleHog secret audit" },
+                  { context: "Codacy Security Scan" }
+                ]
+              }},
+              { type: "non_fast_forward" },
+              { type: "deletion" },
+              { type: "copilot_code_review", parameters: {
+                review_on_push: true,
+                review_draft_pull_requests: true
+              }}
+            ]
+          }' > ruleset.json
+
+          gh api --method PUT \
+            "repos/${GITHUB_REPOSITORY}/rulesets/${RULESET_ID}" \
+            --input ruleset.json > ruleset-updated.json
+          jq '{id,name,enforcement,conditions,rules,bypass_actors}' ruleset-updated.json
+
+      - name: Verify required protections are active and bypass is disabled
+        env:
+          GH_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          RULESET_ID="$(gh api "repos/${GITHUB_REPOSITORY}/rulesets?per_page=100" |
+            jq -er '[.[] | select(.name == "main-protection")]
+              | if length == 1 then .[0].id else error("updated main-protection ruleset was not found exactly once") end')"
+          gh api "repos/${GITHUB_REPOSITORY}/rulesets/${RULESET_ID}" > ruleset-final.json
+
+          jq -e '
+            .name == "main-protection"
+            and .enforcement == "active"
+            and (.bypass_actors // [] | length == 0)
+            and (.conditions.ref_name.include | index("refs/heads/main") != null)
+            and ([.rules[].type] | index("pull_request") != null)
+            and ([.rules[].type] | index("required_status_checks") != null)
+            and ([.rules[].type] | index("non_fast_forward") != null)
+            and ([.rules[].type] | index("deletion") != null)
+            and ([.rules[].type] | index("copilot_code_review") != null)
+            and ([.conditions.ref_name.include[]] | index("refs/heads/main") != null)
+            and ([.rules[] | select(.type == "copilot_code_review") | .parameters | select(.review_on_push == true and .review_draft_pull_requests == true)] | length == 1)
+            and ([
+              .rules[] | select(.type == "required_status_checks") | .parameters
+              | select(.strict_required_status_checks_policy == true)
+              | [.required_status_checks[].context]
+              | . as $contexts
+              | select([
+                  "Validate (typecheck, lint, test, build)",
+                  "MCP server and workflow worker",
+                  "Issue 435 migrations and attachment security",
+                  "validate-database",
+                  "Upgrade legacy pgvector database safely (quoted)",
+                  "Upgrade legacy pgvector database safely (unquoted)",
+                  "Test agent API contracts",
+                  "Dependency audit",
+                  "Trivy filesystem scan",
+                  "Analyze (javascript-typescript)",
+                  "Analyze (python)",
+                  "TruffleHog secret audit",
+                  "Codacy Security Scan"
+                ] | all(. as $required | $contexts | index($required) != null))
+            ] | length == 1)
+            and ([
+              .rules[] | select(.type == "pull_request") | .parameters
+              | select(.required_approving_review_count == 1
+                and .dismiss_stale_reviews_on_push == true
+                and .required_review_thread_resolution == true)
+            ] | length == 1)
+          ' ruleset-final.json
+          echo "Verified: main protection is active, requires review and CI, and has no bypass actors."
