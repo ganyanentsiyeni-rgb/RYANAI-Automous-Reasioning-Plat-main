@@ -1,8 +1,6 @@
 # RyanAI Render infrastructure
 # Proposal only: applying this Blueprint requires a separately reviewed Render sync.
-# Production remains the existing Render API + web + Redis resources.
-# Staging is prepared as an isolated project environment; no staging services,
-# databases, credentials, or paid resources are created by this change.
+# This Blueprint manages production resources only. Staging is defined in render.staging.yaml.
 version: "1"
 
 projects:
@@ -47,7 +45,7 @@ projects:
               - key: LOGIC_REASONING_MODEL
                 value: gpt-4o-mini
               - key: RYANAI_GITHUB_REPOSITORY
-                value: RyanAI-Automated/RYANAI-Automous-Reasioning-Plat
+                value: ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main
               - key: RYANAI_GITHUB_BASE_BRANCH
                 value: main
               - key: SMTP_PORT
@@ -152,28 +150,3 @@ projects:
             region: oregon
             ipAllowList: []
             maxmemoryPolicy: noeviction
-
-      # Staging environment settings only; no staging services are defined here.
-      # Staging API and Redis services are defined in render.staging.yaml.
-      - name: Staging
-        # Staging private-network traffic is isolated from Production.
-        networking:
-          isolation: enabled
-        # No production services, databases, or credentials are shared into Staging.
-        envVarGroups:
-          - name: ryanai-api-staging
-            envVars:
-              - key: NODE_ENV
-                value: staging
-              - key: COMMUNICATIONS_ENABLED
-                value: "false"
-              - key: COMMUNICATION_ATTACHMENTS_ENABLED
-                value: "false"
-              - key: ATTACHMENT_SCANNER_ENABLED
-                value: "false"
-              - key: ATTACHMENT_ORPHAN_CLEANUP_ENABLED
-                value: "false"
-          - name: ryanai-web-staging
-            envVars:
-              - key: VITE_APP_ENV
-                value: staging
