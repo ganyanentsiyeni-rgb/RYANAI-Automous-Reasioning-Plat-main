@@ -4,7 +4,7 @@ import { compareMigrationState, assessSchema } from './audit-prisma-migration-re
 
 const memoryColumns = new Set(['session_id', 'role', 'content', 'timestamp']);
 const cacheColumns = new Set(['id', 'prompt', 'response', 'embedding', 'created_at']);
-const vectorIndexes = new Set(['idx_reasoning_embedding', 'idx_agent_session']);
+const vectorIndexes = new Set(['idx_reasoning_embedding', 'idx_agent_session', 'coding_tasks_status_next_attempt_idx', 'coding_tasks_status_lease_expiry_idx', 'coding_tasks_user_created_idx', 'coding_tasks_workbench_run_idx', 'agent_runs_queue_type_status_created_idx']);
 
 test('reports source migrations absent from the applied ledger without mutating either input', () => {
   const names = ['20261102150000_agent_run_execution_scope', '20261102210000_internal_jarvis_audit'];
@@ -37,6 +37,7 @@ test('detects schema and vector-memory drift, including runtime columns and inde
   assert.ok(result.missingColumns.includes('requested_model'));
   assert.ok(result.missingColumns.includes('queue_type'));
   assert.ok(result.missingTables.includes('agent_run_evidence'));
+  assert.ok(result.missingTables.includes('coding_tasks'));
   assert.ok(result.missingTables.includes('profiles'));
   assert.ok(result.missingTables.includes('rooms'));
   assert.ok(result.missingSharedColumns.includes('profiles.id'));
@@ -45,7 +46,7 @@ test('detects schema and vector-memory drift, including runtime columns and inde
   assert.deepEqual(result.vector.missingTables, ['agent_memory']);
   assert.deepEqual(result.vector.missingMemoryColumns, ['session_id', 'content', 'timestamp']);
   assert.deepEqual(result.vector.missingCacheColumns, ['response', 'embedding', 'created_at']);
-  assert.deepEqual(result.vector.missingIndexes, ['idx_reasoning_embedding', 'idx_agent_session']);
+  assert.deepEqual(result.vector.missingIndexes, ['idx_reasoning_embedding', 'idx_agent_session', 'coding_tasks_status_next_attempt_idx', 'coding_tasks_status_lease_expiry_idx', 'coding_tasks_user_created_idx', 'coding_tasks_workbench_run_idx', 'agent_runs_queue_type_status_created_idx']);
   assert.equal(result.vector.indexPresent, false);
 });
 
