@@ -10,7 +10,7 @@ projects:
           - type: web
             name: ryanai-api-staging
             runtime: docker
-            repo: https://github.com/RyanAI-Automated/RYANAI-Automous-Reasioning-Plat
+            repo: https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main
             branch: main
             plan: free
             region: oregon
