@@ -2,7 +2,7 @@
 # Dedicated runtime image for the separately deployed Studio queue worker.
 # Build this file directly; it has no API HTTP healthcheck or API startup command.
 
-FROM node:24-alpine AS worker-deps
+FROM node:26-alpine AS worker-deps
 WORKDIR /app
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 RUN apk add --no-cache libc6-compat \
@@ -23,7 +23,7 @@ RUN npm run db:generate \
     && npm run build:server \
     && npm prune --omit=dev --legacy-peer-deps
 
-FROM node:24-alpine AS studio-worker
+FROM node:26-alpine AS studio-worker
 LABEL org.opencontainers.image.description="RyanAI dedicated Studio worker runtime"
 WORKDIR /app
 ENV NODE_ENV=production \
