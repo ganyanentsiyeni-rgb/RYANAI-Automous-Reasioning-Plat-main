@@ -1,6 +1,13 @@
 name: Offline Benchmark Contract Tests
 
 on:
+  push:
+    branches: [dev]
+    paths:
+      - "benchmarks/contracts/**"
+      - "scripts/benchmark-*"
+      - "package.json"
+      - ".github/workflows/benchmark-contracts.yml"
   pull_request:
     paths:
       - "benchmarks/contracts/**"

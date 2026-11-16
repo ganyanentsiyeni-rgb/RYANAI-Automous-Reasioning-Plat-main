@@ -2,7 +2,7 @@
 import { FastifyInstance, FastifyRequest } from 'fastify';
 import { WebSocket } from 'ws';
 import { v4 as uuid } from 'uuid';
-import { WebSocketMessage, AuthContext, ReasoningRequest } from '../shared/types.js';
+import type { WebSocketMessage, AuthContext, ReasoningRequest } from '../shared/types.js';
 import { createLogger } from '../shared/logger.js';
 import { requireAdmin } from '../server/routes/auth.js';
 
