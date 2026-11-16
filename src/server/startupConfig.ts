@@ -61,7 +61,9 @@ export function resolveConnectionUrls(
   let database = databaseUrl?.trim();
   const redis = redisUrl?.trim();
 
-  if (nodeEnv === 'production' && database) {
+  const strictRuntime = nodeEnv === 'production' || nodeEnv === 'staging';
+
+  if (strictRuntime && database) {
     parseProductionDatabaseUrl(database);
   }
 
@@ -85,7 +87,7 @@ export function resolveConnectionUrls(
     database = pooler.databaseUrl;
   }
 
-  if (nodeEnv === 'production') {
+  if (strictRuntime) {
     const missing = [
       !database ? 'DATABASE_URL' : undefined,
       !redis ? 'REDIS_URL' : undefined,
@@ -106,15 +108,15 @@ export function resolveConnectionUrls(
 
 
 /**
- * Prevent a production API process from listening when required infrastructure
- * failed its startup connectivity check. Non-production environments retain
- * degraded-start behavior for local development and isolated tests.
+ * Prevent production and staging API processes from listening when required
+ * infrastructure failed its startup connectivity check. Local development and
+ * isolated tests retain degraded-start behavior.
  */
 export function assertProductionDependencies(
   nodeEnv: string,
   services: { database: boolean; redis: boolean; agentCheckpointer: boolean },
 ): void {
-  if (nodeEnv !== 'production') return;
+  if (nodeEnv !== 'production' && nodeEnv !== 'staging') return;
 
   const unavailable = [
     !services.database ? 'PostgreSQL' : undefined,
@@ -124,7 +126,7 @@ export function assertProductionDependencies(
 
   if (unavailable.length) {
     throw new Error(
-      `Production startup blocked: required dependency checks failed for ${unavailable.join(', ')}. The API listener was not started.`,
+      `${nodeEnv} startup blocked: required dependency checks failed for ${unavailable.join(', ')}. The API listener was not started.`,
     );
   }
 }

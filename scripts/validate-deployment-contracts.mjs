@@ -5,6 +5,12 @@ import { parse as parseYaml } from 'yaml';
 const read = (path) => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
 const render = read('render.yaml');
 const renderConfig = parseYaml(render);
+const stagingConfig = parseYaml(read('render.staging.yaml'));
+const stagingProjects = Array.isArray(stagingConfig.projects) ? stagingConfig.projects : [];
+const stagingServices = stagingProjects.flatMap((project) => (project.environments ?? []).flatMap((environment) => environment.services ?? []));
+const stagingApi = stagingServices.find((service) => service.name === 'ryanai-api-staging');
+const stagingRedis = stagingServices.find((service) => service.name === 'ryanai-redis-staging');
+const stagingServiceNames = stagingServices.map((service) => service.name);
 const renderProjects = Array.isArray(renderConfig.projects) ? renderConfig.projects : [];
 const renderServices = Array.isArray(renderConfig.services)
   ? renderConfig.services
@@ -110,6 +116,22 @@ const checks = [
   ['Railway is the default Docker and persistent-workload provider', railway.build?.dockerfilePath === 'Dockerfile.api' && railway.deploy?.healthcheckPath === '/health'],
   ['Railway staging deploy is manual, limited to exact open PR heads, and isolated', railwayDeploy.includes('workflow_dispatch:') && !railwayDeploy.includes('workflow_run:') && railwayDeploy.includes("inputs.confirmation == 'STAGE'") && railwayDeploy.includes("vars.RAILWAY_STAGING_ISOLATION_CONFIRMED == 'true'") && railwayDeploy.includes('RAILWAY_STAGING_PROJECT_ID') && railwayDeploy.includes('RAILWAY_STAGING_ENVIRONMENT_ID') && railwayDeploy.includes('commits/${TARGET_SHA}/pulls')],
 ];
+
+const stagingEnvVar = (key) => stagingApi?.envVars?.find((item) => item.key === key);
+const stagingSyncFalse = (key) => stagingEnvVar(key)?.sync === false;
+const stagingFalse = (key) => stagingEnvVar(key)?.value === 'false';
+checks.push(
+  ['Production Blueprint contains only the Production environment; staging is managed separately', renderProjects.length === 1 && (renderProjects[0].environments ?? []).length === 1 && renderProjects[0].environments[0].name === 'Production'],
+  ['Production Blueprint uses the currently authorised GitHub repository for RyanAI self-integration', render.includes('value: ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main') && !render.includes('RyanAI-Automated/RYANAI-Automous-Reasioning-Plat')],
+  ['Staging Blueprint contains exactly the staging API and staging Redis resources', stagingServices.length === 2 && stagingServiceNames.includes('ryanai-api-staging') && stagingServiceNames.includes('ryanai-redis-staging') && new Set(stagingServiceNames).size === 2],
+  ['Staging API uses the authorised repository, main branch, Dockerfile.api, and liveness endpoint', stagingApi?.repo === 'https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main' && stagingApi?.branch === 'main' && stagingApi?.runtime === 'docker' && stagingApi?.dockerfilePath === './Dockerfile.api' && stagingApi?.healthCheckPath === '/health'],
+  ['Staging API is explicitly classified as staging and does not auto-deploy', stagingEnvVar('NODE_ENV')?.value === 'staging' && stagingApi?.autoDeployTrigger === 'off'],
+  ['Staging database, Supabase URL, pooler host, publishable key, and CORS origin require explicit values', ['DATABASE_URL', 'SUPABASE_URL', 'SUPABASE_SESSION_POOLER_HOST', 'SUPABASE_PUBLISHABLE_KEY', 'CORS_ORIGINS'].every(stagingSyncFalse)],
+  ['Staging API does not generate or hardcode authentication secrets', !stagingApi?.envVars?.some((item) => item.generateValue === true || item.key === 'JWT_SECRET')],
+  ['Staging Redis is a separate staging resource in Oregon with private-only ingress', stagingRedis?.type === 'keyvalue' && stagingRedis?.region === 'oregon' && Array.isArray(stagingRedis?.ipAllowList) && stagingRedis.ipAllowList.length === 0 && stagingApi?.envVars?.some((item) => item.key === 'REDIS_URL' && item.fromService?.name === 'ryanai-redis-staging')],
+  ['Staging disables schedulers, alerts, communications, attachments, scanning, and cleanup by default', ['SCHEDULER_ENABLED', 'ALERTS_ENABLED', 'COMMUNICATIONS_ENABLED', 'COMMUNICATION_ATTACHMENTS_ENABLED', 'ATTACHMENT_SCANNER_ENABLED', 'ATTACHMENT_ORPHAN_CLEANUP_ENABLED'].every(stagingFalse)],
+  ['Production and staging Blueprint resource names do not overlap', !renderServiceNames.some((name) => stagingServiceNames.includes(name))],
+);
 
 for (const [name, passed] of checks) console.log((passed ? 'PASS' : 'FAIL') + ' | ' + name);
 const failed = checks.filter(([, passed]) => !passed);

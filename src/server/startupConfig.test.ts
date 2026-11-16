@@ -20,11 +20,15 @@ function supabaseDatabaseUrl(host: string, password = 'test-placeholder'): strin
   return url.toString();
 }
 
-describe('production connection configuration', () => {
+describe('production and staging connection configuration', () => {
   it('fails closed when production database and Redis URLs are missing', () => {
     expect(() => resolveConnectionUrls('production')).toThrow(
       'DATABASE_URL, REDIS_URL',
     );
+  });
+
+  it('fails closed when staging database and Redis URLs are missing', () => {
+    expect(() => resolveConnectionUrls('staging')).toThrow('DATABASE_URL, REDIS_URL');
   });
 
   it('identifies only the missing production variable', () => {
@@ -48,6 +52,13 @@ describe('production connection configuration', () => {
       'https://database.example.com',
       'redis://cache',
     )).toThrow('Invalid DATABASE_URL: expected a PostgreSQL URI with a hostname');
+  });
+
+  it('accepts explicitly configured staging URLs without production defaults', () => {
+    expect(resolveConnectionUrls('staging', 'postgresql://staging-db/app', 'redis://staging-cache')).toEqual({
+      databaseUrl: 'postgresql://staging-db/app',
+      redisUrl: 'redis://staging-cache',
+    });
   });
 
   it('accepts explicitly configured production URLs', () => {
@@ -125,7 +136,12 @@ describe('production connection configuration', () => {
   });
 });
 
-describe('production startup dependency gate', () => {
+describe('production and staging startup dependency gate', () => {
+  it('blocks staging startup when PostgreSQL or Redis is unavailable', () => {
+    expect(() => assertProductionDependencies('staging', { database: false, redis: true, agentCheckpointer: true })).toThrow('PostgreSQL');
+    expect(() => assertProductionDependencies('staging', { database: true, redis: false, agentCheckpointer: true })).toThrow('Redis');
+  });
+
   it('blocks production startup when PostgreSQL is unavailable', () => {
     expect(() =>
       assertProductionDependencies('production', { database: false, redis: true, agentCheckpointer: true }),
@@ -155,6 +171,10 @@ describe('production startup dependency gate', () => {
 });
 
 describe('production agent checkpointer readiness', () => {
+  it('blocks staging startup when the agent checkpointer is unavailable', () => {
+    expect(() => assertProductionDependencies('staging', { database: true, redis: true, agentCheckpointer: false })).toThrow('agent checkpointer');
+  });
+
   it('blocks production startup when the agent checkpointer is unavailable', () => {
     expect(() =>
       assertProductionDependencies('production', {
