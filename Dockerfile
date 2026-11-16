@@ -28,7 +28,6 @@ COPY prisma ./prisma
 COPY src/db/migrate.ts ./src/db/migrate.ts
 COPY src/db/scopedPrismaMigration.ts ./src/db/scopedPrismaMigration.ts
 COPY src/server/supabasePooler.ts ./src/server/supabasePooler.ts
-COPY scripts/backup-production-db.mjs ./scripts/backup-production-db.mjs
 COPY scripts/verify-node-ca.sh ./scripts/verify-node-ca.sh
 RUN npm run db:generate \
     && rm -rf /usr/local/lib/node_modules/npm \
