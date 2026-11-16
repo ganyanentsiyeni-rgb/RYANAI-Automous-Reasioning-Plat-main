@@ -38,3 +38,32 @@ export interface AppConfig {
     allowedOrigins: string[];
   };
 }
+
+export interface AuthContext {
+  userId: string;
+  email: string;
+  name: string;
+  roles: string[];
+  sessionId: string;
+  issuedAt: number;
+  expiresAt: number;
+}
+
+export interface ReasoningRequest {
+  prompt?: string;
+  sessionId?: string;
+  model?: string;
+  [key: string]: unknown;
+}
+
+export interface WebSocketMessage {
+  id: string;
+  type: 'request' | 'response' | 'stream' | 'event' | 'error';
+  channel: string;
+  data?: unknown;
+  error?: {
+    code: string;
+    message: string;
+  };
+  timestamp: number;
+}
