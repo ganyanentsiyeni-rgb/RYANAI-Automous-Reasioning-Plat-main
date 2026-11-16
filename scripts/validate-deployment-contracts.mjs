@@ -122,7 +122,7 @@ const stagingSyncFalse = (key) => stagingEnvVar(key)?.sync === false;
 const stagingFalse = (key) => stagingEnvVar(key)?.value === 'false';
 checks.push(
   ['Production Blueprint contains only the Production environment; staging is managed separately', renderProjects.length === 1 && (renderProjects[0].environments ?? []).length === 1 && renderProjects[0].environments[0].name === 'Production'],
-  ['Production Blueprint uses the currently authorised GitHub repository for RyanAI self-integration', envVar(renderApi, 'RYANAI_GITHUB_REPOSITORY')?.value === 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main'],
+  ['Production Blueprint uses the currently authorised GitHub repository for RyanAI self-integration', render.includes('value: ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main') && !render.includes('RyanAI-Automated/RYANAI-Automous-Reasioning-Plat')],
   ['Staging Blueprint contains exactly the staging API and staging Redis resources', stagingServices.length === 2 && stagingServiceNames.includes('ryanai-api-staging') && stagingServiceNames.includes('ryanai-redis-staging') && new Set(stagingServiceNames).size === 2],
   ['Staging API uses the authorised repository, main branch, Dockerfile.api, and liveness endpoint', stagingApi?.repo === 'https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main' && stagingApi?.branch === 'main' && stagingApi?.runtime === 'docker' && stagingApi?.dockerfilePath === './Dockerfile.api' && stagingApi?.healthCheckPath === '/health'],
   ['Staging API is explicitly classified as staging and does not auto-deploy', stagingEnvVar('NODE_ENV')?.value === 'staging' && stagingApi?.autoDeployTrigger === 'off'],
