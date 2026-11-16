@@ -28,7 +28,9 @@ vi.mock('@/pages/LandingPage', () => ({
   default: () => <div>Public landing</div>,
 }));
 vi.mock('@/pages/Dashboard', () => ({
-  default: () => <div>Private dashboard</div>,
+  default: ({ enabledModules }: { enabledModules?: Record<string, boolean> }) => (
+    <div data-testid="private-dashboard" data-enabled-modules={JSON.stringify(enabledModules)}>Private dashboard</div>
+  ),
 }));
 vi.mock('@/pages/OperatorConsole', () => ({
   default: () => <div>Private operator console</div>,
@@ -241,6 +243,29 @@ describe('application authentication boundary', () => {
     }
     expect(container.querySelector('nav[aria-label="Main navigation"] a[href="#/comms"]')).toBeNull();
     expect(container.querySelector('nav[aria-label="Main navigation"] a[href="#/admin"]')).toBeNull();
+  });
+
+  it('keeps dashboard cards aligned with legacy workspace visibility preferences', async () => {
+    const legacySession = {
+      ...session,
+      user: {
+        ...session.user,
+        user_metadata: { ryanai_dashboard_ui: ['pa', 'workspace'] },
+      },
+    } as Session;
+    auth.getSession.mockResolvedValue({ data: { session: legacySession }, error: null });
+    await mount('/dashboard');
+    await expectContent('Private dashboard');
+
+    const dashboard = container.querySelector<HTMLElement>('[data-testid="private-dashboard"]');
+    const enabledModules = JSON.parse(dashboard?.dataset.enabledModules ?? '{}') as Record<string, boolean>;
+    expect(enabledModules.pa).toBe(true);
+    expect(enabledModules.workspace).toBe(true);
+    expect(enabledModules.cockpit).toBe(false);
+    expect(enabledModules.quant).toBe(false);
+    // Music and PhoneLink retain the explicit legacy compatibility defaults.
+    expect(enabledModules.music).toBe(true);
+    expect(enabledModules.phonelink).toBe(true);
   });
 
   it('hides disabled workspaces and blocks direct links using account dashboard preferences', async () => {
