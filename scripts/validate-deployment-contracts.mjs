@@ -20,13 +20,24 @@ const renderWeb = renderServices.find((service) => service.name === 'ryanai-web'
 const renderRedis = renderServices.find((service) => service.name === 'ryanai-redis');
 const renderServiceNames = renderServices.map((service) => service.name);
 const expectedRenderServiceNames = ['ryanai-api', 'ryanai-web', 'ryanai-redis'];
-const hasUniqueEnvKeys = (service) => {
-  const keys = (service?.envVars ?? []).map((item) => item.key);
+const effectiveEnvVars = (service, config) => {
+  const projects = Array.isArray(config?.projects) ? config.projects : [];
+  const groups = new Map(projects.flatMap((project) => (project.environments ?? []).flatMap((environment) =>
+    (environment.envVarGroups ?? []).map((group) => [group.name, group.envVars ?? []]),
+  )));
+  const referencedGroups = (service?.envVars ?? [])
+    .filter((item) => item.fromGroup)
+    .flatMap((item) => groups.get(item.fromGroup) ?? []);
+  return [...referencedGroups, ...(service?.envVars ?? []).filter((item) => !item.fromGroup)];
+};
+const hasUniqueEnvKeys = (service, config) => {
+  const keys = effectiveEnvVars(service, config).map((item) => item.key);
   return keys.length === new Set(keys).size;
 };
-const envVar = (service, key) => service?.envVars?.find((item) => item.key === key);
-const isSyncFalse = (service, key) => envVar(service, key)?.sync === false;
-const isFalse = (service, key) => envVar(service, key)?.value === 'false';
+const envVar = (service, key, config = renderConfig) =>
+  effectiveEnvVars(service, config).find((item) => item.key === key);
+const isSyncFalse = (service, key, config = renderConfig) => envVar(service, key, config)?.sync === false;
+const isFalse = (service, key, config = renderConfig) => envVar(service, key, config)?.value === 'false';
 
 const rootDockerfile = read('Dockerfile');
 const apiDockerfile = read('Dockerfile.api');
@@ -45,17 +56,20 @@ const renderDeploy = read('.github/workflows/deploy-render.yml');
 const ciWorkflow = read('.github/workflows/ci.yml');
 const railwayDeploy = read('.github/workflows/deploy-railway.yml');
 
-function apiRuntimeStage(source) {
-  const marker = 'FROM node:24-alpine AS api\n';
-  const start = source.indexOf(marker);
-  if (start < 0) return '';
-  const remainder = source.slice(start);
-  const nextStage = remainder.indexOf('\nFROM ', marker.length);
-  return nextStage < 0 ? remainder : remainder.slice(0, nextStage);
+function dockerStage(source, preferredNames) {
+  const stages = [...source.matchAll(/^FROM\s+.+?\s+AS\s+([\w-]+)\s*$/gim)];
+  for (const preferredName of preferredNames) {
+    const index = stages.findIndex((match) => match[1] === preferredName);
+    if (index < 0) continue;
+    const start = stages[index].index;
+    const nextStart = stages[index + 1]?.index ?? source.length;
+    return source.slice(start, nextStart);
+  }
+  return '';
 }
 
-const rootApiStage = apiRuntimeStage(rootDockerfile);
-const standaloneApiStage = apiRuntimeStage(apiDockerfile);
+const rootApiStage = dockerStage(rootDockerfile, ['api']);
+const standaloneApiStage = dockerStage(apiDockerfile, ['api-runtime', 'api']);
 const hasVerifiedCaContract = (stage) =>
   stage.includes('NODE_USE_SYSTEM_CA=1')
   && stage.includes('NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/supabase-prod-ca-2021.crt')
@@ -81,33 +95,33 @@ const checks = [
   ['Vercel project, build package, deployment workflows, and CI credentials are absent', !hasLegacyVercelIntegration],
   ['Render Blueprint declares services through a supported top-level or project-environment list', Array.isArray(renderConfig.services) || renderProjects.some((project) => (project.environments ?? []).some((environment) => Array.isArray(environment.services)))],
   ['Render Blueprint declares exactly the API, web, and Redis resources', renderServices.length === 3 && expectedRenderServiceNames.every((name) => renderServiceNames.includes(name)) && new Set(renderServiceNames).size === 3],
-  ['Render API and web environment variable keys are unique', hasUniqueEnvKeys(renderApi) && hasUniqueEnvKeys(renderWeb)],
+  ['Render API and web environment variable keys are unique', hasUniqueEnvKeys(renderApi, renderConfig) && hasUniqueEnvKeys(renderWeb, renderConfig)],
   ['Render API and web use the official repository and main branch', renderApi?.repo === 'https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main' && renderWeb?.repo === renderApi?.repo && renderApi?.branch === 'main' && renderWeb?.branch === 'main'],
   ['Render API uses the standalone Docker image and /health', renderApi?.runtime === 'docker' && renderApi?.dockerfilePath === './Dockerfile.api' && renderApi?.healthCheckPath === '/health'],
   ['Render web is the live-aligned Static Site and publishes the Vite dist output', renderWeb?.runtime === 'static' && renderWeb?.buildCommand === 'npm ci --legacy-peer-deps && npm run build:web' && renderWeb?.staticPublishPath === './dist' && !renderWeb?.dockerfilePath && !renderWeb?.dockerTarget && !renderWeb?.healthCheckPath],
   ['Render API, web, and Redis are in Oregon', renderApi?.region === 'oregon' && renderRedis?.region === 'oregon' && Array.isArray(renderRedis?.ipAllowList) && renderRedis.ipAllowList.length === 0],
   ['Render API and web auto-deploy remain disabled', renderApi?.autoDeployTrigger === 'off' && renderWeb?.autoDeployTrigger === 'off'],
-  ['Render web points to the official API origin', envVar(renderWeb, 'VITE_API_BASE_URL')?.value === 'https://ryanai-api.onrender.com'],
+  ['Render web points to the official API origin', envVar(renderWeb, 'VITE_API_BASE_URL', renderConfig)?.value === 'https://ryanai-api.onrender.com'],
   ['Render does not override the API Docker command', !renderApi?.dockerCommand],
   ['Render does not run automatic Prisma migrations during API deployment', !renderApi?.preDeployCommand && !render.includes('prisma migrate deploy')],
-  ['Render requires the exact protected Supabase Session Pooler hostname', isSyncFalse(renderApi, 'SUPABASE_SESSION_POOLER_HOST') && !/aws-[^\s]+\.pooler\.supabase\.com/.test(render)],
-  ['Render restores the optional pooled audiobook database setting', isSyncFalse(renderApi, 'AUDIOBOOK_DATABASE_URL')],
-  ['Render restores the optional direct audiobook migration database setting', isSyncFalse(renderApi, 'AUDIOBOOK_DATABASE_URL_UNPOOLED')],
-  ['Render keeps communications disabled by default', isFalse(renderApi, 'COMMUNICATIONS_ENABLED')],
-  ['Render keeps communication attachments disabled by default', isFalse(renderApi, 'COMMUNICATION_ATTACHMENTS_ENABLED')],
-  ['Render keeps malware scanning and orphan cleanup disabled by default', isFalse(renderApi, 'ATTACHMENT_SCANNER_ENABLED') && isFalse(renderApi, 'ATTACHMENT_ORPHAN_CLEANUP_ENABLED')],
+  ['Render requires the exact protected Supabase Session Pooler hostname', isSyncFalse(renderApi, 'SUPABASE_SESSION_POOLER_HOST', renderConfig) && !/aws-[^\s]+\.pooler\.supabase\.com/.test(render)],
+  ['Render restores the optional pooled audiobook database setting', isSyncFalse(renderApi, 'AUDIOBOOK_DATABASE_URL', renderConfig)],
+  ['Render restores the optional direct audiobook migration database setting', isSyncFalse(renderApi, 'AUDIOBOOK_DATABASE_URL_UNPOOLED', renderConfig)],
+  ['Render keeps communications disabled by default', isFalse(renderApi, 'COMMUNICATIONS_ENABLED', renderConfig)],
+  ['Render keeps communication attachments disabled by default', isFalse(renderApi, 'COMMUNICATION_ATTACHMENTS_ENABLED', renderConfig)],
+  ['Render keeps malware scanning and orphan cleanup disabled by default', isFalse(renderApi, 'ATTACHMENT_SCANNER_ENABLED', renderConfig) && isFalse(renderApi, 'ATTACHMENT_ORPHAN_CLEANUP_ENABLED', renderConfig)],
   ['Both production API Docker targets use system and Supabase CA roots with verified TLS', hasVerifiedCaContract(rootApiStage) && hasVerifiedCaContract(standaloneApiStage)],
   ['Neither API runtime image disables TLS certificate verification', !rootApiStage.includes('NODE_TLS_REJECT_UNAUTHORIZED') && !standaloneApiStage.includes('NODE_TLS_REJECT_UNAUTHORIZED')],
   ['Both API runtime images execute the CA validation wrapper before the server', rootApiStage.includes('exec sh scripts/verify-node-ca.sh') && standaloneApiStage.includes('exec sh scripts/verify-node-ca.sh')],
   ['Supabase Session Pooler uses full TLS and strict certificate acceptance', poolerAdapter.includes("database.searchParams.set('sslmode', 'verify-full')") && poolerAdapter.includes("database.searchParams.set('sslaccept', 'strict')")],
-  ['Server build copies and verifies the generated audiobook Prisma runtime client', packageJson.scripts['build:server'] === 'tsc -p tsconfig.server.json && node scripts/copy-server-assets.mjs' && generatedClientCopy.includes('../src/generated/audiobook-prisma/') && generatedClientCopy.includes('../dist/server/generated/audiobook-prisma/index.js') && generatedClientCopy.includes('await access(')],
+  ['Server build copies and verifies the generated audiobook Prisma runtime client', packageJson.scripts['build:server'] === 'tsc -p tsconfig.server.json && node scripts/copy-server-assets.mjs' && generatedClientCopy.includes("new URL('../src/generated/audiobook-prisma/', import.meta.url)") && generatedClientCopy.includes("new URL('index.js', generatedClientSource)") && generatedClientCopy.includes("new URL('../dist/server/generated/audiobook-prisma/', import.meta.url)") && generatedClientCopy.includes('await access(generatedClientEntry)') && generatedClientCopy.includes('await cp(generatedClientSource, generatedClientDestination') && generatedClientCopy.includes('recursive: true')],
   ['Example environment defaults keep communications and uploads disabled', envExample.includes('COMMUNICATIONS_ENABLED=false') && envExample.includes('COMMUNICATION_ATTACHMENTS_ENABLED=false') && envExample.includes('ATTACHMENT_SCANNER_ENABLED=false') && envExample.includes('ATTACHMENT_ORPHAN_CLEANUP_ENABLED=false')],
   ['Communications and attachment switches require exact explicit opt-in', featureFlags.includes("process.env.COMMUNICATIONS_ENABLED === 'true'") && featureFlags.includes("process.env.COMMUNICATION_ATTACHMENTS_ENABLED === 'true'") && featureFlags.includes("process.env.ATTACHMENT_SCANNER_ENABLED === 'true'")],
   ['Comms, Twilio, and Slack plugins fail closed when communications are disabled', commsPlugin.includes('if (!isCommunicationsEnabled())') && twilioWebhook.includes('if (!isCommunicationsEnabled())') && slackInteractions.includes('if (!isCommunicationsEnabled())')],
   ['Comms attachment routes and storage helpers fail closed when uploads are disabled', (commsPlugin.split('areCommunicationAttachmentsEnabled()').length - 1) >= 5 && (commsAttachments.split('areCommunicationAttachmentsEnabled()').length - 1) >= 2],
-  ['Render API source repair workflow is manual and does not deploy', renderRepair.includes('workflow_dispatch:') && renderRepair.includes("inputs.confirmation == 'REPAIR-ONLY'") && !renderRepair.includes('workflow_run:') && !renderRepair.includes('/deploys')],
-  ['Render API config repair runs only after the core CI dependencies', ciWorkflow.includes('render-api-config-repair:') && ciWorkflow.includes('needs: [validate, subprojects, integration, issue-435-supabase]') && ciWorkflow.includes("github.event_name == 'push' && github.ref == 'refs/heads/main'")],
-  ['Render CI config repair is PATCH-only and keeps auto-deploy disabled', ciWorkflow.includes('--request PATCH') && ciWorkflow.includes('autoDeployTrigger":"off"') && !ciWorkflow.includes('/deploys')],
+  ['Render API source repair workflow is manual, exact-main gated, credential-gated, and does not deploy', renderRepair.includes('workflow_dispatch:') && renderRepair.includes("inputs.confirmation == 'REPAIR-ONLY'") && renderRepair.includes('TARGET_SHA') && renderRepair.includes('check-runs') && renderRepair.includes('RENDER_API_KEY') && renderRepair.includes('--request PATCH') && !renderRepair.includes('workflow_run:') && !renderRepair.includes('/deploys') && renderRepair.includes('https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main') && !renderRepair.includes('RyanAI-Automated/RYANAI-Automous-Reasioning-Plat')],
+  ['Render API config audit runs only after the core CI dependencies', ciWorkflow.includes('render-api-config-audit:') && ciWorkflow.includes('needs: [validate, subprojects, integration, issue-435-supabase]') && ciWorkflow.includes("github.event_name == 'push' && github.ref == 'refs/heads/main'")],
+  ['Render CI configuration audit is read-only and checks the authorised source without deploying', ciWorkflow.includes('GET only') && ciWorkflow.includes('Report configuration drift without changing the service') && ciWorkflow.includes('https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main') && !ciWorkflow.includes('--request PATCH') && !ciWorkflow.includes('/deploys')],
   ['Render deployment requires explicit enablement and approval', renderDeploy.includes("vars.RENDER_STAGING_DEPLOY_ENABLED == 'true'") && renderDeploy.includes("vars.RENDER_STAGING_ISOLATION_CONFIRMED == 'true'")],
   ['Render staging deploys only the exact open PR head after CI/security passes', renderDeploy.includes('commits/${TARGET_SHA}/pulls') && renderDeploy.includes('head.sha == $sha') && renderDeploy.includes('check-runs') && renderDeploy.includes('conclusion == "success"') && renderDeploy.includes('inputs.confirmation == \'STAGE\'')],
   ['Render staging deploy refuses production service IDs and verifies staging service identity', renderDeploy.includes('RENDER_STAGING_SERVICE_ID') && renderDeploy.includes('ryanai-staging') && renderDeploy.includes('srv-dbk4giu7bikc7394a4r0')],
@@ -117,7 +131,7 @@ const checks = [
   ['Railway staging deploy is manual, limited to exact open PR heads, and isolated', railwayDeploy.includes('workflow_dispatch:') && !railwayDeploy.includes('workflow_run:') && railwayDeploy.includes("inputs.confirmation == 'STAGE'") && railwayDeploy.includes("vars.RAILWAY_STAGING_ISOLATION_CONFIRMED == 'true'") && railwayDeploy.includes('RAILWAY_STAGING_PROJECT_ID') && railwayDeploy.includes('RAILWAY_STAGING_ENVIRONMENT_ID') && railwayDeploy.includes('commits/${TARGET_SHA}/pulls')],
 ];
 
-const stagingEnvVar = (key) => stagingApi?.envVars?.find((item) => item.key === key);
+const stagingEnvVar = (key) => envVar(stagingApi, key, stagingConfig);
 const stagingSyncFalse = (key) => stagingEnvVar(key)?.sync === false;
 const stagingFalse = (key) => stagingEnvVar(key)?.value === 'false';
 checks.push(

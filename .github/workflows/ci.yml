@@ -637,7 +637,7 @@ jobs:
         run: |
           set -euo pipefail
           desired='
-            .repo == "https://github.com/RyanAI-Automated/RYANAI-Automous-Reasioning-Plat" and
+            .repo == "https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main" and
             .branch == "main" and
             .rootDir == "." and
             .autoDeployTrigger == "off" and
