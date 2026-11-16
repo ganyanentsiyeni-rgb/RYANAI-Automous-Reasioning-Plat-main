@@ -304,7 +304,7 @@ model PendingAction {
   decidedBy String?   @map("decided_by")
   result    String?   @db.Text
 
-  @@index([status, expiresAt])
+  @@index([status, expiresAt], map: "security_approvals_status_expiry_idx")
   @@index([userId])
   @@map("pending_actions")
   @@schema("public")
@@ -1076,14 +1076,14 @@ model SecurityFinding {
   lastSeenAt        DateTime              @default(now()) @map("last_seen_at") @db.Timestamptz(6)
   createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
-  scan              SecurityScan          @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  scan              SecurityScan          @relation(fields: [scanId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   evidence          SecurityEvidence[]
   remediations      SecurityRemediation[]
 
   @@unique([scanId, fingerprint])
-  @@index([severity, status, lastSeenAt(sort: Desc)])
-  @@index([fingerprint, lastSeenAt(sort: Desc)])
-  @@index([affectedComponent, status])
+  @@index([severity, status, lastSeenAt(sort: Desc)], map: "security_findings_severity_status_seen_idx")
+  @@index([fingerprint, lastSeenAt(sort: Desc)], map: "security_findings_fingerprint_seen_idx")
+  @@index([affectedComponent, status], map: "security_findings_component_status_idx")
   @@map("security_findings")
   @@schema("public")
 }
@@ -1099,11 +1099,11 @@ model SecurityEvidence {
   redactedExcerpt String?        @map("redacted_excerpt") @db.Text
   metadata       Json            @default("{}")
   capturedAt     DateTime        @default(now()) @map("captured_at") @db.Timestamptz(6)
-  scan           SecurityScan    @relation(fields: [scanId], references: [id], onDelete: Cascade)
-  finding        SecurityFinding? @relation(fields: [findingId], references: [id], onDelete: Cascade)
+  scan           SecurityScan    @relation(fields: [scanId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  finding        SecurityFinding? @relation(fields: [findingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
-  @@index([scanId, capturedAt(sort: Desc)])
-  @@index([findingId, capturedAt(sort: Desc)])
+  @@index([scanId, capturedAt(sort: Desc)], map: "security_evidence_scan_captured_idx")
+  @@index([findingId, capturedAt(sort: Desc)], map: "security_evidence_finding_captured_idx")
   @@map("security_evidence")
   @@schema("public")
 }
@@ -1120,10 +1120,10 @@ model SecurityRemediation {
   verificationScanId String?          @map("verification_scan_id") @db.Uuid
   createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
-  finding            SecurityFinding  @relation(fields: [findingId], references: [id], onDelete: Cascade)
-  verificationScan   SecurityScan?    @relation("SecurityRemediationVerification", fields: [verificationScanId], references: [id], onDelete: SetNull)
+  finding            SecurityFinding  @relation(fields: [findingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  verificationScan   SecurityScan?    @relation("SecurityRemediationVerification", fields: [verificationScanId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
-  @@index([findingId, status, createdAt(sort: Desc)])
+  @@index([findingId, status, createdAt(sort: Desc)], map: "security_remediations_finding_status_idx")
   @@map("security_remediations")
   @@schema("public")
 }
@@ -1145,7 +1145,7 @@ model SecurityApproval {
   scans       SecurityScan[]
 
   @@index([status, expiresAt])
-  @@index([targetRef, commitSha])
+  @@index([targetRef, commitSha], map: "security_approvals_target_commit_idx")
   @@map("security_approvals")
   @@schema("public")
 }
