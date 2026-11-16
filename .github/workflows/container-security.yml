@@ -93,7 +93,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build image for scanning
         uses: docker/build-push-action@v7
@@ -157,7 +157,7 @@ jobs:
 
       - name: Preserve Trivy SARIF artifact
         if: always() && hashFiles(format('trivy-{0}.sarif', matrix.image)) != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: trivy-${{ matrix.image }}-sarif
           path: trivy-${{ matrix.image }}.sarif
@@ -185,7 +185,7 @@ jobs:
       - name: Download SARIF artifact
         id: download_sarif
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: trivy-${{ matrix.image }}-sarif
           path: sarif
