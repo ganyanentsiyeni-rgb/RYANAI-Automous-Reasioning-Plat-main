@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+﻿import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 
@@ -8,27 +8,43 @@ const migration = await readFile(
   'utf8',
 );
 
+function getPostRouteBlock(path) {
+  const pathIndex = launcher.indexOf(`'${path}'`);
+  assert.ok(pathIndex >= 0, `Route ${path} must exist`);
+
+  const routeStart = launcher.lastIndexOf('fastify.post<{', pathIndex);
+  assert.ok(routeStart >= 0, `Route ${path} must use a typed POST handler`);
+
+  const nextRoute = launcher.indexOf('fastify.post<{', routeStart + 1);
+  return launcher.slice(routeStart, nextRoute >= 0 ? nextRoute : launcher.length);
+}
+
 test('community survey exposes exactly one anonymous feedback handler', () => {
+  const feedbackRoute = getPostRouteBlock('/api/community-feedback');
+  const betaRoute = getPostRouteBlock('/api/community-beta-interest');
+
   assert.equal(
-    (launcher.match(/fastify\.post<\{[\s\S]*?\}>\('\/api\/community-feedback'/g) ?? []).length,
+    (feedbackRoute.match(/'\/api\/community-feedback'/g) ?? []).length,
     1,
   );
   assert.equal(
-    (launcher.match(/fastify\.post<\{[\s\S]*?\}>\('\/api\/community-beta-interest'/g) ?? []).length,
+    (betaRoute.match(/'\/api\/community-beta-interest'/g) ?? []).length,
     1,
   );
 
-  const feedbackStart = launcher.indexOf("fastify.post<{");
-  const feedbackRoute = launcher.slice(feedbackStart, launcher.indexOf("fastify.post<{", feedbackStart + 1));
-  assert.match(feedbackRoute, /'\/api\/community-feedback'/);
   assert.doesNotMatch(feedbackRoute, /contactName|contactEmail|followUpConsent/);
 
   const persistIndex = feedbackRoute.indexOf('community_feedback_submissions');
   const notifyIndex = feedbackRoute.indexOf('transporter.sendMail');
+
   assert.ok(persistIndex >= 0, 'survey persistence must exist');
   assert.ok(notifyIndex >= 0, 'owner notification must exist');
   assert.ok(persistIndex < notifyIndex, 'survey must be durably stored before notification');
   assert.match(feedbackRoute, /notificationStatus/);
+
+  assert.match(betaRoute, /name\?: string/);
+  assert.match(betaRoute, /email\?: string/);
+  assert.match(betaRoute, /consent\?: boolean/);
 });
 
 test('community survey migration contains one coherent definition per table', () => {
