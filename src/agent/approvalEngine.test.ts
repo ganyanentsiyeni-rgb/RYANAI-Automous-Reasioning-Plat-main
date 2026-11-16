@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => {
   const setup = vi.fn();
   const saver = { setup };
-  const fromConnString = vi.fn(() => saver);
+  const fromConnString = vi.fn((_connectionString: string) => saver);
   const memorySaver = { kind: 'ephemeral-memory-saver' };
   const MemorySaver = vi.fn(function MockMemorySaver() {
     return memorySaver;
@@ -75,7 +75,7 @@ describe('agent checkpointer initialization', () => {
 
     await import('./approvalEngine.js');
 
-    expect(state.fromConnString).toHaveBeenCalledExactlyOnce();
+    expect(state.fromConnString).toHaveBeenCalledTimes(1);
     const resolved = new URL(state.fromConnString.mock.calls[0][0] as string);
     expect(resolved.hostname).toBe(poolerHost);
     expect(resolved.port).toBe('5432');
