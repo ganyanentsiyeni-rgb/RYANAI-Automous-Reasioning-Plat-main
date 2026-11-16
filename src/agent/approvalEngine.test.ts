@@ -39,10 +39,11 @@ afterEach(() => {
 });
 
 describe('agent checkpointer initialization', () => {
-  it('constructs the PostgreSQL saver from DATABASE_URL without running schema DDL by default', async () => {
+  it('constructs the PostgreSQL saver from the validated database URL without running schema DDL', async () => {
     vi.stubEnv('NODE_ENV', 'test');
     vi.stubEnv('RYANAI_AGENT_MEMORY_MODE', 'postgres');
     vi.stubEnv('DATABASE_URL', 'postgresql://test:test@127.0.0.1:5432/ryanai_test');
+    vi.stubEnv('REDIS_URL', 'redis://127.0.0.1:6379');
     const { checkpointer, humanInTheLoopAgent } = await import('./approvalEngine.js');
 
     expect(state.fromConnString).toHaveBeenCalledExactlyOnceWith(
@@ -59,6 +60,43 @@ describe('agent checkpointer initialization', () => {
       }),
     );
     expect(humanInTheLoopAgent).toBeDefined();
+  });
+
+  it('routes the production LangGraph saver through the configured Supabase Session Pooler with strict TLS', async () => {
+    const projectRef = 'narsvpwymvlrhurqbthu';
+    const poolerHost = 'aws-1-eu-west-1.pooler.supabase.com';
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('RYANAI_AGENT_MEMORY_MODE', 'postgres');
+    vi.stubEnv('DATABASE_URL', `postgresql://postgres:test-password@db.${projectRef}.supabase.co:5432/postgres`);
+    vi.stubEnv('REDIS_URL', 'redis://127.0.0.1:6379');
+    vi.stubEnv('SUPABASE_URL', `https://${projectRef}.supabase.co`);
+    vi.stubEnv('SUPABASE_SESSION_POOLER_HOST', poolerHost);
+    vi.stubEnv('SUPABASE_SSL_ROOT_CERT_PATH', '/etc/ssl/supabase-root.crt');
+
+    await import('./approvalEngine.js');
+
+    expect(state.fromConnString).toHaveBeenCalledExactlyOnce();
+    const resolved = new URL(state.fromConnString.mock.calls[0][0] as string);
+    expect(resolved.hostname).toBe(poolerHost);
+    expect(resolved.port).toBe('5432');
+    expect(resolved.username).toBe(`postgres.${projectRef}`);
+    expect(resolved.searchParams.get('sslmode')).toBe('verify-full');
+    expect(resolved.searchParams.get('sslrootcert')).toBe('/etc/ssl/supabase-root.crt');
+    expect(resolved.searchParams.get('sslaccept')).toBe('strict');
+    expect(state.setup).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when production Supabase pooler configuration is incomplete', async () => {
+    const projectRef = 'narsvpwymvlrhurqbthu';
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('RYANAI_AGENT_MEMORY_MODE', 'postgres');
+    vi.stubEnv('DATABASE_URL', `postgresql://postgres:test-password@db.${projectRef}.supabase.co:5432/postgres`);
+    vi.stubEnv('REDIS_URL', 'redis://127.0.0.1:6379');
+    vi.stubEnv('SUPABASE_URL', `https://${projectRef}.supabase.co`);
+    vi.stubEnv('SUPABASE_SESSION_POOLER_HOST', '');
+
+    await expect(import('./approvalEngine.js')).rejects.toThrow('SUPABASE_SESSION_POOLER_HOST');
+    expect(state.fromConnString).not.toHaveBeenCalled();
   });
 
   it('uses an explicitly selected in-memory saver for non-production sandbox work without DATABASE_URL', async () => {
