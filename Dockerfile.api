@@ -3,7 +3,7 @@
 # Standalone API image for Render and other Dockerfile-based platforms.
 # Keep this build and runtime contract aligned with the "api" target in ./Dockerfile.
 
-FROM node:26-alpine AS api-deps
+FROM node:24-alpine AS api-deps
 WORKDIR /app
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 
@@ -29,7 +29,7 @@ RUN npm run db:generate \
 
 # Minimal runtime; npm is deliberately removed after production dependencies
 # are copied. pg_dump supports the optional, non-blocking startup backup.
-FROM node:26-alpine AS api-runtime
+FROM node:24-alpine AS api-runtime
 LABEL org.opencontainers.image.description="RyanAI API runtime image"
 WORKDIR /app
 
