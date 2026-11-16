@@ -401,6 +401,24 @@ describe('application authentication boundary', () => {
     expect(mobileNavigation?.hidden).toBe(true);
   });
 
+  it('closes the mobile navigation after a workspace route change', async () => {
+    auth.getSession.mockResolvedValue({ data: { session }, error: null });
+    await mount('/dashboard');
+
+    const menuButton = container.querySelector<HTMLButtonElement>('button[aria-controls="mobile-navigation"]');
+    const mobileNavigation = container.querySelector<HTMLElement>('#mobile-navigation');
+    await act(async () => { menuButton?.click(); });
+    expect(mobileNavigation?.hidden).toBe(false);
+
+    await act(async () => {
+      window.location.hash = '/settings';
+      window.dispatchEvent(new Event('hashchange'));
+    });
+    await expectContent('Private profile settings');
+    expect(mobileNavigation?.hidden).toBe(true);
+    expect(menuButton?.getAttribute('aria-expanded')).toBe('false');
+  });
+
   it('does not mount protected content before restoration completes', async () => {
     let restore!: (value: unknown) => void;
     auth.getSession.mockReturnValue(
