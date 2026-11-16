@@ -82,7 +82,7 @@ jobs:
 
       - name: Upload structured deployment log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ryanai-production-release-log-${{ github.run_id }}
           path: deployment-logs/release.log
@@ -176,7 +176,7 @@ jobs:
 
       - name: Upload structured deployment log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ryanai-staging-release-log-${{ github.run_id }}
           path: deployment-logs/release.log
