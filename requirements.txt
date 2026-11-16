@@ -7,7 +7,7 @@
 # Never put live provider credentials or database URIs in source files.
 openai>=3.41.0
 pydantic>=2.14.2
-langchain-core>=1.7.3
+langchain-core>=1.8.0
 langchain-openai>=1.7.3
 langgraph>=0.2.0
 pymongo>=4.19.0
