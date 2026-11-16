@@ -6,3 +6,10 @@
 !qlty.toml
 !.gitignore
 .env
+
+# Local environment files and overrides. Keep the example template tracked.
+.env
+.env.*
+!.env.example
+!.env.*.example
+!env.frontend.example

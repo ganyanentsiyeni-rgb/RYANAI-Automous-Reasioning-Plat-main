@@ -118,6 +118,14 @@ See [Quant Engine documentation](quant-engine/README.md).
 
 Comms routes and provider adapters are subject to server-side capability checks, owner authorization, idempotency, and human approval where required. A configured provider is not proof of an authenticated sender or delivered message. Live WhatsApp, SMS, voice, and email actions require verified provider callbacks, destination/owner verification, and explicit test authorization. Keep communication and attachment features disabled until their complete safety and provider checks are evidenced.
 
+### Twilio account and communications readiness
+
+Twilio is the planned provider for RyanAI WhatsApp, SMS, and inbound/outbound voice. The Render service contract declares the server-side variables `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, and `TWILIO_WHATSAPP_NUMBER`. Configure these only in the private API runtime environment; never use `VITE_*` names or commit real values.
+
+**Trial-expiry action required:** the owner received a Twilio notice for “My First Twilio Account” stating that one week remained in the 30-day trial. The account owner must sign in to the Twilio Console, review the account, billing method, service requirements and any trial restrictions, then decide whether to upgrade before the trial ends. RyanAI does not upgrade accounts or authorize paid spend automatically. Until the owner confirms account status and authorizes any paid change, treat Twilio as trial-limited and potentially interruptible.
+
+Before enabling live Comms, verify the Account SID and Auth Token privately, confirm the purchased/verified sender resources and WhatsApp sender approval as applicable, configure HTTPS inbound/status/voice callbacks, validate Twilio request signatures, and verify callback delivery. Then obtain explicit owner authorization for a test destination and test window. Do not send messages or place calls merely because credentials are present. Keep `COMMUNICATIONS_ENABLED=false` until all gates are evidenced. No account SID, auth token, phone number, or billing details belong in README, source control, logs, screenshots, or chat.
+
 ### Audiobook Studio
 
 Audiobook services use separately scoped database configuration. Do not assume the main application database and audiobook database are interchangeable. Keep pooled application traffic separate from direct/unpooled migration connections where the provider requires it. Audiobook schema work must be validated on its designated staging branch before any production request.
@@ -241,7 +249,7 @@ The root install:all script performs these three installs.
 ### 3. Configure local environment
 
 ~~~bash
-cp env.frontend.example .env
+cp .env.example .env
 ~~~
 
 Edit .env locally. The template is a starting point, not a complete secret generator. Docker Compose additionally requires local values for DB_PASSWORD, REDIS_PASSWORD, and JWT_SECRET. Use unique development-only values. Do not paste credentials into issues, pull requests, chat, screenshots, or source files.
@@ -283,7 +291,7 @@ The package start command launches dist/server/server/launcher.js. Confirm the a
 
 ## Environment configuration
 
-Use env.frontend.example as the documented variable template. It includes these groups:
+Use `.env.example` as the canonical local variable template. `env.frontend.example` is a legacy frontend-focused template; keep it aligned when frontend-only setup instructions are needed. It includes these groups:
 
 | Group | Representative variables | Handling |
 | --- | --- | --- |
@@ -292,12 +300,13 @@ Use env.frontend.example as the documented variable template. It includes these 
 | Database | DATABASE_URL, DB_PASSWORD | Server-side only; use the correct pooled/direct endpoint for the operation |
 | Redis | REDIS_URL, REDIS_PASSWORD | Server-side only |
 | Model providers | OPENAI_API_KEY, NVIDIA_API_KEY, QWEN_API_KEY and endpoint/model settings | Optional; enable only after provider and spend authorization |
+| Twilio communications | TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, TWILIO_WHATSAPP_NUMBER | Private API runtime only; trial status, callbacks, sender verification and owner authorization required |
 | Jarvis bridge | JARVIS_SYNC_ENABLED, JARVIS_ALLOW_PRODUCTION_SYNC, ingress controls | Disabled by default; separate tokens and policy checks required |
 | MCP | MCP_AUTH_TOKEN, MCP_ALLOWED_HOSTS | Use a high-entropy token (at least 32 characters in production) and strict host allowlists |
 
 Other modules may use additional variables. Search the relevant service code and deployment manifest before configuring them. Do not assume the example file is a complete inventory of every environment variable.
 
-Never commit .env, .env.local, database URLs, private keys, access tokens, or provider credentials. Keep TLS verification enabled.
+Never commit `.env`, `.env.*` local overrides, database URLs, private keys, access tokens, or provider credentials. `.env.example` is the tracked placeholder template; keep its values blank or non-secret. Keep TLS verification enabled.
 
 ## Database setup and migrations
 
