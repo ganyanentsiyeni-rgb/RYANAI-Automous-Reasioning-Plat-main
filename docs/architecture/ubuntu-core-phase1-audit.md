@@ -90,12 +90,29 @@ The documentation PR head was `7888e11f5a3e53cdee5d659679ab7290dd678120`.
 
 PR #111 subsequently fixed the two lint errors and merged as commit `8a5b53917f7edae76c8ab9d8641d95190ca99800`. The other failed/in-progress checks above must be rerun on the current main before being treated as current status. PR #110 was merged despite its recorded human-approval workflow failure; confirm that repository rules actually enforce required review and checks for future PRs. A comment expressing approval is not the same as a GitHub `APPROVED` review state.
 
-## 6. Prioritized Phase 1 actions
+## 6. Main ruleset and merge enforcement
+
+The active repository ruleset was inspected through the GitHub repository rulesets API:
+
+- Ruleset ID: `27357206`, name `main-protection`, enforcement `active`.
+- Pull requests require one approving review; stale approvals are dismissed on push; code-owner review, last-push approval, and review-thread resolution are enabled.
+- Deletion protection and required linear history are enabled.
+- **No required status-check rule is present** in the returned rules array.
+- **No explicit non-fast-forward/force-push protection rule is present** in the returned rules array.
+- The ruleset has multiple bypass actors with `always` bypass mode, including repository roles and integrations. The API reports `current_user_can_bypass: always`.
+- The direct branch-protection endpoint returned HTTP 403 to the connected integration, so classic branch-protection settings could not be independently inspected.
+
+This configuration does not meet the intended governance baseline. In particular, active CI/security checks are not represented as required rules in this ruleset, and bypass remains enabled. The failed Human PR Approval Gate recorded for PR #110 did not prevent that PR from merging, which is consistent with the missing required-status-check rule and the presence of bypass actors; the precise merge path cannot be established from this read-only audit alone.
+
+**Required governance repair:** configure a ruleset that requires the designated CI, application, database, and security checks; prevents force-push and branch deletion; requires independent human approval and resolved conversations; and has no always-bypass actors, including integrations and administrators where supported. Verify the final ruleset through a fresh read after the owner applies the change. This audit did not mutate repository governance settings.
+
+## 7. Prioritized Phase 1 actions
 
 ### P0 — Governance and evidence
 
-- Verify main branch protection and required checks on the current repository.
-- Ensure a failed human approval gate prevents merge; no admin bypass or auto-merge.
+- Repair ruleset `27357206`: required status checks are absent and multiple always-bypass actors remain.
+- Ensure a failed human approval gate prevents merge; no admin/integration bypass or auto-merge.
+- Verify force-push prevention, deletion prevention, independent review, and required check enforcement after the owner updates the ruleset.
 - Re-run required CI/security workflows on current main and record exact SHA/run IDs.
 
 ### P1 — Authorization correctness
@@ -113,6 +130,6 @@ PR #111 subsequently fixed the two lint errors and merged as commit `8a5b53917f7
 - Complete the Raspberry Pi device identity, enrollment, gateway, revocation and offline-replay design.
 - Prove backup restoration and independent recovery; backup completion alone is not acceptance.
 
-## 7. Change boundary
+## 8. Change boundary
 
 This audit authorizes no code changes, merge, deployment, database mutation, secret changes, paid upgrades, host provisioning, hardware procurement, or live communication. Each remediation is a separate focused PR with tests, exact-head evidence, human review, and a rollback plan. Production actions require separate explicit approval.
