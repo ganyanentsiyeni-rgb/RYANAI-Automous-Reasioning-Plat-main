@@ -368,6 +368,43 @@ describe('provider authorization HTTP lifecycle', () => {
     expect(fetchMock).toHaveBeenCalledOnce();
     await app.close();
   });
+  it('rejects Microsoft calendar reads when the owner has not granted Calendars.Read', async () => {
+    vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
+    vi.stubEnv('RYANAI_PLUGIN_MICROSOFT_365_CLIENT_ID', 'synthetic-ms-client');
+    vi.stubEnv('RYANAI_PLUGIN_MICROSOFT_365_CLIENT_SECRET', 'synthetic-ms-secret');
+    vi.stubEnv('RYANAI_PLUGIN_MICROSOFT_365_REDIRECT_URI', 'https://api.example.test/api/plugins/oauth/microsoft-365-calendar/callback');
+    const { app, connectionRows } = await createApp();
+    connectionRows.set(`${owner.id}:microsoft-365-calendar`, {
+      id: 'ms-calendar-connection', ownerUserId: owner.id, providerId: 'microsoft-365-calendar',
+      status: 'connected', encryptedAccessToken: 'ciphertext',
+      accessTokenExpiresAt: new Date(Date.now() + 60_000), grantedScopes: ['User.Read'],
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await app.inject({ method: 'GET', url: '/api/plugins/microsoft-365-calendar/events?start=2026-11-18T00:00:00Z&end=2026-11-19T00:00:00Z' });
+    expect(response.statusCode).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('does not call Microsoft Graph with an expired calendar access token', async () => {
+    vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
+    vi.stubEnv('RYANAI_PLUGIN_MICROSOFT_365_CLIENT_ID', 'synthetic-ms-client');
+    vi.stubEnv('RYANAI_PLUGIN_MICROSOFT_365_CLIENT_SECRET', 'synthetic-ms-secret');
+    vi.stubEnv('RYANAI_PLUGIN_MICROSOFT_365_REDIRECT_URI', 'https://api.example.test/api/plugins/oauth/microsoft-365-calendar/callback');
+    const { app, connectionRows } = await createApp();
+    connectionRows.set(`${owner.id}:microsoft-365-calendar`, {
+      id: 'ms-calendar-connection', ownerUserId: owner.id, providerId: 'microsoft-365-calendar',
+      status: 'connected', encryptedAccessToken: 'ciphertext',
+      accessTokenExpiresAt: new Date(Date.now() - 60_000), grantedScopes: ['User.Read', 'Calendars.Read'],
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await app.inject({ method: 'GET', url: '/api/plugins/microsoft-365-calendar/events?start=2026-11-18T00:00:00Z&end=2026-11-19T00:00:00Z' });
+    expect(response.statusCode).toBe(409);
+    expect(fetchMock).not.toHaveBeenCalled();
+    await app.close();
+  });
   it('rejects calendar event requests with invalid or excessive date ranges', async () => {
     vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
     vi.stubEnv('RYANAI_PLUGIN_GOOGLE_CALENDAR_CLIENT_ID', 'synthetic-client');
