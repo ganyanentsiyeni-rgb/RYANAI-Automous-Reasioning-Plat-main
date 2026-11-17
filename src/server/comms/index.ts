@@ -287,7 +287,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       reservation = await beginOutboundCommunication(fastify.prisma, {
         channel,
-        externalAddress: String(channel) === 'email' ? target.toLowerCase() : target,
+        externalAddress: target,
         body: outboundBody,
         idempotencyKey: key,
         ownerUserId: request.authUser.id,
