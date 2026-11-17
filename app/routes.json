@@ -12,6 +12,11 @@
       "path": "/survey"
     },
     {
+      "id": "help",
+      "label": "Help & FAQ",
+      "path": "/help"
+    },
+    {
       "id": "dashboard",
       "label": "Commander Dashboard",
       "path": "/dashboard"
