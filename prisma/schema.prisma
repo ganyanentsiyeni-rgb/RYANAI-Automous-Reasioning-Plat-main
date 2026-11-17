@@ -1120,7 +1120,7 @@ model SecurityRemediation {
   reviewedAt         DateTime?        @map("reviewed_at") @db.Timestamptz(6)
   verificationScanId String?          @map("verification_scan_id") @db.Uuid
   createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt          DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedAt          DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   finding            SecurityFinding  @relation(fields: [findingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   verificationScan   SecurityScan?    @relation("SecurityRemediationVerification", fields: [verificationScanId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
@@ -1202,7 +1202,7 @@ model PluginAuthorizationEvent {
   ownerUserId String   @map("owner_user_id")
   providerId  String   @map("provider_id") @db.VarChar(64)
   connectionId String? @map("connection_id") @db.Uuid
-  connection PluginProviderConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull, map: "plugin_authorization_events_connection_id_fkey")
+  connection PluginProviderConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "plugin_authorization_events_connection_id_fkey")
   eventType   String   @map("event_type") @db.VarChar(64)
   actorUserId String   @map("actor_user_id")
   requestId   String?  @map("request_id") @db.VarChar(128)
