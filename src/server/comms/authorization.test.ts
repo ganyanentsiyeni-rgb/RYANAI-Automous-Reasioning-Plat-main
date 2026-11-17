@@ -3,7 +3,9 @@ import {
   buildCommsActionPayload,
   hashCommsActionPayload,
   normalizeCommsRecipient,
+  type CommsActionPayload,
 } from './authorization.js';
+import { evaluateGenXSecurityEvent } from '../../security/genxPolicy.js';
 
 const base = {
   channel: 'sms' as const,
@@ -38,8 +40,15 @@ describe('owner communications authorization payload', () => {
     ['idempotency key', { idempotencyKey: 'comms-test-key-0002' }],
     ['attachment list', { attachmentIds: ['attachment-b'] }],
   ])('changes the approval digest when %s changes', (_field, change) => {
-    const changed = buildCommsActionPayload({ ...base, ...change } as typeof base);
+    const changed = buildCommsActionPayload({ ...base, ...change } as CommsActionPayload);
     expect(hashCommsActionPayload(changed)).not.toBe(hashCommsActionPayload(buildCommsActionPayload(base)));
+  });
+
+  it('keeps outbound network actions behind the Gen-X human approval gate', () => {
+    expect(evaluateGenXSecurityEvent({
+      agentId: 'ryanai-api', principal: 'owner-test', toolName: 'api_comms_send',
+      action: 'NETWORK', target: 'comms:sms:payload-digest', actorType: 'human',
+    })).toMatchObject({ decision: 'REQUIRE_APPROVAL', ruleId: 'GX-HIL-001' });
   });
 
   it('does not mutate the caller attachment list', () => {
