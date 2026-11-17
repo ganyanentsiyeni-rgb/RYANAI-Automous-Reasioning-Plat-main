@@ -8,6 +8,7 @@ type Preferences = Record<string, PluginPreference>;
 type RegistryProvider = { id: string; adapterStatus: 'adapter_required' | 'adapter_registered' };
 type GitHubIntegrationStatus = { status: string; connected?: boolean; account?: { login?: string }; repository?: { fullName?: string } };
 type CalendarEvent = { id: string | null; title: string; start: string | null; end: string | null; location: string | null; organizer: string | null };
+type GmailMessage = { id: string; threadId: string | null; snippet: string; receivedAt: string | null; from: string | null; subject: string | null };
 type ProviderConnection = {
   providerId: string;
   status: string;
@@ -25,6 +26,7 @@ type PluginDefinition = {
 const OAUTH_PROVIDER_IDS: Record<string, string> = {
   'google-calendar': 'google-calendar',
   'microsoft-calendar': 'microsoft-365-calendar',
+  gmail: 'gmail',
 };
 const CATALOG: PluginDefinition[] = [
   { id: 'phonelink', name: 'RyanAI PhoneLink', category: 'Communications', description: 'Trusted mobile device pairing and permission-scoped event intake. Native device operations require the Android companion.', scopes: ['Mobile workspace', 'Approved event intake'], availability: 'adapter-required' },
@@ -35,7 +37,7 @@ const CATALOG: PluginDefinition[] = [
   { id: 'youtube-music', name: 'YouTube Music', category: 'Media & audio', description: 'Optional music provider; playback requires provider authorization and a reviewed adapter.', scopes: ['Music UI'], availability: 'adapter-required' },
   { id: 'google-calendar', name: 'Google Calendar', category: 'PA Agent', description: 'Calendar context, availability and scheduling workflows.', scopes: ['PA Agent', 'Scheduling workers'], availability: 'oauth-supported' },
   { id: 'microsoft-calendar', name: 'Microsoft 365 Calendar', category: 'PA Agent', description: 'Outlook calendar context and scheduling workflows.', scopes: ['PA Agent', 'Scheduling workers'], availability: 'oauth-supported' },
-  { id: 'gmail', name: 'Gmail', category: 'Communications', description: 'Email search, drafting and explicitly approved dispatch.', scopes: ['PA Agent', 'Comms workers'], availability: 'adapter-required' },
+  { id: 'gmail', name: 'Gmail', category: 'Communications', description: 'Read-only mailbox search and message metadata. Drafting and sending are not enabled.', scopes: ['Gmail read-only'], availability: 'oauth-supported' },
   { id: 'outlook-mail', name: 'Outlook Mail', category: 'Communications', description: 'Mailbox context, drafting and explicitly approved dispatch.', scopes: ['PA Agent', 'Comms workers'], availability: 'adapter-required' },
   { id: 'slack', name: 'Slack', category: 'Communications', description: 'Team messages, channels and human-reviewed workflows.', scopes: ['Comms workers', 'Workforce'], availability: 'adapter-required' },
   { id: 'microsoft-teams', name: 'Microsoft Teams', category: 'Communications', description: 'Team collaboration and approved message workflows.', scopes: ['Comms workers', 'Workforce'], availability: 'adapter-required' },
@@ -104,6 +106,11 @@ function PluginIntegrationsSettingsContent({
   const [connections, setConnections] = useState<ProviderConnection[]>([]);
   const [calendarEvents, setCalendarEvents] = useState<Record<string, CalendarEvent[]>>({});
   const [calendarLoadingId, setCalendarLoadingId] = useState('');
+  const [gmailMessages, setGmailMessages] = useState<GmailMessage[]>([]);
+  const [gmailQuery, setGmailQuery] = useState('');
+  const [gmailLoading, setGmailLoading] = useState(false);
+  const [gmailError, setGmailError] = useState('');
+  const [gmailLoaded, setGmailLoaded] = useState(false);
   const [calendarErrors, setCalendarErrors] = useState<Record<string, string>>({});
   const [registryProviders, setRegistryProviders] = useState<RegistryProvider[]>([]);
   const [registryLoading, setRegistryLoading] = useState(true);
@@ -300,7 +307,7 @@ function PluginIntegrationsSettingsContent({
       const payload = await response.json().catch(() => ({})) as { authorizationUrl?: string; error?: string };
       if (!response.ok || !payload.authorizationUrl) throw new Error(payload.error || 'Provider authorization is not configured.');
       const authorizationUrl = new URL(payload.authorizationUrl);
-      const allowedHost = pluginId === 'google-calendar'
+      const allowedHost = pluginId === 'google-calendar' || pluginId === 'gmail'
         ? authorizationUrl.hostname === 'accounts.google.com'
         : authorizationUrl.hostname === 'login.microsoftonline.com';
       if (authorizationUrl.protocol !== 'https:' || !allowedHost || authorizationUrl.username || authorizationUrl.password) {
@@ -354,6 +361,27 @@ function PluginIntegrationsSettingsContent({
       setCalendarLoadingId('');
     }
   }
+  async function loadGmailMessages() {
+    if (gmailLoading) return;
+    setGmailLoading(true);
+    setGmailError('');
+    try {
+      const params = new URLSearchParams({ limit: '20' });
+      if (gmailQuery.trim()) params.set('q', gmailQuery.trim());
+      const response = await authenticatedFetch('/api/plugins/gmail/messages?' + params.toString(), {
+        headers: { Accept: 'application/json' },
+      }, userId);
+      const payload = await response.json().catch(() => ({})) as { messages?: GmailMessage[]; error?: string };
+      if (!response.ok || !Array.isArray(payload.messages)) throw new Error(payload.error || 'Gmail messages could not be loaded.');
+      setGmailMessages(payload.messages);
+      setGmailLoaded(true);
+    } catch (cause) {
+      setGmailError(cause instanceof Error ? cause.message : 'Gmail messages could not be loaded.');
+    } finally {
+      setGmailLoading(false);
+    }
+  }
+
   async function disconnectProvider(pluginId: string) {
     const providerId = OAUTH_PROVIDER_IDS[pluginId];
     if (!providerId || connectionBusyId) return;
@@ -453,7 +481,28 @@ function PluginIntegrationsSettingsContent({
             <p className="mt-2 text-[10px] leading-4 text-slate-500">OAuth authorization is stored encrypted server-side. A connected record is not a live provider health check.</p>
           </div>}
           <p className="mt-2 text-[11px] text-slate-500">Intended scopes: {plugin.scopes.join(' · ')}</p>
-          {providerId && connected && <div className="mt-3 border-t border-white/5 pt-3">
+          {plugin.id === 'gmail' && connected && <div className="mt-3 border-t border-white/5 pt-3">
+            <form onSubmit={event => { event.preventDefault(); void loadGmailMessages(); }} className="flex flex-col gap-2 sm:flex-row">
+              <label className="min-w-0 flex-1 text-[11px] text-slate-400">Gmail search
+                <input aria-label="Gmail search query" value={gmailQuery} onChange={event => setGmailQuery(event.target.value)} maxLength={200} placeholder="from:example@email.com or subject:invoice" className="mt-1 block w-full rounded-md border border-white/10 bg-slate-950 px-2.5 py-2 text-xs text-white" />
+              </label>
+              <button type="submit" disabled={gmailLoading || connectionsLoading} className="self-end rounded-md border border-cyan-300/20 px-3 py-2 text-xs text-cyan-100 disabled:opacity-50">
+                {gmailLoading ? 'Searching…' : 'Search mailbox'}
+              </button>
+            </form>
+            {gmailError && <p role="alert" className="mt-2 text-xs text-rose-200">{gmailError}</p>}
+            {gmailLoaded && <ul className="mt-3 space-y-2" aria-label="Gmail search results">
+              {gmailMessages.length === 0
+                ? <li className="text-xs text-slate-400">No messages matched this search.</li>
+                : gmailMessages.map(message => <li key={message.id} className="rounded-md bg-slate-950/70 p-2 text-xs">
+                  <p className="font-medium text-slate-200">{message.subject || '(No subject)'}</p>
+                  <p className="mt-1 text-slate-400">{message.from || 'Sender unavailable'}{message.receivedAt ? ' · ' + new Date(message.receivedAt).toLocaleString() : ''}</p>
+                  {message.snippet && <p className="mt-1 text-slate-500">{message.snippet}</p>}
+                </li>)}
+            </ul>}
+            <p className="mt-2 text-[10px] leading-4 text-slate-500">Read-only access: RyanAI retrieves message metadata and short snippets only. It cannot read full message bodies, create drafts or send email from this integration.</p>
+          </div>}
+          {providerId && providerId !== 'gmail' && connected && <div className="mt-3 border-t border-white/5 pt-3">
             <button type="button" onClick={() => void loadCalendarEvents(plugin.id)} disabled={calendarLoadingId === plugin.id || connectionsLoading} className="rounded-md border border-cyan-300/20 px-2.5 py-1.5 text-xs text-cyan-100 disabled:opacity-50">
               {calendarLoadingId === plugin.id ? 'Loading events…' : 'Load next 7 days'}
             </button>

@@ -421,4 +421,94 @@ describe('provider authorization HTTP lifecycle', () => {
     await app.close();
   });
 
+
+  it('reads only owner Gmail message metadata with the read-only scope and never returns credentials', async () => {
+    vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
+    vi.stubEnv('RYANAI_PLUGIN_GMAIL_CLIENT_ID', 'synthetic-gmail-client');
+    vi.stubEnv('RYANAI_PLUGIN_GMAIL_CLIENT_SECRET', 'synthetic-gmail-secret');
+    vi.stubEnv('RYANAI_PLUGIN_GMAIL_REDIRECT_URI', 'https://api.example.test/api/plugins/oauth/gmail/callback');
+    const { app, connectionRows } = await createApp();
+    const encrypted = encryptProviderCredential(
+      'synthetic-gmail-access-token', Buffer.from(key, 'hex'),
+      'plugin-token:gmail:owner-user-1',
+    );
+    connectionRows.set(`${owner.id}:gmail`, {
+      id: 'gmail-connection', ownerUserId: owner.id, providerId: 'gmail',
+      status: 'connected', encryptedAccessToken: encrypted,
+      accessTokenExpiresAt: new Date(Date.now() + 60_000),
+      grantedScopes: ['https://www.googleapis.com/auth/gmail.readonly'],
+    });
+    const fetchMock = vi.fn(async (url: URL, init: RequestInit) => {
+      expect(url.origin).toBe('https://gmail.googleapis.com');
+      expect(new Headers(init.headers).get('authorization')).toBe('Bearer synthetic-gmail-access-token');
+      if (url.pathname.endsWith('/messages')) {
+        expect(url.searchParams.get('maxResults')).toBe('5');
+        expect(url.searchParams.get('q')).toBe('from:owner@example.test');
+        return new Response(JSON.stringify({ messages: [{ id: 'message-1', threadId: 'thread-1' }] }), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        });
+      }
+      expect(url.pathname).toBe('/gmail/v1/users/me/messages/message-1');
+      expect(url.searchParams.get('format')).toBe('metadata');
+      expect(url.searchParams.getAll('metadataHeaders')).toEqual(['From', 'Subject']);
+      return new Response(JSON.stringify({
+        id: 'message-1', threadId: 'thread-1', snippet: 'A short preview',
+        internalDate: '1795000000000',
+        payload: { headers: [
+          { name: 'From', value: 'Owner <owner@example.test>' },
+          { name: 'Subject', value: 'RyanAI review' },
+        ] },
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/plugins/gmail/messages?q=from%3Aowner%40example.test&limit=5',
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      provider: 'gmail',
+      messages: [{
+        id: 'message-1', threadId: 'thread-1', snippet: 'A short preview',
+        from: 'Owner <owner@example.test>', subject: 'RyanAI review',
+      }],
+    });
+    expect(response.body).not.toContain('synthetic-gmail-access-token');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await app.close();
+  });
+
+  it('rejects Gmail message retrieval without the read-only scope before contacting Google', async () => {
+    vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
+    vi.stubEnv('RYANAI_PLUGIN_GMAIL_CLIENT_ID', 'synthetic-gmail-client');
+    vi.stubEnv('RYANAI_PLUGIN_GMAIL_CLIENT_SECRET', 'synthetic-gmail-secret');
+    vi.stubEnv('RYANAI_PLUGIN_GMAIL_REDIRECT_URI', 'https://api.example.test/api/plugins/oauth/gmail/callback');
+    const { app, connectionRows } = await createApp();
+    connectionRows.set(`${owner.id}:gmail`, {
+      id: 'gmail-connection', ownerUserId: owner.id, providerId: 'gmail',
+      status: 'connected', encryptedAccessToken: 'ciphertext',
+      accessTokenExpiresAt: new Date(Date.now() + 60_000), grantedScopes: [],
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await app.inject({ method: 'GET', url: '/api/plugins/gmail/messages' });
+    expect(response.statusCode).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('starts Gmail OAuth with only the Gmail read-only scope', async () => {
+    vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
+    vi.stubEnv('RYANAI_PLUGIN_GMAIL_CLIENT_ID', 'synthetic-gmail-client');
+    vi.stubEnv('RYANAI_PLUGIN_GMAIL_CLIENT_SECRET', 'synthetic-gmail-secret');
+    vi.stubEnv('RYANAI_PLUGIN_GMAIL_REDIRECT_URI', 'https://api.example.test/api/plugins/oauth/gmail/callback');
+    const { app } = await createApp();
+    const response = await app.inject({ method: 'POST', url: '/api/plugins/gmail/connect' });
+    expect(response.statusCode).toBe(200);
+    const url = new URL((response.json() as { authorizationUrl: string }).authorizationUrl);
+    expect(url.origin).toBe('https://accounts.google.com');
+    expect(url.searchParams.get('scope')).toBe('https://www.googleapis.com/auth/gmail.readonly');
+    expect(url.searchParams.get('access_type')).toBe('offline');
+    await app.close();
+  });
 });
