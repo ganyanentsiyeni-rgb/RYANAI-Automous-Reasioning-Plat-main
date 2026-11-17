@@ -10,6 +10,7 @@ This README describes the application and contracts present in this repository. 
 
 - [Product overview](#product-overview)
 - [Architecture](#architecture)
+- [Mission-centric target architecture](#mission-centric-target-architecture)
 - [Core workspaces](#core-workspaces)
 - [Agent authority and execution lifecycle](#agent-authority-and-execution-lifecycle)
 - [Models and inference](#models-and-inference)
@@ -92,6 +93,23 @@ separately scoped audiobook storage/database connections.
 The repository contains Render and Railway configuration. The checked-in Render Blueprint describes web and API services; railway.json describes a Docker API service and health check. These files are configuration contracts, not proof that a deployment is active or healthy.
 
 The current deployment model must be verified against the live service source and exact commit before any release. Do not infer that a successful image build triggered a deployment: inspect the deployment workflow and commit-based trigger. Vercel is not part of the current RyanAI hosting architecture.
+
+## Mission-centric target architecture
+
+RyanAI's proposed next-stage operating model is documented in the [Mission-Centric Operating Architecture](docs/architecture/mission-centric-operating-architecture.md).
+
+The target architecture organizes the platform around twelve domains and four independently governed planes:
+
+- **Control:** identity, Gen-X policy decisions, approvals, and capability authority.
+- **Intelligence:** ontology, context, models, agents, memory retrieval, and Jarvis coordination.
+- **Execution:** authenticated APIs, workers, capability adapters, integrations, and workspaces.
+- **Evidence:** audit records, events, traces, CI/security results, verification, and provenance.
+
+Its operating sequence is **Mission → Authority → Reality → Reasoning → Coordination → Authorized execution → Verification → Institutional memory**.
+
+The architecture makes an important distinction between proposed target state and implemented repository behavior. It does not claim that every proposed service, API, table, policy, or workflow already exists. The ontology is a semantic layer over domain-owned records, not a replacement for PostgreSQL or existing migration ownership. Gen-X remains the authorization authority; Jarvis coordinates but cannot grant permissions. Consequential execution is performed through bounded capability adapters and independently verified.
+
+The document also defines database ownership boundaries, canonical service contracts, event and memory governance, a threat model, architecture decision records, and a phased implementation roadmap. It does not authorize production migrations, deployments, infrastructure changes, secret changes, paid upgrades, automatic merges, or live external communications.
 
 ## Core workspaces
 
