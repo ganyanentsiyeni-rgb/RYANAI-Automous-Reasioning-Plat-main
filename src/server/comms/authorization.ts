@@ -31,7 +31,7 @@ function canonical(value: unknown): string {
 
 export function normalizeCommsRecipient(channel: CommsChannel | DestinationChannel, value: string): string {
   const trimmed = value.trim();
-  if (channel === 'email') return trimmed.toLowerCase();
+  if (String(channel) === 'email') return trimmed.toLowerCase();
   return trimmed.replace(/^whatsapp:/i, '').replace(/[^+\d]/g, '');
 }
 
@@ -64,7 +64,7 @@ async function verifiedDestination(
   channel: CommsChannel,
   recipient: string,
 ): Promise<boolean> {
-  const destinationChannel: DestinationChannel = channel === 'email' ? 'email' : 'phone';
+  const destinationChannel: DestinationChannel = String(channel) === 'email' ? 'email' : 'phone';
   const rows = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
     `SELECT id FROM public.comms_verified_destinations
      WHERE owner_user_id = $1 AND channel = $2 AND normalized_address = $3
@@ -145,7 +145,7 @@ function validChannel(value: unknown): value is CommsChannel {
 }
 
 function validRecipient(channel: DestinationChannel, recipient: string): boolean {
-  return channel === 'email'
+  return String(channel) === 'email'
     ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)
     : /^\+[1-9]\d{7,14}$/.test(recipient);
 }
@@ -289,9 +289,9 @@ export const commsAuthorizationRoutes: FastifyPluginAsync = async (fastify) => {
     if (body.attachmentIds !== undefined && !Array.isArray(body.attachmentIds)) return reply.code(400).send({ error: 'Attachment IDs must be a list.' });
     const attachmentIds = Array.isArray(body.attachmentIds) ? body.attachmentIds : [];
     if (!validChannel(channel)) return reply.code(400).send({ error: 'Unsupported communication channel.' });
-    if (channel === 'email') return reply.code(503).send({ error: 'Email approvals are disabled until a delivery-callback-capable provider is integrated. SMTP acceptance is not delivery confirmation.' });
+    if (String(channel) === 'email') return reply.code(503).send({ error: 'Email approvals are disabled until a delivery-callback-capable provider is integrated. SMTP acceptance is not delivery confirmation.' });
     const normalizedRecipient = normalizeCommsRecipient(channel, recipient);
-    const destinationChannel: DestinationChannel = channel === 'email' ? 'email' : 'phone';
+    const destinationChannel: DestinationChannel = String(channel) === 'email' ? 'email' : 'phone';
     if (!validRecipient(destinationChannel, normalizedRecipient)) return reply.code(400).send({ error: 'Recipient address is invalid.' });
     if (!idempotencyKey || idempotencyKey.length < 16 || idempotencyKey.length > 128 || !/^[a-zA-Z0-9._:-]+$/.test(idempotencyKey)) return reply.code(400).send({ error: 'A valid idempotency key is required.' });
     if ((!message && !(channel === 'whatsapp' && (body.contentSid || process.env.TWILIO_WHATSAPP_CONTENT_SID?.trim()))) || message.length > 4000) return reply.code(400).send({ error: 'A message of at most 4,000 characters is required.' });
@@ -300,7 +300,7 @@ export const commsAuthorizationRoutes: FastifyPluginAsync = async (fastify) => {
     if (!verified) return reply.code(403).send({ error: 'Verify this destination before requesting a send approval.' });
     const ownerPhone = process.env.RYANAI_OWNER_PHONE?.trim();
     const ownerEmail = process.env.RYANAI_OWNER_EMAIL?.trim();
-    const isOwnerRecipient = channel === 'email'
+    const isOwnerRecipient = String(channel) === 'email'
       ? normalizedRecipient === ownerEmail?.toLowerCase()
       : Boolean(ownerPhone && normalizeCommsRecipient('sms', normalizedRecipient) === normalizeCommsRecipient('sms', ownerPhone));
     const deliveryBody = isOwnerRecipient && message ? addressOwnerMessage(message) : message;
