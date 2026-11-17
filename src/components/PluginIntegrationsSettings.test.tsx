@@ -287,4 +287,46 @@ describe('Plugin integrations centre', () => {
     expect(call?.[2]).toBe('user-a');
   });
 
+
+  it('connects Gmail through Google OAuth and searches read-only mailbox metadata', async () => {
+    api.authenticatedFetch.mockImplementation(async (url: string) => ({
+      ok: true,
+      json: async () => url === '/api/plugins/registry' ? { providers: [] }
+        : url === '/api/plugins/gmail/connect' ? { authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth?client_id=test&scope=gmail.readonly' }
+          : url === '/api/plugins/gmail/messages?limit=20' ? { messages: [{
+            id: 'message-1', threadId: 'thread-1', subject: 'RyanAI update',
+            from: 'owner@example.test', snippet: 'Short preview only', receivedAt: '2026-11-17T10:00:00Z',
+          }] }
+            : url === '/api/github/status' ? { status: 'not_connected', connected: false }
+              : { connections: [{ providerId: 'gmail', status: 'connected', connectionState: 'connected', credentialState: 'access_token_valid_or_expiry_unknown', healthState: 'not_probed', lastHealthCheckAt: null }] },
+    }));
+    const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => undefined);
+    await mount();
+    const gmailCard = container.querySelector('[data-plugin-id="gmail"]') as HTMLElement;
+    await vi.waitFor(() => expect(gmailCard.textContent).toContain('Connected · provider health not checked'));
+    expect(gmailCard.textContent).toContain('Read-only mailbox API');
+    expect(gmailCard.textContent).toContain('Drafting and sending are not enabled');
+    await click([...gmailCard.querySelectorAll('button')].find(button => button.textContent === 'Search mailbox') ?? null);
+    await vi.waitFor(() => expect(gmailCard.textContent).toContain('RyanAI update'));
+    expect(gmailCard.textContent).toContain('Short preview only');
+    expect(gmailCard.textContent).toContain('cannot read full message bodies, create drafts or send email');
+    expect(api.authenticatedFetch).toHaveBeenCalledWith('/api/plugins/gmail/messages?limit=20', { headers: { Accept: 'application/json' } }, 'user-a');
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it('starts Gmail authorization only through the trusted Google OAuth host', async () => {
+    api.authenticatedFetch.mockImplementation(async (url: string) => ({
+      ok: true,
+      json: async () => url === '/api/plugins/registry' ? { providers: [] }
+        : url === '/api/plugins/gmail/connect' ? { authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth?client_id=test' }
+          : url === '/api/github/status' ? { status: 'not_connected', connected: false }
+            : { connections: [] },
+    }));
+    const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => undefined);
+    await mount();
+    const gmailCard = container.querySelector('[data-plugin-id="gmail"]') as HTMLElement;
+    await click([...gmailCard.querySelectorAll('button')].find(button => button.textContent === 'Connect account') ?? null);
+    expect(api.authenticatedFetch).toHaveBeenCalledWith('/api/plugins/gmail/connect', { method: 'POST', headers: { Accept: 'application/json' } }, 'user-a');
+    expect(assign).toHaveBeenCalledWith(expect.stringContaining('https://accounts.google.com/'));
+  });
 });

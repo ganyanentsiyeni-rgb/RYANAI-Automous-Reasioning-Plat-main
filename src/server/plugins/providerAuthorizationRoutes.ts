@@ -662,6 +662,7 @@ export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) =
         return reply.code(502).send({ error: 'Calendar events could not be retrieved.' });
       }
     },
+  );
 
   fastify.get<{ Params: { provider: string }; Querystring: { q?: string; limit?: string } }>(
     '/api/plugins/:provider/messages',
@@ -740,7 +741,7 @@ export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) =
             id: typeof detail.id === 'string' ? detail.id : item.id,
             threadId: typeof detail.threadId === 'string' ? detail.threadId : item.threadId ?? null,
             snippet: typeof detail.snippet === 'string' ? detail.snippet.slice(0, 500) : '',
-            receivedAt: typeof detail.internalDate === 'string' && /^\\d{1,16}$/.test(detail.internalDate)
+            receivedAt: typeof detail.internalDate === 'string' && /^\d{1,16}$/.test(detail.internalDate)
               ? new Date(Number(detail.internalDate)).toISOString() : null,
             from: header('From'),
             subject: header('Subject'),
@@ -752,6 +753,5 @@ export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) =
         return reply.code(502).send({ error: 'Gmail messages could not be retrieved.' });
       }
     },
-  );
   );
 };
