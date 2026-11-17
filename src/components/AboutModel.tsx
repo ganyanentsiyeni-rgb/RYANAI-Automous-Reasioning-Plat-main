@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import Modal from './Modal';
 import { BookOpen, Cpu, Database, GitBranch, Network, RefreshCw, ShieldCheck, Workflow } from 'lucide-react';
 import packageMetadata from '../../package.json';
@@ -42,7 +43,7 @@ function readinessLabel(
   return health.status === 'online' ? 'Ready' : 'Degraded';
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="rounded-lg border border-white/10 bg-ink-800/30 p-3">
       <h3 className="text-xs font-semibold uppercase tracking-wide text-cyan-200">{title}</h3>
