@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const read = (path) => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
@@ -33,7 +33,6 @@ test('package scripts use the same persistent API runtime and run the regression
 });
 
 test('retired legacy auth gateway with embedded fallback credentials is absent', () => {
-  const { existsSync } = require('node:fs');
   assert.equal(
     existsSync(new URL('../src/auth/authGateway.ts', import.meta.url)),
     false,
