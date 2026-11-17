@@ -741,7 +741,7 @@ export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) =
             id: typeof detail.id === 'string' ? detail.id : item.id,
             threadId: typeof detail.threadId === 'string' ? detail.threadId : item.threadId ?? null,
             snippet: typeof detail.snippet === 'string' ? detail.snippet.slice(0, 500) : '',
-            receivedAt: typeof detail.internalDate === 'string' && /^\\d{1,16}$/.test(detail.internalDate)
+            receivedAt: typeof detail.internalDate === 'string' && /^\d{1,16}$/.test(detail.internalDate)
               ? new Date(Number(detail.internalDate)).toISOString() : null,
             from: header('From'),
             subject: header('Subject'),
