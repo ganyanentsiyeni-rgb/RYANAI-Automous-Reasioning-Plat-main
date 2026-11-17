@@ -23,6 +23,9 @@ function environment() {
 }
 
 describe('GitHub App OAuth security primitives', () => {
+  it('targets the current RyanAI source-of-truth repository', () => {
+    expect(GITHUB_APP_REPOSITORY).toBe('ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main');
+  });
   it('fails closed when any required server setting is missing or malformed', () => {
     const env = environment();
     expect(readGitHubAppConfig(env)).not.toBeNull();
