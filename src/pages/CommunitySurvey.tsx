@@ -52,6 +52,10 @@ export default function CommunitySurveyPage() {
   const [betaError, setBetaError] = useState('');
   const [notificationStatus, setNotificationStatus] = useState<'accepted' | 'not_configured' | 'failed' | 'unknown'>('unknown');
 
+  const requiredProgressKeys = ['role', 'aiExperience', 'discovery', 'currentUse', 'usefulness', 'topPriority', 'biggestBarrier', 'trustPriority', 'accessPreference', 'betaInterest'] as const;
+  const completedRequiredAnswers = requiredProgressKeys.filter((key) => answers[key].trim().length > 0).length;
+  const progressPercent = Math.round((completedRequiredAnswers / requiredProgressKeys.length) * 100);
+
   const update = (key: string, value: string | boolean | string[]) => setAnswers((current) => ({ ...current, [key]: value }));
   const toggle = (key: 'features' | 'useCases', value: string) => {
     const current = answers[key];
@@ -154,6 +158,12 @@ export default function CommunitySurveyPage() {
           </div>
         </header>
 
+        <div className="mt-6 rounded-2xl border border-cyan-200/15 bg-slate-900/70 p-4" aria-label="Survey completion progress">
+          <div className="flex items-center justify-between gap-3 text-xs"><span className="font-semibold text-slate-200">Your progress</span><span className="tabular-nums text-cyan-200">{completedRequiredAnswers} of {requiredProgressKeys.length} required answers · {progressPercent}%</span></div>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10" role="progressbar" aria-label="Required survey answers completed" aria-valuemin={0} aria-valuemax={requiredProgressKeys.length} aria-valuenow={completedRequiredAnswers}><div className="h-full rounded-full bg-cyan-300 transition-[width]" style={{ width: progressPercent + '%' }} /></div>
+          <p className="mt-2 text-xs text-slate-500">You can review your answers before submitting. Written feedback is optional.</p>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3 text-sm"><a href="#/help" className="font-semibold text-cyan-200 underline-offset-4 hover:underline">Visit the RyanAI Help Centre and FAQ</a></div>
         <form onSubmit={submit} className="mt-6 space-y-5">
           <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-5 sm:p-7">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200">01 / About you</p>
