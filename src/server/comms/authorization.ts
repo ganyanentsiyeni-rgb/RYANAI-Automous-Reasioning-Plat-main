@@ -289,6 +289,7 @@ export const commsAuthorizationRoutes: FastifyPluginAsync = async (fastify) => {
     if (body.attachmentIds !== undefined && !Array.isArray(body.attachmentIds)) return reply.code(400).send({ error: 'Attachment IDs must be a list.' });
     const attachmentIds = Array.isArray(body.attachmentIds) ? body.attachmentIds : [];
     if (!validChannel(channel)) return reply.code(400).send({ error: 'Unsupported communication channel.' });
+    if (channel === 'email') return reply.code(503).send({ error: 'Email approvals are disabled until a delivery-callback-capable provider is integrated. SMTP acceptance is not delivery confirmation.' });
     const normalizedRecipient = normalizeCommsRecipient(channel, recipient);
     const destinationChannel: DestinationChannel = channel === 'email' ? 'email' : 'phone';
     if (!validRecipient(destinationChannel, normalizedRecipient)) return reply.code(400).send({ error: 'Recipient address is invalid.' });
