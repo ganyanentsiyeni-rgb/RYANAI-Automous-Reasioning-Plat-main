@@ -31,20 +31,20 @@ describe('decideAction', () => {
     expect(dispatch).toHaveBeenCalledTimes(0);
   });
 
-  it('sends an approved action once and records the result', async () => {
+  it('fails closed when the legacy communications dispatcher is disabled', async () => {
     claim.mockResolvedValue(row);
-    dispatch.mockResolvedValue('Email sent.');
+    dispatch.mockRejectedValue(new Error('Legacy outbound communications dispatch is disabled.'));
     expect(await decideAction('a1', 'admin-1', true, deps)).toEqual({
-      outcome: 'executed',
-      result: 'Email sent.',
+      outcome: 'failed',
+      error: 'Legacy outbound communications dispatch is disabled.',
     });
     expect(claim).toHaveBeenCalledWith('a1', 'admin-1', 'approved');
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(dispatch).toHaveBeenCalledWith('send_email', email);
-    expect(finish).toHaveBeenCalledWith('a1', { result: 'Email sent.' });
+    expect(finish).toHaveBeenCalledWith('a1', { error: 'Legacy outbound communications dispatch is disabled.' });
   });
 
-  it('records a failed send and reports the error', async () => {
+  it('records a rejected provider dispatch and reports the error', async () => {
     claim.mockResolvedValue(row);
     dispatch.mockRejectedValue(new Error('SMTP is not configured on this server.'));
     expect(await decideAction('a1', 'admin-1', true, deps)).toEqual({
@@ -63,14 +63,14 @@ describe('decideAction', () => {
     expect(dispatch).toHaveBeenCalledTimes(0);
   });
 
-  it('still reports a sent message when the outcome cannot be recorded', async () => {
+  it('reports the disabled dispatcher failure even if outcome persistence also fails', async () => {
     claim.mockResolvedValue(row);
-    dispatch.mockResolvedValue('Email sent.');
+    dispatch.mockRejectedValue(new Error('Legacy outbound communications dispatch is disabled.'));
     finish.mockRejectedValue(new Error('database is down'));
     const silent = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     expect(await decideAction('a1', 'admin-1', true, deps)).toEqual({
-      outcome: 'executed',
-      result: 'Email sent.',
+      outcome: 'failed',
+      error: 'Legacy outbound communications dispatch is disabled.',
     });
     silent.mockRestore();
   });

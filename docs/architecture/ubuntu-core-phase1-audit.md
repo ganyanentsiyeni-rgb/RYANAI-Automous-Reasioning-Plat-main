@@ -58,13 +58,13 @@ However, the approved Hybrid OS design must distinguish the intended operating m
 
 | Entry point | Existing control | Required follow-up |
 |---|---|---|
-| Pending action routes | Admin-only route hook; action claim uses a conditional one-time state update; args are parsed again before dispatch | Bind approval to immutable action digest, requester, target, arguments, expiry and approver; verify the digest again at execution |
+| Pending action routes | Admin-only route hook; action claim uses a conditional one-time state update; args are parsed again; the legacy dispatcher in `src/approvals/dispatch.ts` is fail-closed and cannot call SMTP/Twilio | Keep the legacy queue disabled for provider sends; bind any future replacement approval to immutable action digest, requester, target, arguments, expiry and approver; verify the digest again at execution |
 | LangGraph approval routes | Admin-only route hook; resumes a paused graph using a thread ID | Persist an approval receipt for the exact pending tool call and arguments; bind requester, approver, policy version and one-time execution |
 | Slack interactions | Slack HMAC and timestamp/replay-window verification | Add an explicit authorized Slack user/team/channel policy; payload username is display data, not an authorization identity |
 | PA delegation | User-scoped delegation records and Gen-X policy evaluation; owner can approve their own delegation | Clarify which actions permit same-owner approval and which require an independent second human; bind the exact capability set and task digest |
 | Provider communications | Agent tools include policy lookup and draft preparation; provider sends are outside those draft tools | Keep live dispatch disabled until callback verification, destination/owner verification, explicit test authorization and durable evidence are demonstrated |
 
-The current approval paths are not interchangeable. An administrator-only endpoint, signed Slack request, pending-action ID, or graph thread ID does not by itself prove that a human approved the exact immutable action that will execute.
+The current approval paths are not interchangeable. An administrator-only endpoint, signed Slack request, pending-action ID, or graph thread ID does not by itself prove that a human approved the exact immutable action that will execute. The legacy pending-action queue currently fails closed at the dispatcher; the graph-based communications worker is limited to drafts and policy/context tools. The owner-verified communications gateway is the only code path intended for provider dispatch.
 
 ## 4. Edge/device readiness
 

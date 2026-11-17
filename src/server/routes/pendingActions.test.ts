@@ -74,16 +74,16 @@ describe('POST /api/actions/:id/approve and /reject', () => {
     expect(service.decideAction).not.toHaveBeenCalled();
   });
 
-  it('approves with the id of the administrator and returns the result', async () => {
-    service.decideAction.mockResolvedValue({ outcome: 'executed', result: 'Email sent.' });
+  it('surfaces the fail-closed legacy communications result after an admin decision', async () => {
+    service.decideAction.mockResolvedValue({ outcome: 'failed', error: 'Legacy outbound communications dispatch is disabled.' });
     const response = await app.inject({
       method: 'POST',
       url: `/api/actions/${actionId}/approve`,
       headers: admin,
     });
     expect(service.decideAction).toHaveBeenCalledWith(actionId, 'admin-1', true);
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ status: 'executed', result: 'Email sent.' });
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toEqual({ status: 'failed', error: 'Legacy outbound communications dispatch is disabled.' });
   });
 
   it('rejects an action', async () => {

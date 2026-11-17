@@ -6,8 +6,9 @@ import { requireAdmin } from './auth.js';
 
 /**
  * Let an administrator list, approve, and reject the actions that the agent
- * queued. Approving sends the message. Any user's agent can queue an action,
- * and only an administrator can release it.
+ * queued. The legacy provider dispatcher is disabled and fails closed; approving
+ * a queued legacy communication action cannot contact SMTP or Twilio. Any user's
+ * agent can queue an action, and only an administrator can decide it.
  */
 export const pendingActionsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', requireAdmin);
