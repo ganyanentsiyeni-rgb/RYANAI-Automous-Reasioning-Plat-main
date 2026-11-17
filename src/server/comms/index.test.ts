@@ -56,6 +56,7 @@ async function send(path: string, url: string, payload: Record<string, string>, 
 
 beforeEach(() => {
   vi.stubEnv('COMMUNICATIONS_ENABLED', 'true');
+  vi.stubEnv('RYANAI_COMMS_TEST_AUTHORIZED', 'true');
   prismaMock.communicationConversation.upsert.mockResolvedValue({ id: 'conversation-1' });
   prismaMock.communicationConversation.findMany.mockResolvedValue([]);
   prismaMock.communicationConversation.updateMany.mockResolvedValue({ count: 0 });
@@ -229,6 +230,15 @@ describe('Comms conversation intelligence', () => {
 });
 
 describe('outbound Comms request validation', () => {
+  it('blocks provider dispatch when explicit test authorization is absent', async () => {
+    vi.stubEnv('RYANAI_COMMS_TEST_AUTHORIZED', 'false');
+    const response = await send('/api/comms/send', '', {});
+    expect(response.statusCode).toBe(503);
+    expect(response.json().error).toContain('owner explicitly authorizes a communications test');
+    expect(prismaMock.$queryRawUnsafe).not.toHaveBeenCalled();
+    expect(prismaMock.$executeRawUnsafe).not.toHaveBeenCalled();
+  });
+
   it('blocks outbound dispatch when the recipient has not been verified', async () => {
     vi.stubEnv('TWILIO_ACCOUNT_SID', 'AC00000000000000000000000000000000');
     vi.stubEnv('TWILIO_PHONE_NUMBER', '+15555550000');
