@@ -476,6 +476,13 @@ jobs:
           PGPASSWORD: postgres
         run: docker run --rm --network host -e PGPASSWORD postgres:16-alpine createdb -h 127.0.0.1 -p 54322 -U postgres ryanai_prisma_shadow
 
+      - name: Provision Supabase Auth objects in Prisma shadow database
+        run: |
+          docker run --rm --network host -e PGPASSWORD=postgres \
+            -v "$GITHUB_WORKSPACE/tests/fixtures/supabase-auth-ci-bootstrap.sql:/tmp/supabase-auth-ci-bootstrap.sql:ro" \
+            postgres:16-alpine psql -h 127.0.0.1 -p 54322 -U postgres -d ryanai_prisma_shadow \
+              -v ON_ERROR_STOP=1 -f /tmp/supabase-auth-ci-bootstrap.sql
+
       - name: Compare Prisma migration history with the Prisma data model
         run: npx prisma migrate diff --from-migrations prisma/migrations --shadow-database-url "$SHADOW_DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
 
