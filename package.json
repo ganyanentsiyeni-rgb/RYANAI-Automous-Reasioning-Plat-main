@@ -152,7 +152,7 @@
     "runtime:verify": "npm run runtime:check && npm run typecheck && npm run build:server",
     "dev:stack": "npm run dev",
     "dev:check": "npm run runtime:check && npm run mcp:check && npm --prefix workflows-ryanai run build",
-    "test:runtime:preflight": "node --test scripts/runtime-preflight.test.mjs",
+    "test:runtime:preflight": "node --test scripts/runtime-preflight.node-test.mjs",
     "agent-governance:validate": "node scripts/validate-agent-governance.mjs",
     "test:agent-governance": "node --test scripts/agent-governance.node-test.mjs",
     "test:docker:postgres": "bash scripts/run-ephemeral-postgres-integration.sh",
