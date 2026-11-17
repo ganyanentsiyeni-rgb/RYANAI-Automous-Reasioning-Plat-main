@@ -34,7 +34,7 @@ async function supervisorNode(state: typeof SupervisorStateAnnotation.State) {
       role: 'system',
       content: `You are an enterprise multi-agent supervisor managing two worker agents:
 - "complianceWorker": Evaluates policy reviews, security audits, deployment status, and data validation.
-- "commsWorker": Handles sending messages, notifications, WhatsApp alerts, and external communications.
+- "commsWorker": Prepares communication drafts, explains channel policy, and reads owner-scoped communication context. It has no provider dispatch or call-placement tools.
 
 Evaluate the entire conversation history. 
 If the user query requires multiple actions (e.g., verifying compliance AND sending a message), select the appropriate worker for the next pending step.
