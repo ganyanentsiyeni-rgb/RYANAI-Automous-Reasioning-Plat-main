@@ -98,7 +98,7 @@ The current deployment model must be verified against the live service source an
 
 RyanAI's approved operating-system architecture combines three specialized environments under one security and recovery model. It is an operating model built from separate operating systems, not a new Linux distribution.
 
-- **Ubuntu LTS — Core:** the trusted host for RyanAI services, containers, model/agent workloads, memory, APIs, and observability.
+- **Ubuntu LTS — Core host target:** the baseline for an operator-managed Ubuntu host if RyanAI later runs on infrastructure where the OS is under operator control. It is not the currently evidenced OS of the managed Render/Railway hosting environment.
 - **Kali Linux — Security Zone:** an isolated environment for authorized security assessment and defensive testing. It is not a production runtime dependency and receives no standing production credentials.
 - **Raspberry Pi OS 64-bit — Edge:** controlled physical nodes for voice/audio, sensors, GPIO, cameras, local interfaces, and limited edge inference. Each device requires a unique identity and authenticated encrypted gateway connection.
 - **Security Fabric:** shared identity, authentication, Gen-X authorization, encrypted transport, audit, and telemetry across trust zones.
@@ -108,8 +108,11 @@ The initial trust zones are **CORE**, **SECURITY**, **EDGE**, **MANAGEMENT**, an
 
 Architecture approval is documentation approval only. It does not authorize hardware procurement, production deployment, production database changes, secret changes, infrastructure changes, or paid upgrades. Implementation must proceed through reviewed phases and evidence gates.
 
+Current implementation distinction: Render and Railway manage their underlying hosts. The checked-in API Dockerfiles use `node:24-alpine`; this is a container base image, not an Ubuntu host. The CORE zone is therefore a logical trust boundary today. An operator-managed Ubuntu host remains a future target and would require a separately reviewed infrastructure decision.
+
 Detailed specifications:
 - [Hybrid OS v1 architecture](docs/hybrid-os-v1.md)
+- [Ubuntu Core Phase 1 repository audit](docs/architecture/ubuntu-core-phase1-audit.md)
 - [Security architecture](docs/security/hybrid-os-security.md)
 - [Raspberry Pi edge platform](docs/hardware/ryanai-edge.md)
 - [Recovery and integrity layer](docs/recovery/ryanai-recovery.md)
@@ -262,7 +265,7 @@ For the main application:
 
 Optional modules may require additional provider accounts, native build tools, Android tooling, Rust/Tauri dependencies, or service-specific credentials.
 
-**Runtime compatibility note:** package.json declares Node.js 24.x, while the checked-in Dockerfiles currently use Node 26 base images. Reconcile and test this mismatch before treating local and container runtime compatibility as certified.
+**Runtime compatibility note:** package.json declares Node.js 24.x and the checked-in API Dockerfiles use `node:24-alpine`. Keep the package engine and container base aligned, and verify the exact image digest and runtime version in release evidence.
 
 ## Local development
 
@@ -273,7 +276,7 @@ git clone https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat
 cd RYANAI-Automous-Reasioning-Plat-main
 ~~~
 
-Use the branch and repository approved for your work. The Render Blueprint in this tree currently names the separate RyanAI-Automated/RYANAI-Automous-Reasioning-Plat repository as its service source; verify the intended canonical source before connecting or deploying this working repository.
+Use the canonical repository and branch approved for your work. The checked-in Render Blueprint currently names `ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main` on `main`; verify the live Render service's connected repository and deployed commit before any release.
 
 ### 2. Install dependencies
 
