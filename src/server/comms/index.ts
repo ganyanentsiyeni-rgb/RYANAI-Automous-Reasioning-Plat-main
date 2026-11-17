@@ -128,7 +128,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
         : Boolean(process.env.RYANAI_OWNER_PHONE && normalizePhone(target) === normalizePhone(process.env.RYANAI_OWNER_PHONE));
       const prepared = await prepareOutboundCommunication(fastify.prisma, {
         channel,
-        externalAddress: target,
+        externalAddress: String(channel) === 'email' ? target.toLowerCase() : target,
         body: ownerRecipient ? addressOwnerMessage(bodyText) : bodyText,
         idempotencyKey: key,
         ownerUserId: request.authUser.id,
