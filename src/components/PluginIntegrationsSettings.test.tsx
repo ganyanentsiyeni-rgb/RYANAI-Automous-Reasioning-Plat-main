@@ -268,4 +268,23 @@ describe('Plugin integrations centre', () => {
     expect(container.querySelector('[data-plugin-id="google-calendar"]')?.textContent).not.toContain('Adapter registered');
   });
 
+  it('loads read-only calendar events on explicit owner action and renders the returned schedule', async () => {
+    api.authenticatedFetch.mockImplementation(async (url: string) => ({
+      ok: true,
+      json: async () => url === '/api/plugins/registry' ? { providers: [] }
+        : url === '/api/github/status' ? { status: 'not_connected', connected: false }
+          : url.includes('/events?') ? { events: [{ id: 'event-1', title: 'RyanAI planning', start: '2026-11-18T10:00:00Z', end: '2026-11-18T10:30:00Z', location: 'Johannesburg', organizer: null }] }
+            : { connections: [{ providerId: 'google-calendar', status: 'connected', connectionState: 'connected', credentialState: 'access_token_valid_or_expiry_unknown', healthState: 'not_probed', lastHealthCheckAt: null }] },
+    }));
+    await mount();
+    await vi.waitFor(() => expect(container.textContent).toContain('Connected · provider health not checked'));
+    await click([...container.querySelectorAll('button')].find(button => button.textContent === 'Load next 7 days') ?? null);
+    await vi.waitFor(() => expect(container.textContent).toContain('RyanAI planning'));
+    expect(container.textContent).toContain('Johannesburg');
+    expect(container.textContent).toContain('Read-only calendar access');
+    const call = api.authenticatedFetch.mock.calls.find((args: unknown[]) => typeof args[0] === 'string' && args[0].includes('/api/plugins/google-calendar/events?'));
+    expect(call).toBeTruthy();
+    expect(call?.[2]).toBe('user-a');
+  });
+
 });
