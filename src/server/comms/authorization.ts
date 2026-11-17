@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import twilio from 'twilio';
 import { evaluateGenXSecurityEvent } from '../../security/genxPolicy.js';
 import { isCommunicationsEnabled } from './featureFlags.js';
+import { addressOwnerMessage } from './personalization.js';
 
 export type CommsChannel = 'whatsapp' | 'sms' | 'voice' | 'email';
 export type DestinationChannel = 'phone' | 'email';
@@ -163,7 +164,7 @@ type AuthorizationBody = {
 export const commsAuthorizationRoutes: FastifyPluginAsync = async (fastify) => {
   if (!isCommunicationsEnabled()) return;
 
-  const ownerId = (request: { authUser?: { id: string; isOwner?: boolean } }) =>
+  const ownerId = (request: { authUser?: { id: string; isOwner?: boolean } | null }) =>
     request.authUser?.isOwner ? request.authUser.id : null;
 
   fastify.post<{ Body: { channel?: DestinationChannel; recipient?: string } }>(
@@ -287,7 +288,7 @@ export const commsAuthorizationRoutes: FastifyPluginAsync = async (fastify) => {
     const isOwnerRecipient = channel === 'email'
       ? normalizedRecipient === ownerEmail?.toLowerCase()
       : Boolean(ownerPhone && normalizeCommsRecipient('sms', normalizedRecipient) === normalizeCommsRecipient('sms', ownerPhone));
-    const deliveryBody = isOwnerRecipient && message ? message : message;
+    const deliveryBody = isOwnerRecipient && message ? addressOwnerMessage(message) : message;
     const payload = buildCommsActionPayload({
       channel,
       recipient: normalizedRecipient,
