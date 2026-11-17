@@ -330,7 +330,6 @@ async function processAgentRun(
     if (activeRegion) {
       try { await recordRegion(activeRegion, 'failed', { error: message.slice(0, 300) }); }
       catch { /* The original execution failure remains authoritative if telemetry persistence also fails. */ }
-      activeRegion = null;
     }
     const nextAttemptAt = new Date(Date.now() + getAgentRunRetryDelayMs(run.attempts));
     const current = await prisma.agentRun.findUnique({ where: { id: run.id }, select: { cancelRequestedAt: true } });
