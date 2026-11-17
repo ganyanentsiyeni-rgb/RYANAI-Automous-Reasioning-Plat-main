@@ -84,11 +84,9 @@ export const DEFAULT_PLUGIN_MANIFESTS: readonly PluginManifest[] = Object.freeze
   {
     id: 'outlook-mail', displayName: 'Outlook Mail', version: '1.0.0',
     categories: ['communications', 'pa_agent', 'workflows'],
-    description: 'Outlook email search, drafting and governed sending.',
+    description: 'Read-only Outlook message metadata and short previews. Drafting and sending are not enabled.',
     capabilities: [
       { id: 'messages.read', risk: 'read', requiresHumanApproval: false },
-      { id: 'messages.draft', risk: 'write', requiresHumanApproval: false },
-      { id: 'messages.send', risk: 'outbound', requiresHumanApproval: true },
     ],
     dataClassifications: ['personal_data', 'communication_content'],
   },
