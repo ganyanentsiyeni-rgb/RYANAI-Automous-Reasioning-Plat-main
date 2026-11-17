@@ -233,43 +233,30 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
     if (!channel || !['whatsapp', 'sms', 'voice', 'email'].includes(channel)) return reply.code(400).send({ success: false, error: 'Unsupported communication channel.' });
     if (!Array.isArray(attachmentIds) || attachmentIds.length > 8 || new Set(attachmentIds).size !== attachmentIds.length) return reply.code(400).send({ success: false, error: 'At most 8 unique attachment IDs are supported.' });
     if (attachmentIds.length && (channel === 'voice' || (channel === 'whatsapp' && Boolean(contentSid || process.env.TWILIO_WHATSAPP_CONTENT_SID?.trim())))) return reply.code(400).send({ success: false, error: 'Voice and approved WhatsApp template sends cannot include attachments.' });
-    const targetValue = recipient || (String(channel) === 'email' ? process.env.RYANAI_OWNER_EMAIL : process.env.RYANAI_OWNER_PHONE);
+    const targetValue = recipient || process.env.RYANAI_OWNER_PHONE;
     const target = typeof targetValue === 'string' ? targetValue.trim() : '';
     const messageBody = typeof message === 'string' ? message.trim() : '';
     const key = typeof idempotencyKey === 'string' ? idempotencyKey.trim() : '';
-    const isOwnerRecipient = String(channel) === 'email'
-      ? target.toLowerCase() === process.env.RYANAI_OWNER_EMAIL?.trim().toLowerCase()
-      : Boolean(target && process.env.RYANAI_OWNER_PHONE && normalizePhone(target) === normalizePhone(process.env.RYANAI_OWNER_PHONE));
+    const isOwnerRecipient = Boolean(target && process.env.RYANAI_OWNER_PHONE && normalizePhone(target) === normalizePhone(process.env.RYANAI_OWNER_PHONE));
     const deliveryBody = isOwnerRecipient ? addressOwnerMessage(messageBody) : messageBody;
     const emailSubject = typeof subject === 'string' && subject.trim() ? subject.trim() : 'RyanAI notification';
     const approvedTemplateSid = typeof contentSid === 'string' ? contentSid.trim() || process.env.TWILIO_WHATSAPP_CONTENT_SID?.trim() : process.env.TWILIO_WHATSAPP_CONTENT_SID?.trim();
     if (!key || key.length < 16 || key.length > 128 || !/^[a-zA-Z0-9._:-]+$/.test(key)) return reply.code(400).send({ success: false, error: 'A valid 16–128 character idempotency key is required.' });
     if (!target || ((!messageBody) && !(channel === 'whatsapp' && approvedTemplateSid)) || messageBody.length > MAX_MESSAGE_LENGTH) return reply.code(400).send({ success: false, error: 'channel, recipient and a message of at most 4,000 characters are required.' });
-    if (String(channel) === 'email') {
-      if (!messageBody) return reply.code(400).send({ success: false, error: 'An email message body is required.' });
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(target)) return reply.code(400).send({ success: false, error: 'Recipient must be a valid email address.' });
-      if (typeof subject === 'string' && subject.trim().length > 180) return reply.code(400).send({ success: false, error: 'Email subject must be no longer than 180 characters.' });
-    } else if (!E164.test(target)) {
-      return reply.code(400).send({ success: false, error: 'Recipient must be a valid E.164 phone number.' });
-    }
-    const smtp = String(channel) === 'email' ? smtpTransport() : null;
-    if (String(channel) === 'email' && !smtp) return reply.code(503).send({ success: false, error: 'SMTP is not configured.' });
-    if (String(channel) === 'email') return reply.code(503).send({ success: false, error: 'Email dispatch is disabled until a delivery-callback-capable provider is configured. SMTP acceptance is not delivery confirmation.' });
-    const client = channel !== 'email' ? twilioClient() : null;
-    if (channel !== 'email' && !client) return reply.code(503).send({ success: false, error: 'Twilio is not configured.' });
+    if (!E164.test(target)) return reply.code(400).send({ success: false, error: 'Recipient must be a valid E.164 phone number.' });
+    const client = twilioClient();
+    if (!client) return reply.code(503).send({ success: false, error: 'Twilio is not configured.' });
     const statusCallbackUrl = process.env.TWILIO_STATUS_CALLBACK_URL?.trim();
     const statusWebhookUrl = process.env.TWILIO_STATUS_WEBHOOK_URL?.trim();
-    if (channel !== 'email') {
-      let callbackIsSecure: boolean;
-      try { callbackIsSecure = Boolean(statusCallbackUrl && new URL(statusCallbackUrl).protocol === 'https:'); } catch { callbackIsSecure = false; }
-      if (!callbackIsSecure || statusCallbackUrl !== statusWebhookUrl) {
-        return reply.code(503).send({ success: false, error: 'A matching HTTPS Twilio delivery-status callback and signature-verification URL are required. No provider request was sent.' });
-      }
+    let callbackIsSecure: boolean;
+    try { callbackIsSecure = Boolean(statusCallbackUrl && new URL(statusCallbackUrl).protocol === 'https:'); } catch { callbackIsSecure = false; }
+    if (!callbackIsSecure || statusCallbackUrl !== statusWebhookUrl) {
+      return reply.code(503).send({ success: false, error: 'A matching HTTPS Twilio delivery-status callback and signature-verification URL are required. No provider request was sent.' });
     }
     let from = '';
     if (channel === 'whatsapp') from = process.env.TWILIO_WHATSAPP_NUMBER?.trim() || '';
     else if (channel === 'sms' || channel === 'voice') from = process.env.TWILIO_PHONE_NUMBER?.trim() || '';
-    if (channel !== 'email' && !from) return reply.code(503).send({ success: false, error: `Twilio ${channel} sender is not configured.` });
+    if (!from) return reply.code(503).send({ success: false, error: `Twilio ${channel} sender is not configured.` });
     if (channel === 'voice' && !process.env.TWILIO_VOICE_ACTION_URL?.trim()) return reply.code(503).send({ success: false, error: 'Twilio voice action URL is not configured.' });
     const outboundBody = deliveryBody || '[WhatsApp approved template]';
     const approvalId = typeof request.body?.approvalId === 'string' ? request.body.approvalId.trim() : '';
@@ -286,13 +273,11 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       return reply.code(409).send({ success: false, error: error instanceof Error ? error.message : 'A current owner approval is required.' });
     }
     let attachmentUrls: string[] = [];
-    let emailAttachments: Array<{ filename: string; content: Buffer; contentType: string }> = [];
     if (attachmentIds.length) {
       try {
         const states = await getCommsAttachmentStatuses(fastify.prisma, request.authUser.id, attachmentIds);
         if (states.length !== attachmentIds.length || states.some(item => item.status !== 'clean')) return reply.code(409).send({ success: false, error: 'Attachments are not ready. All malware scans must be clean before sending.' });
-        if (String(channel) === 'email') emailAttachments = await downloadCleanCommsAttachments(fastify.prisma, request.authUser.id, attachmentIds);
-        else attachmentUrls = [...(await cleanCommsAttachmentUrls(fastify.prisma, request.authUser.id, attachmentIds, 900)).values()];
+        attachmentUrls = [...(await cleanCommsAttachmentUrls(fastify.prisma, request.authUser.id, attachmentIds, 900)).values()];
       } catch (error) {
         request.log.warn({ err: error }, 'Attachment validation blocked outbound send');
         return reply.code(409).send({ success: false, error: error instanceof Error ? error.message : 'Attachments are not ready.' });
@@ -302,11 +287,10 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
     try {
       reservation = await beginOutboundCommunication(fastify.prisma, {
         channel,
-        externalAddress: String(channel) === 'email' ? target.toLowerCase() : target,
+        externalAddress: target,
         body: outboundBody,
         idempotencyKey: key,
         ownerUserId: request.authUser.id,
-        ...(String(channel) === 'email' ? { metadata: { subject: emailSubject } } : {}),
       });
     } catch (error) {
       if (error instanceof OutboundIdempotencyConflictError) return reply.code(409).send({ success: false, error: error.message });
@@ -322,12 +306,6 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       return reply.code(409).send({ success: false, error: error instanceof Error ? error.message : 'The owner approval could not be claimed.' });
     }
     try {
-      if (String(channel) === 'email') {
-        const sent = await smtp!.transporter.sendMail({ from: smtp!.from, to: target, subject: emailSubject, text: deliveryBody, ...(emailAttachments.length ? { attachments: emailAttachments } : {}) });
-        await completeOutboundCommunication(fastify.prisma, { id: reservation.id, providerMessageId: sent.messageId, status: 'accepted' });
-        await finishCommsAction(fastify.prisma, approvalId, { status: 'accepted', providerMessageId: sent.messageId, providerStatus: 'accepted' });
-        return reply.code(202).send({ success: true, channel, providerId: sent.messageId, status: 'accepted', replayed: false });
-      }
       if (channel === 'whatsapp' || channel === 'sms') {
         const sent = await client!.messages.create({
           from: channel === 'whatsapp' && !from.startsWith('whatsapp:') ? `whatsapp:${from}` : from,
