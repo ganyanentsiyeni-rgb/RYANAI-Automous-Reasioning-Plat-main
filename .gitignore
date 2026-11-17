@@ -5,6 +5,8 @@
 !hooks/**
 !qlty.toml
 !.gitignore
+!apps/
+!apps/mobile/
 
 # Ignore every real/local environment file at the repository root and in subdirectories.
 # This includes .env, .env.local, .env.development, .env.u2eb, .env.production,
@@ -18,6 +20,4 @@
 !.env.example
 !.env.*.example
 !env.frontend.example
-**/.env.example
-**/.env.*.example
-apps/mobile/.env.example
+!apps/mobile/.env.example
