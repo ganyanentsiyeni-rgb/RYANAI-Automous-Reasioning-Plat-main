@@ -259,7 +259,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
     const statusCallbackUrl = process.env.TWILIO_STATUS_CALLBACK_URL?.trim();
     const statusWebhookUrl = process.env.TWILIO_STATUS_WEBHOOK_URL?.trim();
     if (channel !== 'email') {
-      let callbackIsSecure = false;
+      let callbackIsSecure: boolean;
       try { callbackIsSecure = Boolean(statusCallbackUrl && new URL(statusCallbackUrl).protocol === 'https:'); } catch { callbackIsSecure = false; }
       if (!callbackIsSecure || statusCallbackUrl !== statusWebhookUrl) {
         return reply.code(503).send({ success: false, error: 'A matching HTTPS Twilio delivery-status callback and signature-verification URL are required. No provider request was sent.' });
