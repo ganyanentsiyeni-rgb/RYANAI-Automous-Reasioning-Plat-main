@@ -53,7 +53,7 @@ const TradingTerminalPage = lazy(() => import('@/pages/TradingTerminal'));
 const LandingPage = lazy(() => import('@/pages/LandingPage'));
 const AuthPage = lazy(() => import('@/pages/AuthPage'));
 const OAuthConsentPage = lazy(() => import('@/pages/OAuthConsentPage'));
-const CommunitySurveyPage = lazy(() => import('@/pages/CommunitySurvey'));
+const CommunitySurveyPage = lazy(() => import('@/pages/CommunitySurvey'));\nconst MissionOperatingSystem = lazy(() => import('@/pages/MissionOperatingSystem'));
 import { useAuth } from '@/hooks/useAuth';
 import Greeting from '@/components/Greeting';
 import NeuralIcon from '@/components/brand/NeuralIcon';
@@ -144,7 +144,7 @@ export default function App() {
     (route === 'admin' && !isAdmin)
     || (route === 'comms' && !isOwner)
   ));
-  const routeRequiresToggle = !['landing', 'dashboard', 'settings', 'signin', 'signup', 'copilot', 'survey'].includes(route);
+  const routeRequiresToggle = !['landing', 'dashboard', 'settings', 'signin', 'signup', 'copilot', 'survey', 'architecture'].includes(route);
   const routeDisabled = Boolean(user && routeRequiresToggle && !enabledUiIds.some((id) => id === route));
   const displayName =
     typeof user?.user_metadata?.full_name === 'string'
@@ -226,7 +226,7 @@ export default function App() {
       ? id !== 'signin' && id !== 'signup' && id !== 'survey'
         && (id !== 'comms' || isOwner)
         && (id !== 'admin' || isAdmin)
-        && (id === 'landing' || id === 'dashboard' || id === 'settings' || id === 'copilot' || id === 'survey' || enabledUiIds.some((enabledId) => enabledId === id))
+        && (id === 'landing' || id === 'dashboard' || id === 'settings' || id === 'copilot' || id === 'survey' || id === 'architecture' || enabledUiIds.some((enabledId) => enabledId === id))
         && (!routeUiOptions[id] || effectiveDashboardUiPreferences[routeUiOptions[id] as DashboardUiId])
       : id === 'landing' || id === 'signin' || id === 'signup' || id === 'survey',
   );
@@ -293,7 +293,7 @@ export default function App() {
                   <a href="#/settings" className="mt-4 inline-flex rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300">Open Settings</a>
                 </section>
               ) : <>
-                {route === 'dashboard' && <DashboardPage isOwner={isOwner} isAdmin={isAdmin} enabledModules={effectiveDashboardUiPreferences} musicSettings={musicSettings} />}
+                {route === 'architecture' && <MissionOperatingSystem />}\n                {route === 'dashboard' && <DashboardPage isOwner={isOwner} isAdmin={isAdmin} enabledModules={effectiveDashboardUiPreferences} musicSettings={musicSettings} />}
                 {route === 'copilot' && <DarksideCopilot onSignOut={() => void handleSignOut()} userId={user.id} userEmail={user.email ?? ''} userFullName={displayName} showInferenceConsole={dashboardUiPreferences.inferenceConsole} defaultInferenceModel={inferenceSettings.preferredModel as ModelId} voiceSettings={ryanVoiceSettings} copilotSettings={copilotSettings} />}
                 {route === 'pa' && <PAAgentPage />}
                 {route === 'settings' && <ProfileSettings key={user.id} userId={user.id} email={user.email ?? ''} initialDisplayName={displayName || ''} initialLanguage={typeof user.user_metadata?.ryanai_language === 'string' ? user.user_metadata?.ryanai_language : isOwner ? OWNER_DEFAULT_LANGUAGE : DEFAULT_LANGUAGE} initialVoiceEnabled={typeof user.user_metadata?.ryanai_voice_enabled === 'boolean' ? user.user_metadata?.ryanai_voice_enabled : undefined} initialRyanVoiceSettings={ryanVoiceSettings} initialCopilotSettings={copilotSettings} initialDashboardUiIds={enabledUiIds} initialDashboardUiPreferences={dashboardUiPreferences} initialAudiobookSettings={audiobookSettings} initialInferenceSettings={inferenceSettings} initialMusicSettings={user.user_metadata?.ryanai_music_settings} initialPhoneLinkSettings={phoneLinkSettings} initialPluginPreferences={user.user_metadata?.ryanai_plugin_preferences} isAdmin={isAdmin} isOwner={isOwner} onSignOut={() => void handleSignOut()} signingOut={signingOut} />}
