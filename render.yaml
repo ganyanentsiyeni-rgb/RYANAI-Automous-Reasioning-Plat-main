@@ -62,14 +62,20 @@ projects:
                 value: https://ryanai-api.onrender.com
               - key: VITE_APP_ENV
                 value: production
+              - key: API_HOST
+                value: ryanai-api
+              - key: API_PORT
+                value: "3000"
         services:
           - type: web
             name: ryanai-web
-            runtime: static
+            runtime: docker
             repo: https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main
             branch: main
-            buildCommand: npm ci --legacy-peer-deps && npm run build:web
-            staticPublishPath: ./dist
+            region: oregon
+            plan: free
+            dockerfilePath: ./Dockerfile
+            healthCheckPath: /health
             autoDeployTrigger: off
             envVars:
               - fromGroup: ryanai-shared-production
