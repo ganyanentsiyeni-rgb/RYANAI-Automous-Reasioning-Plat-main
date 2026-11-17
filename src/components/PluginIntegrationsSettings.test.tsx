@@ -26,7 +26,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   auth.getUser.mockResolvedValue({ data: { user: { id: 'user-a', user_metadata: {} } }, error: null });
   auth.updateUser.mockResolvedValue({ data: { user: { id: 'user-a' } }, error: null });
-  api.authenticatedFetch.mockImplementation(async (url: string) => ({ ok: true, json: async () => url === '/api/plugins/registry' ? { providers: [] } : { connections: [] } }));
+  api.authenticatedFetch.mockImplementation(async (url: string) => ({ ok: true, json: async () => url === '/api/plugins/registry' ? { providers: [] } : url === '/api/github/status' ? { status: 'not_connected', connected: false } : { connections: [] } }));
   container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.useRealTimers(); });
@@ -39,6 +39,35 @@ describe('Plugin integrations centre', () => {
     expect(container.textContent).toContain('Google Calendar');
     expect(container.textContent).toContain('Adapter required');
   });
+  it('loads GitHub connection state from the verified backend status endpoint', async () => {
+    api.authenticatedFetch.mockImplementation(async (url: string) => ({
+      ok: true,
+      json: async () => url === '/api/plugins/registry' ? { providers: [] }
+        : url === '/api/github/status' ? { status: 'connected', connected: true, account: { login: 'ryanai-owner' }, repository: { fullName: 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main' } }
+          : { connections: [] },
+    }));
+    await mount();
+    await vi.waitFor(() => expect(container.textContent).toContain('Connected · repository access verified'));
+    expect(container.textContent).toContain('@ryanai-owner');
+    expect(container.textContent).toContain('Verified repository: ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main');
+    expect(api.authenticatedFetch).toHaveBeenCalledWith('/api/github/status', { headers: { Accept: 'application/json' } }, 'user-a');
+  });
+
+  it('starts GitHub OAuth only through the trusted GitHub authorization host', async () => {
+    api.authenticatedFetch.mockImplementation(async (url: string) => ({
+      ok: true,
+      json: async () => url === '/api/plugins/registry' ? { providers: [] }
+        : url === '/api/github/connect' ? { authorizationUrl: 'https://github.com/login/oauth/authorize?client_id=test' }
+          : url === '/api/github/status' ? { status: 'not_connected', connected: false }
+            : { connections: [] },
+    }));
+    const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => undefined);
+    await mount();
+    await click([...container.querySelectorAll('button')].find(button => button.textContent === 'Connect GitHub') ?? null);
+    expect(api.authenticatedFetch).toHaveBeenCalledWith('/api/github/connect', { method: 'POST', headers: { Accept: 'application/json' } }, 'user-a');
+    expect(assign).toHaveBeenCalledWith(expect.stringContaining('https://github.com/login/oauth/authorize'));
+  });
+
   it('renders adapter readiness from the authenticated backend registry', async () => {
     api.authenticatedFetch.mockImplementation(async (url: string) => ({
       ok: true,
