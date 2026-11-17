@@ -175,6 +175,7 @@ describe('persistent Memory Vault', () => {
     expect(api).toHaveBeenCalledWith(
       '/api/user/memory?cursor=' + entry.id + '&limit=50',
       expect.objectContaining({ headers: { Accept: 'application/json' } }),
+      'user-a',
     );
   });
 
