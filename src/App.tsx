@@ -54,7 +54,8 @@ const TradingTerminalPage = lazy(() => import('@/pages/TradingTerminal'));
 const LandingPage = lazy(() => import('@/pages/LandingPage'));
 const AuthPage = lazy(() => import('@/pages/AuthPage'));
 const OAuthConsentPage = lazy(() => import('@/pages/OAuthConsentPage'));
-const CommunitySurveyPage = lazy(() => import('@/pages/CommunitySurvey'));\nconst MissionOperatingSystem = lazy(() => import('@/pages/MissionOperatingSystem'));
+const CommunitySurveyPage = lazy(() => import('@/pages/CommunitySurvey'));
+const MissionOperatingSystem = lazy(() => import('@/pages/MissionOperatingSystem'));
 import { useAuth } from '@/hooks/useAuth';
 import Greeting from '@/components/Greeting';
 import NeuralIcon from '@/components/brand/NeuralIcon';
@@ -295,7 +296,8 @@ export default function App() {
                   <a href="#/settings" className="mt-4 inline-flex rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300">Open Settings</a>
                 </section>
               ) : <>
-                {route === 'architecture' && <MissionOperatingSystem />}\n                {route === 'dashboard' && <DashboardPage isOwner={isOwner} isAdmin={isAdmin} enabledModules={effectiveDashboardUiPreferences} musicSettings={musicSettings} />}
+                {route === 'architecture' && <MissionOperatingSystem />}
+                {route === 'dashboard' && <DashboardPage isOwner={isOwner} isAdmin={isAdmin} enabledModules={effectiveDashboardUiPreferences} musicSettings={musicSettings} />}
                 {route === 'copilot' && <DarksideCopilot onSignOut={() => void handleSignOut()} userId={user.id} userEmail={user.email ?? ''} userFullName={displayName} showInferenceConsole={dashboardUiPreferences.inferenceConsole} defaultInferenceModel={inferenceSettings.preferredModel as ModelId} voiceSettings={ryanVoiceSettings} copilotSettings={copilotSettings} />}
                 {route === 'pa' && <PAAgentPage />}
                 {route === 'settings' && <ProfileSettings key={user.id} userId={user.id} email={user.email ?? ''} initialDisplayName={displayName || ''} initialLanguage={typeof user.user_metadata?.ryanai_language === 'string' ? user.user_metadata?.ryanai_language : isOwner ? OWNER_DEFAULT_LANGUAGE : DEFAULT_LANGUAGE} initialVoiceEnabled={typeof user.user_metadata?.ryanai_voice_enabled === 'boolean' ? user.user_metadata?.ryanai_voice_enabled : undefined} initialRyanVoiceSettings={ryanVoiceSettings} initialCopilotSettings={copilotSettings} initialDashboardUiIds={enabledUiIds} initialDashboardUiPreferences={dashboardUiPreferences} initialAudiobookSettings={audiobookSettings} initialInferenceSettings={inferenceSettings} initialMusicSettings={user.user_metadata?.ryanai_music_settings} initialPhoneLinkSettings={phoneLinkSettings} initialPluginPreferences={user.user_metadata?.ryanai_plugin_preferences} isAdmin={isAdmin} isOwner={isOwner} onSignOut={() => void handleSignOut()} signingOut={signingOut} />}
