@@ -27,6 +27,7 @@ const OAUTH_PROVIDER_IDS: Record<string, string> = {
   'google-calendar': 'google-calendar',
   'microsoft-calendar': 'microsoft-365-calendar',
   gmail: 'gmail',
+  'outlook-mail': 'outlook-mail',
 };
 const CATALOG: PluginDefinition[] = [
   { id: 'phonelink', name: 'RyanAI PhoneLink', category: 'Communications', description: 'Trusted mobile device pairing and permission-scoped event intake. Native device operations require the Android companion.', scopes: ['Mobile workspace', 'Approved event intake'], availability: 'adapter-required' },
@@ -38,7 +39,7 @@ const CATALOG: PluginDefinition[] = [
   { id: 'google-calendar', name: 'Google Calendar', category: 'PA Agent', description: 'Calendar context, availability and scheduling workflows.', scopes: ['PA Agent', 'Scheduling workers'], availability: 'oauth-supported' },
   { id: 'microsoft-calendar', name: 'Microsoft 365 Calendar', category: 'PA Agent', description: 'Outlook calendar context and scheduling workflows.', scopes: ['PA Agent', 'Scheduling workers'], availability: 'oauth-supported' },
   { id: 'gmail', name: 'Gmail', category: 'Communications', description: 'Read-only mailbox search and message metadata. Drafting and sending are not enabled.', scopes: ['Gmail read-only'], availability: 'oauth-supported' },
-  { id: 'outlook-mail', name: 'Outlook Mail', category: 'Communications', description: 'Mailbox context, drafting and explicitly approved dispatch.', scopes: ['PA Agent', 'Comms workers'], availability: 'adapter-required' },
+  { id: 'outlook-mail', name: 'Outlook Mail', category: 'Communications', description: 'Read-only Outlook mailbox search and message metadata. Drafting and sending are not enabled.', scopes: ['Mail.Read', 'User.Read'], availability: 'oauth-supported' },
   { id: 'slack', name: 'Slack', category: 'Communications', description: 'Team messages, channels and human-reviewed workflows.', scopes: ['Comms workers', 'Workforce'], availability: 'adapter-required' },
   { id: 'microsoft-teams', name: 'Microsoft Teams', category: 'Communications', description: 'Team collaboration and approved message workflows.', scopes: ['Comms workers', 'Workforce'], availability: 'adapter-required' },
   { id: 'whatsapp-business', name: 'WhatsApp Business', category: 'Communications', description: 'Business messaging through an approved provider adapter.', scopes: ['Comms workers'], access: 'owner', availability: 'adapter-required' },
@@ -111,6 +112,11 @@ function PluginIntegrationsSettingsContent({
   const [gmailLoading, setGmailLoading] = useState(false);
   const [gmailError, setGmailError] = useState('');
   const [gmailLoaded, setGmailLoaded] = useState(false);
+  const [outlookMessages, setOutlookMessages] = useState<GmailMessage[]>([]);
+  const [outlookQuery, setOutlookQuery] = useState('');
+  const [outlookLoading, setOutlookLoading] = useState(false);
+  const [outlookError, setOutlookError] = useState('');
+  const [outlookLoaded, setOutlookLoaded] = useState(false);
   const [calendarErrors, setCalendarErrors] = useState<Record<string, string>>({});
   const [registryProviders, setRegistryProviders] = useState<RegistryProvider[]>([]);
   const [registryLoading, setRegistryLoading] = useState(true);
@@ -382,6 +388,27 @@ function PluginIntegrationsSettingsContent({
     }
   }
 
+  async function loadOutlookMessages() {
+    if (outlookLoading) return;
+    setOutlookLoading(true);
+    setOutlookError('');
+    try {
+      const params = new URLSearchParams({ limit: '20' });
+      if (outlookQuery.trim()) params.set('q', outlookQuery.trim());
+      const response = await authenticatedFetch('/api/plugins/outlook-mail/messages?' + params.toString(), {
+        headers: { Accept: 'application/json' },
+      }, userId);
+      const payload = await response.json().catch(() => ({})) as { messages?: GmailMessage[]; error?: string };
+      if (!response.ok || !Array.isArray(payload.messages)) throw new Error(payload.error || 'Outlook messages could not be loaded.');
+      setOutlookMessages(payload.messages);
+      setOutlookLoaded(true);
+    } catch (cause) {
+      setOutlookError(cause instanceof Error ? cause.message : 'Outlook messages could not be loaded.');
+    } finally {
+      setOutlookLoading(false);
+    }
+  }
+
   async function disconnectProvider(pluginId: string) {
     const providerId = OAUTH_PROVIDER_IDS[pluginId];
     if (!providerId || connectionBusyId) return;
@@ -429,7 +456,7 @@ function PluginIntegrationsSettingsContent({
         const connection = providerId ? connections.find(item => item.providerId === providerId) : undefined;
         const reauthorizationRequired = Boolean(connection && REAUTHORIZATION_STATES.has(connection.credentialState));
         const registry = registryProviders.find(item => item.id === (OAUTH_PROVIDER_IDS[plugin.id] ?? plugin.id));
-        const adapterLabel = plugin.id === 'gmail'
+        const adapterLabel = plugin.id === 'gmail' || plugin.id === 'outlook-mail'
           ? 'Read-only mailbox API'
           : registryLoading
             ? 'Checking backend registry…'
@@ -483,6 +510,27 @@ function PluginIntegrationsSettingsContent({
             <p className="mt-2 text-[10px] leading-4 text-slate-500">OAuth authorization is stored encrypted server-side. A connected record is not a live provider health check.</p>
           </div>}
           <p className="mt-2 text-[11px] text-slate-500">Intended scopes: {plugin.scopes.join(' · ')}</p>
+          {plugin.id === 'outlook-mail' && connected && <div className="mt-3 border-t border-white/5 pt-3">
+            <form onSubmit={event => { event.preventDefault(); void loadOutlookMessages(); }} className="flex flex-col gap-2 sm:flex-row">
+              <label className="min-w-0 flex-1 text-[11px] text-slate-400">Outlook search
+                <input aria-label="Outlook search query" value={outlookQuery} onChange={event => setOutlookQuery(event.target.value)} maxLength={200} placeholder="Search mailbox" className="mt-1 block w-full rounded-md border border-white/10 bg-slate-950 px-2.5 py-2 text-xs text-white" />
+              </label>
+              <button type="submit" disabled={outlookLoading || connectionsLoading} className="self-end rounded-md border border-cyan-300/20 px-3 py-2 text-xs text-cyan-100 disabled:opacity-50">
+                {outlookLoading ? 'Searching…' : 'Search mailbox'}
+              </button>
+            </form>
+            {outlookError && <p role="alert" className="mt-2 text-xs text-rose-200">{outlookError}</p>}
+            {outlookLoaded && <ul className="mt-3 space-y-2" aria-label="Outlook search results">
+              {outlookMessages.length === 0
+                ? <li className="text-xs text-slate-400">No messages matched this search.</li>
+                : outlookMessages.map(message => <li key={message.id} className="rounded-md bg-slate-950/70 p-2 text-xs">
+                  <p className="font-medium text-slate-200">{message.subject || '(No subject)'}</p>
+                  <p className="mt-1 text-slate-400">{message.from || 'Sender unavailable'}{message.receivedAt ? ' · ' + new Date(message.receivedAt).toLocaleString() : ''}</p>
+                  {message.snippet && <p className="mt-1 text-slate-500">{message.snippet}</p>}
+                </li>)}
+            </ul>}
+            <p className="mt-2 text-[10px] leading-4 text-slate-500">Read-only access: RyanAI retrieves message metadata and short previews only. It cannot create drafts or send email from this integration.</p>
+          </div>}
           {plugin.id === 'gmail' && connected && <div className="mt-3 border-t border-white/5 pt-3">
             <form onSubmit={event => { event.preventDefault(); void loadGmailMessages(); }} className="flex flex-col gap-2 sm:flex-row">
               <label className="min-w-0 flex-1 text-[11px] text-slate-400">Gmail search

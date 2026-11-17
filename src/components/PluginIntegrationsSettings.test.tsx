@@ -329,4 +329,28 @@ describe('Plugin integrations centre', () => {
     expect(api.authenticatedFetch).toHaveBeenCalledWith('/api/plugins/gmail/connect', { method: 'POST', headers: { Accept: 'application/json' } }, 'user-a');
     expect(assign).toHaveBeenCalledWith(expect.stringContaining('https://accounts.google.com/'));
   });
+
+  it('searches Outlook mailbox metadata without enabling draft or send actions', async () => {
+    api.authenticatedFetch.mockImplementation(async (url: string) => ({
+      ok: true,
+      json: async () => url === '/api/plugins/registry' ? { providers: [] }
+        : url === '/api/plugins/outlook-mail/messages?limit=20' ? { messages: [{
+          id: 'outlook-message-1', threadId: null, subject: 'RyanAI Outlook update',
+          from: 'Owner <owner@example.test>', snippet: 'Short preview only',
+          receivedAt: '2026-11-17T10:00:00Z',
+        }] }
+          : url === '/api/github/status' ? { status: 'not_connected', connected: false }
+            : { connections: [{ providerId: 'outlook-mail', status: 'connected', connectionState: 'connected', credentialState: 'access_token_valid_or_expiry_unknown', healthState: 'not_probed', lastHealthCheckAt: null }] },
+    }));
+    await mount();
+    const outlookCard = container.querySelector('[data-plugin-id="outlook-mail"]') as HTMLElement;
+    await vi.waitFor(() => expect(outlookCard.textContent).toContain('Connected · provider health not checked'));
+    expect(outlookCard.textContent).toContain('Read-only mailbox API');
+    expect(outlookCard.textContent).toContain('Drafting and sending are not enabled');
+    await click([...outlookCard.querySelectorAll('button')].find(button => button.textContent === 'Search mailbox') ?? null);
+    await vi.waitFor(() => expect(outlookCard.textContent).toContain('RyanAI Outlook update'));
+    expect(outlookCard.textContent).toContain('Short preview only');
+    expect(api.authenticatedFetch).toHaveBeenCalledWith('/api/plugins/outlook-mail/messages?limit=20', { headers: { Accept: 'application/json' } }, 'user-a');
+  });
+
 });
