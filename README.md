@@ -94,6 +94,27 @@ The repository contains Render and Railway configuration. The checked-in Render 
 
 The current deployment model must be verified against the live service source and exact commit before any release. Do not infer that a successful image build triggered a deployment: inspect the deployment workflow and commit-based trigger. Vercel is not part of the current RyanAI hosting architecture.
 
+### RyanAI Hybrid OS v1
+
+RyanAI's approved operating-system architecture combines three specialized environments under one security and recovery model. It is an operating model built from separate operating systems, not a new Linux distribution.
+
+- **Ubuntu LTS — Core:** the trusted host for RyanAI services, containers, model/agent workloads, memory, APIs, and observability.
+- **Kali Linux — Security Zone:** an isolated environment for authorized security assessment and defensive testing. It is not a production runtime dependency and receives no standing production credentials.
+- **Raspberry Pi OS 64-bit — Edge:** controlled physical nodes for voice/audio, sensors, GPIO, cameras, local interfaces, and limited edge inference. Each device requires a unique identity and authenticated encrypted gateway connection.
+- **Security Fabric:** shared identity, authentication, Gen-X authorization, encrypted transport, audit, and telemetry across trust zones.
+- **Recovery Layer:** independently controlled integrity verification, backup restoration, isolation, and rebuild procedures.
+
+The initial trust zones are **CORE**, **SECURITY**, **EDGE**, **MANAGEMENT**, and **RECOVERY**. Inter-zone traffic is default-deny and must be explicitly scoped and authenticated. No agent or model may self-authorize; consequential execution follows capability validation, Gen-X policy, human approval where required, exact-action execution, and an audit/evidence receipt.
+
+Architecture approval is documentation approval only. It does not authorize hardware procurement, production deployment, production database changes, secret changes, infrastructure changes, or paid upgrades. Implementation must proceed through reviewed phases and evidence gates.
+
+Detailed specifications:
+- [Hybrid OS v1 architecture](docs/hybrid-os-v1.md)
+- [Security architecture](docs/security/hybrid-os-security.md)
+- [Raspberry Pi edge platform](docs/hardware/ryanai-edge.md)
+- [Recovery and integrity layer](docs/recovery/ryanai-recovery.md)
+- [Implementation validation matrix](docs/implementation/hybrid-os-v1-validation.md)
+
 ## Mission-centric target architecture
 
 RyanAI's proposed next-stage operating model is documented in the [Mission-Centric Operating Architecture](docs/architecture/mission-centric-operating-architecture.md).
