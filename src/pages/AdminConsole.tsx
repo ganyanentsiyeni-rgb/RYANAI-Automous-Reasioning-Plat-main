@@ -8,6 +8,13 @@ interface AdminIdentity {
   authenticated: boolean;
   user: { id: string; email?: string; role: 'user' | 'admin'; displayName?: string; isOwner: boolean };
 }
+interface AuditEvent {
+  id: string;
+  actorId: string;
+  eventType: string;
+  resourceId: string | null;
+  createdAt: string;
+}
 interface RuntimeMetrics {
   status: string;
   uptime: number;
@@ -68,6 +75,7 @@ function statusTone(value: string) {
 
 export default function AdminConsole({ userId }: { userId: string }) {
   const [identity, setIdentity] = useState<AdminIdentity | null>(null);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [metrics, setMetrics] = useState<RuntimeMetrics | null>(null);
   const [actions, setActions] = useState<PendingAction[]>([]);
   const [jobs, setJobs] = useState<EngineeringJob[]>([]);
@@ -81,6 +89,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
     const requestId = ++refreshRequestId.current;
     const results = await Promise.allSettled([
       readJson<AdminIdentity>('/api/auth/verify', userId),
+      readJson<{ events: AuditEvent[] }>('/api/admin/audit-events?limit=30', userId),
       readJson<RuntimeMetrics>('/api/admin/metrics', userId),
       readJson<{ actions: PendingAction[] }>('/api/actions', userId),
       readJson<{ jobs: EngineeringJob[] }>('/api/engineering/jobs', userId),
@@ -95,12 +104,14 @@ export default function AdminConsole({ userId }: { userId: string }) {
         ? 'Identity verification: ' + String(results[0].reason)
         : 'Identity verification: the API did not confirm this signed-in account.');
     }
-    if (results[1].status === 'fulfilled') setMetrics(results[1].value);
-    else { setMetrics(null); nextErrors.push('Runtime metrics: ' + String(results[1].reason)); }
-    if (results[2].status === 'fulfilled') setActions(results[2].value.actions ?? []);
-    else { setActions([]); nextErrors.push('Pending actions: ' + String(results[2].reason)); }
-    if (results[3].status === 'fulfilled') setJobs(results[3].value.jobs ?? []);
-    else { setJobs([]); nextErrors.push('Engineering approvals: ' + String(results[3].reason)); }
+    if (results[1].status === 'fulfilled') setAuditEvents(results[1].value.events ?? []);
+    else { setAuditEvents([]); nextErrors.push('Security audit: ' + String(results[1].reason)); }
+    if (results[2].status === 'fulfilled') setMetrics(results[2].value);
+    else { setMetrics(null); nextErrors.push('Runtime metrics: ' + String(results[2].reason)); }
+    if (results[3].status === 'fulfilled') setActions(results[3].value.actions ?? []);
+    else { setActions([]); nextErrors.push('Pending actions: ' + String(results[3].reason)); }
+    if (results[4].status === 'fulfilled') setJobs(results[4].value.jobs ?? []);
+    else { setJobs([]); nextErrors.push('Engineering approvals: ' + String(results[4].reason)); }
     if (requestId === refreshRequestId.current) {
       setErrors(nextErrors);
       setLoading(false);
@@ -244,10 +255,15 @@ export default function AdminConsole({ userId }: { userId: string }) {
             <span className="mt-1 block text-sm font-semibold text-white">Identity &amp; access</span>
             <span className="mt-1 block text-xs text-slate-400">Current principal and server-verified role</span>
           </a>
+          <a href="#admin-audit" className="rounded-xl border border-cyan-300/20 bg-cyan-300/[0.06] p-3 transition hover:border-cyan-200/50 hover:bg-cyan-300/10">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-cyan-300">Available · Read only</span>
+            <span className="mt-1 block text-sm font-semibold text-white">Security &amp; audit</span>
+            <span className="mt-1 block text-xs text-slate-400">Recent event metadata, actor and resource references</span>
+          </a>
           {[
 
             ['Infrastructure', 'U2EB Render services, database and Redis controls'],
-            ['Security & audit', 'Policy findings, audit search and session reviews'],
+
             ['Integrations', 'Provider registry, adapters and connection diagnostics'],
             ['AI workforce', 'Agent inventory, task queues and worker operations'],
             ['Models & inference', 'Provider routing, model health and usage controls'],
@@ -278,6 +294,25 @@ export default function AdminConsole({ userId }: { userId: string }) {
           <InfoRow label="Identity source" value="Supabase Auth · server-verified access token" />
         </dl>
         <p className="mt-4 text-xs leading-5 text-slate-500">Read-only current-session view. The API verifies the bearer token with Supabase Auth, derives administrator role from trusted app metadata, and matches owner identity against server-side configuration. A tenant-wide user directory, role changes, session revocation and access-review history are not implemented. This console cannot grant administrator or owner authority.</p>
+      </section>
+
+      <section id="admin-audit" className="scroll-mt-6 rounded-2xl border border-white/10 bg-slate-900/70 p-5 sm:p-6" aria-labelledby="admin-audit-title">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><h2 id="admin-audit-title" className="text-lg font-semibold text-white">Security &amp; audit events</h2><p className="mt-1 text-sm text-slate-400">Latest persisted Jarvis audit metadata, newest first. This view does not expose free-form event details.</p></div>
+          <span className="rounded-full border border-white/15 px-3 py-1 text-xs text-slate-300">{auditEvents.length} events returned</span>
+        </div>
+        {auditEvents.length === 0
+          ? <EmptyState text="No audit events were returned, or the audit endpoint is unavailable. Check the administrator diagnostics above." />
+          : <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[620px] text-left text-xs">
+            <thead><tr className="border-b border-white/10 text-slate-500"><th className="py-2 pr-3 font-medium">Time</th><th className="py-2 pr-3 font-medium">Event</th><th className="py-2 pr-3 font-medium">Actor ID</th><th className="py-2 font-medium">Resource ID</th></tr></thead>
+            <tbody>{auditEvents.map((event) => <tr key={event.id} className="border-b border-white/5 text-slate-300">
+              <td className="py-3 pr-3 whitespace-nowrap">{dateLabel(event.createdAt)}</td>
+              <td className="py-3 pr-3">{event.eventType}</td>
+              <td className="py-3 pr-3 font-mono">{event.actorId}</td>
+              <td className="py-3 font-mono">{event.resourceId || '—'}</td>
+            </tr>)}</tbody>
+          </table></div>}
+        <p className="mt-3 text-[11px] leading-5 text-slate-500">The API returns only event ID, actor ID, event type, resource ID and timestamp. It deliberately excludes the details JSON to avoid exposing user content or sensitive operational payloads. This is an event feed, not a complete security findings or session-review system.</p>
       </section>
 
       <div id="admin-runtime" className="grid scroll-mt-6 gap-3 sm:grid-cols-2 xl:grid-cols-4">
