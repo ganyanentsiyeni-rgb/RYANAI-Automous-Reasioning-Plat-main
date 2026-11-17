@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   Activity, ArrowRight, AudioLines, BookOpen, BrainCircuit, CheckCircle2,
   ChevronRight, CircleDot, Code2, GitBranch, Layers3, LockKeyhole,
-  Network, Orbit, Radio, ShieldCheck, Smartphone, Workflow,
+  Orbit, Radio, ShieldCheck, Smartphone, Workflow,
 } from 'lucide-react';
 
 type Plane = 'Control' | 'Intelligence' | 'Execution' | 'Evidence';
