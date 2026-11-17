@@ -23,9 +23,10 @@ const defaultDeps: DecisionDeps = {
 /**
  * Approve or reject one pending action.
  * The claim is one conditional update, so an action is decided once. A second
- * click, or a second server, gets "not_found". An approved action is sent at most
- * once. If the server stops between the claim and the end of the send, the row
- * stays "approved" and nothing sends it again. The approver can check the table.
+ * click, or a second server, gets "not_found". The production dispatcher is
+ * deliberately fail-closed: legacy communications actions return a failed result
+ * and cannot contact an external provider. The owner-verified communications
+ * gateway is the only supported provider dispatch path.
  */
 export async function decideAction(
   id: string,
