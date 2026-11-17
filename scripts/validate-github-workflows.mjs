@@ -8,8 +8,8 @@ const root = process.cwd();
 const workflowDir = join(root, '.github', 'workflows');
 const errors = [];
 const allowedActionMajors = new Map([
-  ['actions/checkout', [4]],
-  ['actions/setup-node', [4]],
+  ['actions/checkout', [4, 7]],
+  ['actions/setup-node', [4, 7]],
   ['actions/upload-artifact', [4, 7]],
   ['actions/download-artifact', [4]],
   ['actions/labeler', [6, 7]],
