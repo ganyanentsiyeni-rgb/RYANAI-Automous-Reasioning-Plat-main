@@ -5,11 +5,19 @@
 !hooks/**
 !qlty.toml
 !.gitignore
-.env
 
-# Local environment files and overrides. Keep the example template tracked.
+# Ignore every real/local environment file at the repository root and in subdirectories.
+# This includes .env, .env.local, .env.development, .env.u2eb, .env.production,
+# and framework-specific variants. Never commit runtime credentials.
 .env
 .env.*
+**/.env
+**/.env.*
+
+# Only safe, credential-free templates are allowed in version control.
 !.env.example
 !.env.*.example
 !env.frontend.example
+**/.env.example
+**/.env.*.example
+apps/mobile/.env.example
