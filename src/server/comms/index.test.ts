@@ -9,6 +9,7 @@ const { invoke, prismaMock } = vi.hoisted(() => ({
   invoke: vi.fn(),
   prismaMock: {
     communicationConversation: { upsert: vi.fn().mockResolvedValue({ id: 'conversation-1' }), findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]), updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+    $executeRawUnsafe: vi.fn().mockResolvedValue(1),
     communicationMessage: {
       findUnique: vi.fn().mockResolvedValue(null),
       upsert: vi.fn().mockResolvedValue({}),
@@ -58,6 +59,7 @@ beforeEach(() => {
   prismaMock.communicationConversation.findMany.mockResolvedValue([]);
   prismaMock.communicationConversation.updateMany.mockResolvedValue({ count: 0 });
   prismaMock.communicationConversation.findFirst.mockResolvedValue({ id: 'conversation-1', messages: [{ direction: 'inbound', body: 'Please confirm the delivery window.', status: 'received', createdAt: new Date('2026-11-05T10:00:00.000Z') }] });
+  prismaMock.$executeRawUnsafe.mockResolvedValue(1);
   prismaMock.communicationMessage.findUnique.mockResolvedValue(null);
   prismaMock.communicationMessage.upsert.mockResolvedValue({});
   prismaMock.communicationMessage.update.mockResolvedValue({});
