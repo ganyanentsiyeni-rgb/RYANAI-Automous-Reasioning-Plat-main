@@ -171,6 +171,9 @@ describe('Twilio delivery status callbacks', () => {
     expect(prismaMock.communicationMessage.updateMany).toHaveBeenCalledWith({
       where: { providerMessageId: 'SM-delivered-1' }, data: { status: 'delivered' },
     });
+    expect(prismaMock.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE public.comms_send_approvals'), 'SM-delivered-1', 'delivered',
+    );
   });
 });
 
