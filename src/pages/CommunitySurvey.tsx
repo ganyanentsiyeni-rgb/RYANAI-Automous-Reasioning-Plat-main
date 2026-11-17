@@ -52,6 +52,10 @@ export default function CommunitySurveyPage() {
   const [betaError, setBetaError] = useState('');
   const [notificationStatus, setNotificationStatus] = useState<'accepted' | 'not_configured' | 'failed' | 'unknown'>('unknown');
 
+  const requiredProgressKeys = ['role', 'aiExperience', 'discovery', 'currentUse', 'usefulness', 'topPriority', 'biggestBarrier', 'trustPriority', 'accessPreference', 'betaInterest'] as const;
+  const completedRequiredAnswers = requiredProgressKeys.filter((key) => answers[key].trim().length > 0).length;
+  const progressPercent = Math.round((completedRequiredAnswers / requiredProgressKeys.length) * 100);
+
   const update = (key: string, value: string | boolean | string[]) => setAnswers((current) => ({ ...current, [key]: value }));
   const toggle = (key: 'features' | 'useCases', value: string) => {
     const current = answers[key];
@@ -130,7 +134,7 @@ export default function CommunitySurveyPage() {
             <form onSubmit={submitBetaInterest} className="mt-5 space-y-4">
               <label className={labelClass}>Name <span className="font-normal text-slate-500">(optional)</span><input className={inputClass} maxLength={100} value={betaName} onChange={(e) => setBetaName(e.target.value)} placeholder="Your name" /></label>
               <label className={labelClass}>Email address<input className={inputClass} type="email" maxLength={254} required value={betaEmail} onChange={(e) => setBetaEmail(e.target.value)} placeholder="you@example.com" /></label>
-              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-cyan-200/15 bg-cyan-200/[0.04] p-4 text-sm leading-6 text-slate-200"><input type="checkbox" className="mt-1 accent-cyan-300" checked={betaConsent} onChange={(e) => setBetaConsent(e.target.checked)} required />I agree that RyanAI may contact me about Beta testing. I understand this is optional and I can withdraw my interest.</label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-cyan-200/15 bg-cyan-200/[0.04] p-4 text-sm leading-6 text-slate-200"><input type="checkbox" className="mt-1 accent-cyan-300" checked={betaConsent} onChange={(e) => setBetaConsent(e.target.checked)} required />I agree that RyanAI may contact me about Beta testing. I understand this is optional and does not guarantee access.</label>
               {betaStatus === 'error' && <p role="alert" className="text-sm text-rose-200">{betaError}</p>}
               <button type="submit" disabled={betaStatus === 'sending'} className="flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-200/20 bg-cyan-200/10 px-5 py-3 text-sm font-semibold text-cyan-100 disabled:opacity-60">{betaStatus === 'sending' ? 'Saving…' : 'Register Beta interest'} <ArrowRight className="h-4 w-4" /></button>
             </form>
@@ -154,6 +158,12 @@ export default function CommunitySurveyPage() {
           </div>
         </header>
 
+        <div className="mt-6 rounded-2xl border border-cyan-200/15 bg-slate-900/70 p-4" aria-label="Survey completion progress">
+          <div className="flex items-center justify-between gap-3 text-xs"><span className="font-semibold text-slate-200">Your progress</span><span className="tabular-nums text-cyan-200">{completedRequiredAnswers} of {requiredProgressKeys.length} required answers · {progressPercent}%</span></div>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10" role="progressbar" aria-label="Required survey answers completed" aria-valuemin={0} aria-valuemax={requiredProgressKeys.length} aria-valuenow={completedRequiredAnswers}><div className="h-full rounded-full bg-cyan-300 transition-[width]" style={{ width: progressPercent + '%' }} /></div>
+          <p className="mt-2 text-xs text-slate-500">You can review your answers before submitting. Written feedback is optional.</p>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3 text-sm"><a href="#/help" className="font-semibold text-cyan-200 underline-offset-4 hover:underline">Visit the RyanAI Help Centre and FAQ</a></div>
         <form onSubmit={submit} className="mt-6 space-y-5">
           <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-5 sm:p-7">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200">01 / About you</p>

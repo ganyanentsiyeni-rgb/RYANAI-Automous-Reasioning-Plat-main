@@ -22,6 +22,7 @@ import {
   Network,
   X,
   ClipboardList,
+  HelpCircle,
   LogIn,
   LogOut,
   UserPlus,
@@ -55,6 +56,7 @@ const LandingPage = lazy(() => import('@/pages/LandingPage'));
 const AuthPage = lazy(() => import('@/pages/AuthPage'));
 const OAuthConsentPage = lazy(() => import('@/pages/OAuthConsentPage'));
 const CommunitySurveyPage = lazy(() => import('@/pages/CommunitySurvey'));
+const CommunityHelpPage = lazy(() => import('@/pages/CommunityHelp'));
 const MissionOperatingSystem = lazy(() => import('@/pages/MissionOperatingSystem'));
 import { useAuth } from '@/hooks/useAuth';
 import Greeting from '@/components/Greeting';
@@ -104,6 +106,7 @@ const routeIcons: Record<Route, LucideIcon> = {
   phonelink: Smartphone,
   studio: Code2,
   survey: ClipboardList,
+  help: HelpCircle,
   architecture: Network,
 };
 
@@ -147,7 +150,7 @@ export default function App() {
     (route === 'admin' && !isAdmin)
     || (route === 'comms' && !isOwner)
   ));
-  const routeRequiresToggle = !['landing', 'dashboard', 'settings', 'signin', 'signup', 'copilot', 'survey', 'architecture'].includes(route);
+  const routeRequiresToggle = !['landing', 'dashboard', 'settings', 'signin', 'signup', 'copilot', 'survey', 'help', 'architecture'].includes(route);
   const routeDisabled = Boolean(user && routeRequiresToggle && !enabledUiIds.some((id) => id === route));
   const displayName =
     typeof user?.user_metadata?.full_name === 'string'
@@ -229,9 +232,9 @@ export default function App() {
       ? id !== 'signin' && id !== 'signup' && id !== 'survey'
         && (id !== 'comms' || isOwner)
         && (id !== 'admin' || isAdmin)
-        && (id === 'landing' || id === 'dashboard' || id === 'settings' || id === 'copilot' || id === 'survey' || id === 'architecture' || enabledUiIds.some((enabledId) => enabledId === id))
+        && (id === 'landing' || id === 'dashboard' || id === 'settings' || id === 'copilot' || id === 'survey' || id === 'help' || id === 'architecture' || enabledUiIds.some((enabledId) => enabledId === id))
         && (!routeUiOptions[id] || effectiveDashboardUiPreferences[routeUiOptions[id] as DashboardUiId])
-      : id === 'landing' || id === 'signin' || id === 'signup' || id === 'survey',
+      : id === 'landing' || id === 'signin' || id === 'signup' || id === 'survey' || id === 'help',
   );
   const currentTitle = destinations.find(({ id }) => id === route)?.label ?? 'Workspace';
 
@@ -286,6 +289,7 @@ export default function App() {
             {isOAuthConsentRoute ? loading ? <p role="status" className="p-8 text-slate-300">Restoring your session before authorization…</p> : user ? <OAuthConsentPage key={user.id} userId={user.id} /> : <AuthPage key="oauth-signin" mode="signin" />
               : route === 'landing' ? <LandingPage />
               : route === 'survey' ? <CommunitySurveyPage />
+              : route === 'help' ? <CommunityHelpPage />
               : loading ? <p role="status" className="p-8 text-slate-300">Restoring your session…</p>
               : !user ? <AuthPage key={route} mode={route === 'signup' ? 'signup' : 'signin'} />
               : roleAccessDenied ? <p role="alert" className="p-8 text-sm text-rose-200">Your account does not have permission to open this RyanAI workspace.</p>
