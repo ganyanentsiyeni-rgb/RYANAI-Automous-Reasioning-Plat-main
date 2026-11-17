@@ -317,6 +317,57 @@ describe('provider authorization HTTP lifecycle', () => {
     await app.close();
   });
 
+  it('reads only the signed-in owner Microsoft 365 calendar events and normalizes Graph metadata', async () => {
+    vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
+    vi.stubEnv('RYANAI_PLUGIN_MICROSOFT_365_CLIENT_ID', 'synthetic-ms-client');
+    vi.stubEnv('RYANAI_PLUGIN_MICROSOFT_365_CLIENT_SECRET', 'synthetic-ms-secret');
+    vi.stubEnv('RYANAI_PLUGIN_MICROSOFT_365_REDIRECT_URI', 'https://api.example.test/api/plugins/oauth/microsoft-365-calendar/callback');
+    const { app, connectionRows } = await createApp();
+    const encrypted = encryptProviderCredential(
+      'synthetic-microsoft-calendar-access-token', Buffer.from(key, 'hex'),
+      'plugin-token:microsoft-365-calendar:owner-user-1',
+    );
+    connectionRows.set(`${owner.id}:microsoft-365-calendar`, {
+      id: 'ms-calendar-connection', ownerUserId: owner.id, providerId: 'microsoft-365-calendar',
+      status: 'connected', encryptedAccessToken: encrypted,
+      accessTokenExpiresAt: new Date(Date.now() + 60_000),
+      grantedScopes: ['User.Read', 'Calendars.Read'],
+    });
+    const fetchMock = vi.fn(async (url: URL, init: RequestInit) => {
+      expect(url.origin).toBe('https://graph.microsoft.com');
+      expect(url.pathname).toBe('/v1.0/me/calendarView');
+      expect(url.searchParams.get('startDateTime')).toBe('2026-11-18T00:00:00.000Z');
+      expect(url.searchParams.get('endDateTime')).toBe('2026-11-19T00:00:00.000Z');
+      expect(url.searchParams.get('$top')).toBe('15');
+      expect(url.searchParams.get('$orderby')).toBe('start/dateTime');
+      expect(new Headers(init.headers).get('authorization')).toBe('Bearer synthetic-microsoft-calendar-access-token');
+      return new Response(JSON.stringify({ value: [{
+        id: 'graph-event-1', subject: 'Architecture review',
+        start: { dateTime: '2026-11-18T10:00:00.0000000', timeZone: 'South Africa Standard Time' },
+        end: { dateTime: '2026-11-18T10:45:00.0000000', timeZone: 'South Africa Standard Time' },
+        location: { displayName: 'Johannesburg office' },
+        organizer: { emailAddress: { name: 'RyanAI owner', address: 'owner@example.test' } },
+        showAs: 'busy',
+      }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/plugins/microsoft-365-calendar/events?start=2026-11-18T00:00:00Z&end=2026-11-19T00:00:00Z&limit=15',
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      provider: 'microsoft-365-calendar',
+      events: [{
+        id: 'graph-event-1', title: 'Architecture review',
+        start: '2026-11-18T10:00:00.0000000', end: '2026-11-18T10:45:00.0000000',
+        location: 'Johannesburg office', organizer: 'owner@example.test',
+      }],
+    });
+    expect(response.body).not.toContain('synthetic-microsoft-calendar-access-token');
+    expect(fetchMock).toHaveBeenCalledOnce();
+    await app.close();
+  });
   it('rejects calendar event requests with invalid or excessive date ranges', async () => {
     vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
     vi.stubEnv('RYANAI_PLUGIN_GOOGLE_CALENDAR_CLIENT_ID', 'synthetic-client');
