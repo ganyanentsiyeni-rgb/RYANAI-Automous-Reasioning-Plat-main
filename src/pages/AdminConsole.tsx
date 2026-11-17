@@ -4,6 +4,10 @@ import { authenticatedFetch } from '@/lib/authenticatedFetch';
 import TelemetryMetricCard from '@/components/telemetry/TelemetryMetricCard';
 import { createTelemetryMetricSnapshot } from '@/lib/telemetry/contracts';
 
+interface AdminIdentity {
+  authenticated: boolean;
+  user: { id: string; email?: string; role: 'user' | 'admin'; displayName?: string; isOwner: boolean };
+}
 interface RuntimeMetrics {
   status: string;
   uptime: number;
@@ -63,6 +67,7 @@ function statusTone(value: string) {
 }
 
 export default function AdminConsole({ userId }: { userId: string }) {
+  const [identity, setIdentity] = useState<AdminIdentity | null>(null);
   const [metrics, setMetrics] = useState<RuntimeMetrics | null>(null);
   const [actions, setActions] = useState<PendingAction[]>([]);
   const [jobs, setJobs] = useState<EngineeringJob[]>([]);
@@ -75,18 +80,27 @@ export default function AdminConsole({ userId }: { userId: string }) {
   const refresh = useCallback(async () => {
     const requestId = ++refreshRequestId.current;
     const results = await Promise.allSettled([
+      readJson<AdminIdentity>('/api/auth/verify', userId),
       readJson<RuntimeMetrics>('/api/admin/metrics', userId),
       readJson<{ actions: PendingAction[] }>('/api/actions', userId),
       readJson<{ jobs: EngineeringJob[] }>('/api/engineering/jobs', userId),
     ]);
     if (requestId !== refreshRequestId.current) return;
     const nextErrors: string[] = [];
-    if (results[0].status === 'fulfilled') setMetrics(results[0].value);
-    else { setMetrics(null); nextErrors.push('Runtime metrics: ' + String(results[0].reason)); }
-    if (results[1].status === 'fulfilled') setActions(results[1].value.actions ?? []);
-    else { setActions([]); nextErrors.push('Pending actions: ' + String(results[1].reason)); }
-    if (results[2].status === 'fulfilled') setJobs(results[2].value.jobs ?? []);
-    else { setJobs([]); nextErrors.push('Engineering approvals: ' + String(results[2].reason)); }
+    if (results[0].status === 'fulfilled' && results[0].value.authenticated && results[0].value.user?.id === userId) {
+      setIdentity(results[0].value);
+    } else {
+      setIdentity(null);
+      nextErrors.push(results[0].status === 'rejected'
+        ? 'Identity verification: ' + String(results[0].reason)
+        : 'Identity verification: the API did not confirm this signed-in account.');
+    }
+    if (results[1].status === 'fulfilled') setMetrics(results[1].value);
+    else { setMetrics(null); nextErrors.push('Runtime metrics: ' + String(results[1].reason)); }
+    if (results[2].status === 'fulfilled') setActions(results[2].value.actions ?? []);
+    else { setActions([]); nextErrors.push('Pending actions: ' + String(results[2].reason)); }
+    if (results[3].status === 'fulfilled') setJobs(results[3].value.jobs ?? []);
+    else { setJobs([]); nextErrors.push('Engineering approvals: ' + String(results[3].reason)); }
     if (requestId === refreshRequestId.current) {
       setErrors(nextErrors);
       setLoading(false);
@@ -225,8 +239,13 @@ export default function AdminConsole({ userId }: { userId: string }) {
             <span className="mt-1 block text-sm font-semibold text-white">Engineering approvals</span>
             <span className="mt-1 block text-xs text-slate-400">Exact plan, base commit and diff-bound review</span>
           </a>
+          <a href="#admin-identity" className="rounded-xl border border-cyan-300/20 bg-cyan-300/[0.06] p-3 transition hover:border-cyan-200/50 hover:bg-cyan-300/10">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-cyan-300">Available · Verified session</span>
+            <span className="mt-1 block text-sm font-semibold text-white">Identity &amp; access</span>
+            <span className="mt-1 block text-xs text-slate-400">Current principal and server-verified role</span>
+          </a>
           {[
-            ['Identity & access', 'User directory, role lifecycle and access reviews'],
+
             ['Infrastructure', 'U2EB Render services, database and Redis controls'],
             ['Security & audit', 'Policy findings, audit search and session reviews'],
             ['Integrations', 'Provider registry, adapters and connection diagnostics'],
@@ -245,6 +264,20 @@ export default function AdminConsole({ userId }: { userId: string }) {
           ))}
         </div>
         <p className="mt-4 border-t border-white/10 pt-3 text-[11px] leading-5 text-slate-500">Administrator access never overrides Gen-X policy. Production mutations, secrets, paid upgrades and deployments remain outside this U2EB console and require separate authorization.</p>
+      </section>
+
+      <section id="admin-identity" className="scroll-mt-6 rounded-2xl border border-cyan-300/15 bg-slate-900/70 p-5 sm:p-6" aria-labelledby="admin-identity-title">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><h2 id="admin-identity-title" className="text-lg font-semibold text-white">Identity &amp; access</h2><p className="mt-1 text-sm text-slate-400">Current account details returned by the server after Supabase token verification.</p></div>
+          <span className="rounded-full border border-white/15 px-3 py-1 text-xs text-slate-300">{identity?.authenticated ? 'Session verified' : 'Verification unavailable'}</span>
+        </div>
+        <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+          <InfoRow label="Signed-in identity" value={identity?.user.displayName || identity?.user.email || (identity ? 'Verified account' : 'Not verified')} />
+          <InfoRow label="Effective role" value={identity?.user.role ?? 'Not reported'} />
+          <InfoRow label="Owner authority" value={identity ? (identity.user.isOwner ? 'Owner identity confirmed by server configuration' : 'Not the configured owner') : 'Not verified'} />
+          <InfoRow label="Identity source" value="Supabase Auth · server-verified access token" />
+        </dl>
+        <p className="mt-4 text-xs leading-5 text-slate-500">Read-only current-session view. The API verifies the bearer token with Supabase Auth, derives administrator role from trusted app metadata, and matches owner identity against server-side configuration. A tenant-wide user directory, role changes, session revocation and access-review history are not implemented. This console cannot grant administrator or owner authority.</p>
       </section>
 
       <div id="admin-runtime" className="grid scroll-mt-6 gap-3 sm:grid-cols-2 xl:grid-cols-4">
