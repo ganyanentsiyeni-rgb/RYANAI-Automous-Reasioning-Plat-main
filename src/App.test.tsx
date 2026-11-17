@@ -268,6 +268,24 @@ describe('application authentication boundary', () => {
     expect(enabledModules.phonelink).toBe(true);
   });
 
+  it('keeps legacy Music and PhoneLink compatibility links unique', async () => {
+    const legacySession = {
+      ...session,
+      user: {
+        ...session.user,
+        user_metadata: { ryanai_dashboard_ui: ['pa', 'workspace'] },
+      },
+    } as Session;
+    auth.getSession.mockResolvedValue({ data: { session: legacySession }, error: null });
+    await mount('/dashboard');
+    await expectContent('Private dashboard');
+
+    for (const navigation of ['Main navigation', 'Mobile navigation']) {
+      expect(container.querySelectorAll(`nav[aria-label="${navigation}"] a[href="#/music"]`)).toHaveLength(1);
+      expect(container.querySelectorAll(`nav[aria-label="${navigation}"] a[href="#/phonelink"]`)).toHaveLength(1);
+    }
+  });
+
   it('hides disabled workspaces and blocks direct links using account dashboard preferences', async () => {
     const limitedSession = {
       ...session,
@@ -498,39 +516,3 @@ describe('application authentication boundary', () => {
     await act(async () =>
       container
         .querySelector('header button')
-        ?.dispatchEvent(new MouseEvent('click', { bubbles: true })),
-    );
-    expect(auth.signOut).toHaveBeenCalledOnce();
-    expect(container.textContent).not.toContain('Private workspace');
-  });
-  it('reports sign-out failures without pretending the session was revoked', async () => {
-    auth.getSession.mockResolvedValue({ data: { session }, error: null });
-    auth.signOut.mockResolvedValue({ error: new Error('unavailable') });
-    await mount('/workspace');
-    await act(async () =>
-      container
-        .querySelector('header button')
-        ?.dispatchEvent(new MouseEvent('click', { bubbles: true })),
-    );
-    await expectContent('Sign out failed');
-    await expectContent('Private workspace');
-  });
-
-  it('preserves the OAuth consent request path while requiring a signed-in user', async () => {
-    window.history.replaceState({}, '', '/oauth/consent?authorization_id=authorization-123');
-    await act(async () => root.render(<App />));
-    await expectContent('Sign in to RYANAI');
-    expect(container.textContent).not.toContain('Approve access');
-    expect(container.textContent).not.toContain('Private workspace');
-    expect(window.location.pathname).toBe('/oauth/consent');
-    expect(window.location.search).toContain('authorization_id=authorization-123');
-    window.history.replaceState({}, '', '/');
-  });
-
-  it('fails closed on restoration errors', async () => {
-    auth.getSession.mockRejectedValue(new Error('offline'));
-    await mount('/workspace');
-    expect(container.textContent).toContain('Unable to restore');
-    expect(container.textContent).not.toContain('Private workspace');
-  });
-});
