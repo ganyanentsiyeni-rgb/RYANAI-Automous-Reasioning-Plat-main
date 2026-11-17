@@ -5,6 +5,7 @@ import {
   decryptGitHubSecret,
   encryptGitHubSecret,
   githubOAuthStateHash,
+  GITHUB_APP_REPOSITORY,
   parseGitHubTokenTimes,
   readGitHubAppConfig,
 } from './githubAppOAuth.js';
