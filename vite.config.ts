@@ -1,4 +1,3 @@
-
 import { defineConfig, loadEnv } from 'vite';
 import { configDefaults } from 'vitest/config';
 import react from '@vitejs/plugin-react';
@@ -6,6 +5,14 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function normalizeApiUrl(value: string): string {
+  const trimmed = value.trim();
+  const withProtocol = /^[a-z][a-z\d+.-]*:\/\//i.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+  return withProtocol.replace(/\/+$/, '');
+}
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
@@ -31,11 +38,43 @@ export default defineConfig(({ mode }) => {
     env.VITE_API_BASE_URL ?? process.env.VITE_API_BASE_URL;
   const legacyApiUrl =
     env.VITE_API_URL ?? process.env.VITE_API_URL;
+  const configuredApiUrl = primaryApiUrl?.trim() || legacyApiUrl?.trim();
+  const frontendEnvironment =
+    env.VITE_APP_ENV?.trim() || process.env.VITE_APP_ENV?.trim();
 
-  const targetApiUrl =
-    primaryApiUrl?.trim() ||
-    legacyApiUrl?.trim() ||
-    'http://127.0.0.1:3001';
+  // Production static builds must not silently publish a sign-in page with no
+  // Supabase client or an API URL that falls back to the frontend origin.
+  if (frontendEnvironment === 'production') {
+    const supabaseUrl =
+      env.VITE_SUPABASE_URL?.trim() || process.env.VITE_SUPABASE_URL?.trim();
+    const supabaseKey =
+      env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ||
+      process.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ||
+      env.VITE_SUPABASE_ANON_KEY?.trim() ||
+      process.env.VITE_SUPABASE_ANON_KEY?.trim();
+    const missing = [
+      !configuredApiUrl && 'VITE_API_BASE_URL',
+      !supabaseUrl && 'VITE_SUPABASE_URL',
+      !supabaseKey && 'VITE_SUPABASE_PUBLISHABLE_KEY (or legacy VITE_SUPABASE_ANON_KEY)',
+    ].filter(Boolean);
+    if (missing.length) {
+      throw new Error(
+        `Production frontend configuration is incomplete: ${missing.join(', ')}. Refusing to publish an unusable sign-in/API build.`,
+      );
+    }
+
+    const apiUrl = new URL(normalizeApiUrl(configuredApiUrl!));
+    const authUrl = new URL(supabaseUrl!);
+    if (apiUrl.protocol !== 'https:' || authUrl.protocol !== 'https:') {
+      throw new Error(
+        'Production frontend API and Supabase URLs must both use HTTPS.',
+      );
+    }
+  }
+
+  const targetApiUrl = configuredApiUrl
+    ? normalizeApiUrl(configuredApiUrl)
+    : 'http://127.0.0.1:3001';
 
   const targetWsUrl =
     env.VITE_WS_URL ||
