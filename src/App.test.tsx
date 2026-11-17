@@ -515,4 +515,11 @@ describe('application authentication boundary', () => {
     await mount('/workspace');
     await act(async () =>
       container
-        .querySelector('header button')
+        .querySelector<HTMLButtonElement>('header button[aria-label="Sign out"]')
+        ?.click(),
+    );
+    await expectContent('Sign in to RYANAI');
+    expect(auth.signOut).toHaveBeenCalledOnce();
+    expect(container.textContent).not.toContain('Private workspace');
+  });
+});
