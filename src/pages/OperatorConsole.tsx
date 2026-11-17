@@ -218,7 +218,9 @@ export default function OperatorConsole({ userId }: { userId: string }) {
   useEffect(() => {
     if (!ownerId) return;
     const initialOutboxLoad = window.setTimeout(() => { void refreshOutbox(); }, 0);
-    if (typeof navigator !== 'undefined' && navigator.onLine) void syncPending();
+    const initialSync = typeof navigator !== 'undefined' && navigator.onLine
+      ? window.setTimeout(() => { void syncPending(); }, 0)
+      : null;
     const online = () => { setIsOnline(true); void syncPending(); };
     const offline = () => setIsOnline(false);
     const timer = window.setInterval(() => {
@@ -228,6 +230,7 @@ export default function OperatorConsole({ userId }: { userId: string }) {
     window.addEventListener('offline', offline);
     return () => {
       window.clearTimeout(initialOutboxLoad);
+      if (initialSync !== null) window.clearTimeout(initialSync);
       window.clearInterval(timer);
       window.removeEventListener('online', online);
       window.removeEventListener('offline', offline);
