@@ -14,10 +14,10 @@ const runtimeSources = [
 ];
 
 test('MCP runtime image copies every local server module', () => {
-  const copyLines = dockerfile.split(/\\r?\\n/).filter((line) => /^COPY\\s/.test(line));
+  const copyLines = dockerfile.split(/\r?\n/).filter((line) => /^COPY\s/.test(line));
   for (const source of runtimeSources) {
     assert.ok(
-      copyLines.some((line) => line.split(/\\s+/).slice(1, -1).some((entry) => entry.endsWith('/' + source))),
+      copyLines.some((line) => line.split(/\s+/).slice(1, -1).some((entry) => entry.endsWith('/' + source))),
       `MCP Dockerfile must copy runtime module ${source}`,
     );
   }
