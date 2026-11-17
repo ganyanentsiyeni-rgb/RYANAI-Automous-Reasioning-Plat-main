@@ -1,5 +1,6 @@
 # U2EB-only Render Blueprint.
 # Deliberately excludes Production and all repair-only duplicate services.
+# The database is dedicated to U2EB and must not contain Production data.
 version: "1"
 
 projects:
@@ -24,9 +25,11 @@ projects:
                 value: staging
               - key: HOST
                 value: 0.0.0.0
+              - key: NODE_USE_SYSTEM_CA
+                value: "1"
               - key: DATABASE_URL
                 fromDatabase:
-                  name: ryanai_database
+                  name: ryanai_database_u2eb
                   property: connectionString
               - key: REDIS_URL
                 fromService:
@@ -35,6 +38,12 @@ projects:
                   property: connectionString
               - key: SUPABASE_URL
                 value: https://narsvpwymvlrhurqbthu.supabase.co
+              - key: SUPABASE_SESSION_POOLER_HOST
+                sync: false
+              - key: SUPABASE_ANON_KEY
+                sync: false
+              - key: SUPABASE_PUBLISHABLE_KEY
+                sync: false
               - key: CORS_ORIGINS
                 value: https://ryanai-web-u2eb.onrender.com
               - key: SCHEDULER_ENABLED
@@ -50,8 +59,8 @@ projects:
               - key: ATTACHMENT_ORPHAN_CLEANUP_ENABLED
                 value: "false"
           - type: web
-            runtime: static
             name: ryanai-web-u2eb
+            runtime: static
             repo: https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main
             branch: main
             buildCommand: npm ci --legacy-peer-deps && npm run build:web
@@ -68,7 +77,9 @@ projects:
               - key: VITE_SUPABASE_URL
                 value: https://narsvpwymvlrhurqbthu.supabase.co
               - key: VITE_SUPABASE_PUBLISHABLE_KEY
-                value: sb_publishable_2EnJpO2OEpC8m35ev0GpiA_gPUPIBz_
+                sync: false
+              - key: VITE_SUPABASE_ANON_KEY
+                sync: false
           - type: keyvalue
             name: ryanai-redis-u2eb
             plan: free
@@ -76,4 +87,7 @@ projects:
             ipAllowList: []
             maxmemoryPolicy: noeviction
         databases:
-          - name: ryanai_database
+          - name: ryanai_database_u2eb
+            plan: free
+            region: oregon
+            postgresMajorVersion: 18
