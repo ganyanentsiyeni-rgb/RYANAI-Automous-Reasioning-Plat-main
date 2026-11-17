@@ -33,6 +33,9 @@ beforeEach(() => {
   vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
   apiFetch.mockImplementation(async (input, init) => {
     const path = String(input);
+    if (path === '/api/auth/verify') return response({ authenticated: true, user: {
+      id: 'admin-account-a', email: 'admin@example.test', role: 'admin', isOwner: true,
+    } });
     if (path === '/api/admin/metrics') return response({
       status: 'ok', uptime: 3600, timestamp: '2026-11-08T12:00:00.000Z',
       database: { status: 'unknown', driver: 'postgresql' },
@@ -63,7 +66,7 @@ describe('Admin Console request ownership', () => {
   it('scopes every dashboard read to the authenticated administrator account', async () => {
     await mount('admin-account-a');
     await vi.waitFor(() => expect(container.textContent).toContain('Send approved test message'));
-    for (const path of ['/api/admin/metrics', '/api/actions', '/api/engineering/jobs']) {
+    for (const path of ['/api/auth/verify', '/api/admin/metrics', '/api/actions', '/api/engineering/jobs']) {
       expect(apiFetch).toHaveBeenCalledWith(path, expect.any(Object), 'admin-account-a');
     }
   });
