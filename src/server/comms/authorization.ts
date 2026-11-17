@@ -257,12 +257,25 @@ export const commsAuthorizationRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/api/comms/destinations', async (request, reply) => {
     const userId = ownerId(request);
     if (!userId) return reply.code(403).send({ error: 'Owner access is required.' });
-    const destinations = await fastify.prisma.$queryRawUnsafe<Array<{ channel: string; address: string; verified_at: Date }>>(
-      `SELECT channel, address, verified_at FROM public.comms_verified_destinations
+    const destinations = await fastify.prisma.$queryRawUnsafe<Array<{ id: string; channel: string; address: string; verified_at: Date }>>(
+      `SELECT id, channel, address, verified_at FROM public.comms_verified_destinations
         WHERE owner_user_id = $1 AND revoked_at IS NULL ORDER BY verified_at DESC`,
       userId,
     );
-    return { destinations: destinations.map(item => ({ channel: item.channel, address: item.address, verifiedAt: item.verified_at })) };
+    return { destinations: destinations.map(item => ({ id: item.id, channel: item.channel, address: item.address, verifiedAt: item.verified_at })) };
+  });
+
+  fastify.delete<{ Params: { id: string } }>('/api/comms/destinations/:id', async (request, reply) => {
+    const userId = ownerId(request);
+    if (!userId) return reply.code(403).send({ error: 'Owner access is required.' });
+    if (!/^[0-9a-f-]{36}$/i.test(request.params.id)) return reply.code(400).send({ error: 'Invalid destination ID.' });
+    const updated = await fastify.prisma.$executeRawUnsafe(
+      `UPDATE public.comms_verified_destinations SET revoked_at = NOW()
+        WHERE id = $1::uuid AND owner_user_id = $2 AND revoked_at IS NULL`,
+      request.params.id, userId,
+    );
+    if (updated !== 1) return reply.code(404).send({ error: 'Verified destination not found.' });
+    return { destinationId: request.params.id, status: 'revoked' };
   });
 
   fastify.post<{ Body: AuthorizationBody }>('/api/comms/approvals', async (request, reply) => {
@@ -273,6 +286,7 @@ export const commsAuthorizationRoutes: FastifyPluginAsync = async (fastify) => {
     const recipient = typeof body.recipient === 'string' ? body.recipient.trim() : '';
     const message = typeof body.message === 'string' ? body.message.trim() : '';
     const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : '';
+    if (body.attachmentIds !== undefined && !Array.isArray(body.attachmentIds)) return reply.code(400).send({ error: 'Attachment IDs must be a list.' });
     const attachmentIds = Array.isArray(body.attachmentIds) ? body.attachmentIds : [];
     if (!validChannel(channel)) return reply.code(400).send({ error: 'Unsupported communication channel.' });
     const normalizedRecipient = normalizeCommsRecipient(channel, recipient);
