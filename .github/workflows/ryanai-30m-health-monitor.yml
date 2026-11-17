@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Check out monitor logic
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Test fail-closed CI summarizer
         run: node --test scripts/ryanai-monitor-ci.test.cjs
