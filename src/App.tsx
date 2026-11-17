@@ -129,11 +129,20 @@ export default function App() {
   const user = session?.user;
   const isAdmin = user?.app_metadata?.role === 'admin';
   const isOwner = user?.app_metadata?.owner === true || Boolean(user && verifiedIdentity?.userId === user.id && verifiedIdentity.isOwner);
-  const enabledUiIds = getEnabledDashboardUiIds(user?.user_metadata?.ryanai_dashboard_ui, isOwner, isAdmin);
   const storedUiPreferences = user?.user_metadata?.ryanai_dashboard_ui_preferences;
-  // Existing accounts predate the Music workspace; enable it once by default unless an explicit preference exists.
-  if (Array.isArray(user?.user_metadata?.ryanai_dashboard_ui) && (!storedUiPreferences || typeof storedUiPreferences !== 'object' || !('music' in storedUiPreferences))) enabledUiIds.push('music');
-  if (Array.isArray(user?.user_metadata?.ryanai_dashboard_ui) && (!storedUiPreferences || typeof storedUiPreferences !== 'object' || !('phonelink' in storedUiPreferences))) enabledUiIds.push('phonelink');
+  // Existing accounts predate the Music and PhoneLink workspaces; preserve their
+  // compatibility defaults without mutating the shared enabled-workspace result.
+  const legacyCompatibilityIds = new Set<DashboardUiId>();
+  if (Array.isArray(user?.user_metadata?.ryanai_dashboard_ui) && (!storedUiPreferences || typeof storedUiPreferences !== 'object' || !('music' in storedUiPreferences))) {
+    legacyCompatibilityIds.add('music');
+  }
+  if (Array.isArray(user?.user_metadata?.ryanai_dashboard_ui) && (!storedUiPreferences || typeof storedUiPreferences !== 'object' || !('phonelink' in storedUiPreferences))) {
+    legacyCompatibilityIds.add('phonelink');
+  }
+  const enabledUiIds = Array.from(new Set([
+    ...getEnabledDashboardUiIds(user?.user_metadata?.ryanai_dashboard_ui, isOwner, isAdmin),
+    ...legacyCompatibilityIds,
+  ]));
   const roleAccessDenied = Boolean(user && (
     (route === 'admin' && !isAdmin)
     || (route === 'comms' && !isOwner)
