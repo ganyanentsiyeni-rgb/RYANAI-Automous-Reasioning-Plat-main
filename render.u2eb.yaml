@@ -49,7 +49,8 @@ projects:
                 value: "false"
               - key: ATTACHMENT_ORPHAN_CLEANUP_ENABLED
                 value: "false"
-          - type: static
+          - type: web
+            runtime: static
             name: ryanai-web-u2eb
             repo: https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main
             branch: main
