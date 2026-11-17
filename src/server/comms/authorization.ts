@@ -291,7 +291,7 @@ export const commsAuthorizationRoutes: FastifyPluginAsync = async (fastify) => {
     if (!validChannel(channel)) return reply.code(400).send({ error: 'Unsupported communication channel.' });
     if (String(channel) === 'email') return reply.code(503).send({ error: 'Email approvals are disabled until a delivery-callback-capable provider is integrated. SMTP acceptance is not delivery confirmation.' });
     const normalizedRecipient = normalizeCommsRecipient(channel, recipient);
-    const destinationChannel: DestinationChannel = 'phone';
+    const destinationChannel: DestinationChannel = String(channel) === 'email' ? 'email' : 'phone';
     if (!validRecipient(destinationChannel, normalizedRecipient)) return reply.code(400).send({ error: 'Recipient address is invalid.' });
     if (!idempotencyKey || idempotencyKey.length < 16 || idempotencyKey.length > 128 || !/^[a-zA-Z0-9._:-]+$/.test(idempotencyKey)) return reply.code(400).send({ error: 'A valid idempotency key is required.' });
     if ((!message && !(channel === 'whatsapp' && (body.contentSid || process.env.TWILIO_WHATSAPP_CONTENT_SID?.trim()))) || message.length > 4000) return reply.code(400).send({ error: 'A message of at most 4,000 characters is required.' });
