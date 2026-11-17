@@ -19,9 +19,9 @@ if (!/^postgres(?:ql)?:$/.test(parsedDatabaseUrl.protocol)) throw new Error('Not
 process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL = databaseUrl;
 
-const { prisma } = await import('../src/lib/prisma.ts');
+const { prisma } = await import('../dist/server/lib/prisma.js');
 const { dispatchAutonomousTask, getAgentTaskWorkerStatus, startAgentTaskWorker } =
-  await import('../src/agent/operations.ts');
+  await import('../dist/server/agent/operations.js');
 
 const waitFor = async (predicate, timeoutMs, message) => {
   const deadline = Date.now() + timeoutMs;
