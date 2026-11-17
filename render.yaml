@@ -58,8 +58,6 @@ projects:
                 value: ve-ZA
           - name: ryanai-web-production
             envVars:
-              - key: VITE_API_BASE_URL
-                value: https://ryanai-api.onrender.com
               - key: VITE_APP_ENV
                 value: production
         services:
@@ -74,6 +72,13 @@ projects:
             envVars:
               - fromGroup: ryanai-shared-production
               - fromGroup: ryanai-web-production
+              # Resolve the public API hostname from the API service instead of
+              # hardcoding a Render URL that can drift when the service is recreated.
+              - key: VITE_API_BASE_URL
+                fromService:
+                  name: ryanai-api
+                  type: web
+                  envVarKey: RENDER_EXTERNAL_HOSTNAME
               - key: VITE_SUPABASE_ANON_KEY
                 sync: false
               - key: VITE_SUPABASE_PUBLISHABLE_KEY
