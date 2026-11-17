@@ -47,7 +47,7 @@ export async function decideAction(
     outcome = { error: err instanceof Error ? err.message : String(err) };
   }
 
-  // The message is already sent or failed. A failure to record it must not hide that.
+  // Record whether the configured dispatcher completed or rejected the action.
   await deps.finish(id, outcome).catch((err: unknown) => {
     console.error('[approvals] Could not record the outcome of action', id, err);
   });
