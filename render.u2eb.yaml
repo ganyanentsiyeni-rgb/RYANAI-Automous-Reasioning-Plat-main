@@ -1,0 +1,79 @@
+# U2EB-only Render Blueprint.
+# Deliberately excludes Production and all repair-only duplicate services.
+version: "1"
+
+projects:
+  - name: RyanAI
+    environments:
+      - name: U2EB
+        permissions:
+          protection: enabled
+        services:
+          - type: web
+            name: ryanai-api-u2eb
+            runtime: docker
+            repo: https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main
+            branch: main
+            region: oregon
+            plan: free
+            dockerfilePath: ./Dockerfile.api
+            healthCheckPath: /health
+            autoDeployTrigger: off
+            envVars:
+              - key: NODE_ENV
+                value: staging
+              - key: HOST
+                value: 0.0.0.0
+              - key: DATABASE_URL
+                fromDatabase:
+                  name: ryanai_database
+                  property: connectionString
+              - key: REDIS_URL
+                fromService:
+                  name: ryanai-redis-u2eb
+                  type: keyvalue
+                  property: connectionString
+              - key: SUPABASE_URL
+                value: https://narsvpwymvlrhurqbthu.supabase.co
+              - key: CORS_ORIGINS
+                value: https://ryanai-web-u2eb.onrender.com
+              - key: SCHEDULER_ENABLED
+                value: "false"
+              - key: ALERTS_ENABLED
+                value: "false"
+              - key: COMMUNICATIONS_ENABLED
+                value: "false"
+              - key: COMMUNICATION_ATTACHMENTS_ENABLED
+                value: "false"
+              - key: ATTACHMENT_SCANNER_ENABLED
+                value: "false"
+              - key: ATTACHMENT_ORPHAN_CLEANUP_ENABLED
+                value: "false"
+          - type: web
+            runtime: static
+            name: ryanai-web-u2eb
+            repo: https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main
+            branch: main
+            buildCommand: npm ci --legacy-peer-deps && npm run build:web
+            staticPublishPath: ./dist
+            autoDeployTrigger: off
+            envVars:
+              - key: VITE_APP_ENV
+                value: staging
+              - key: VITE_API_BASE_URL
+                fromService:
+                  name: ryanai-api-u2eb
+                  type: web
+                  envVarKey: RENDER_EXTERNAL_HOSTNAME
+              - key: VITE_SUPABASE_URL
+                value: https://narsvpwymvlrhurqbthu.supabase.co
+              - key: VITE_SUPABASE_PUBLISHABLE_KEY
+                value: sb_publishable_2EnJpO2OEpC8m35ev0GpiA_gPUPIBz_
+          - type: keyvalue
+            name: ryanai-redis-u2eb
+            plan: free
+            region: oregon
+            ipAllowList: []
+            maxmemoryPolicy: noeviction
+        databases:
+          - name: ryanai_database

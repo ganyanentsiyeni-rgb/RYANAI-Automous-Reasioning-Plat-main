@@ -34,6 +34,25 @@ describe('deployment-neutral Vite configuration', () => {
   });
 });
 
+describe('hosted frontend configuration', () => {
+  it('rejects staging builds without the Supabase browser key instead of publishing a broken sign-in page', () => {
+    vi.stubEnv('VITE_APP_ENV', 'staging');
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://narsvpwymvlrhurqbthu.supabase.co');
+    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', '');
+    vi.stubEnv('VITE_SUPABASE_ANON_KEY', '');
+    expect(() => resolveConfig(build)).toThrow(
+      'Hosted frontend configuration is incomplete: VITE_SUPABASE_PUBLISHABLE_KEY',
+    );
+  });
+
+  it('accepts staging builds when API and Supabase public configuration are present', () => {
+    vi.stubEnv('VITE_APP_ENV', 'staging');
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://narsvpwymvlrhurqbthu.supabase.co');
+    vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'sb_publishable_test_fixture');
+    expect(resolveConfig(build)).toBeDefined();
+  });
+});
+
 describe('browser credential protection', () => {
   it.each([
     'VITE_OPENAI_API_KEY',
