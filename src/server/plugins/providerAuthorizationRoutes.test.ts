@@ -275,4 +275,62 @@ describe('provider authorization HTTP lifecycle', () => {
     });
     await app.close();
   });
+
+  it('reads only the signed-in owner Google Calendar events and returns normalized metadata', async () => {
+    vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
+    vi.stubEnv('RYANAI_PLUGIN_GOOGLE_CALENDAR_CLIENT_ID', 'synthetic-client');
+    vi.stubEnv('RYANAI_PLUGIN_GOOGLE_CALENDAR_CLIENT_SECRET', 'synthetic-secret');
+    vi.stubEnv('RYANAI_PLUGIN_GOOGLE_CALENDAR_REDIRECT_URI', 'https://api.example.test/api/plugins/oauth/google-calendar/callback');
+    const { app, connectionRows } = await createApp();
+    const encrypted = encryptProviderCredential(
+      'synthetic-calendar-access-token', Buffer.from(key, 'hex'),
+      'plugin-token:google-calendar:owner-user-1',
+    );
+    connectionRows.set(`${owner.id}:google-calendar`, {
+      id: 'calendar-connection', ownerUserId: owner.id, providerId: 'google-calendar',
+      status: 'connected', encryptedAccessToken: encrypted,
+      accessTokenExpiresAt: new Date(Date.now() + 60_000),
+      grantedScopes: ['https://www.googleapis.com/auth/calendar.readonly'],
+    });
+    const fetchMock = vi.fn(async (url: URL, init: RequestInit) => {
+      expect(url.origin).toBe('https://www.googleapis.com');
+      expect(url.pathname).toBe('/calendar/v3/calendars/primary/events');
+      expect(url.searchParams.get('maxResults')).toBe('20');
+      expect(new Headers(init.headers).get('authorization')).toBe('Bearer synthetic-calendar-access-token');
+      return new Response(JSON.stringify({ items: [{
+        id: 'event-1', summary: 'RyanAI planning', start: { dateTime: '2026-11-18T10:00:00Z' },
+        end: { dateTime: '2026-11-18T10:30:00Z' }, location: 'Johannesburg',
+      }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/plugins/google-calendar/events?start=2026-11-18T00:00:00Z&end=2026-11-19T00:00:00Z&limit=20',
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      provider: 'google-calendar',
+      events: [{ id: 'event-1', title: 'RyanAI planning', location: 'Johannesburg' }],
+    });
+    expect(response.body).not.toContain('synthetic-calendar-access-token');
+    expect(fetchMock).toHaveBeenCalledOnce();
+    await app.close();
+  });
+
+  it('rejects calendar event requests with invalid or excessive date ranges', async () => {
+    vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
+    vi.stubEnv('RYANAI_PLUGIN_GOOGLE_CALENDAR_CLIENT_ID', 'synthetic-client');
+    vi.stubEnv('RYANAI_PLUGIN_GOOGLE_CALENDAR_CLIENT_SECRET', 'synthetic-secret');
+    vi.stubEnv('RYANAI_PLUGIN_GOOGLE_CALENDAR_REDIRECT_URI', 'https://api.example.test/api/plugins/oauth/google-calendar/callback');
+    const { app } = await createApp();
+    const invalid = await app.inject({ method: 'GET', url: '/api/plugins/google-calendar/events?start=not-a-date' });
+    const excessive = await app.inject({
+      method: 'GET',
+      url: '/api/plugins/google-calendar/events?start=2026-01-01T00:00:00Z&end=2026-03-01T00:00:00Z',
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(excessive.statusCode).toBe(400);
+    await app.close();
+  });
+
 });

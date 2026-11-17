@@ -537,4 +537,106 @@ export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) =
       }
     },
   );
+
+  fastify.get<{ Params: { provider: string }; Querystring: { start?: string; end?: string; limit?: string } }>(
+    '/api/plugins/:provider/events',
+    { preHandler: requireUser },
+    async (request, reply) => {
+      const ownerUserId = request.authUser?.id;
+      if (!ownerUserId) return reply.code(401).send({ error: 'Sign in to read calendar events.' });
+      const config = providerConfig(request.params.provider);
+      if (!config || !['google-calendar', 'microsoft-365-calendar'].includes(config.id)) {
+        return reply.code(404).send({ error: 'Read-only calendar access is not supported for this provider.' });
+      }
+
+      const start = request.query.start ? new Date(request.query.start) : new Date();
+      const end = request.query.end ? new Date(request.query.end) : new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const limit = request.query.limit === undefined ? 50 : Number(request.query.limit);
+      if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) ||
+          end <= start || end.getTime() - start.getTime() > 31 * 24 * 60 * 60 * 1000 ||
+          !Number.isInteger(limit) || limit < 1 || limit > 100) {
+        return reply.code(400).send({ error: 'Use a valid date range of at most 31 days and a limit between 1 and 100.' });
+      }
+
+      const unique = { ownerUserId_providerId: { ownerUserId, providerId: config.id } };
+      const connection = await fastify.prisma.pluginProviderConnection.findUnique({ where: unique });
+      if (!connection || connection.status !== 'connected' || !connection.encryptedAccessToken) {
+        return reply.code(409).send({ error: 'Connect this calendar account before reading events.' });
+      }
+      if (!connection.accessTokenExpiresAt || connection.accessTokenExpiresAt <= new Date()) {
+        return reply.code(409).send({ error: 'Calendar access token may be expired. Refresh the connection and retry.' });
+      }
+      const granted = Array.isArray(connection.grantedScopes) ? connection.grantedScopes : [];
+      const required = config.id === 'google-calendar'
+        ? 'https://www.googleapis.com/auth/calendar.readonly' : 'Calendars.Read';
+      if (!granted.includes(required)) {
+        return reply.code(403).send({ error: 'The connected account has not granted the required read-only calendar scope.' });
+      }
+
+      try {
+        const token = decryptProviderCredential(
+          connection.encryptedAccessToken, encryptionKey(),
+          connectionEncryptionContext(config.id, ownerUserId),
+        );
+        const endpoint = config.id === 'google-calendar'
+          ? new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events')
+          : new URL('https://graph.microsoft.com/v1.0/me/calendarView');
+        if (config.id === 'google-calendar') {
+          endpoint.searchParams.set('timeMin', start.toISOString());
+          endpoint.searchParams.set('timeMax', end.toISOString());
+          endpoint.searchParams.set('maxResults', String(limit));
+          endpoint.searchParams.set('singleEvents', 'true');
+          endpoint.searchParams.set('orderBy', 'startTime');
+        } else {
+          endpoint.searchParams.set('startDateTime', start.toISOString());
+          endpoint.searchParams.set('endDateTime', end.toISOString());
+          endpoint.searchParams.set('$top', String(limit));
+          endpoint.searchParams.set('$orderby', 'start/dateTime');
+        }
+        const response = await fetch(endpoint, {
+          headers: { Accept: 'application/json', Authorization: 'Bearer ' + token },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+        if (!response.ok) {
+          const status = response.status;
+          if (status === 401 || status === 403) {
+            return reply.code(status).send({ error: 'Calendar provider rejected the stored authorization. Reconnect if access was revoked.' });
+          }
+          return reply.code(status === 429 || status >= 500 ? 503 : 502)
+            .send({ error: status === 429 ? 'Calendar provider rate limit was reached.' : 'Calendar provider request failed.' });
+        }
+        const payload = await response.json() as {
+          items?: Array<Record<string, unknown>>;
+          value?: Array<Record<string, unknown>>;
+          nextPageToken?: string;
+        };
+        const items = config.id === 'google-calendar' ? payload.items ?? [] : payload.value ?? [];
+        const events = items.slice(0, limit).map((item) => {
+          const startValue = item.start as Record<string, unknown> | undefined;
+          const endValue = item.end as Record<string, unknown> | undefined;
+          const organizer = item.organizer as Record<string, unknown> | undefined;
+          const graphOrganizer = organizer?.emailAddress as Record<string, unknown> | undefined;
+          const graphStart = typeof startValue?.dateTime === 'string' ? startValue.dateTime : null;
+          const graphEnd = typeof endValue?.dateTime === 'string' ? endValue.dateTime : null;
+          return {
+            id: typeof item.id === 'string' ? item.id : null,
+            title: typeof item.summary === 'string' ? item.summary : typeof item.subject === 'string' ? item.subject : '(Untitled event)',
+            start: typeof startValue?.dateTime === 'string' ? startValue.dateTime : typeof startValue?.date === 'string' ? startValue.date : graphStart,
+            end: typeof endValue?.dateTime === 'string' ? endValue.dateTime : typeof endValue?.date === 'string' ? endValue.date : graphEnd,
+            timeZone: typeof startValue?.timeZone === 'string' ? startValue.timeZone : null,
+            location: typeof item.location === 'string' ? item.location :
+              typeof (item.location as Record<string, unknown> | undefined)?.displayName === 'string'
+                ? (item.location as Record<string, unknown>).displayName as string : null,
+            organizer: typeof organizer?.email === 'string' ? organizer.email :
+              typeof graphOrganizer?.address === 'string' ? graphOrganizer.address : null,
+            status: typeof item.status === 'string' ? item.status : null,
+          };
+        });
+        return { provider: config.id, range: { start: start.toISOString(), end: end.toISOString() }, events };
+      } catch {
+        request.log.warn({ providerId: config.id }, 'Read-only calendar event retrieval failed');
+        return reply.code(502).send({ error: 'Calendar events could not be retrieved.' });
+      }
+    },
+  );
 };
