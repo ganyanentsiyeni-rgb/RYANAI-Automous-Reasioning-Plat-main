@@ -19,6 +19,7 @@ import {
   Settings,
   ListChecks,
   Menu,
+  Network,
   X,
   ClipboardList,
   LogIn,
@@ -102,6 +103,7 @@ const routeIcons: Record<Route, LucideIcon> = {
   phonelink: Smartphone,
   studio: Code2,
   survey: ClipboardList,
+  architecture: Network,
 };
 
 const destinations = appManifest.routes.map((route) => ({
