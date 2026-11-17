@@ -82,7 +82,6 @@ describe('POST /api/actions/:id/approve and /reject', () => {
       headers: admin,
     });
     expect(service.decideAction).toHaveBeenCalledWith(actionId, 'admin-1', true);
-    expect(response.statusCode).toBe(200);
     expect(response.statusCode).toBe(502);
     expect(response.json()).toEqual({ status: 'failed', error: 'Legacy outbound communications dispatch is disabled.' });
   });
