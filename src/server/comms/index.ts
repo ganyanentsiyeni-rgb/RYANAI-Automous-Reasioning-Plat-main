@@ -253,8 +253,18 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
     }
     const smtp = channel === 'email' ? smtpTransport() : null;
     if (channel === 'email' && !smtp) return reply.code(503).send({ success: false, error: 'SMTP is not configured.' });
+    if (channel === 'email') return reply.code(503).send({ success: false, error: 'Email dispatch is disabled until a delivery-callback-capable provider is configured. SMTP acceptance is not delivery confirmation.' });
     const client = channel !== 'email' ? twilioClient() : null;
     if (channel !== 'email' && !client) return reply.code(503).send({ success: false, error: 'Twilio is not configured.' });
+    const statusCallbackUrl = process.env.TWILIO_STATUS_CALLBACK_URL?.trim();
+    const statusWebhookUrl = process.env.TWILIO_STATUS_WEBHOOK_URL?.trim();
+    if (channel !== 'email') {
+      let callbackIsSecure = false;
+      try { callbackIsSecure = Boolean(statusCallbackUrl && new URL(statusCallbackUrl).protocol === 'https:'); } catch { callbackIsSecure = false; }
+      if (!callbackIsSecure || statusCallbackUrl !== statusWebhookUrl) {
+        return reply.code(503).send({ success: false, error: 'A matching HTTPS Twilio delivery-status callback and signature-verification URL are required. No provider request was sent.' });
+      }
+    }
     let from = '';
     if (channel === 'whatsapp') from = process.env.TWILIO_WHATSAPP_NUMBER?.trim() || '';
     else if (channel === 'sms' || channel === 'voice') from = process.env.TWILIO_PHONE_NUMBER?.trim() || '';
@@ -325,7 +335,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
             ? { contentSid: approvedTemplateSid, ...(typeof contentVariables === 'string' ? { contentVariables } : {}) }
             : { body: deliveryBody }),
           ...(attachmentUrls.length ? { mediaUrl: attachmentUrls } : {}),
-          ...(process.env.TWILIO_STATUS_CALLBACK_URL ? { statusCallback: process.env.TWILIO_STATUS_CALLBACK_URL } : {}),
+          statusCallback: statusCallbackUrl!,
         });
         await completeOutboundCommunication(fastify.prisma, { id: reservation.id, providerMessageId: sent.sid, status: sent.status });
         await finishCommsAction(fastify.prisma, approvalId, { status: 'accepted', providerMessageId: sent.sid, providerStatus: sent.status });
@@ -530,6 +540,11 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
     const status = body.MessageStatus || body.CallStatus;
     if (providerId && status) {
       await updateCommunicationStatus(fastify.prisma, providerId, status);
+      await fastify.prisma.$executeRawUnsafe(
+        `UPDATE public.comms_send_approvals SET provider_status = $2, updated_at = NOW()
+          WHERE provider_message_id = $1`,
+        providerId, status,
+      );
     }
     return { received: true };
   });
