@@ -1340,3 +1340,61 @@ model StudioWorkerHeartbeat {
   @@map("studio_worker_heartbeats")
   @@schema("public")
 }
+
+/// Owner-verified destinations eligible for outbound RyanAI communications.
+model CommsVerifiedDestination {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerUserId       String    @map("owner_user_id") @db.Uuid
+  channel           String
+  address           String
+  normalizedAddress String    @map("normalized_address")
+  verifiedAt        DateTime  @map("verified_at") @db.Timestamptz(6)
+  revokedAt         DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([ownerUserId, channel, normalizedAddress], map: "comms_verified_destinations_owner_channel_address_key")
+  @@index([ownerUserId, channel, normalizedAddress], map: "comms_verified_destinations_owner_active_idx")
+  @@map("comms_verified_destinations")
+  @@schema("public")
+}
+
+/// Short-lived Twilio Verify challenge bound to the authenticated owner and destination.
+model CommsDestinationVerificationChallenge {
+  id                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerUserId              String    @map("owner_user_id") @db.Uuid
+  channel                  String
+  address                  String
+  normalizedAddress        String    @map("normalized_address")
+  providerVerificationSid  String    @map("provider_verification_sid")
+  expiresAt                DateTime  @map("expires_at") @db.Timestamptz(6)
+  consumedAt               DateTime? @map("consumed_at") @db.Timestamptz(6)
+  createdAt                DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([ownerUserId, expiresAt], map: "comms_destination_challenges_owner_expiry_idx")
+  @@map("comms_destination_verification_challenges")
+  @@schema("public")
+}
+
+/// Immutable action digest and one-time owner approval for an outbound communication.
+model CommsSendApproval {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerUserId       String    @map("owner_user_id") @db.Uuid
+  channel           String
+  recipient         String
+  payloadHash       String    @map("payload_hash") @db.Char(64)
+  payload           Json
+  policyRuleId      String    @map("policy_rule_id")
+  status            String    @default("pending")
+  expiresAt         DateTime  @map("expires_at") @db.Timestamptz(6)
+  approvedAt        DateTime? @map("approved_at") @db.Timestamptz(6)
+  dispatchedAt      DateTime? @map("dispatched_at") @db.Timestamptz(6)
+  providerMessageId String?   @map("provider_message_id")
+  providerStatus    String?   @map("provider_status")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([ownerUserId, status, expiresAt], map: "comms_send_approvals_owner_status_expiry_idx")
+  @@index([providerMessageId], map: "comms_send_approvals_provider_message_idx")
+  @@map("comms_send_approvals")
+  @@schema("public")
+}
