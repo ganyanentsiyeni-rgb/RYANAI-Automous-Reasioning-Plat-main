@@ -31,3 +31,12 @@ test('package scripts use the same persistent API runtime and run the regression
   );
   assert.match(packageJson.scripts.validate, /npm run test:legacy-server-entrypoints/);
 });
+
+test('retired legacy auth gateway with embedded fallback credentials is absent', () => {
+  const { existsSync } = require('node:fs');
+  assert.equal(
+    existsSync(new URL('../src/auth/authGateway.ts', import.meta.url)),
+    false,
+    'the retired legacy auth gateway must not be reintroduced',
+  );
+});
