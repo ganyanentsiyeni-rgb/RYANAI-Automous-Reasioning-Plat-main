@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { areCommunicationAttachmentsEnabled, isCommunicationsEnabled } from './featureFlags.js';
+import { areCommunicationAttachmentsEnabled, isCommunicationsEnabled, isCommunicationsTestAuthorized } from './featureFlags.js';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -41,5 +41,17 @@ describe('communications feature flags', () => {
     vi.stubEnv('ATTACHMENT_SCANNER_ENABLED', 'true');
 
     expect(areCommunicationAttachmentsEnabled()).toBe(false);
+  });
+});
+
+
+describe('communications test authorization', () => {
+  it('fails closed unless the explicit test authorization flag is exactly true', () => {
+    vi.stubEnv('RYANAI_COMMS_TEST_AUTHORIZED', '');
+    expect(isCommunicationsTestAuthorized()).toBe(false);
+    vi.stubEnv('RYANAI_COMMS_TEST_AUTHORIZED', 'TRUE');
+    expect(isCommunicationsTestAuthorized()).toBe(false);
+    vi.stubEnv('RYANAI_COMMS_TEST_AUTHORIZED', 'true');
+    expect(isCommunicationsTestAuthorized()).toBe(true);
   });
 });
