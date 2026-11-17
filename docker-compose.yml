@@ -142,7 +142,7 @@ services:
       LOCAL_API_KEY: ${LOCAL_API_KEY:-}
       LOCAL_MODEL_URL: ${LOCAL_MODEL_URL:-http://localhost:8080/v1}
       RYANAI_GITHUB_TOKEN: ${RYANAI_GITHUB_TOKEN:-}
-      RYANAI_GITHUB_REPOSITORY: ${RYANAI_GITHUB_REPOSITORY:-RyanAI-Automated/RYANAI-Automous-Reasioning-Plat}
+      RYANAI_GITHUB_REPOSITORY: ${RYANAI_GITHUB_REPOSITORY:-ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main}
       RYANAI_GITHUB_BASE_BRANCH: ${RYANAI_GITHUB_BASE_BRANCH:-main}
       JARVIS_BASE_URL: ${JARVIS_BASE_URL:-}
       JARVIS_API_TOKEN: ${JARVIS_API_TOKEN:-}
@@ -183,7 +183,8 @@ services:
       RYANAI_API_HEALTH_URL: http://api:3000/readyz
       MCP_HOST: 0.0.0.0
       MCP_PORT: 8765
-      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:?Set MCP_AUTH_TOKEN in .env (at least 32 characters)}
+      # Optional unless communications MCP tools are explicitly enabled.
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:-}
       RYANAI_API_BASE_URL: http://api:3000
       RYANAI_MCP_SERVICE_TOKEN: ${RYANAI_MCP_SERVICE_TOKEN:-}
       RYANAI_MCP_DELEGATION_SECRET: ${RYANAI_MCP_DELEGATION_SECRET:-}
