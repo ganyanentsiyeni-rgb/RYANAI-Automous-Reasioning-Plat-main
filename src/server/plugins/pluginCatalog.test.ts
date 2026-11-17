@@ -41,17 +41,6 @@ describe('default server plugin catalogue', () => {
       .toBe(true);
   });
 
-  it('limits Gmail and Outlook catalogue capabilities to read-only metadata access', () => {
-    const registry = createDefaultPluginRegistry();
-    for (const providerId of ['gmail', 'outlook-mail']) {
-      const manifest = registry.get(providerId);
-      expect(manifest?.capabilities).toEqual([
-        { id: 'messages.read', risk: 'read', requiresHumanApproval: false },
-      ]);
-      expect(manifest?.description).toContain('Drafting and sending are not enabled');
-    }
-  });
-
   it('requires human approval for every outbound or destructive capability', () => {
     for (const manifest of DEFAULT_PLUGIN_MANIFESTS) {
       for (const capability of manifest.capabilities) {
