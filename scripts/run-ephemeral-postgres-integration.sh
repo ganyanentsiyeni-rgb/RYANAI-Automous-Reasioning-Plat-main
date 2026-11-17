@@ -3,7 +3,7 @@ set -euo pipefail
 
 CONTAINER_NAME="${POSTGRES_TEST_CONTAINER:-ryan-postgres-test-ephemeral}"
 DB_PORT="${POSTGRES_TEST_PORT:-5432}"
-DB_NAME="${POSTGRES_TEST_DB:-ryan_ai_test}"
+DB_NAME="${POSTGRES_TEST_DB:-ryanai_disposable_postgres}"
 DB_USER="${POSTGRES_TEST_USER:-postgres}"
 DB_PASSWORD="${POSTGRES_TEST_PASSWORD:-postgres}"
 POSTGRES_IMAGE="${POSTGRES_TEST_IMAGE:-pgvector/pgvector:pg15}"
