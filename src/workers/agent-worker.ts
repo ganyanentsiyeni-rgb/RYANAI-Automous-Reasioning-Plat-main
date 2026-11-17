@@ -15,9 +15,11 @@ interface AgentRequest {
   prompt: string;
 }
 
+type ReactAgentDependencies = Parameters<typeof createReactAgent>[0];
+
 interface AgentDependencies {
-  tools: any[];
-  llm: any;
+  tools: ReactAgentDependencies["tools"];
+  llm: ReactAgentDependencies["llm"];
   redis: RedisHealthClient;
 }
 
