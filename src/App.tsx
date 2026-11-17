@@ -66,10 +66,6 @@ import { normalizeAudiobookSettings, normalizeCopilotSettings, normalizeDashboar
 
 type Route = (typeof appManifest.routes)[number]['id'];
 
-/**
- * Resolve the first hash path segment, mapping login/register to signin/signup.
- * Unknown segments use the configured default route.
- */
 const routeFromHash = (): Route => {
   const segment = window.location.hash.replace(/^#\/?/, '').split('/')[0];
   const route =
@@ -113,7 +109,8 @@ const destinations = appManifest.routes.map((route) => ({
   icon: routeIcons[route.id],
 }));
 const routeUiOptions: Partial<Record<Route, DashboardUiId>> = {
-  dashboard: 'dashboard', pa: 'pa', calculator: 'calculator', operator: 'operator',
+  // Dashboard is a core authenticated surface, not a user-toggleable workspace.
+  pa: 'pa', calculator: 'calculator', operator: 'operator',
   operations: 'operations', admin: 'admin', quant: 'quant', trading: 'trading',
   cockpit: 'cockpit', studio: 'studio', comms: 'comms', audiobook: 'audiobook', music: 'music', phonelink: 'phonelink', workspace: 'workspace',
 };
@@ -273,7 +270,7 @@ export default function App() {
         </header>
         <Suspense fallback={<p role="status" className="p-8 text-slate-300">Loading RyanAI workspace…</p>}>
           <main id="main-content" key={user?.id ?? 'signed-out'} tabIndex={-1} className="min-h-0 flex-1 overflow-y-auto focus:outline-none">
-            {user && verifiedIdentity?.userId === user.id && <Greeting userId={user.id} displayName={verifiedIdentity.displayName || displayName} isOwner={isOwner} preferredLanguage={typeof user.user_metadata?.ryanai_language === 'string' ? user.user_metadata.ryanai_language : undefined} preferredVoiceEnabled={typeof user.user_metadata?.ryanai_voice_enabled === 'boolean' ? user.user_metadata.ryanai_voice_enabled : undefined} />}
+            {user && verifiedIdentity?.userId === user.id && <Greeting userId={user.id} displayName={verifiedIdentity.displayName || displayName} isOwner={isOwner} preferredLanguage={typeof user.user_metadata?.ryanai_language === 'string' ? user.user_metadata.ryanai_language : undefined} preferredVoiceEnabled={typeof user.user_metadata?.ryanai_voice_enabled === 'boolean' ? user.user_metadata?.ryanai_voice_enabled : undefined} />}
             {error && <p role="alert" className="p-4 text-rose-300">{error}</p>}
             {isOAuthConsentRoute ? loading ? <p role="status" className="p-8 text-slate-300">Restoring your session before authorization…</p> : user ? <OAuthConsentPage key={user.id} userId={user.id} /> : <AuthPage key="oauth-signin" mode="signin" />
               : route === 'landing' ? <LandingPage />
@@ -291,7 +288,7 @@ export default function App() {
                 {route === 'dashboard' && <DashboardPage isOwner={isOwner} isAdmin={isAdmin} enabledModules={effectiveDashboardUiPreferences} musicSettings={musicSettings} />}
                 {route === 'copilot' && <DarksideCopilot onSignOut={() => void handleSignOut()} userId={user.id} userEmail={user.email ?? ''} userFullName={displayName} showInferenceConsole={dashboardUiPreferences.inferenceConsole} defaultInferenceModel={inferenceSettings.preferredModel as ModelId} voiceSettings={ryanVoiceSettings} copilotSettings={copilotSettings} />}
                 {route === 'pa' && <PAAgentPage />}
-                {route === 'settings' && <ProfileSettings key={user.id} userId={user.id} email={user.email ?? ''} initialDisplayName={displayName || ''} initialLanguage={typeof user.user_metadata?.ryanai_language === 'string' ? user.user_metadata.ryanai_language : isOwner ? OWNER_DEFAULT_LANGUAGE : DEFAULT_LANGUAGE} initialVoiceEnabled={typeof user.user_metadata?.ryanai_voice_enabled === 'boolean' ? user.user_metadata.ryanai_voice_enabled : undefined} initialRyanVoiceSettings={ryanVoiceSettings} initialCopilotSettings={copilotSettings} initialDashboardUiIds={enabledUiIds} initialDashboardUiPreferences={dashboardUiPreferences} initialAudiobookSettings={audiobookSettings} initialInferenceSettings={inferenceSettings} initialMusicSettings={user.user_metadata?.ryanai_music_settings} initialPhoneLinkSettings={phoneLinkSettings} initialPluginPreferences={user.user_metadata?.ryanai_plugin_preferences} isAdmin={isAdmin} isOwner={isOwner} onSignOut={() => void handleSignOut()} signingOut={signingOut} />}
+                {route === 'settings' && <ProfileSettings key={user.id} userId={user.id} email={user.email ?? ''} initialDisplayName={displayName || ''} initialLanguage={typeof user.user_metadata?.ryanai_language === 'string' ? user.user_metadata?.ryanai_language : isOwner ? OWNER_DEFAULT_LANGUAGE : DEFAULT_LANGUAGE} initialVoiceEnabled={typeof user.user_metadata?.ryanai_voice_enabled === 'boolean' ? user.user_metadata?.ryanai_voice_enabled : undefined} initialRyanVoiceSettings={ryanVoiceSettings} initialCopilotSettings={copilotSettings} initialDashboardUiIds={enabledUiIds} initialDashboardUiPreferences={dashboardUiPreferences} initialAudiobookSettings={audiobookSettings} initialInferenceSettings={inferenceSettings} initialMusicSettings={user.user_metadata?.ryanai_music_settings} initialPhoneLinkSettings={phoneLinkSettings} initialPluginPreferences={user.user_metadata?.ryanai_plugin_preferences} isAdmin={isAdmin} isOwner={isOwner} onSignOut={() => void handleSignOut()} signingOut={signingOut} />}
                 {route === 'operator' && <OperatorConsole userId={user.id} />}
                 {route === 'operations' && <OperationsCenter userId={user.id} isAdmin={isAdmin} />}
                 {route === 'admin' && (isAdmin ? <AdminConsole key={user.id} userId={user.id} /> : <p role="alert" className="p-8 text-sm text-rose-200">Administrator access is required to open the RyanAI Admin Console.</p>)}
@@ -304,7 +301,7 @@ export default function App() {
                 {route === 'audiobook' && <AudiobookStudio key={user.id} userId={user.id} defaultVoice={audiobookSettings.defaultVoice} defaultSpeed={audiobookSettings.narrationSpeed} />}
                 {route === 'studio' && <CodingStudio />}
                 {route === 'cockpit' && <><RyanAICockpit userId={user.id} />{isAdmin && <><BrainKnowledgePanel /><SelfPatchPanel /></>}{isTauri() && <AgentControlPanel />}</>}
-                {(route === 'workspace' || isAuthRoute) && <div className="min-h-0"><CommandCenter onSignOut={() => void handleSignOut()} userId={user.id} userEmail={user.email ?? ''} userFullName={displayName} showInferenceConsole={dashboardUiPreferences.inferenceConsole} defaultInferenceModel={inferenceSettings.preferredModel as ModelId} voiceSettings={ryanVoiceSettings} preferredLanguage={typeof user.user_metadata?.ryanai_language === 'string' ? user.user_metadata.ryanai_language : undefined} /></div>}
+                {(route === 'workspace' || isAuthRoute) && <div className="min-h-0"><CommandCenter onSignOut={() => void handleSignOut()} userId={user.id} userEmail={user.email ?? ''} userFullName={displayName} showInferenceConsole={dashboardUiPreferences.inferenceConsole} defaultInferenceModel={inferenceSettings.preferredModel as ModelId} voiceSettings={ryanVoiceSettings} preferredLanguage={typeof user.user_metadata?.ryanai_language === 'string' ? user.user_metadata?.ryanai_language : undefined} /></div>}
               </>}
           </main>
         </Suspense>
@@ -315,8 +312,8 @@ export default function App() {
                 key={user.id}
                 language={
                   typeof user.user_metadata?.ryanai_language === 'string' &&
-                  isRyanLanguage(user.user_metadata.ryanai_language)
-                    ? user.user_metadata.ryanai_language
+                  isRyanLanguage(user.user_metadata?.ryanai_language)
+                    ? user.user_metadata?.ryanai_language
                     : DEFAULT_LANGUAGE
                 }
                 voice={ryanVoiceSettings.realtimeVoice}
