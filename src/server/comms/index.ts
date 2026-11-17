@@ -429,6 +429,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
     const owner = process.env.RYANAI_OWNER_PHONE?.trim();
     if (!owner) return reply.code(503).send({ error: 'RyanAI owner contact is not configured.' });
     if (sender !== normalizePhone(owner)) return reply.code(403).send({ error: 'This voice assistant is privately configured.' });
+    if (!isCommunicationsTestAuthorized()) { reply.type('text/xml'); return '<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>'; }
     if (body.CallSid) await recordCommunication(fastify.prisma, {
       channel: 'voice', externalAddress: sender, direction: 'inbound',
       body: 'Incoming voice call started', providerMessageId: body.CallSid, status: 'in_progress', ownerUserId: process.env.RYANAI_OWNER_AUTH_USER_ID,
@@ -447,6 +448,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
     const sender = fromPhone === ownerPhone ? fromPhone : toPhone === ownerPhone ? toPhone : '';
     const speech = body.SpeechResult?.trim().slice(0, MAX_MESSAGE_LENGTH);
     if (!sender) return reply.code(403).send({ error: 'This voice assistant is privately configured.' });
+    if (!isCommunicationsTestAuthorized()) { reply.type('text/xml'); return '<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>'; }
     reply.type('text/xml');
     if (!speech) return twimlSay('I did not catch that. Please try again.', true);
     const thread = `voice_${(body.CallSid || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '')}`;
@@ -478,6 +480,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
     if (!sender || !body.MessageSid || (!text && media.length === 0)) return reply.code(400).send({ error: 'Invalid SMS webhook payload.' });
     if (!owner) return reply.code(503).send({ error: 'RyanAI owner contact is not configured.' });
     if (sender !== normalizePhone(owner)) return reply.code(403).send({ error: 'This assistant is privately configured.' });
+    if (!isCommunicationsTestAuthorized()) { reply.type('text/xml'); return '<?xml version="1.0" encoding="UTF-8"?><Response/>'; }
     const ownerUserId = getOwnerInboundUserId();
     if (media.length && !ownerUserId) return reply.code(503).send({ error: 'Inbound media storage requires the verified owner Supabase user ID.' });
     let mediaStorageFailed = false;
