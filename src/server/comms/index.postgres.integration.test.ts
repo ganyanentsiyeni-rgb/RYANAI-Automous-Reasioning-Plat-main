@@ -19,6 +19,7 @@ const providerMessageId = `SM-RYANAI-CI-${randomUUID()}`;
 const conversationId = randomUUID();
 const messageId = randomUUID();
 let app: FastifyInstance;
+let createdApprovalFixture = false;
 
 integration('Comms Twilio status callback with disposable PostgreSQL', () => {
   beforeAll(async () => {
@@ -26,6 +27,24 @@ integration('Comms Twilio status callback with disposable PostgreSQL', () => {
     process.env.TWILIO_AUTH_TOKEN = authToken;
     process.env.TWILIO_STATUS_WEBHOOK_URL = callbackUrl;
     await prisma.$connect();
+
+    // The callback also updates the optional outbound-approval ledger. This
+    // integration workflow intentionally does not apply that production
+    // migration, so provide only the columns exercised by the callback in
+    // this disposable test database.
+    const approvalTable = await prisma.$queryRawUnsafe<Array<{ table_name: string | null }>>(
+      "SELECT to_regclass('public.comms_send_approvals')::text AS table_name",
+    );
+    if (!approvalTable[0]?.table_name) {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE public.comms_send_approvals (
+          provider_message_id text,
+          provider_status text,
+          updated_at timestamptz
+        )
+      `);
+      createdApprovalFixture = true;
+    }
 
     await prisma.communicationConversation.create({
       data: {
@@ -56,6 +75,9 @@ integration('Comms Twilio status callback with disposable PostgreSQL', () => {
     if (app) await app.close();
     await prisma.communicationMessage.deleteMany({ where: { id: messageId } });
     await prisma.communicationConversation.deleteMany({ where: { id: conversationId } });
+    if (createdApprovalFixture) {
+      await prisma.$executeRawUnsafe('DROP TABLE IF EXISTS public.comms_send_approvals');
+    }
     await prisma.$disconnect();
     vi.unstubAllEnvs();
   });
