@@ -30,7 +30,7 @@ async function click(element: Element | null) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.spyOn(window, 'confirm').mockReturnValue(true);
+  vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
   apiFetch.mockImplementation(async (input, init) => {
     const path = String(input);
     if (path === '/api/admin/metrics') return response({
@@ -56,6 +56,7 @@ afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('Admin Console request ownership', () => {
