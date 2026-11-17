@@ -10,9 +10,10 @@ import { addressOwnerMessage, getOwnerGreeting } from './personalization.js';
 import { createCommsUploadIntents, createCommsStorageAdmin, cleanCommsAttachmentUrls, downloadCleanCommsAttachments, downloadResendMedia, getCommsAttachmentScanStates, getCommsAttachmentStatuses, getOwnerInboundUserId, storeInboundCommsAttachment, storeTwilioMediaForCommunication } from './attachments.js';
 import { addressOwnerResponse, ownerCommunicationInstruction, RYANAI_LOCALE } from '../../shared/ryanIdentity.js';
 import { areCommunicationAttachmentsEnabled, isCommunicationsEnabled } from './featureFlags.js';
+import { assertCommsActionAuthorized, buildCommsActionPayload, claimCommsAction, finishCommsAction } from './authorization.js';
 
 type Channel = 'whatsapp' | 'sms' | 'voice' | 'email';
-type CommsBody = { channel?: Channel; recipient?: string; message?: string; subject?: string; contentSid?: string; contentVariables?: string; idempotencyKey?: string; attachmentIds?: string[] };
+type CommsBody = { channel?: Channel; recipient?: string; message?: string; subject?: string; contentSid?: string; contentVariables?: string; idempotencyKey?: string; attachmentIds?: string[]; approvalId?: string };
 const MAX_MESSAGE_LENGTH = 4000;
 const E164 = /^\+[1-9]\d{7,14}$/;
 
@@ -260,6 +261,19 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
     if (channel !== 'email' && !from) return reply.code(503).send({ success: false, error: `Twilio ${channel} sender is not configured.` });
     if (channel === 'voice' && !process.env.TWILIO_VOICE_ACTION_URL?.trim()) return reply.code(503).send({ success: false, error: 'Twilio voice action URL is not configured.' });
     const outboundBody = deliveryBody || '[WhatsApp approved template]';
+    const approvalId = typeof request.body?.approvalId === 'string' ? request.body.approvalId.trim() : '';
+    if (!/^[0-9a-f-]{36}$/i.test(approvalId)) return reply.code(400).send({ success: false, error: 'A valid owner approval ID is required.' });
+    const actionPayload = buildCommsActionPayload({
+      channel, recipient: target, body: outboundBody, subject: emailSubject,
+      contentSid: approvedTemplateSid || null,
+      contentVariables: typeof contentVariables === 'string' ? contentVariables : null,
+      idempotencyKey: key, attachmentIds,
+    });
+    try {
+      await assertCommsActionAuthorized(fastify.prisma, request.authUser.id, approvalId, actionPayload);
+    } catch (error) {
+      return reply.code(409).send({ success: false, error: error instanceof Error ? error.message : 'A current owner approval is required.' });
+    }
     let attachmentUrls: string[] = [];
     let emailAttachments: Array<{ filename: string; content: Buffer; contentType: string }> = [];
     if (attachmentIds.length) {
@@ -292,9 +306,15 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       success: true, channel, providerId: reservation.providerMessageId, status: reservation.status, replayed: true,
     });
     try {
+      await claimCommsAction(fastify.prisma, request.authUser.id, approvalId, actionPayload);
+    } catch (error) {
+      return reply.code(409).send({ success: false, error: error instanceof Error ? error.message : 'The owner approval could not be claimed.' });
+    }
+    try {
       if (channel === 'email') {
         const sent = await smtp!.transporter.sendMail({ from: smtp!.from, to: target, subject: emailSubject, text: deliveryBody, ...(emailAttachments.length ? { attachments: emailAttachments } : {}) });
         await completeOutboundCommunication(fastify.prisma, { id: reservation.id, providerMessageId: sent.messageId, status: 'accepted' });
+        await finishCommsAction(fastify.prisma, approvalId, { status: 'accepted', providerMessageId: sent.messageId, providerStatus: 'accepted' });
         return reply.code(202).send({ success: true, channel, providerId: sent.messageId, status: 'accepted', replayed: false });
       }
       if (channel === 'whatsapp' || channel === 'sms') {
@@ -308,6 +328,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
           ...(process.env.TWILIO_STATUS_CALLBACK_URL ? { statusCallback: process.env.TWILIO_STATUS_CALLBACK_URL } : {}),
         });
         await completeOutboundCommunication(fastify.prisma, { id: reservation.id, providerMessageId: sent.sid, status: sent.status });
+        await finishCommsAction(fastify.prisma, approvalId, { status: 'accepted', providerMessageId: sent.sid, providerStatus: sent.status });
         return reply.code(202).send({ success: true, channel, providerId: sent.sid, status: sent.status, replayed: false });
       }
       const call = await client!.calls.create({
@@ -315,8 +336,11 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
         ...(process.env.TWILIO_STATUS_CALLBACK_URL ? { statusCallback: process.env.TWILIO_STATUS_CALLBACK_URL } : {}),
       });
       await completeOutboundCommunication(fastify.prisma, { id: reservation.id, providerMessageId: call.sid, status: call.status });
+      await finishCommsAction(fastify.prisma, approvalId, { status: 'accepted', providerMessageId: call.sid, providerStatus: call.status });
       return reply.code(202).send({ success: true, channel, providerId: call.sid, status: call.status, replayed: false });
     } catch (error) {
+      try { await finishCommsAction(fastify.prisma, approvalId, { status: 'unknown' }); }
+      catch (approvalPersistenceError) { request.log.error({ err: approvalPersistenceError, channel }, 'Unable to mark communications approval outcome as unknown'); }
       try { await markOutboundCommunicationUnknown(fastify.prisma, reservation.id); }
       catch (persistenceError) { request.log.error({ err: persistenceError, channel }, 'Unable to mark outbound communication outcome as unknown'); }
       request.log.error({ err: error, channel }, 'Communication provider request or result persistence failed');
