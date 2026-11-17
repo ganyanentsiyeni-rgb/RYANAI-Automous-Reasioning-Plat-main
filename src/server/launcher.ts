@@ -29,6 +29,7 @@ import { registerWebSocketRoutes } from '../api/websocket.js';
 import { authPlugin, installAuthentication } from './routes/auth.js';
 import authSigninRoute from '../api/auth/signin.js';
 import { commsPlugin } from './comms/index.js';
+import { commsAuthorizationRoutes } from './comms/authorization.js';
 import { githubIntegrationRoutes } from './routes/githubIntegration.js';
 import { approvalRoutes } from './routes/approvalRoutes.js';
 import { engineeringEvidenceRoutes } from './routes/engineeringEvidenceRoutes.js';
@@ -786,6 +787,7 @@ async function registerPlugins() {
   await fastify.register(providerAuthorizationRoutes);
   await fastify.register(phoneLinkRoutes);
   await fastify.register(commsPlugin);
+  await fastify.register(commsAuthorizationRoutes);
   await fastify.register(approvalRoutes);
   await fastify.register(engineeringEvidenceRoutes);
   await fastify.register(slackInteractionsPlugin);

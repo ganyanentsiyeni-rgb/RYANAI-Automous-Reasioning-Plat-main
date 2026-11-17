@@ -9,6 +9,8 @@ const { invoke, prismaMock } = vi.hoisted(() => ({
   invoke: vi.fn(),
   prismaMock: {
     communicationConversation: { upsert: vi.fn().mockResolvedValue({ id: 'conversation-1' }), findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]), updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+    $executeRawUnsafe: vi.fn().mockResolvedValue(1),
+    $queryRawUnsafe: vi.fn().mockResolvedValue([]),
     communicationMessage: {
       findUnique: vi.fn().mockResolvedValue(null),
       upsert: vi.fn().mockResolvedValue({}),
@@ -58,6 +60,8 @@ beforeEach(() => {
   prismaMock.communicationConversation.findMany.mockResolvedValue([]);
   prismaMock.communicationConversation.updateMany.mockResolvedValue({ count: 0 });
   prismaMock.communicationConversation.findFirst.mockResolvedValue({ id: 'conversation-1', messages: [{ direction: 'inbound', body: 'Please confirm the delivery window.', status: 'received', createdAt: new Date('2026-11-05T10:00:00.000Z') }] });
+  prismaMock.$executeRawUnsafe.mockResolvedValue(1);
+  prismaMock.$queryRawUnsafe.mockResolvedValue([]);
   prismaMock.communicationMessage.findUnique.mockResolvedValue(null);
   prismaMock.communicationMessage.upsert.mockResolvedValue({});
   prismaMock.communicationMessage.update.mockResolvedValue({});
@@ -169,6 +173,9 @@ describe('Twilio delivery status callbacks', () => {
     expect(prismaMock.communicationMessage.updateMany).toHaveBeenCalledWith({
       where: { providerMessageId: 'SM-delivered-1' }, data: { status: 'delivered' },
     });
+    expect(prismaMock.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE public.comms_send_approvals'), 'SM-delivered-1', 'delivered',
+    );
   });
 });
 
@@ -222,6 +229,23 @@ describe('Comms conversation intelligence', () => {
 });
 
 describe('outbound Comms request validation', () => {
+  it('blocks outbound dispatch when the recipient has not been verified', async () => {
+    vi.stubEnv('TWILIO_ACCOUNT_SID', 'AC00000000000000000000000000000000');
+    vi.stubEnv('TWILIO_PHONE_NUMBER', '+15555550000');
+    vi.stubEnv('TWILIO_STATUS_CALLBACK_URL', 'https://ryanai.example.test/api/webhooks/twilio/status');
+    vi.stubEnv('TWILIO_STATUS_WEBHOOK_URL', 'https://ryanai.example.test/api/webhooks/twilio/status');
+    const response = await send('/api/comms/send', '', {
+      channel: 'sms',
+      recipient: '+15555550123',
+      message: 'This must not be sent',
+      idempotencyKey: 'comms-test-key-0001',
+      approvalId: '00000000-0000-4000-8000-000000000001',
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error).toContain('verified owner destination');
+    expect(prismaMock.communicationConversation.upsert).not.toHaveBeenCalled();
+  });
+
   it('requires an idempotency key before reserving or sending a provider request', async () => {
     const app = Fastify();
     apps.push(app);
