@@ -41,6 +41,7 @@ describe('authenticated reasoning requests', () => {
             language: 'en-ZA',
           }),
         },
+        undefined,
       );
       expect(fetch).not.toHaveBeenCalled();
     },
@@ -87,6 +88,7 @@ describe('authenticated reasoning requests', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: 'Explain this', model: DEFAULT_MODEL, language: 'en-ZA' }),
       },
+      undefined,
     );
     expect(callbacks.onStep).toHaveBeenCalledExactlyOnceWith({
       type: 'reasoning',
@@ -109,6 +111,7 @@ describe('authenticated reasoning requests', () => {
     expect(authenticatedFetch).toHaveBeenCalledWith(
       'https://api.example.test/api/reasoning/stream',
       expect.objectContaining({ body: JSON.stringify({ prompt: 'Explain this', model: DEFAULT_MODEL, language: 've-ZA' }) }),
+      undefined,
     );
     expect(callbacks.onToken).toHaveBeenCalledWith('Tshivenda');
   });
