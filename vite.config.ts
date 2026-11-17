@@ -44,7 +44,7 @@ export default defineConfig(({ mode }) => {
 
   // Production static builds must not silently publish a sign-in page with no
   // Supabase client or an API URL that falls back to the frontend origin.
-  if (frontendEnvironment === 'production') {
+  if (frontendEnvironment === 'production' || frontendEnvironment === 'staging') {
     const supabaseUrl =
       env.VITE_SUPABASE_URL?.trim() || process.env.VITE_SUPABASE_URL?.trim();
     const supabaseKey =
@@ -59,7 +59,7 @@ export default defineConfig(({ mode }) => {
     ].filter(Boolean);
     if (missing.length) {
       throw new Error(
-        `Production frontend configuration is incomplete: ${missing.join(', ')}. Refusing to publish an unusable sign-in/API build.`,
+        `Hosted frontend configuration is incomplete: ${missing.join(', ')}. Refusing to publish an unusable sign-in/API build.`,
       );
     }
 
