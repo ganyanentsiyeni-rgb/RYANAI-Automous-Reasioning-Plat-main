@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { authenticatedFetch } from '@/lib/authenticatedFetch';
 import OperatorConsole from './OperatorConsole';
+import { listOfflineTasks } from '@/lib/offlineTaskOutbox';
 
 vi.mock('@/lib/authenticatedFetch', () => ({ authenticatedFetch: vi.fn() }));
 vi.mock('@/lib/supabase', () => ({
@@ -24,6 +25,7 @@ vi.mock('@/components/OperationalAwarenessPanel', () => ({ default: () => <div /
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const apiFetch = vi.mocked(authenticatedFetch);
+const listOfflineTasksMock = vi.mocked(listOfflineTasks);
 let container: HTMLDivElement;
 let root: Root;
 
@@ -52,6 +54,11 @@ describe('Operator Console account ownership', () => {
       { headers: { Accept: 'application/json' } },
       'operator-account-a',
     ));
+  });
+
+  it('loads the offline outbox using the authenticated account identity', async () => {
+    await act(async () => root.render(<OperatorConsole userId="operator-account-a" />));
+    await vi.waitFor(() => expect(listOfflineTasksMock).toHaveBeenCalledWith('operator-account-a'));
   });
 
   it('does not load account task history without an authenticated account identity', async () => {

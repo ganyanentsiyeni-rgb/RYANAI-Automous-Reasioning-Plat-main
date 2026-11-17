@@ -85,7 +85,12 @@ interface Props {
   isOwner?: boolean;
 }
 
-export default function PluginIntegrationsSettings({
+export default function PluginIntegrationsSettings(props: Props) {
+  const preferenceKey = JSON.stringify(normalizePreferences(props.initialPreferences));
+  return <PluginIntegrationsSettingsContent key={`${props.userId}:${preferenceKey}`} {...props} />;
+}
+
+function PluginIntegrationsSettingsContent({
   userId, initialPreferences, isAdmin = false, isOwner = false,
 }: Props) {
   const [preferences, setPreferences] = useState<Preferences>(() => normalizePreferences(initialPreferences));
@@ -154,17 +159,6 @@ export default function PluginIntegrationsSettings({
   }, [userId]);
 
   useEffect(() => {
-    connectionRequestId.current += 1;
-    registryRequestId.current += 1;
-    setPreferences(normalizePreferences(initialPreferences));
-    setConnections([]);
-    setRegistryProviders([]);
-    setConnectionsLoading(true);
-    setRegistryLoading(true);
-    setConnectionBusyId('');
-    setConnectionError('');
-    setConnectionNotice('');
-    setRegistryError('');
     const initialLoad = window.setTimeout(() => {
       void loadConnections();
       void loadRegistry();
@@ -174,7 +168,7 @@ export default function PluginIntegrationsSettings({
       connectionRequestId.current += 1;
       registryRequestId.current += 1;
     };
-  }, [userId, initialPreferences, loadConnections, loadRegistry]);
+  }, [loadConnections, loadRegistry]);
 
   const visible = useMemo(() => CATALOG.filter(plugin =>
     (category === 'All' || plugin.category === category) &&

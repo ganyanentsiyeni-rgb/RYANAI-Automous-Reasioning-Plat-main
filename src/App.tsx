@@ -213,11 +213,10 @@ export default function App() {
   }, [session, isAuthRoute, route]);
 
   useEffect(() => {
-    setMobileNavOpen(false);
-  }, [route]);
-
-  useEffect(() => {
-    const syncRoute = () => setRoute(routeFromHash());
+    const syncRoute = () => {
+      setRoute(routeFromHash());
+      setMobileNavOpen(false);
+    };
     window.addEventListener('hashchange', syncRoute);
     return () => window.removeEventListener('hashchange', syncRoute);
   }, []);

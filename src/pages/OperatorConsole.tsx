@@ -217,7 +217,6 @@ export default function OperatorConsole({ userId }: { userId: string }) {
 
   useEffect(() => {
     if (!ownerId) return;
-    void refreshOutbox();
     const initialOutboxLoad = window.setTimeout(() => { void refreshOutbox(); }, 0);
     if (typeof navigator !== 'undefined' && navigator.onLine) void syncPending();
     const online = () => { setIsOnline(true); void syncPending(); };
