@@ -433,8 +433,44 @@ jobs:
           }
           NODE
 
-      - name: Compare the completed database schema with the Prisma data model
-        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+      - name: Verify Supabase-owned Auth foreign keys remain external to Prisma ownership
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { Pool } from 'pg';
+          const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
+          try {
+            const result = await pool.query(`
+              SELECT
+                c.conname,
+                n.nspname AS source_schema,
+                src.relname AS source_table,
+                tgt_ns.nspname AS target_schema,
+                tgt.relname AS target_table
+              FROM pg_constraint c
+              JOIN pg_class src ON src.oid = c.conrelid
+              JOIN pg_namespace n ON n.oid = src.relnamespace
+              JOIN pg_class tgt ON tgt.oid = c.confrelid
+              JOIN pg_namespace tgt_ns ON tgt_ns.oid = tgt.relnamespace
+              WHERE c.contype = 'f'
+                AND n.nspname = 'public'
+                AND src.relname = 'conversations'
+                AND c.conname = 'conversations_user_id_fkey'
+            `);
+            assert.equal(result.rowCount, 1,
+              'Supabase-owned public.conversations must retain its user FK');
+            assert.equal(result.rows[0].target_schema, 'auth',
+              'conversations_user_id_fkey must target Supabase Auth');
+            assert.equal(result.rows[0].target_table, 'users',
+              'conversations_user_id_fkey must target auth.users');
+            console.log('PASS: Supabase-owned conversations remains linked to auth.users without making Auth Prisma-owned.');
+          } finally {
+            await pool.end();
+          }
+          NODE
+
+      - name: Compare Prisma migration history with the Prisma data model
+        run: npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --exit-code
 
       - name: Audit the completed Prisma schema without modifying it
         run: node scripts/audit-prisma-migration-readiness.mjs
@@ -465,4 +501,3 @@ jobs:
           POSTGRES_TEST_PORT: '55432'
           POSTGRES_TEST_IMAGE: pgvector/pgvector:pg15
         run: npm run test:docker:postgres
-
