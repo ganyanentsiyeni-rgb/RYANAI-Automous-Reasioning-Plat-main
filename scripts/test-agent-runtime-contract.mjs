@@ -49,17 +49,27 @@ try {
   }, 'legacy rows must be quarantined, not implicitly approved for reasoning');
 
   const coding = await pool.query(`
-    SELECT queue_type
+    SELECT id, queue_type
     FROM public.agent_runs
     WHERE id IN (
-      'queue-migration-fixture-pending',
       'queue-migration-fixture-plan',
+      'queue-migration-fixture-pending-workbench',
       'queue-migration-fixture-diff'
     )
   `);
-  assert.equal(coding.rowCount, 3, 'all pre-existing workbench fixtures must remain present');
+  assert.equal(coding.rowCount, 3, 'all explicit workbench fixtures must remain present');
   assert.ok(coding.rows.every((row) => row.queue_type === 'coding'),
-    'the runtime contract must preserve the coding-queue migration classification');
+    'only rows with explicit workbench plan or diff evidence remain in the coding queue');
+
+  const ordinaryPending = await pool.query(`
+    SELECT queue_type, approval_status
+    FROM public.agent_runs
+    WHERE id = 'queue-migration-fixture-pending'
+  `);
+  assert.deepEqual(ordinaryPending.rows[0], {
+    queue_type: 'unclassified',
+    approval_status: 'pending',
+  }, 'an ordinary pending reasoning row must remain quarantined, not be misclassified as coding');
 
   const inserted = await pool.query(`
     INSERT INTO public.agent_runs (id, user_id, objective, status)
