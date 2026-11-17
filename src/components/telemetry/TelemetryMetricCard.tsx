@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { TelemetryMetricSnapshot } from '@/lib/telemetry/contracts';
+import { getSnapshotFreshness } from '@/lib/healthFreshness';
 export interface TelemetryMetricCardProps {
   label: string;
   value: string;
@@ -14,13 +15,13 @@ export interface TelemetryMetricCardProps {
 
 /** Shared snapshot card. It never invents a trend from a single observation. */
 export default function TelemetryMetricCard({
-  label, value, detail, source, observedAt = null, staleAfterMs: _staleAfterMs = 90_000,
+  label, value, detail, source, observedAt = null, staleAfterMs = 90_000,
   status = 'available', icon, snapshot,
 }: TelemetryMetricCardProps) {
   const resolvedStatus = snapshot?.status ?? status;
   const resolvedObservedAt = snapshot ? snapshot.observedAt : observedAt;
   const resolvedSource = snapshot?.source ?? source;
-  const freshness = snapshot?.freshness ?? 'unknown';
+  const freshness = snapshot?.freshness ?? getSnapshotFreshness(resolvedObservedAt, Date.now(), staleAfterMs);
   const freshnessLabel = resolvedStatus === 'error' ? 'Error'
     : resolvedStatus === 'unavailable' ? 'Unavailable'
     : freshness === 'fresh' ? 'Fresh'
