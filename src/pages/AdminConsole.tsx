@@ -4,6 +4,10 @@ import { authenticatedFetch } from '@/lib/authenticatedFetch';
 import TelemetryMetricCard from '@/components/telemetry/TelemetryMetricCard';
 import { createTelemetryMetricSnapshot } from '@/lib/telemetry/contracts';
 
+interface AdminIdentity {
+  authenticated: boolean;
+  user: { id: string; email?: string; role: 'user' | 'admin'; displayName?: string; isOwner: boolean };
+}
 interface RuntimeMetrics {
   status: string;
   uptime: number;
@@ -63,6 +67,7 @@ function statusTone(value: string) {
 }
 
 export default function AdminConsole({ userId }: { userId: string }) {
+  const [identity, setIdentity] = useState<AdminIdentity['user'] | null>(null);
   const [metrics, setMetrics] = useState<RuntimeMetrics | null>(null);
   const [actions, setActions] = useState<PendingAction[]>([]);
   const [jobs, setJobs] = useState<EngineeringJob[]>([]);
@@ -225,6 +230,11 @@ export default function AdminConsole({ userId }: { userId: string }) {
             <span className="mt-1 block text-sm font-semibold text-white">Engineering approvals</span>
             <span className="mt-1 block text-xs text-slate-400">Exact plan, base commit and diff-bound review</span>
           </a>
+          <a href="#admin-identity" className="rounded-xl border border-cyan-300/20 bg-cyan-300/[0.06] p-3 transition hover:border-cyan-200/50 hover:bg-cyan-300/10">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-cyan-300">Available · Verified session</span>
+            <span className="mt-1 block text-sm font-semibold text-white">Identity &amp; access</span>
+            <span className="mt-1 block text-xs text-slate-400">Current principal, server-verified role and owner boundary</span>
+          </a>
           {[
             ['Identity & access', 'User directory, role lifecycle and access reviews'],
             ['Infrastructure', 'U2EB Render services, database and Redis controls'],
@@ -245,6 +255,20 @@ export default function AdminConsole({ userId }: { userId: string }) {
           ))}
         </div>
         <p className="mt-4 border-t border-white/10 pt-3 text-[11px] leading-5 text-slate-500">Administrator access never overrides Gen-X policy. Production mutations, secrets, paid upgrades and deployments remain outside this U2EB console and require separate authorization.</p>
+      </section>
+
+      <section id="admin-identity" className="scroll-mt-6 rounded-2xl border border-cyan-300/15 bg-slate-900/70 p-5 sm:p-6" aria-labelledby="admin-identity-title">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><h2 id="admin-identity-title" className="text-lg font-semibold text-white">Identity &amp; access</h2><p className="mt-1 text-sm text-slate-400">The current principal is verified by the API against Supabase Auth on every request.</p></div>
+          <span className="rounded-full border border-emerald-300/25 px-3 py-1 text-xs text-emerald-200">{identity?.authenticated === false ? 'Not authenticated' : identity ? 'Session verified' : 'Verification unavailable'}</span>
+        </div>
+        <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+          <InfoRow label="Signed-in identity" value={identity?.displayName || identity?.email || (identity ? 'Verified account' : 'Not verified')} />
+          <InfoRow label="Effective role" value={identity?.role ?? 'Not reported'} />
+          <InfoRow label="Owner authority" value={identity ? (identity.isOwner ? 'Owner identity confirmed by server configuration' : 'Not the configured owner') : 'Not verified'} />
+          <InfoRow label="Identity source" value="Supabase Auth · server-verified access token" />
+        </dl>
+        <p className="mt-4 text-xs leading-5 text-slate-500">This is a read-only view of the signed-in principal. A tenant-wide user directory, role changes, session revocation and access-review history are not implemented. Administrator status comes from trusted Supabase app metadata; owner status is independently matched against server-side configuration. This console cannot grant either authority.</p>
       </section>
 
       <div id="admin-runtime" className="grid scroll-mt-6 gap-3 sm:grid-cols-2 xl:grid-cols-4">
