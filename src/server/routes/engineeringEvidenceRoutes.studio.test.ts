@@ -107,6 +107,18 @@ describe('RyanAI Studio overview API', () => {
     expect(response.json().humanReviewRequired).toBe(true);
   });
 
+  it('does not disclose delivery readiness for a project outside the authenticated owner scope', async () => {
+    mocks.getStudioDeliveryReadiness.mockResolvedValueOnce(null);
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/engineering/studio/native/projects/foreign-project/delivery',
+      headers: { 'x-test-user': 'owner-native' },
+    });
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({ error: 'Studio project not found.' });
+    expect(mocks.getStudioDeliveryReadiness).toHaveBeenCalledWith('foreign-project', 'owner-native');
+  });
+
   it('submits structured briefs through the Studio execution adapter', async () => {
     const response = await app.inject({
       method: 'POST',
