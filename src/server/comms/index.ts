@@ -343,7 +343,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       }
       const call = await client!.calls.create({
         to: target, from, twiml: twimlSay(deliveryBody),
-        ...(process.env.TWILIO_STATUS_CALLBACK_URL ? { statusCallback: process.env.TWILIO_STATUS_CALLBACK_URL } : {}),
+        statusCallback: statusCallbackUrl!,
       });
       await completeOutboundCommunication(fastify.prisma, { id: reservation.id, providerMessageId: call.sid, status: call.status });
       await finishCommsAction(fastify.prisma, approvalId, { status: 'accepted', providerMessageId: call.sid, providerStatus: call.status });
