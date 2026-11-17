@@ -343,7 +343,7 @@ jobs:
             src/server/attachments/scanner.test.ts
       - name: Set up pinned Supabase CLI
         id: setup_supabase_cli
-        uses: supabase/setup-cli@v3.1.0
+        uses: supabase/setup-cli@v3
         with:
           version: 2.120.0
       - name: Start isolated local Supabase stack
