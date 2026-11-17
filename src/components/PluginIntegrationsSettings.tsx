@@ -6,6 +6,7 @@ type PluginCategory = 'Workflows' | 'PA Agent' | 'Communications' | 'Knowledge &
 type PluginPreference = { enabled: boolean; scopes: string[] };
 type Preferences = Record<string, PluginPreference>;
 type RegistryProvider = { id: string; adapterStatus: 'adapter_required' | 'adapter_registered' };
+type GitHubIntegrationStatus = { status: string; connected?: boolean; account?: { login?: string }; repository?: { fullName?: string } };
 type ProviderConnection = {
   providerId: string;
   status: string;
@@ -105,10 +106,13 @@ function PluginIntegrationsSettingsContent({
   const [registryError, setRegistryError] = useState('');
   const [connectionsLoading, setConnectionsLoading] = useState(true);
   const [connectionBusyId, setConnectionBusyId] = useState('');
+  const [githubStatus, setGithubStatus] = useState<GitHubIntegrationStatus>({ status: 'checking' });
+  const [githubBusy, setGithubBusy] = useState(false);
   const [connectionError, setConnectionError] = useState('');
   const [connectionNotice, setConnectionNotice] = useState('');
   const connectionRequestId = useRef(0);
   const registryRequestId = useRef(0);
+  const githubRequestId = useRef(0);
 
   const loadConnections = useCallback(async () => {
     const requestId = ++connectionRequestId.current;
@@ -130,6 +134,18 @@ function PluginIntegrationsSettingsContent({
     } finally {
       window.clearTimeout(timeoutId);
       if (requestId === connectionRequestId.current) setConnectionsLoading(false);
+    }
+  }, [userId]);
+
+  const loadGitHubStatus = useCallback(async () => {
+    const requestId = ++githubRequestId.current;
+    try {
+      const response = await authenticatedFetch('/api/github/status', { headers: { Accept: 'application/json' } }, userId);
+      const payload = await response.json().catch(() => ({})) as GitHubIntegrationStatus;
+      if (!response.ok || typeof payload.status !== 'string') throw new Error('GitHub status is unavailable.');
+      if (requestId === githubRequestId.current) setGithubStatus(payload);
+    } catch {
+      if (requestId === githubRequestId.current) setGithubStatus({ status: 'unverified', connected: false });
     }
   }, [userId]);
 
@@ -162,13 +178,15 @@ function PluginIntegrationsSettingsContent({
     const initialLoad = window.setTimeout(() => {
       void loadConnections();
       void loadRegistry();
+      void loadGitHubStatus();
     }, 0);
     return () => {
       window.clearTimeout(initialLoad);
       connectionRequestId.current += 1;
       registryRequestId.current += 1;
+      githubRequestId.current += 1;
     };
-  }, [loadConnections, loadRegistry]);
+  }, [loadConnections, loadRegistry, loadGitHubStatus]);
 
   const visible = useMemo(() => CATALOG.filter(plugin =>
     (category === 'All' || plugin.category === category) &&
@@ -220,6 +238,48 @@ function PluginIntegrationsSettingsContent({
       setError(cause instanceof Error ? cause.message : 'Could not save plugin preferences. Please retry.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function connectGitHub() {
+    if (githubBusy) return;
+    setGithubBusy(true);
+    setConnectionError('');
+    try {
+      const response = await authenticatedFetch('/api/github/connect', {
+        method: 'POST', headers: { Accept: 'application/json' },
+      }, userId);
+      const payload = await response.json().catch(() => ({})) as { authorizationUrl?: string; error?: string };
+      if (!response.ok || !payload.authorizationUrl) throw new Error(payload.error || 'GitHub authorization is not configured.');
+      const authorizationUrl = new URL(payload.authorizationUrl);
+      if (authorizationUrl.protocol !== 'https:' || authorizationUrl.hostname !== 'github.com' ||
+          authorizationUrl.pathname !== '/login/oauth/authorize' || authorizationUrl.username || authorizationUrl.password) {
+        throw new Error('The server returned an untrusted GitHub authorization URL.');
+      }
+      window.location.assign(authorizationUrl.toString());
+    } catch (cause) {
+      setConnectionError(cause instanceof Error ? cause.message : 'Could not start GitHub authorization.');
+      setGithubBusy(false);
+    }
+  }
+
+  async function disconnectGitHub() {
+    if (githubBusy) return;
+    setGithubBusy(true);
+    setConnectionError('');
+    setConnectionNotice('');
+    try {
+      const response = await authenticatedFetch('/api/github/disconnect', {
+        method: 'POST', headers: { Accept: 'application/json' },
+      }, userId);
+      const payload = await response.json().catch(() => ({})) as { disconnected?: boolean; error?: string };
+      if (!response.ok || payload.disconnected !== true) throw new Error(payload.error || 'GitHub disconnect was not confirmed.');
+      setConnectionNotice('GitHub credentials were removed from this RyanAI account. Remote revocation may remain unconfirmed.');
+      await loadGitHubStatus();
+    } catch (cause) {
+      setConnectionError(cause instanceof Error ? cause.message : 'Could not disconnect GitHub.');
+    } finally {
+      setGithubBusy(false);
     }
   }
 
@@ -340,6 +400,24 @@ function PluginIntegrationsSettingsContent({
             {plugin.availability === 'oauth-supported' && <span className="rounded-full border border-cyan-300/20 px-2 py-1 text-[10px] text-cyan-100">OAuth supported</span>}
           </div>
           <p className="mt-2 text-xs leading-5 text-slate-400">{plugin.description}</p>
+          {plugin.id === 'github' && <div className="mt-3 rounded-lg border border-white/10 bg-slate-900/70 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs text-slate-300">
+                {githubStatus.status === 'connected'
+                  ? 'Connected · repository access verified'
+                  : githubStatus.status === 'checking' ? 'Checking GitHub connection…'
+                    : githubStatus.status.replaceAll('_', ' ')}
+                {githubStatus.account?.login ? ' · @' + githubStatus.account.login : ''}
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {githubStatus.status !== 'connected' && <button type="button" onClick={() => void connectGitHub()} disabled={githubBusy} className="rounded-md border border-cyan-300/20 px-2.5 py-1.5 text-xs text-cyan-100 disabled:opacity-50">{githubBusy ? 'Connecting…' : 'Connect GitHub'}</button>}
+                {githubStatus.status === 'connected' && <button type="button" onClick={() => void disconnectGitHub()} disabled={githubBusy} className="rounded-md border border-rose-300/20 px-2.5 py-1.5 text-xs text-rose-200 disabled:opacity-50">{githubBusy ? 'Disconnecting…' : 'Disconnect'}</button>}
+                <button type="button" onClick={() => void loadGitHubStatus()} disabled={githubBusy} className="rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-slate-300 disabled:opacity-50">Refresh</button>
+              </div>
+            </div>
+            {githubStatus.repository?.fullName && <p className="mt-2 text-[10px] text-slate-500">Verified repository: {githubStatus.repository.fullName}</p>}
+            <p className="mt-2 text-[10px] leading-4 text-slate-500">Connection is shown as verified only after the API confirms the signed-in GitHub identity and repository access. OAuth credentials remain server-side.</p>
+          </div>}
           {providerId && <div className="mt-3 rounded-lg border border-white/10 bg-slate-900/70 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs text-slate-300">{connectionsLoading ? 'Checking connection…' : connectionLabel(connection)}</span>
