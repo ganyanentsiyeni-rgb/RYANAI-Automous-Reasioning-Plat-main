@@ -15,8 +15,7 @@ CREATE TABLE IF NOT EXISTS public.comms_verified_destinations (
 );
 
 CREATE INDEX IF NOT EXISTS comms_verified_destinations_owner_active_idx
-  ON public.comms_verified_destinations (owner_user_id, channel, normalized_address)
-  WHERE revoked_at IS NULL;
+  ON public.comms_verified_destinations (owner_user_id, channel, normalized_address);
 
 CREATE TABLE IF NOT EXISTS public.comms_destination_verification_challenges (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -31,8 +30,7 @@ CREATE TABLE IF NOT EXISTS public.comms_destination_verification_challenges (
 );
 
 CREATE INDEX IF NOT EXISTS comms_destination_challenges_owner_expiry_idx
-  ON public.comms_destination_verification_challenges (owner_user_id, expires_at)
-  WHERE consumed_at IS NULL;
+  ON public.comms_destination_verification_challenges (owner_user_id, expires_at);
 
 CREATE TABLE IF NOT EXISTS public.comms_send_approvals (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -57,5 +55,4 @@ CREATE INDEX IF NOT EXISTS comms_send_approvals_owner_status_expiry_idx
   ON public.comms_send_approvals (owner_user_id, status, expires_at);
 
 CREATE INDEX IF NOT EXISTS comms_send_approvals_provider_message_idx
-  ON public.comms_send_approvals (provider_message_id)
-  WHERE provider_message_id IS NOT NULL;
+  ON public.comms_send_approvals (provider_message_id);
