@@ -11,10 +11,10 @@ const allowedActionMajors = new Map([
   ['actions/checkout', [4, 7]],
   ['actions/setup-node', [4, 7]],
   ['actions/upload-artifact', [4, 7]],
-  ['actions/download-artifact', [4]],
+  ['actions/download-artifact', [4, 8]],
   ['actions/labeler', [6, 7]],
-  ['docker/setup-buildx-action', [3]],
-  ['docker/login-action', [3]],
+  ['docker/setup-buildx-action', [3, 4]],
+  ['docker/login-action', [3, 4]],
   ['docker/metadata-action', [5, 6]],
   ['docker/build-push-action', [6, 7]],
   ['github/codeql-action/init', [3, 4]],
@@ -87,7 +87,7 @@ for (const actionReference of collectActionReferences(document)) {
 
   for (const match of text.matchAll(/(?:dockerfile|configuration-path|path|schema(?:-file)?):\s*['"]?([^'"\s${}]+)['"]?/gi)) {
     const candidate = match[1];
-    if (candidate.startsWith('.') && !candidate.includes('*') && !candidate.includes('/')) {
+    if ((candidate.startsWith('./') || candidate.startsWith('../')) && !candidate.includes('*')) {
       const target = join(root, candidate);
       if (!statSafe(target)) fail(file, `referenced path does not exist: ${candidate}`);
     }
