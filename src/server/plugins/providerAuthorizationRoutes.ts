@@ -93,6 +93,28 @@ function providerConfig(providerId: string): ProviderConfig | null {
     };
   }
 
+  if (providerId === 'outlook-mail') {
+    const clientId = requiredEnv('RYANAI_PLUGIN_MICROSOFT_365_CLIENT_ID');
+    const clientSecret = requiredEnv('RYANAI_PLUGIN_MICROSOFT_365_CLIENT_SECRET');
+    const redirectUri = requiredEnv('RYANAI_PLUGIN_OUTLOOK_MAIL_REDIRECT_URI');
+    if (!clientId || !clientSecret || !redirectUri) return null;
+    const scopes = ['offline_access', 'User.Read', 'Mail.Read'];
+    return {
+      id: 'outlook-mail',
+      policy: {
+        providerId,
+        clientId,
+        clientSecret,
+        authorizationEndpoint: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
+        tokenEndpoint: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+        redirectUri,
+        allowedScopes: scopes,
+        requiredScopes: ['User.Read', 'Mail.Read'],
+      },
+      requestedScopes: scopes,
+    };
+  }
+
   if (providerId === 'microsoft-365-calendar') {
     const clientId = requiredEnv('RYANAI_PLUGIN_MICROSOFT_365_CLIENT_ID');
     const clientSecret = requiredEnv('RYANAI_PLUGIN_MICROSOFT_365_CLIENT_SECRET');
@@ -664,93 +686,78 @@ export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) =
     },
   );
 
-  fastify.get<{ Params: { provider: string }; Querystring: { q?: string; limit?: string } }>(
-    '/api/plugins/:provider/messages',
+  fastify.get<{ Querystring: { q?: string; limit?: string } }>(
+    '/api/plugins/outlook-mail/messages',
     { preHandler: requireUser },
     async (request, reply) => {
       const ownerUserId = request.authUser?.id;
-      if (!ownerUserId) return reply.code(401).send({ error: 'Sign in to read mailbox messages.' });
-      const config = providerConfig(request.params.provider);
-      if (!config || config.id !== 'gmail') {
-        return reply.code(404).send({ error: 'Read-only mailbox access is not supported for this provider.' });
-      }
-
+      if (!ownerUserId) return reply.code(401).send({ error: 'Sign in to read Outlook messages.' });
+      const config = providerConfig('outlook-mail');
+      if (!config) return reply.code(503).send({ error: 'Outlook read-only authorization is not configured.' });
       const query = (request.query.q ?? '').trim();
       const limit = request.query.limit === undefined ? 20 : Number(request.query.limit);
       if (query.length > 200 || !Number.isInteger(limit) || limit < 1 || limit > 25) {
         return reply.code(400).send({ error: 'Search text must be at most 200 characters and limit must be between 1 and 25.' });
       }
-
-      const unique = { ownerUserId_providerId: { ownerUserId, providerId: config.id } };
-      const connection = await fastify.prisma.pluginProviderConnection.findUnique({ where: unique });
+      const connection = await fastify.prisma.pluginProviderConnection.findUnique({
+        where: { ownerUserId_providerId: { ownerUserId, providerId: config.id } },
+      });
       if (!connection || connection.status !== 'connected' || !connection.encryptedAccessToken) {
-        return reply.code(409).send({ error: 'Connect this Gmail account before reading messages.' });
+        return reply.code(409).send({ error: 'Connect this Outlook account before reading messages.' });
       }
       if (!connection.accessTokenExpiresAt || connection.accessTokenExpiresAt <= new Date()) {
-        return reply.code(409).send({ error: 'Gmail access token may be expired. Refresh the connection and retry.' });
+        return reply.code(409).send({ error: 'Outlook access token may be expired. Refresh the connection and retry.' });
       }
-      const requiredScope = 'https://www.googleapis.com/auth/gmail.readonly';
       const granted = Array.isArray(connection.grantedScopes) ? connection.grantedScopes : [];
-      if (!granted.includes(requiredScope)) {
-        return reply.code(403).send({ error: 'The connected account has not granted the required read-only Gmail scope.' });
+      if (!granted.includes('Mail.Read') || !granted.includes('User.Read')) {
+        return reply.code(403).send({ error: 'The connected account has not granted the required read-only Outlook scopes.' });
       }
-
       try {
         const token = decryptProviderCredential(
           connection.encryptedAccessToken, encryptionKey(),
           connectionEncryptionContext(config.id, ownerUserId),
         );
-        const listEndpoint = new URL('https://gmail.googleapis.com/gmail/v1/users/me/messages');
-        listEndpoint.searchParams.set('maxResults', String(limit));
-        if (query) listEndpoint.searchParams.set('q', query);
-        const listResponse = await fetch(listEndpoint, {
-          headers: { Accept: 'application/json', Authorization: 'Bearer ' + token },
+        const endpoint = new URL('https://graph.microsoft.com/v1.0/me/messages');
+        endpoint.searchParams.set('$top', String(limit));
+        endpoint.searchParams.set('$select', 'id,subject,from,receivedDateTime,bodyPreview');
+        if (query) endpoint.searchParams.set('$search', '"' + query.replace(/["\\]/g, ' ') + '"');
+        const response = await fetch(endpoint, {
+          headers: {
+            Accept: 'application/json',
+            Authorization: 'Bearer ' + token,
+            ...(query ? { ConsistencyLevel: 'eventual' } : {}),
+          },
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
-        if (!listResponse.ok) {
-          const status = listResponse.status;
+        if (!response.ok) {
+          const status = response.status;
           if (status === 401 || status === 403) {
-            return reply.code(status).send({ error: 'Gmail rejected the stored authorization. Reconnect if access was revoked.' });
+            return reply.code(status).send({ error: 'Microsoft Graph rejected the stored authorization. Reconnect if access was revoked.' });
           }
           return reply.code(status === 429 || status >= 500 ? 503 : 502)
-            .send({ error: status === 429 ? 'Gmail rate limit was reached.' : 'Gmail mailbox request failed.' });
+            .send({ error: status === 429 ? 'Microsoft Graph rate limit was reached.' : 'Outlook mailbox request failed.' });
         }
-        const listPayload = await listResponse.json() as { messages?: Array<{ id?: string; threadId?: string }> };
-        const messageRefs = (Array.isArray(listPayload.messages) ? listPayload.messages : [])
-          .filter((item): item is { id: string; threadId?: string } => typeof item.id === 'string')
-          .slice(0, limit);
-        const messages = await Promise.all(messageRefs.map(async (item) => {
-          const detailEndpoint = new URL(
-            'https://gmail.googleapis.com/gmail/v1/users/me/messages/' + encodeURIComponent(item.id),
-          );
-          detailEndpoint.searchParams.set('format', 'metadata');
-          detailEndpoint.searchParams.set('metadataHeaders', 'From');
-          detailEndpoint.searchParams.append('metadataHeaders', 'Subject');
-          const detailResponse = await fetch(detailEndpoint, {
-            headers: { Accept: 'application/json', Authorization: 'Bearer ' + token },
-            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-          });
-          if (!detailResponse.ok) throw new Error('Gmail message metadata request failed.');
-          const detail = await detailResponse.json() as {
-            id?: string; threadId?: string; snippet?: string; internalDate?: string;
-            payload?: { headers?: Array<{ name?: string; value?: string }> };
-          };
-          const headers = Array.isArray(detail.payload?.headers) ? detail.payload.headers : [];
-          const header = (name: string) => headers.find((value) => value.name?.toLowerCase() === name.toLowerCase())?.value ?? null;
-          return {
-            id: typeof detail.id === 'string' ? detail.id : item.id,
-            threadId: typeof detail.threadId === 'string' ? detail.threadId : item.threadId ?? null,
-            snippet: typeof detail.snippet === 'string' ? detail.snippet.slice(0, 500) : '',
-            receivedAt: typeof detail.internalDate === 'string' && /^\d{1,16}$/.test(detail.internalDate)
-              ? new Date(Number(detail.internalDate)).toISOString() : null,
-            from: header('From'),
-            subject: header('Subject'),
-          };
-        }));
+        const payload = await response.json() as { value?: Array<{
+          id?: string; subject?: string; receivedDateTime?: string; bodyPreview?: string;
+          from?: { emailAddress?: { name?: string; address?: string } };
+        }> };
+        const messages = (Array.isArray(payload.value) ? payload.value : []).slice(0, limit)
+          .filter((item): item is typeof item & { id: string } => typeof item.id === 'string')
+          .map(item => ({
+            id: item.id,
+            threadId: null,
+            subject: typeof item.subject === 'string' ? item.subject : null,
+            from: item.from?.emailAddress?.name
+              ? item.from.emailAddress.name + (item.from.emailAddress.address ? ' <' + item.from.emailAddress.address + '>' : '')
+              : item.from?.emailAddress?.address ?? null,
+            receivedAt: typeof item.receivedDateTime === 'string' && Number.isFinite(Date.parse(item.receivedDateTime))
+              ? new Date(item.receivedDateTime).toISOString() : null,
+            snippet: typeof item.bodyPreview === 'string' ? item.bodyPreview.slice(0, 500) : '',
+          }));
         return { provider: config.id, query, messages };
       } catch {
-        request.log.warn({ providerId: config.id }, 'Read-only Gmail message retrieval failed');
-        return reply.code(502).send({ error: 'Gmail messages could not be retrieved.' });
+        request.log.warn({ providerId: config.id }, 'Read-only Outlook message retrieval failed');
+        return reply.code(502).send({ error: 'Outlook messages could not be retrieved.' });
       }
     },
   );
