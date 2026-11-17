@@ -273,6 +273,7 @@ export const engineeringEvidenceRoutes: FastifyPluginAsync = async (fastify) => 
           ...state,
         })),
         adapterStatus: provider.adapterStatus,
+        ...state,
         connectionStatus: capabilityState.connectionStatus,
         authenticationStatus: capabilityState.authenticationStatus,
         healthStatus: capabilityState.healthStatus,
