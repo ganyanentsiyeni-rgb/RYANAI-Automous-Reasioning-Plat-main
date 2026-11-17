@@ -105,6 +105,11 @@
       "id": "signup",
       "label": "Sign up",
       "path": "/signup"
+    },
+    {
+      "id": "architecture",
+      "label": "Mission Architecture",
+      "path": "/architecture"
     }
   ]
-}
+}\n
