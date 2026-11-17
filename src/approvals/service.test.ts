@@ -44,7 +44,7 @@ describe('decideAction', () => {
     expect(finish).toHaveBeenCalledWith('a1', { error: 'Legacy outbound communications dispatch is disabled.' });
   });
 
-  it('records a failed send and reports the error', async () => {
+  it('records a rejected provider dispatch and reports the error', async () => {
     claim.mockResolvedValue(row);
     dispatch.mockRejectedValue(new Error('SMTP is not configured on this server.'));
     expect(await decideAction('a1', 'admin-1', true, deps)).toEqual({
