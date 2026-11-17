@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 
-export const GITHUB_APP_REPOSITORY = 'RyanAI-Automated/RYANAI-Automous-Reasioning-Plat';
+export const GITHUB_APP_REPOSITORY = 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main';
 export const GITHUB_API_VERSION = '2022-11-28';
 
 export interface GitHubAppConfig {
