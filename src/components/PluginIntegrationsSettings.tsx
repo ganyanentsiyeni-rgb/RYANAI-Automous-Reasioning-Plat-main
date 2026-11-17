@@ -429,15 +429,17 @@ function PluginIntegrationsSettingsContent({
         const connection = providerId ? connections.find(item => item.providerId === providerId) : undefined;
         const reauthorizationRequired = Boolean(connection && REAUTHORIZATION_STATES.has(connection.credentialState));
         const registry = registryProviders.find(item => item.id === (OAUTH_PROVIDER_IDS[plugin.id] ?? plugin.id));
-        const adapterLabel = registryLoading
-          ? 'Checking backend registry…'
-          : registryError
-            ? 'Registry unavailable'
-            : registry?.adapterStatus === 'adapter_registered'
-              ? 'Adapter registered'
-              : registry
-                ? 'Adapter required'
-                : 'Not in backend registry';
+        const adapterLabel = plugin.id === 'gmail'
+          ? 'Read-only mailbox API'
+          : registryLoading
+            ? 'Checking backend registry…'
+            : registryError
+              ? 'Registry unavailable'
+              : registry?.adapterStatus === 'adapter_registered'
+                ? 'Adapter registered'
+                : registry
+                  ? 'Adapter required'
+                  : 'Not in backend registry';
         const connected = connection?.connectionState === 'connected';
         return <article key={plugin.id} data-plugin-id={plugin.id} className="rounded-xl border border-white/10 bg-slate-950/60 p-4">
           <div className="flex items-start justify-between gap-3">
