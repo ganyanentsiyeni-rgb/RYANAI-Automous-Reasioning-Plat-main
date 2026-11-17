@@ -56,6 +56,7 @@ async function send(path: string, url: string, payload: Record<string, string>, 
 
 beforeEach(() => {
   vi.stubEnv('COMMUNICATIONS_ENABLED', 'true');
+  vi.stubEnv('RYANAI_COMMS_TEST_AUTHORIZED', 'true');
   prismaMock.communicationConversation.upsert.mockResolvedValue({ id: 'conversation-1' });
   prismaMock.communicationConversation.findMany.mockResolvedValue([]);
   prismaMock.communicationConversation.updateMany.mockResolvedValue({ count: 0 });
@@ -85,6 +86,15 @@ afterEach(async () => {
 });
 
 describe('Twilio inbound SMS retry handling', () => {
+  it('does not generate an automatic SMS reply without explicit communications test authorization', async () => {
+    vi.stubEnv('RYANAI_COMMS_TEST_AUTHORIZED', 'false');
+    const response = await send('/api/webhooks/twilio/sms', smsUrl, { MessageSid: 'SM-DISABLED', From: '+15555550123', Body: 'Do not auto-reply' });
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain('<Response/>');
+    expect(invoke).not.toHaveBeenCalled();
+    expect(prismaMock.communicationMessage.create).not.toHaveBeenCalled();
+  });
+
   it('returns the cached response without invoking RyanAI for a retried provider event', async () => {
     const payload = { MessageSid: 'SM-duplicate-1', From: '+15555550123', Body: 'Please check my system' };
     prismaMock.communicationMessage.create.mockRejectedValueOnce({ code: 'P2002' });
@@ -108,6 +118,14 @@ describe('Twilio conversational voice webhooks', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
+  it('hangs up without speaking when explicit communications test authorization is absent', async () => {
+    vi.stubEnv('RYANAI_COMMS_TEST_AUTHORIZED', 'false');
+    const response = await send('/api/webhooks/twilio/voice', voiceUrl, { CallSid: 'CA-DISABLED', From: '+15555550123' });
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain('<Response><Hangup/></Response>');
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it('answers authenticated incoming calls with a speech gather loop', async () => {
     const response = await send('/api/webhooks/twilio/voice', voiceUrl, { CallSid: 'CA123', From: '+15555550123' });
     expect(response.statusCode).toBe(200);
@@ -120,6 +138,14 @@ describe('Twilio conversational voice webhooks', () => {
     expect(response.body).toContain('language="en-ZA" voice="Polly.Ayanda-Neural"');
     expect(response.body).toContain('<Gather input="speech"');
     expect(response.body).toContain(actionUrl);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('does not generate a voice response without explicit communications test authorization', async () => {
+    vi.stubEnv('RYANAI_COMMS_TEST_AUTHORIZED', 'false');
+    const response = await send('/api/webhooks/twilio/voice/respond', actionUrl, { CallSid: 'CA-DISABLED', From: '+15555550123', SpeechResult: 'Please do not reply' });
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain('<Response><Hangup/></Response>');
     expect(invoke).not.toHaveBeenCalled();
   });
 
@@ -229,6 +255,15 @@ describe('Comms conversation intelligence', () => {
 });
 
 describe('outbound Comms request validation', () => {
+  it('blocks provider dispatch when explicit test authorization is absent', async () => {
+    vi.stubEnv('RYANAI_COMMS_TEST_AUTHORIZED', 'false');
+    const response = await send('/api/comms/send', '', {});
+    expect(response.statusCode).toBe(503);
+    expect(response.json().error).toContain('owner explicitly authorizes a communications test');
+    expect(prismaMock.$queryRawUnsafe).not.toHaveBeenCalled();
+    expect(prismaMock.$executeRawUnsafe).not.toHaveBeenCalled();
+  });
+
   it('blocks outbound dispatch when the recipient has not been verified', async () => {
     vi.stubEnv('TWILIO_ACCOUNT_SID', 'AC00000000000000000000000000000000');
     vi.stubEnv('TWILIO_PHONE_NUMBER', '+15555550000');
