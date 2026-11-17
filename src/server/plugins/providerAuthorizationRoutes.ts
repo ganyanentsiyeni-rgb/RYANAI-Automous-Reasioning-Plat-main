@@ -15,7 +15,7 @@ import {
   type ProviderOAuthTokenSet,
 } from './providerAuthorization.js';
 
-type ProviderId = 'google-calendar' | 'microsoft-365-calendar' | 'gmail';
+type ProviderId = 'google-calendar' | 'microsoft-365-calendar' | 'gmail' | 'dropbox';
 type ProviderConfig = {
   id: ProviderId;
   policy: ProviderOAuthPolicy;
@@ -115,6 +115,29 @@ function providerConfig(providerId: string): ProviderConfig | null {
     };
   }
 
+  if (providerId === 'dropbox') {
+    const clientId = requiredEnv('RYANAI_PLUGIN_DROPBOX_CLIENT_ID');
+    const clientSecret = requiredEnv('RYANAI_PLUGIN_DROPBOX_CLIENT_SECRET');
+    const redirectUri = requiredEnv('RYANAI_PLUGIN_DROPBOX_REDIRECT_URI');
+    if (!clientId || !clientSecret || !redirectUri) return null;
+    const scopes = ['files.metadata.read'];
+    return {
+      id: 'dropbox',
+      policy: {
+        providerId,
+        clientId,
+        clientSecret,
+        authorizationEndpoint: 'https://www.dropbox.com/oauth2/authorize',
+        tokenEndpoint: 'https://api.dropboxapi.com/oauth2/token',
+        redirectUri,
+        allowedScopes: scopes,
+        requiredScopes: scopes,
+      },
+      requestedScopes: scopes,
+      extraAuthorizationParams: { token_access_type: 'offline' },
+    };
+  }
+
   if (providerId === 'microsoft-365-calendar') {
     const clientId = requiredEnv('RYANAI_PLUGIN_MICROSOFT_365_CLIENT_ID');
     const clientSecret = requiredEnv('RYANAI_PLUGIN_MICROSOFT_365_CLIENT_SECRET');
@@ -209,7 +232,7 @@ async function refreshProviderToken(
     refresh_token: refreshToken,
     client_id: config.policy.clientId,
     client_secret: config.policy.clientSecret,
-    scope: config.requestedScopes.join(' '),
+    ...(config.id === 'dropbox' ? {} : { scope: config.requestedScopes.join(' ') }),
   });
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -849,6 +872,80 @@ export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) =
       } catch {
         request.log.warn({ providerId: config.id }, 'Read-only Outlook message retrieval failed');
         return reply.code(502).send({ error: 'Outlook messages could not be retrieved.' });
+      }
+    },
+  );
+
+
+  fastify.post<{ Body: { path?: string; limit?: number } }>(
+    '/api/plugins/dropbox/files',
+    { preHandler: requireUser },
+    async (request, reply) => {
+      const ownerUserId = request.authUser?.id;
+      if (!ownerUserId) return reply.code(401).send({ error: 'Sign in to browse Dropbox files.' });
+      const config = providerConfig('dropbox');
+      if (!config) return reply.code(503).send({ error: 'Dropbox read-only authorization is not configured.' });
+      const path = typeof request.body?.path === 'string' ? request.body.path.trim() : '';
+      const limit = request.body?.limit === undefined ? 50 : Number(request.body.limit);
+      if (path.length > 200 || /[\u0000-\u001f]/.test(path) ||
+          !Number.isInteger(limit) || limit < 1 || limit > 100) {
+        return reply.code(400).send({ error: 'Folder path must be at most 200 characters and limit must be between 1 and 100.' });
+      }
+      const connection = await fastify.prisma.pluginProviderConnection.findUnique({
+        where: { ownerUserId_providerId: { ownerUserId, providerId: config.id } },
+      });
+      if (!connection || connection.status !== 'connected' || !connection.encryptedAccessToken) {
+        return reply.code(409).send({ error: 'Connect this Dropbox account before browsing files.' });
+      }
+      if (!connection.accessTokenExpiresAt || connection.accessTokenExpiresAt <= new Date()) {
+        return reply.code(409).send({ error: 'Dropbox access token may be expired. Refresh the connection and retry.' });
+      }
+      const granted = Array.isArray(connection.grantedScopes) ? connection.grantedScopes : [];
+      if (!granted.includes('files.metadata.read')) {
+        return reply.code(403).send({ error: 'The connected account has not granted the Dropbox metadata read scope.' });
+      }
+      try {
+        const token = decryptProviderCredential(
+          connection.encryptedAccessToken, encryptionKey(),
+          connectionEncryptionContext(config.id, ownerUserId),
+        );
+        const response = await fetch('https://api.dropboxapi.com/2/files/list_folder', {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            Authorization: 'Bearer ' + token,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ path, recursive: false, include_deleted: false, limit }),
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+        if (!response.ok) {
+          const status = response.status;
+          if (status === 401 || status === 403) {
+            return reply.code(status).send({ error: 'Dropbox rejected the stored authorization. Reconnect if access was revoked.' });
+          }
+          return reply.code(status === 429 || status >= 500 ? 503 : 502)
+            .send({ error: status === 429 ? 'Dropbox rate limit was reached.' : 'Dropbox folder request failed.' });
+        }
+        const payload = await response.json() as { entries?: Array<{
+          '.tag'?: string; id?: string; name?: string; path_display?: string;
+          size?: number; server_modified?: string;
+        }>; has_more?: boolean };
+        const entries = (Array.isArray(payload.entries) ? payload.entries : []).slice(0, limit)
+          .filter(item => typeof item.name === 'string')
+          .map(item => ({
+            id: typeof item.id === 'string' ? item.id : null,
+            name: item.name!,
+            kind: item['.tag'] === 'folder' ? 'folder' : 'file',
+            path: typeof item.path_display === 'string' ? item.path_display : null,
+            size: typeof item.size === 'number' && Number.isFinite(item.size) ? item.size : null,
+            modifiedAt: typeof item.server_modified === 'string' && Number.isFinite(Date.parse(item.server_modified))
+              ? new Date(item.server_modified).toISOString() : null,
+          }));
+        return { provider: config.id, path, entries, hasMore: payload.has_more === true };
+      } catch {
+        request.log.warn({ providerId: config.id }, 'Read-only Dropbox file listing failed');
+        return reply.code(502).send({ error: 'Dropbox files could not be retrieved.' });
       }
     },
   );
