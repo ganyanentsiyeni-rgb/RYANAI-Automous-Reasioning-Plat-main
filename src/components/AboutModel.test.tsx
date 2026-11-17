@@ -113,6 +113,18 @@ describe('About RyanAI release metadata and live diagnostics', () => {
     expect(container.textContent).toContain('Live readiness could not be retrieved');
   });
 
+  it('presents the RyanAI namesake, founder story, and platform architecture', async () => {
+    await act(async () => root.render(<AboutModal open onClose={vi.fn()} />));
+    expect(container.textContent).toContain('Mukhethwa Ryan Ganyane');
+    expect(container.textContent).toContain('Every 24 May');
+    expect(container.textContent).toContain('Ntsiyeni Ganyane');
+    expect(container.textContent).toContain('University of Johannesburg');
+    expect(container.textContent).toContain('RMN Ganyane (Pty) Ltd');
+    expect(container.textContent).toContain('C++ and CUDA');
+    expect(container.textContent).toContain('LangGraph ReAct');
+    expect(container.textContent).toContain('Johannesburg, South Africa');
+  });
+
   it('renders no About content while the modal is closed', async () => {
     await act(async () => root.render(<AboutModal open={false} onClose={vi.fn()} />));
     expect(container.textContent).not.toContain('RyanAI Autonomous Reasoning Platform');
