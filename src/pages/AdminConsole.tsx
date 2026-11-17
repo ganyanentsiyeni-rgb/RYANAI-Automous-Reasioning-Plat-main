@@ -200,7 +200,54 @@ export default function AdminConsole({ userId }: { userId: string }) {
       {errors.map((error, index) => <p key={index} role="alert" className="rounded-lg border border-rose-400/25 bg-rose-950/20 p-3 text-sm text-rose-200">{error}</p>)}
       {notice && <p role="status" className="rounded-lg border border-cyan-300/20 bg-cyan-950/20 p-3 text-sm text-cyan-100">{notice}</p>}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section aria-label="Administrative workspaces" className="rounded-2xl border border-cyan-300/15 bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 p-4 sm:p-6">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-300">U2EB · RyanAI-2</p>
+            <h2 className="mt-1 text-xl font-semibold text-white">Platform administration</h2>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-400">Operational areas are shown with their actual implementation status. Unavailable modules are not presented as working controls.</p>
+          </div>
+          <span className="rounded-full border border-emerald-300/25 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-200">Environment scoped · U2EB</span>
+        </div>
+        <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <a href="#admin-runtime" className="rounded-xl border border-cyan-300/20 bg-cyan-300/[0.06] p-3 transition hover:border-cyan-200/50 hover:bg-cyan-300/10">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-cyan-300">Available · Live endpoint</span>
+            <span className="mt-1 block text-sm font-semibold text-white">Platform overview</span>
+            <span className="mt-1 block text-xs text-slate-400">API runtime metrics and reported dependency state</span>
+          </a>
+          <a href="#admin-approvals" className="rounded-xl border border-cyan-300/20 bg-cyan-300/[0.06] p-3 transition hover:border-cyan-200/50 hover:bg-cyan-300/10">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-cyan-300">Available · Protected API</span>
+            <span className="mt-1 block text-sm font-semibold text-white">Action approvals</span>
+            <span className="mt-1 block text-xs text-slate-400">Review queued external actions and their scope</span>
+          </a>
+          <a href="#admin-engineering" className="rounded-xl border border-cyan-300/20 bg-cyan-300/[0.06] p-3 transition hover:border-cyan-200/50 hover:bg-cyan-300/10">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-cyan-300">Available · Protected API</span>
+            <span className="mt-1 block text-sm font-semibold text-white">Engineering approvals</span>
+            <span className="mt-1 block text-xs text-slate-400">Exact plan, base commit and diff-bound review</span>
+          </a>
+          {[
+            ['Identity & access', 'User directory, role lifecycle and access reviews'],
+            ['Infrastructure', 'U2EB Render services, database and Redis controls'],
+            ['Security & audit', 'Policy findings, audit search and session reviews'],
+            ['Integrations', 'Provider registry, adapters and connection diagnostics'],
+            ['AI workforce', 'Agent inventory, task queues and worker operations'],
+            ['Models & inference', 'Provider routing, model health and usage controls'],
+            ['Database operations', 'Schema, migration and backup evidence'],
+            ['Communications', 'Channel policy, consent and verified delivery status'],
+            ['Observability', 'Logs, traces, alerts and incident investigation'],
+            ['Configuration', 'Environment-scoped feature and policy configuration'],
+          ].map(([title, description]) => (
+            <div key={title} aria-disabled="true" className="rounded-xl border border-white/10 bg-slate-950/50 p-3 opacity-80">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-200">Not yet wired</span>
+              <span className="mt-1 block text-sm font-semibold text-slate-200">{title}</span>
+              <span className="mt-1 block text-xs text-slate-500">{description}</span>
+            </div>
+          ))}
+        </div>
+        <p className="mt-4 border-t border-white/10 pt-3 text-[11px] leading-5 text-slate-500">Administrator access never overrides Gen-X policy. Production mutations, secrets, paid upgrades and deployments remain outside this U2EB console and require separate authorization.</p>
+      </section>
+
+      <div id="admin-runtime" className="grid scroll-mt-6 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <TelemetryMetricCard label="Admin metrics endpoint" value={metrics?.status ?? 'Unavailable'} detail="Protected process-metrics snapshot." source="/api/admin/metrics" observedAt={metrics?.timestamp ?? null} status={metrics ? 'available' : 'unavailable'} />
         <TelemetryMetricCard label="API process uptime" value={metrics ? durationLabel(metrics.uptime) : 'Not reported'} detail="Process uptime only; not a deployment-health guarantee." source="/api/admin/metrics" observedAt={metrics?.timestamp ?? null} status={metrics ? 'available' : 'unavailable'} snapshot={uptimeSnapshot} />
         <TelemetryMetricCard label="Runtime memory" value={metrics ? metrics.system.rssMemoryMB + ' MB RSS' : 'Not reported'} detail={metrics ? metrics.system.heapUsedMB + ' MB heap · ' + metrics.system.nodeVersion : 'Not reported'} source="/api/admin/metrics" observedAt={metrics?.timestamp ?? null} status={metrics ? 'available' : 'unavailable'} snapshot={memorySnapshot} />
@@ -221,7 +268,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
         <p className="mt-4 text-xs leading-5 text-slate-500">The metrics route intentionally reports database state as unknown rather than probing it. Use the System Dashboard for independent API, PostgreSQL, Redis and checkpoint health signals.</p>
       </section>
 
-      <section className="space-y-4" aria-labelledby="pending-actions-title">
+      <section id="admin-approvals" className="scroll-mt-6 space-y-4" aria-labelledby="pending-actions-title">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div><h2 id="pending-actions-title" className="text-xl font-semibold text-white">Pending external actions</h2><p className="mt-1 text-sm text-slate-400">Approving executes the queued action. Review its summary and arguments before deciding.</p></div>
           <span className="text-xs text-slate-500">{actions.length} awaiting a decision</span>
@@ -256,7 +303,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
         </div>
       </section>
 
-      <section className="space-y-4" aria-labelledby="engineering-approvals-title">
+      <section id="admin-engineering" className="scroll-mt-6 space-y-4" aria-labelledby="engineering-approvals-title">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div><h2 id="engineering-approvals-title" className="text-xl font-semibold text-white">Engineering plan approvals</h2><p className="mt-1 text-sm text-slate-400">Approval binds the stored plan hash, base commit and proposed diff hash. Self-approval is blocked by the API.</p></div>
           <span className="text-xs text-slate-500">{pendingJobs.length} awaiting review</span>
