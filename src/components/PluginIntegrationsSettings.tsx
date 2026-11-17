@@ -7,6 +7,7 @@ type PluginPreference = { enabled: boolean; scopes: string[] };
 type Preferences = Record<string, PluginPreference>;
 type RegistryProvider = { id: string; adapterStatus: 'adapter_required' | 'adapter_registered' };
 type GitHubIntegrationStatus = { status: string; connected?: boolean; account?: { login?: string }; repository?: { fullName?: string } };
+type CalendarEvent = { id: string | null; title: string; start: string | null; end: string | null; location: string | null; organizer: string | null };
 type ProviderConnection = {
   providerId: string;
   status: string;
@@ -101,6 +102,9 @@ function PluginIntegrationsSettingsContent({
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [connections, setConnections] = useState<ProviderConnection[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<Record<string, CalendarEvent[]>>({});
+  const [calendarLoadingId, setCalendarLoadingId] = useState('');
+  const [calendarErrors, setCalendarErrors] = useState<Record<string, string>>({});
   const [registryProviders, setRegistryProviders] = useState<RegistryProvider[]>([]);
   const [registryLoading, setRegistryLoading] = useState(true);
   const [registryError, setRegistryError] = useState('');
@@ -331,6 +335,25 @@ function PluginIntegrationsSettingsContent({
     }
   }
 
+  async function loadCalendarEvents(pluginId: string) {
+    const providerId = OAUTH_PROVIDER_IDS[pluginId];
+    if (!providerId || calendarLoadingId) return;
+    setCalendarLoadingId(pluginId);
+    setCalendarErrors(current => ({ ...current, [pluginId]: '' }));
+    try {
+      const start = new Date();
+      const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const params = new URLSearchParams({ start: start.toISOString(), end: end.toISOString(), limit: '50' });
+      const response = await authenticatedFetch('/api/plugins/' + encodeURIComponent(providerId) + '/events?' + params.toString(), { headers: { Accept: 'application/json' } }, userId);
+      const payload = await response.json().catch(() => ({})) as { events?: CalendarEvent[]; error?: string };
+      if (!response.ok || !Array.isArray(payload.events)) throw new Error(payload.error || 'Calendar events could not be loaded.');
+      setCalendarEvents(current => ({ ...current, [pluginId]: payload.events! }));
+    } catch (cause) {
+      setCalendarErrors(current => ({ ...current, [pluginId]: cause instanceof Error ? cause.message : 'Calendar events could not be loaded.' }));
+    } finally {
+      setCalendarLoadingId('');
+    }
+  }
   async function disconnectProvider(pluginId: string) {
     const providerId = OAUTH_PROVIDER_IDS[pluginId];
     if (!providerId || connectionBusyId) return;
@@ -430,6 +453,22 @@ function PluginIntegrationsSettingsContent({
             <p className="mt-2 text-[10px] leading-4 text-slate-500">OAuth authorization is stored encrypted server-side. A connected record is not a live provider health check.</p>
           </div>}
           <p className="mt-2 text-[11px] text-slate-500">Intended scopes: {plugin.scopes.join(' · ')}</p>
+          {providerId && connected && <div className="mt-3 border-t border-white/5 pt-3">
+            <button type="button" onClick={() => void loadCalendarEvents(plugin.id)} disabled={calendarLoadingId === plugin.id || connectionsLoading} className="rounded-md border border-cyan-300/20 px-2.5 py-1.5 text-xs text-cyan-100 disabled:opacity-50">
+              {calendarLoadingId === plugin.id ? 'Loading events…' : 'Load next 7 days'}
+            </button>
+            {calendarErrors[plugin.id] && <p role="alert" className="mt-2 text-xs text-rose-200">{calendarErrors[plugin.id]}</p>}
+            {calendarEvents[plugin.id] && <ul className="mt-2 space-y-2" aria-label={plugin.name + ' events'}>
+              {calendarEvents[plugin.id].length === 0
+                ? <li className="text-xs text-slate-400">No events returned for the next seven days.</li>
+                : calendarEvents[plugin.id].map((event, index) => <li key={event.id ?? index} className="rounded-md bg-slate-950/70 p-2 text-xs">
+                  <p className="font-medium text-slate-200">{event.title}</p>
+                  <p className="mt-1 text-slate-400">{event.start ? new Date(event.start).toLocaleString() : 'Time unavailable'}{event.end ? ' – ' + new Date(event.end).toLocaleString() : ''}</p>
+                  {event.location && <p className="mt-1 text-slate-500">{event.location}</p>}
+                </li>)}
+            </ul>}
+            <p className="mt-2 text-[10px] text-slate-500">Read-only calendar access. RyanAI does not create, edit or delete events here.</p>
+          </div>}
           <label className={`mt-3 flex items-center gap-2 text-xs ${allowed ? 'text-slate-200' : 'text-slate-500'}`}>
             <input type="checkbox" aria-label={`Request ${plugin.name} for eligible workers`} checked={enabled} disabled={!allowed || saving} onChange={event => toggle(plugin.id, event.target.checked)} className="h-4 w-4 accent-cyan-400" />
             Request availability for eligible workers{!allowed && <span className="text-amber-300">(Owner/admin controlled)</span>}
