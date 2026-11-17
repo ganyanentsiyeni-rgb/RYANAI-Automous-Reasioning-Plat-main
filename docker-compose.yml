@@ -183,7 +183,8 @@ services:
       RYANAI_API_HEALTH_URL: http://api:3000/readyz
       MCP_HOST: 0.0.0.0
       MCP_PORT: 8765
-      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:?Set MCP_AUTH_TOKEN in .env (at least 32 characters)}
+      # Optional unless communications MCP tools are explicitly enabled.
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:-}
       RYANAI_API_BASE_URL: http://api:3000
       RYANAI_MCP_SERVICE_TOKEN: ${RYANAI_MCP_SERVICE_TOKEN:-}
       RYANAI_MCP_DELEGATION_SECRET: ${RYANAI_MCP_DELEGATION_SECRET:-}
