@@ -20,7 +20,7 @@ jobs:
       PATCH_LOG_GH_TOKEN: ${{ secrets.PATCH_LOG_GH_TOKEN }}
     steps:
       - name: Check out current main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
