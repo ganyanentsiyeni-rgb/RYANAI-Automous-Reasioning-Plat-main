@@ -11,7 +11,7 @@ RyanAI Hybrid OS is a security-first operating environment assembled from specia
 
 ## 1. Architecture
 
-- **Ubuntu LTS — Core:** primary trusted environment for RyanAI APIs, services, containers, AI/model and agent workloads, memory, internal APIs, and observability.
+- **Ubuntu LTS — Core host target:** hardened baseline for an operator-managed host when RyanAI runs on infrastructure where the OS is under operator control. This host is not currently evidenced in the managed Render/Railway deployment.
 - **Kali Linux — Security:** isolated security workstation/lab for authorized assessment, defensive validation, forensics, and security regression testing. It is not a production dependency.
 - **Raspberry Pi OS 64-bit — Edge:** controlled physical environment for voice/audio, sensors, GPIO, cameras, local status interfaces, automation, and constrained inference.
 - **Security Fabric:** common identity, authentication, authorization, encrypted transport, policy enforcement, audit, and telemetry.
@@ -21,7 +21,7 @@ RyanAI Hybrid OS is a security-first operating environment assembled from specia
 
 | Zone | Responsibility |
 |---|---|
-| CORE | Ubuntu RyanAI services and workloads |
+| CORE | RyanAI services and workloads; Ubuntu LTS only on a future operator-managed host |
 | SECURITY | Isolated Kali assessment environment |
 | EDGE | Enrolled Raspberry Pi devices and peripherals |
 | MANAGEMENT | Operator and administrative access |
@@ -29,9 +29,11 @@ RyanAI Hybrid OS is a security-first operating environment assembled from specia
 
 Default posture is deny unless explicitly required. Every inter-zone path must define source, destination, protocol, purpose, identity, and authorization. A documented zone is not enforcement; network controls and negative tests must demonstrate the boundary.
 
-## 3. Ubuntu Core
+## 3. Ubuntu Core host target and current PaaS reality
 
-Ubuntu LTS is the stable, minimal host for RyanAI services, containers, model and agent runtimes, memory, vector workloads, internal APIs, and monitoring. Application lifecycle and host lifecycle remain separate. Kali repositories and packages must not be mixed into the Ubuntu host.
+Ubuntu LTS is the proposed hardened host baseline only where RyanAI controls the host OS. The current repository configuration describes managed Render and Railway services; those providers control their underlying host operating systems. The checked-in API Dockerfiles use `node:24-alpine`, so the application container is Alpine-based, not Ubuntu-based. A container image base is not the same thing as the provider's host OS.
+
+For the current managed-hosting model, CORE is a logical security zone spanning provider-managed services, container boundaries, identity, policy, and data access. Do not claim that RyanAI is already running on an Ubuntu LTS host. If a self-managed Ubuntu host is later required, treat it as a separate architecture and infrastructure proposal with cost, operations, patching, monitoring, recovery, and approval gates. Keep application and host lifecycles separate; never mix Kali repositories or packages into a production core host.
 
 ## 4. Kali Security Zone
 
