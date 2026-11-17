@@ -11,10 +11,10 @@ interface AboutModalProps {
 }
 
 const architecture = [
-  { icon: Cpu, title: 'High-performance acceleration', detail: 'A custom C++ and CUDA acceleration engine designed for efficient bare-metal inference.' },
+  { icon: Cpu, title: 'High-performance acceleration', detail: 'Experimental native acceleration prototype: the C++ bridge falls back to JavaScript when its addon is unavailable, and the shipped local-inference target returns a stub response. CUDA is disabled by default; production inference still requires signed model weights and real model kernels.' },
   { icon: Network, title: 'Reasoning and orchestration', detail: 'A multi-tier inference stack using LangGraph ReAct agents, MCP servers, and configurable local or cloud model orchestration.' },
   { icon: Workflow, title: 'Gateway and interfaces', detail: 'A Fastify streaming gateway with a native desktop HUD interface built with Tauri, alongside the web and mobile workspaces.' },
-  { icon: ShieldCheck, title: 'Zero-trust security', detail: 'Kernel-level eBPF security guardrails, least-privilege access, explicit authorization gates, and owner-controlled data.' },
+  { icon: ShieldCheck, title: 'Zero-trust security', detail: 'Least-privilege access, explicit authorization gates, and owner-controlled data. An optional eBPF sentinel is present, but deployment configuration and kernel-map availability must be verified; failed map updates fall back to userspace process termination.' },
   { icon: Database, title: 'Sovereign data', detail: 'Persistent account-scoped data services and a local-first operating model. External services are optional integration boundaries, not assumed dependencies.' },
   { icon: GitBranch, title: 'Governed engineering', detail: 'Version-controlled development, evidence-based CI, reviewed pull requests, and human approval for sensitive actions.' },
 ];

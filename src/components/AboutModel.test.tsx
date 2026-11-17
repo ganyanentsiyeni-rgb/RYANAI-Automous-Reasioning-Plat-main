@@ -120,7 +120,11 @@ describe('About RyanAI release metadata and live diagnostics', () => {
     expect(container.textContent).toContain('Ntsiyeni Ganyane');
     expect(container.textContent).toContain('University of Johannesburg');
     expect(container.textContent).toContain('RMN Ganyane (Pty) Ltd');
-    expect(container.textContent).toContain('C++ and CUDA');
+    expect(container.textContent).toContain('Experimental native acceleration prototype');
+    expect(container.textContent).toContain('stub response');
+    expect(container.textContent).toContain('CUDA is disabled by default');
+    expect(container.textContent).toContain('optional eBPF sentinel');
+    expect(container.textContent).toContain('userspace process termination');
     expect(container.textContent).toContain('LangGraph ReAct');
     expect(container.textContent).toContain('Johannesburg, South Africa');
   });
