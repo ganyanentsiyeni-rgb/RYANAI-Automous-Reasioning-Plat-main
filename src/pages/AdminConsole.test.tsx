@@ -33,6 +33,9 @@ beforeEach(() => {
   vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
   apiFetch.mockImplementation(async (input, init) => {
     const path = String(input);
+    if (path === '/api/auth/verify') return response({ authenticated: true, user: {
+      id: 'admin-account-a', email: 'admin@example.test', role: 'admin', isOwner: true,
+    } });
     if (path === '/api/admin/metrics') return response({
       status: 'ok', uptime: 3600, timestamp: '2026-11-08T12:00:00.000Z',
       database: { status: 'unknown', driver: 'postgresql' },
@@ -63,9 +66,29 @@ describe('Admin Console request ownership', () => {
   it('scopes every dashboard read to the authenticated administrator account', async () => {
     await mount('admin-account-a');
     await vi.waitFor(() => expect(container.textContent).toContain('Send approved test message'));
-    for (const path of ['/api/admin/metrics', '/api/actions', '/api/engineering/jobs']) {
+    expect(container.textContent).toContain('Session verified');
+    expect(container.textContent).toContain('Owner identity confirmed by server configuration');
+    for (const path of ['/api/auth/verify', '/api/admin/metrics', '/api/actions', '/api/engineering/jobs']) {
       expect(apiFetch).toHaveBeenCalledWith(path, expect.any(Object), 'admin-account-a');
     }
+  });
+
+  it('does not display an unverified identity when the verification endpoint rejects the session', async () => {
+    apiFetch.mockImplementation(async (input) => {
+      if (String(input) === '/api/auth/verify') return response({ error: 'Invalid or expired session.' }, false);
+      if (String(input) === '/api/admin/metrics') return response({
+        status: 'ok', uptime: 60, timestamp: '2026-11-08T12:00:00.000Z',
+        database: { status: 'unknown', driver: 'postgresql' },
+        system: { nodeVersion: 'v24.0.0', rssMemoryMB: 128, heapUsedMB: 64 },
+      });
+      if (String(input) === '/api/actions') return response({ actions: [] });
+      if (String(input) === '/api/engineering/jobs') return response({ jobs: [] });
+      throw new Error('Unexpected Admin Console request: ' + String(input));
+    });
+    await mount('admin-account-a');
+    await vi.waitFor(() => expect(container.textContent).toContain('Verification unavailable'));
+    expect(container.textContent).toContain('Not verified');
+    expect(container.textContent).not.toContain('admin@example.test');
   });
 
   it('scopes an explicitly confirmed pending-action decision to the same account', async () => {
