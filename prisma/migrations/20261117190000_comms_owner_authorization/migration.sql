@@ -14,9 +14,6 @@ CREATE TABLE IF NOT EXISTS public.comms_verified_destinations (
     UNIQUE (owner_user_id, channel, normalized_address)
 );
 
-CREATE INDEX IF NOT EXISTS comms_verified_destinations_owner_active_idx
-  ON public.comms_verified_destinations (owner_user_id, channel, normalized_address);
-
 CREATE TABLE IF NOT EXISTS public.comms_destination_verification_challenges (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_user_id uuid NOT NULL,
