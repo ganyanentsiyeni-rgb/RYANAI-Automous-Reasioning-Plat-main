@@ -89,7 +89,7 @@ log "Running PostgreSQL durable-queue integration tests"
 # This script imports TypeScript application modules whose ESM imports use
 # emitted .js specifiers. Register tsx so the disposable test runner resolves
 # those source modules consistently without changing production imports.
-node --import tsx scripts/test-agent-queue.mjs
+NODE_ENV=test node --import tsx scripts/test-agent-queue.mjs
 
 log "Running guarded agent_runs migration replay/idempotency test"
 node scripts/test-agent-runs-runtime-migration-upgrade.mjs
