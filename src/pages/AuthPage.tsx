@@ -12,8 +12,12 @@ const OAUTH_PROVIDER_LABELS: Record<OAuthProvider, string> = {
   github: 'GitHub',
 };
 
-const SUPABASE_CALLBACK_URL =
-  'https://narsvpwymvlrhurqbthu.supabase.co/auth/v1/callback';
+const SUPABASE_CALLBACK_URL = (() => {
+  const projectUrl = import.meta.env.VITE_SUPABASE_URL?.trim().replace(/\\/+$/, '');
+  return projectUrl
+    ? `${projectUrl}/auth/v1/callback`
+    : 'the callback URL shown in Supabase Dashboard → Authentication → Sign In / Providers';
+})();
 
 function getOAuthProviderError(provider: OAuthProvider, cause: unknown): Error | null {
   if (!(cause instanceof Error)) return null;
