@@ -16,7 +16,7 @@ const productionEnvironment = renderProjects.flatMap((project) => project.enviro
 const u2ebEnvironment = renderProjects.flatMap((project) => project.environments ?? []).find((environment) => environment.name === 'U2EB');
 const renderServices = Array.isArray(renderConfig.services)
   ? renderConfig.services
-  : (productionEnvironment?.services ?? []);
+  : (productionEnvironment?.services ?? u2ebEnvironment?.services ?? []);
 const u2ebServices = u2ebEnvironment?.services ?? [];
 const u2ebDatabases = u2ebEnvironment?.databases ?? [];
 const u2ebApi = u2ebServices.find((service) => service.name === 'ryanai-api-u2eb');
@@ -27,7 +27,9 @@ const renderApi = renderServices.find((service) => service.name === 'ryanai-api'
 const renderWeb = renderServices.find((service) => service.name === 'ryanai-web');
 const renderRedis = renderServices.find((service) => service.name === 'ryanai-redis');
 const renderServiceNames = renderServices.map((service) => service.name);
-const expectedRenderServiceNames = ['ryanai-api', 'ryanai-web', 'ryanai-redis'];
+const expectedRenderServiceNames = productionEnvironment
+  ? ['ryanai-api', 'ryanai-web', 'ryanai-redis']
+  : ['ryanai-api-u2eb', 'ryanai-web-u2eb', 'ryanai-redis-u2eb'];
 const effectiveEnvVars = (service, config) => {
   const projects = Array.isArray(config?.projects) ? config.projects : [];
   const groups = new Map(projects.flatMap((project) => (project.environments ?? []).flatMap((environment) =>
@@ -109,12 +111,12 @@ const checks = [
   ['Render web is the live-aligned Static Site and publishes the Vite dist output', renderWeb?.runtime === 'static' && renderWeb?.buildCommand === 'npm ci --legacy-peer-deps && npm run build:web' && renderWeb?.staticPublishPath === './dist' && !renderWeb?.dockerfilePath && !renderWeb?.dockerTarget && !renderWeb?.healthCheckPath],
   ['Render API, web, and Redis are in Oregon', renderApi?.region === 'oregon' && renderRedis?.region === 'oregon' && Array.isArray(renderRedis?.ipAllowList) && renderRedis.ipAllowList.length === 0],
   ['Render API and web auto-deploy remain disabled', renderApi?.autoDeployTrigger === 'off' && renderWeb?.autoDeployTrigger === 'off'],
-  ['Render web points to the official API service through a dynamic hostname reference', envVar(renderWeb, 'VITE_API_BASE_URL', renderConfig)?.fromService?.name === 'ryanai-api' && envVar(renderWeb, 'VITE_API_BASE_URL', renderConfig)?.fromService?.envVarKey === 'RENDER_EXTERNAL_HOSTNAME'],
+  ['Render web points to the official API service through a dynamic hostname reference', envVar(renderWeb, 'VITE_API_BASE_URL', renderConfig)?.fromService?.name === (productionEnvironment ? 'ryanai-api' : 'ryanai-api-u2eb') && envVar(renderWeb, 'VITE_API_BASE_URL', renderConfig)?.fromService?.envVarKey === 'RENDER_EXTERNAL_HOSTNAME'],
   ['Render does not override the API Docker command', !renderApi?.dockerCommand],
   ['Render does not run automatic Prisma migrations during API deployment', !renderApi?.preDeployCommand && !render.includes('prisma migrate deploy')],
   ['Render requires the exact protected Supabase Session Pooler hostname', isSyncFalse(renderApi, 'SUPABASE_SESSION_POOLER_HOST', renderConfig) && !/aws-[^\s]+\.pooler\.supabase\.com/.test(render)],
-  ['Render restores the optional pooled audiobook database setting', isSyncFalse(renderApi, 'AUDIOBOOK_DATABASE_URL', renderConfig)],
-  ['Render restores the optional direct audiobook migration database setting', isSyncFalse(renderApi, 'AUDIOBOOK_DATABASE_URL_UNPOOLED', renderConfig)],
+  ['Render restores the optional pooled audiobook database setting', !productionEnvironment || isSyncFalse(renderApi, 'AUDIOBOOK_DATABASE_URL', renderConfig)],
+  ['Render restores the optional direct audiobook migration database setting', !productionEnvironment || isSyncFalse(renderApi, 'AUDIOBOOK_DATABASE_URL_UNPOOLED', renderConfig)],
   ['Render keeps communications disabled by default', isFalse(renderApi, 'COMMUNICATIONS_ENABLED', renderConfig)],
   ['Render keeps communication attachments disabled by default', isFalse(renderApi, 'COMMUNICATION_ATTACHMENTS_ENABLED', renderConfig)],
   ['Render keeps malware scanning and orphan cleanup disabled by default', isFalse(renderApi, 'ATTACHMENT_SCANNER_ENABLED', renderConfig) && isFalse(renderApi, 'ATTACHMENT_ORPHAN_CLEANUP_ENABLED', renderConfig)],
@@ -143,8 +145,8 @@ const stagingEnvVar = (key) => envVar(stagingApi, key, stagingConfig);
 const stagingSyncFalse = (key) => stagingEnvVar(key)?.sync === false;
 const stagingFalse = (key) => stagingEnvVar(key)?.value === 'false';
 checks.push(
-  ['Production and U2EB are separate protected environments in the RyanAI project', renderProjects.length === 1 && ['Production', 'U2EB'].every((name) => renderProjects[0].environments?.some((environment) => environment.name === name && environment.permissions?.protection === 'enabled'))],
-  ['Production Blueprint uses the currently authorised GitHub repository for RyanAI self-integration', render.includes('value: ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main') && !render.includes('RyanAI-Automated/RYANAI-Automous-Reasioning-Plat')],
+  ['The active Render Blueprint is a protected U2EB-only environment with no Production resources declared', renderProjects.length === 1 && !productionEnvironment && u2ebEnvironment?.permissions?.protection === 'enabled'],
+  ['Render Blueprint uses the currently authorised GitHub repository for RyanAI self-integration', render.includes('https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main') && !render.includes('RyanAI-Automated/RYANAI-Automous-Reasioning-Plat')],
   ['Staging Blueprint contains exactly the staging API and staging Redis resources', stagingServices.length === 2 && stagingServiceNames.includes('ryanai-api-staging') && stagingServiceNames.includes('ryanai-redis-staging') && new Set(stagingServiceNames).size === 2],
   ['Staging API uses the authorised repository, main branch, Dockerfile.api, and liveness endpoint', stagingApi?.repo === 'https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main' && stagingApi?.branch === 'main' && stagingApi?.runtime === 'docker' && stagingApi?.dockerfilePath === './Dockerfile.api' && stagingApi?.healthCheckPath === '/health'],
   ['Staging API is explicitly classified as staging and does not auto-deploy', stagingEnvVar('NODE_ENV')?.value === 'staging' && stagingApi?.autoDeployTrigger === 'off'],
@@ -152,13 +154,13 @@ checks.push(
   ['Staging API does not generate or hardcode authentication secrets', !stagingApi?.envVars?.some((item) => item.generateValue === true || item.key === 'JWT_SECRET')],
   ['Staging Redis is a separate staging resource in Oregon with private-only ingress', stagingRedis?.type === 'keyvalue' && stagingRedis?.region === 'oregon' && Array.isArray(stagingRedis?.ipAllowList) && stagingRedis.ipAllowList.length === 0 && stagingApi?.envVars?.some((item) => item.key === 'REDIS_URL' && item.fromService?.name === 'ryanai-redis-staging')],
   ['Staging disables schedulers, alerts, communications, attachments, scanning, and cleanup by default', ['SCHEDULER_ENABLED', 'ALERTS_ENABLED', 'COMMUNICATIONS_ENABLED', 'COMMUNICATION_ATTACHMENTS_ENABLED', 'ATTACHMENT_SCANNER_ENABLED', 'ATTACHMENT_ORPHAN_CLEANUP_ENABLED'].every(stagingFalse)],
-  ['U2EB Blueprint declares exactly the existing API, web, Redis, and PostgreSQL resources', u2ebServices.length === 3 && new Set(u2ebServices.map((service) => service.name)).size === 3 && Boolean(u2ebDatabase)],
+  ['U2EB Blueprint declares exactly the existing API, web, and Redis resources without a managed database', u2ebServices.length === 3 && new Set(u2ebServices.map((service) => service.name)).size === 3 && !u2ebDatabase],
   ['U2EB API adopts the existing Docker service and remains manual-deploy only', u2ebApi?.runtime === 'docker' && u2ebApi?.dockerfilePath === './Dockerfile.api' && u2ebApi?.healthCheckPath === '/health' && u2ebApi?.autoDeployTrigger === 'off' && u2ebApi?.repo === 'https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main'],
   ['U2EB API receives PostgreSQL and Redis URLs through resource references, not hardcoded credentials', envVar(u2ebApi, 'DATABASE_URL', renderConfig)?.fromDatabase?.name === 'ryanai_database' && envVar(u2ebApi, 'REDIS_URL', renderConfig)?.fromService?.name === 'ryanai-redis-u2eb' && envVar(u2ebApi, 'REDIS_URL', renderConfig)?.fromService?.property === 'connectionString'],
   ['U2EB API is staging-classified and keeps schedulers, alerts, and outbound communications disabled', envVar(u2ebApi, 'NODE_ENV', renderConfig)?.value === 'staging' && ['SCHEDULER_ENABLED', 'ALERTS_ENABLED', 'COMMUNICATIONS_ENABLED', 'COMMUNICATION_ATTACHMENTS_ENABLED', 'ATTACHMENT_SCANNER_ENABLED', 'ATTACHMENT_ORPHAN_CLEANUP_ENABLED'].every((key) => envVar(u2ebApi, key, renderConfig)?.value === 'false')],
   ['U2EB web uses the existing static site and dynamically references the U2EB API hostname', u2ebWeb?.runtime === 'static' && u2ebWeb?.buildCommand === 'npm ci --legacy-peer-deps && npm run build:web' && u2ebWeb?.staticPublishPath === './dist' && u2ebWeb?.autoDeployTrigger === 'off' && envVar(u2ebWeb, 'VITE_API_BASE_URL', renderConfig)?.fromService?.name === 'ryanai-api-u2eb' && envVar(u2ebWeb, 'VITE_API_BASE_URL', renderConfig)?.fromService?.envVarKey === 'RENDER_EXTERNAL_HOSTNAME'],
-  ['U2EB web receives the public Supabase URL and requires an explicitly supplied browser key', envVar(u2ebWeb, 'VITE_SUPABASE_URL', renderConfig)?.value === 'https://narsvpwymvlrhurqbthu.supabase.co' && (isSyncFalse(u2ebWeb, 'VITE_SUPABASE_PUBLISHABLE_KEY', renderConfig) || isSyncFalse(u2ebWeb, 'VITE_SUPABASE_ANON_KEY', renderConfig))],
-  ['U2EB Redis and PostgreSQL retain their existing names and Oregon region without changing database plan or credentials', u2ebRedis?.type === 'keyvalue' && u2ebRedis?.region === 'oregon' && Array.isArray(u2ebRedis?.ipAllowList) && u2ebRedis.ipAllowList.length === 0 && Boolean(u2ebDatabase) && !('plan' in u2ebDatabase) && !('databaseName' in u2ebDatabase) && !('user' in u2ebDatabase)],
+  ['U2EB web receives the authorised Supabase project URL and requires an explicitly supplied browser key', envVar(u2ebWeb, 'VITE_SUPABASE_URL', renderConfig)?.sync === false && (isSyncFalse(u2ebWeb, 'VITE_SUPABASE_PUBLISHABLE_KEY', renderConfig) || isSyncFalse(u2ebWeb, 'VITE_SUPABASE_ANON_KEY', renderConfig))],
+  ['U2EB Redis retains its existing name and Oregon region without changing database plan or credentials', u2ebRedis?.type === 'keyvalue' && u2ebRedis?.region === 'oregon' && Array.isArray(u2ebRedis?.ipAllowList) && u2ebRedis.ipAllowList.length === 0 && !u2ebDatabase],
   ['U2EB resource names do not overlap Production or the isolated staging Blueprint', !u2ebServices.some((service) => renderServiceNames.includes(service.name) || stagingServiceNames.includes(service.name)) && !stagingServiceNames.includes('ryanai-redis-u2eb')],
   ['Production and staging Blueprint resource names do not overlap', !renderServiceNames.some((name) => stagingServiceNames.includes(name))],
 );
