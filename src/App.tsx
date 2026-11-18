@@ -133,9 +133,7 @@ export default function App() {
   const isOwner = user?.app_metadata?.owner === true || Boolean(user && verifiedIdentity?.userId === user.id && verifiedIdentity.isOwner);
   // All authenticated workspaces remain discoverable. Account preferences may
   // customize dashboard layout, but cannot hide or block a registered workspace.
-  const enabledUiIds = Array.from(new Set(
-    Object.values(routeUiOptions).filter((id): id is DashboardUiId => Boolean(id)),
-  ));
+  const enabledUiIds = Object.keys(normalizeDashboardUiPreferences(user?.user_metadata?.ryanai_dashboard_ui_preferences)) as DashboardUiId[];
   const roleAccessDenied = Boolean(user && (
     (route === 'admin' && !isAdmin)
     || (route === 'comms' && !isOwner)
@@ -148,8 +146,8 @@ export default function App() {
   // Keep every registered workspace visible on the dashboard regardless of stale
   // per-account hide flags. Role checks below still protect privileged destinations.
   const effectiveDashboardUiPreferences = { ...dashboardUiPreferences };
-  for (const preferenceId of Object.values(routeUiOptions)) {
-    if (preferenceId) effectiveDashboardUiPreferences[preferenceId] = true;
+  for (const preferenceId of Object.keys(effectiveDashboardUiPreferences) as DashboardUiId[]) {
+    effectiveDashboardUiPreferences[preferenceId] = true;
   }
   const audiobookSettings = normalizeAudiobookSettings(user?.user_metadata?.ryanai_audiobook_settings);
   const inferenceSettings = normalizeInferenceSettings(user?.user_metadata?.ryanai_inference_settings, MODEL_LIST, DEFAULT_MODEL);
@@ -279,7 +277,7 @@ export default function App() {
               : <>
                 {route === 'architecture' && <MissionOperatingSystem />}
                 {route === 'dashboard' && <DashboardPage isOwner={isOwner} isAdmin={isAdmin} enabledModules={effectiveDashboardUiPreferences} musicSettings={musicSettings} />}
-                {route === 'copilot' && <DarksideCopilot onSignOut={() => void handleSignOut()} userId={user.id} userEmail={user.email ?? ''} userFullName={displayName} showInferenceConsole={dashboardUiPreferences.inferenceConsole} defaultInferenceModel={inferenceSettings.preferredModel as ModelId} voiceSettings={ryanVoiceSettings} copilotSettings={copilotSettings} />}
+                {route === 'copilot' && <DarksideCopilot onSignOut={() => void handleSignOut()} userId={user.id} userEmail={user.email ?? ''} userFullName={displayName} showInferenceConsole={effectiveDashboardUiPreferences.inferenceConsole} defaultInferenceModel={inferenceSettings.preferredModel as ModelId} voiceSettings={ryanVoiceSettings} copilotSettings={copilotSettings} />}
                 {route === 'pa' && <PAAgentPage />}
                 {route === 'settings' && <ProfileSettings key={user.id} userId={user.id} email={user.email ?? ''} initialDisplayName={displayName || ''} initialLanguage={typeof user.user_metadata?.ryanai_language === 'string' ? user.user_metadata?.ryanai_language : isOwner ? OWNER_DEFAULT_LANGUAGE : DEFAULT_LANGUAGE} initialVoiceEnabled={typeof user.user_metadata?.ryanai_voice_enabled === 'boolean' ? user.user_metadata?.ryanai_voice_enabled : undefined} initialRyanVoiceSettings={ryanVoiceSettings} initialCopilotSettings={copilotSettings} initialDashboardUiIds={enabledUiIds} initialDashboardUiPreferences={effectiveDashboardUiPreferences} initialAudiobookSettings={audiobookSettings} initialInferenceSettings={inferenceSettings} initialMusicSettings={user.user_metadata?.ryanai_music_settings} initialPhoneLinkSettings={phoneLinkSettings} initialPluginPreferences={user.user_metadata?.ryanai_plugin_preferences} isAdmin={isAdmin} isOwner={isOwner} onSignOut={() => void handleSignOut()} signingOut={signingOut} />}
                 {route === 'operator' && <OperatorConsole userId={user.id} />}
