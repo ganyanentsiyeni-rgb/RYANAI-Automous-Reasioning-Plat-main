@@ -79,7 +79,7 @@ const validAttemptColumns = [
   ['status', 'character varying(24)'], ['error', 'text'], ['started_at', 'timestamp with time zone'], ['finished_at', 'timestamp with time zone'],
 ].map(([column_name, formatted_type]) => ({ column_name, formatted_type }));
 const attemptConstraints = [
-  { conname: 'intelligence_event_attempts_event_inbox_id_fkey', definition: 'FOREIGN KEY (event_inbox_id) REFERENCES public.intelligence_event_inbox(id) ON DELETE CASCADE' },
+  { conname: 'intelligence_event_attempts_event_inbox_id_fkey', definition: 'FOREIGN KEY (event_inbox_id) REFERENCES public.intelligence_event_inbox(id) ON DELETE CASCADE ON UPDATE CASCADE' },
   { conname: 'intelligence_event_attempt_event_attempt_key', definition: 'UNIQUE (event_inbox_id, attempt)' },
   { conname: 'intelligence_event_attempts_attempt_check', definition: 'CHECK ((attempt > 0))' },
   { conname: 'intelligence_event_attempts_status_check', definition: "CHECK (((status)::text = ANY ((ARRAY['started'::character varying, 'succeeded'::character varying, 'retry'::character varying, 'dead_letter'::character varying, 'lease_expired'::character varying])::text[])))" },
@@ -117,6 +117,20 @@ test('accepts the expected intelligence event attempt table contract', () => {
   assert.deepEqual(result.eventAttempts.missingIndexes, []);
   assert.deepEqual(result.eventAttempts.mismatchedIndexes, []);
   assert.equal(result.eventAttempts.rlsEnabled, true);
+});
+
+test('requires ON UPDATE CASCADE on the intelligence event attempt foreign key', () => {
+  const result = assessSchema({
+    columns: new Set(), tables: new Set(['intelligence_event_attempts']), indexes: new Set(), extensions: new Set(),
+    memoryColumns: new Set(), cacheColumns: new Set(), eventAttemptColumns: validAttemptColumns,
+    eventAttemptConstraints: [
+      { conname: 'intelligence_event_attempts_event_inbox_id_fkey', definition: 'FOREIGN KEY (event_inbox_id) REFERENCES public.intelligence_event_inbox(id) ON DELETE CASCADE' },
+      ...attemptConstraints.filter((item) => item.conname !== 'intelligence_event_attempts_event_inbox_id_fkey'),
+    ],
+    eventAttemptIndexes: attemptIndexes, eventAttemptRlsEnabled: true,
+  });
+  assert.deepEqual(result.eventAttempts.missingConstraints, []);
+  assert.ok(result.eventAttempts.mismatchedConstraints.some((item) => item.name === 'intelligence_event_attempts_event_inbox_id_fkey'));
 });
 
 test('detects wrong foreign-key actions, unique columns, and index definitions despite matching names', () => {
