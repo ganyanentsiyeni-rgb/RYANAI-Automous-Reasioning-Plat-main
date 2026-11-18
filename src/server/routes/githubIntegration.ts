@@ -347,9 +347,10 @@ export const githubIntegrationRoutes: FastifyPluginAsync = async (fastify) => {
             }
           }
         `;
+        const [repositoryOwner, repositoryName] = GITHUB_APP_REPOSITORY.split('/');
         const data = await githubGraphQL<GraphQLPullRequestReviewPayload>(query, {
-          owner: 'RyanAI-Automated',
-          repo: 'RYANAI-Automous-Reasioning-Plat',
+          owner: repositoryOwner,
+          repo: repositoryName,
           number: pullRequestNumber,
         }, accessToken);
         const snapshot = mapPullRequestReviewProvenance(data, pullRequestNumber);

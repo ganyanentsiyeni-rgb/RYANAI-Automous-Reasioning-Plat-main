@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StudioTask } from '@prisma/client';
 
 const mocks = vi.hoisted(() => ({ findFirst: vi.fn() }));
-vi.mock('../lib/prisma.js', () => ({
+vi.mock('../../lib/prisma.js', () => ({
   prisma: { studioEvent: { findFirst: mocks.findFirst } },
 }));
 

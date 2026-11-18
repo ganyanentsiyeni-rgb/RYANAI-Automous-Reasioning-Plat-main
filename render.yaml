@@ -24,17 +24,25 @@ projects:
                 value: staging
               - key: HOST
                 value: 0.0.0.0
+              # Fail closed: never bind U2EB to the Production Render database.
+              # Supply an explicitly approved, isolated U2EB database URL in Render.
               - key: DATABASE_URL
-                fromDatabase:
-                  name: ryanai_database
-                  property: connectionString
+                sync: false
               - key: REDIS_URL
                 fromService:
                   name: ryanai-redis-u2eb
                   type: keyvalue
                   property: connectionString
+              # Require an explicitly verified U2EB Supabase project mapping.
               - key: SUPABASE_URL
                 value: https://narsvpwymvlrhurqbthu.supabase.co
+                sync: false
+              - key: SUPABASE_SESSION_POOLER_HOST
+                sync: false
+              - key: SUPABASE_ANON_KEY
+                sync: false
+              - key: SUPABASE_PUBLISHABLE_KEY
+                sync: false
               - key: CORS_ORIGINS
                 value: https://ryanai-web-u2eb.onrender.com
               - key: SCHEDULER_ENABLED
@@ -65,8 +73,9 @@ projects:
                   name: ryanai-api-u2eb
                   type: web
                   envVarKey: RENDER_EXTERNAL_HOSTNAME
+              # Require an explicitly verified U2EB Supabase project mapping.
               - key: VITE_SUPABASE_URL
-                value: https://narsvpwymvlrhurqbthu.supabase.co
+                sync: false
               - key: VITE_SUPABASE_PUBLISHABLE_KEY
                 value: sb_publishable_2EnJpO2OEpC8m35ev0GpiA_gPUPIBz_
           - type: keyvalue
@@ -75,5 +84,4 @@ projects:
             region: oregon
             ipAllowList: []
             maxmemoryPolicy: noeviction
-        databases:
-          - name: ryanai_database
+        # No Production database is managed or referenced from U2EB.

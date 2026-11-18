@@ -26,7 +26,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   auth.getUser.mockResolvedValue({ data: { user: { id: 'user-a', user_metadata: {} } }, error: null });
   auth.updateUser.mockResolvedValue({ data: { user: { id: 'user-a' } }, error: null });
-  api.authenticatedFetch.mockImplementation(async (url: string) => ({ ok: true, json: async () => url === '/api/plugins/registry' ? { providers: [] } : { connections: [] } }));
+  api.authenticatedFetch.mockImplementation(async (url: string) => ({ ok: true, json: async () => url === '/api/plugins/registry' ? { providers: [] } : url === '/api/github/status' ? { status: 'not_connected', connected: false } : { connections: [] } }));
   container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.useRealTimers(); });
@@ -39,6 +39,35 @@ describe('Plugin integrations centre', () => {
     expect(container.textContent).toContain('Google Calendar');
     expect(container.textContent).toContain('Adapter required');
   });
+  it('loads GitHub connection state from the verified backend status endpoint', async () => {
+    api.authenticatedFetch.mockImplementation(async (url: string) => ({
+      ok: true,
+      json: async () => url === '/api/plugins/registry' ? { providers: [] }
+        : url === '/api/github/status' ? { status: 'connected', connected: true, account: { login: 'ryanai-owner' }, repository: { fullName: 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main' } }
+          : { connections: [] },
+    }));
+    await mount();
+    await vi.waitFor(() => expect(container.textContent).toContain('Connected · repository access verified'));
+    expect(container.textContent).toContain('@ryanai-owner');
+    expect(container.textContent).toContain('Verified repository: ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main');
+    expect(api.authenticatedFetch).toHaveBeenCalledWith('/api/github/status', { headers: { Accept: 'application/json' } }, 'user-a');
+  });
+
+  it('starts GitHub OAuth only through the trusted GitHub authorization host', async () => {
+    api.authenticatedFetch.mockImplementation(async (url: string) => ({
+      ok: true,
+      json: async () => url === '/api/plugins/registry' ? { providers: [] }
+        : url === '/api/github/connect' ? { authorizationUrl: 'https://github.com/login/oauth/authorize?client_id=test' }
+          : url === '/api/github/status' ? { status: 'not_connected', connected: false }
+            : { connections: [] },
+    }));
+    const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => undefined);
+    await mount();
+    await click([...container.querySelectorAll('button')].find(button => button.textContent === 'Connect GitHub') ?? null);
+    expect(api.authenticatedFetch).toHaveBeenCalledWith('/api/github/connect', { method: 'POST', headers: { Accept: 'application/json' } }, 'user-a');
+    expect(assign).toHaveBeenCalledWith(expect.stringContaining('https://github.com/login/oauth/authorize'));
+  });
+
   it('renders adapter readiness from the authenticated backend registry', async () => {
     api.authenticatedFetch.mockImplementation(async (url: string) => ({
       ok: true,
@@ -239,4 +268,65 @@ describe('Plugin integrations centre', () => {
     expect(container.querySelector('[data-plugin-id="google-calendar"]')?.textContent).not.toContain('Adapter registered');
   });
 
+  it('loads read-only calendar events on explicit owner action and renders the returned schedule', async () => {
+    api.authenticatedFetch.mockImplementation(async (url: string) => ({
+      ok: true,
+      json: async () => url === '/api/plugins/registry' ? { providers: [] }
+        : url === '/api/github/status' ? { status: 'not_connected', connected: false }
+          : url.includes('/events?') ? { events: [{ id: 'event-1', title: 'RyanAI planning', start: '2026-11-18T10:00:00Z', end: '2026-11-18T10:30:00Z', location: 'Johannesburg', organizer: null }] }
+            : { connections: [{ providerId: 'google-calendar', status: 'connected', connectionState: 'connected', credentialState: 'access_token_valid_or_expiry_unknown', healthState: 'not_probed', lastHealthCheckAt: null }] },
+    }));
+    await mount();
+    await vi.waitFor(() => expect(container.textContent).toContain('Connected · provider health not checked'));
+    await click([...container.querySelectorAll('button')].find(button => button.textContent === 'Load next 7 days') ?? null);
+    await vi.waitFor(() => expect(container.textContent).toContain('RyanAI planning'));
+    expect(container.textContent).toContain('Johannesburg');
+    expect(container.textContent).toContain('Read-only calendar access');
+    const call = api.authenticatedFetch.mock.calls.find((args: unknown[]) => typeof args[0] === 'string' && args[0].includes('/api/plugins/google-calendar/events?'));
+    expect(call).toBeTruthy();
+    expect(call?.[2]).toBe('user-a');
+  });
+
+
+  it('connects Gmail through Google OAuth and searches read-only mailbox metadata', async () => {
+    api.authenticatedFetch.mockImplementation(async (url: string) => ({
+      ok: true,
+      json: async () => url === '/api/plugins/registry' ? { providers: [] }
+        : url === '/api/plugins/gmail/connect' ? { authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth?client_id=test&scope=gmail.readonly' }
+          : url === '/api/plugins/gmail/messages?limit=20' ? { messages: [{
+            id: 'message-1', threadId: 'thread-1', subject: 'RyanAI update',
+            from: 'owner@example.test', snippet: 'Short preview only', receivedAt: '2026-11-17T10:00:00Z',
+          }] }
+            : url === '/api/github/status' ? { status: 'not_connected', connected: false }
+              : { connections: [{ providerId: 'gmail', status: 'connected', connectionState: 'connected', credentialState: 'access_token_valid_or_expiry_unknown', healthState: 'not_probed', lastHealthCheckAt: null }] },
+    }));
+    const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => undefined);
+    await mount();
+    const gmailCard = container.querySelector('[data-plugin-id="gmail"]') as HTMLElement;
+    await vi.waitFor(() => expect(gmailCard.textContent).toContain('Connected · provider health not checked'));
+    expect(gmailCard.textContent).toContain('Read-only mailbox API');
+    expect(gmailCard.textContent).toContain('Drafting and sending are not enabled');
+    await click([...gmailCard.querySelectorAll('button')].find(button => button.textContent === 'Search mailbox') ?? null);
+    await vi.waitFor(() => expect(gmailCard.textContent).toContain('RyanAI update'));
+    expect(gmailCard.textContent).toContain('Short preview only');
+    expect(gmailCard.textContent).toContain('cannot read full message bodies, create drafts or send email');
+    expect(api.authenticatedFetch).toHaveBeenCalledWith('/api/plugins/gmail/messages?limit=20', { headers: { Accept: 'application/json' } }, 'user-a');
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it('starts Gmail authorization only through the trusted Google OAuth host', async () => {
+    api.authenticatedFetch.mockImplementation(async (url: string) => ({
+      ok: true,
+      json: async () => url === '/api/plugins/registry' ? { providers: [] }
+        : url === '/api/plugins/gmail/connect' ? { authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth?client_id=test' }
+          : url === '/api/github/status' ? { status: 'not_connected', connected: false }
+            : { connections: [] },
+    }));
+    const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => undefined);
+    await mount();
+    const gmailCard = container.querySelector('[data-plugin-id="gmail"]') as HTMLElement;
+    await click([...gmailCard.querySelectorAll('button')].find(button => button.textContent === 'Connect account') ?? null);
+    expect(api.authenticatedFetch).toHaveBeenCalledWith('/api/plugins/gmail/connect', { method: 'POST', headers: { Accept: 'application/json' } }, 'user-a');
+    expect(assign).toHaveBeenCalledWith(expect.stringContaining('https://accounts.google.com/'));
+  });
 });

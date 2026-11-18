@@ -15,7 +15,7 @@ import {
   type ProviderOAuthTokenSet,
 } from './providerAuthorization.js';
 
-type ProviderId = 'google-calendar' | 'microsoft-365-calendar';
+type ProviderId = 'google-calendar' | 'microsoft-365-calendar' | 'gmail';
 type ProviderConfig = {
   id: ProviderId;
   policy: ProviderOAuthPolicy;
@@ -53,6 +53,30 @@ function providerConfig(providerId: string): ProviderConfig | null {
     const scopes = ['https://www.googleapis.com/auth/calendar.readonly'];
     return {
       id: 'google-calendar',
+      policy: {
+        providerId,
+        clientId,
+        clientSecret,
+        authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
+        tokenEndpoint: 'https://oauth2.googleapis.com/token',
+        redirectUri,
+        allowedScopes: scopes,
+        requiredScopes: scopes,
+      },
+      requestedScopes: scopes,
+      extraAuthorizationParams: { access_type: 'offline', prompt: 'consent' },
+      revokeEndpoint: 'https://oauth2.googleapis.com/revoke',
+    };
+  }
+
+  if (providerId === 'gmail') {
+    const clientId = requiredEnv('RYANAI_PLUGIN_GMAIL_CLIENT_ID');
+    const clientSecret = requiredEnv('RYANAI_PLUGIN_GMAIL_CLIENT_SECRET');
+    const redirectUri = requiredEnv('RYANAI_PLUGIN_GMAIL_REDIRECT_URI');
+    if (!clientId || !clientSecret || !redirectUri) return null;
+    const scopes = ['https://www.googleapis.com/auth/gmail.readonly'];
+    return {
+      id: 'gmail',
       policy: {
         providerId,
         clientId,
@@ -534,6 +558,199 @@ export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) =
         }
         request.log.warn({ providerId: config.id }, 'Provider token refresh temporarily failed');
         return reply.code(503).send({ error: 'Provider refresh is temporarily unavailable. The existing connection has been preserved.' });
+      }
+    },
+  );
+
+  fastify.get<{ Params: { provider: string }; Querystring: { start?: string; end?: string; limit?: string } }>(
+    '/api/plugins/:provider/events',
+    { preHandler: requireUser },
+    async (request, reply) => {
+      const ownerUserId = request.authUser?.id;
+      if (!ownerUserId) return reply.code(401).send({ error: 'Sign in to read calendar events.' });
+      const config = providerConfig(request.params.provider);
+      if (!config || !['google-calendar', 'microsoft-365-calendar'].includes(config.id)) {
+        return reply.code(404).send({ error: 'Read-only calendar access is not supported for this provider.' });
+      }
+
+      const start = request.query.start ? new Date(request.query.start) : new Date();
+      const end = request.query.end ? new Date(request.query.end) : new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const limit = request.query.limit === undefined ? 50 : Number(request.query.limit);
+      if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) ||
+          end <= start || end.getTime() - start.getTime() > 31 * 24 * 60 * 60 * 1000 ||
+          !Number.isInteger(limit) || limit < 1 || limit > 100) {
+        return reply.code(400).send({ error: 'Use a valid date range of at most 31 days and a limit between 1 and 100.' });
+      }
+
+      const unique = { ownerUserId_providerId: { ownerUserId, providerId: config.id } };
+      const connection = await fastify.prisma.pluginProviderConnection.findUnique({ where: unique });
+      if (!connection || connection.status !== 'connected' || !connection.encryptedAccessToken) {
+        return reply.code(409).send({ error: 'Connect this calendar account before reading events.' });
+      }
+      if (!connection.accessTokenExpiresAt || connection.accessTokenExpiresAt <= new Date()) {
+        return reply.code(409).send({ error: 'Calendar access token may be expired. Refresh the connection and retry.' });
+      }
+      const granted = Array.isArray(connection.grantedScopes) ? connection.grantedScopes : [];
+      const required = config.id === 'google-calendar'
+        ? 'https://www.googleapis.com/auth/calendar.readonly' : 'Calendars.Read';
+      if (!granted.includes(required)) {
+        return reply.code(403).send({ error: 'The connected account has not granted the required read-only calendar scope.' });
+      }
+
+      try {
+        const token = decryptProviderCredential(
+          connection.encryptedAccessToken, encryptionKey(),
+          connectionEncryptionContext(config.id, ownerUserId),
+        );
+        const endpoint = config.id === 'google-calendar'
+          ? new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events')
+          : new URL('https://graph.microsoft.com/v1.0/me/calendarView');
+        if (config.id === 'google-calendar') {
+          endpoint.searchParams.set('timeMin', start.toISOString());
+          endpoint.searchParams.set('timeMax', end.toISOString());
+          endpoint.searchParams.set('maxResults', String(limit));
+          endpoint.searchParams.set('singleEvents', 'true');
+          endpoint.searchParams.set('orderBy', 'startTime');
+        } else {
+          endpoint.searchParams.set('startDateTime', start.toISOString());
+          endpoint.searchParams.set('endDateTime', end.toISOString());
+          endpoint.searchParams.set('$top', String(limit));
+          endpoint.searchParams.set('$orderby', 'start/dateTime');
+        }
+        const response = await fetch(endpoint, {
+          headers: { Accept: 'application/json', Authorization: 'Bearer ' + token },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+        if (!response.ok) {
+          const status = response.status;
+          if (status === 401 || status === 403) {
+            return reply.code(status).send({ error: 'Calendar provider rejected the stored authorization. Reconnect if access was revoked.' });
+          }
+          return reply.code(status === 429 || status >= 500 ? 503 : 502)
+            .send({ error: status === 429 ? 'Calendar provider rate limit was reached.' : 'Calendar provider request failed.' });
+        }
+        const payload = await response.json() as {
+          items?: Array<Record<string, unknown>>;
+          value?: Array<Record<string, unknown>>;
+          nextPageToken?: string;
+        };
+        const items = config.id === 'google-calendar' ? payload.items ?? [] : payload.value ?? [];
+        const events = items.slice(0, limit).map((item) => {
+          const startValue = item.start as Record<string, unknown> | undefined;
+          const endValue = item.end as Record<string, unknown> | undefined;
+          const organizer = item.organizer as Record<string, unknown> | undefined;
+          const graphOrganizer = organizer?.emailAddress as Record<string, unknown> | undefined;
+          const graphStart = typeof startValue?.dateTime === 'string' ? startValue.dateTime : null;
+          const graphEnd = typeof endValue?.dateTime === 'string' ? endValue.dateTime : null;
+          return {
+            id: typeof item.id === 'string' ? item.id : null,
+            title: typeof item.summary === 'string' ? item.summary : typeof item.subject === 'string' ? item.subject : '(Untitled event)',
+            start: typeof startValue?.dateTime === 'string' ? startValue.dateTime : typeof startValue?.date === 'string' ? startValue.date : graphStart,
+            end: typeof endValue?.dateTime === 'string' ? endValue.dateTime : typeof endValue?.date === 'string' ? endValue.date : graphEnd,
+            timeZone: typeof startValue?.timeZone === 'string' ? startValue.timeZone : null,
+            location: typeof item.location === 'string' ? item.location :
+              typeof (item.location as Record<string, unknown> | undefined)?.displayName === 'string'
+                ? (item.location as Record<string, unknown>).displayName as string : null,
+            organizer: typeof organizer?.email === 'string' ? organizer.email :
+              typeof graphOrganizer?.address === 'string' ? graphOrganizer.address : null,
+            status: typeof item.status === 'string' ? item.status : null,
+          };
+        });
+        return { provider: config.id, range: { start: start.toISOString(), end: end.toISOString() }, events };
+      } catch {
+        request.log.warn({ providerId: config.id }, 'Read-only calendar event retrieval failed');
+        return reply.code(502).send({ error: 'Calendar events could not be retrieved.' });
+      }
+    },
+  );
+
+  fastify.get<{ Params: { provider: string }; Querystring: { q?: string; limit?: string } }>(
+    '/api/plugins/:provider/messages',
+    { preHandler: requireUser },
+    async (request, reply) => {
+      const ownerUserId = request.authUser?.id;
+      if (!ownerUserId) return reply.code(401).send({ error: 'Sign in to read mailbox messages.' });
+      const config = providerConfig(request.params.provider);
+      if (!config || config.id !== 'gmail') {
+        return reply.code(404).send({ error: 'Read-only mailbox access is not supported for this provider.' });
+      }
+
+      const query = (request.query.q ?? '').trim();
+      const limit = request.query.limit === undefined ? 20 : Number(request.query.limit);
+      if (query.length > 200 || !Number.isInteger(limit) || limit < 1 || limit > 25) {
+        return reply.code(400).send({ error: 'Search text must be at most 200 characters and limit must be between 1 and 25.' });
+      }
+
+      const unique = { ownerUserId_providerId: { ownerUserId, providerId: config.id } };
+      const connection = await fastify.prisma.pluginProviderConnection.findUnique({ where: unique });
+      if (!connection || connection.status !== 'connected' || !connection.encryptedAccessToken) {
+        return reply.code(409).send({ error: 'Connect this Gmail account before reading messages.' });
+      }
+      if (!connection.accessTokenExpiresAt || connection.accessTokenExpiresAt <= new Date()) {
+        return reply.code(409).send({ error: 'Gmail access token may be expired. Refresh the connection and retry.' });
+      }
+      const requiredScope = 'https://www.googleapis.com/auth/gmail.readonly';
+      const granted = Array.isArray(connection.grantedScopes) ? connection.grantedScopes : [];
+      if (!granted.includes(requiredScope)) {
+        return reply.code(403).send({ error: 'The connected account has not granted the required read-only Gmail scope.' });
+      }
+
+      try {
+        const token = decryptProviderCredential(
+          connection.encryptedAccessToken, encryptionKey(),
+          connectionEncryptionContext(config.id, ownerUserId),
+        );
+        const listEndpoint = new URL('https://gmail.googleapis.com/gmail/v1/users/me/messages');
+        listEndpoint.searchParams.set('maxResults', String(limit));
+        if (query) listEndpoint.searchParams.set('q', query);
+        const listResponse = await fetch(listEndpoint, {
+          headers: { Accept: 'application/json', Authorization: 'Bearer ' + token },
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+        if (!listResponse.ok) {
+          const status = listResponse.status;
+          if (status === 401 || status === 403) {
+            return reply.code(status).send({ error: 'Gmail rejected the stored authorization. Reconnect if access was revoked.' });
+          }
+          return reply.code(status === 429 || status >= 500 ? 503 : 502)
+            .send({ error: status === 429 ? 'Gmail rate limit was reached.' : 'Gmail mailbox request failed.' });
+        }
+        const listPayload = await listResponse.json() as { messages?: Array<{ id?: string; threadId?: string }> };
+        const messageRefs = (Array.isArray(listPayload.messages) ? listPayload.messages : [])
+          .filter((item): item is { id: string; threadId?: string } => typeof item.id === 'string')
+          .slice(0, limit);
+        const messages = await Promise.all(messageRefs.map(async (item) => {
+          const detailEndpoint = new URL(
+            'https://gmail.googleapis.com/gmail/v1/users/me/messages/' + encodeURIComponent(item.id),
+          );
+          detailEndpoint.searchParams.set('format', 'metadata');
+          detailEndpoint.searchParams.set('metadataHeaders', 'From');
+          detailEndpoint.searchParams.append('metadataHeaders', 'Subject');
+          const detailResponse = await fetch(detailEndpoint, {
+            headers: { Accept: 'application/json', Authorization: 'Bearer ' + token },
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          });
+          if (!detailResponse.ok) throw new Error('Gmail message metadata request failed.');
+          const detail = await detailResponse.json() as {
+            id?: string; threadId?: string; snippet?: string; internalDate?: string;
+            payload?: { headers?: Array<{ name?: string; value?: string }> };
+          };
+          const headers = Array.isArray(detail.payload?.headers) ? detail.payload.headers : [];
+          const header = (name: string) => headers.find((value) => value.name?.toLowerCase() === name.toLowerCase())?.value ?? null;
+          return {
+            id: typeof detail.id === 'string' ? detail.id : item.id,
+            threadId: typeof detail.threadId === 'string' ? detail.threadId : item.threadId ?? null,
+            snippet: typeof detail.snippet === 'string' ? detail.snippet.slice(0, 500) : '',
+            receivedAt: typeof detail.internalDate === 'string' && /^\d{1,16}$/.test(detail.internalDate)
+              ? new Date(Number(detail.internalDate)).toISOString() : null,
+            from: header('From'),
+            subject: header('Subject'),
+          };
+        }));
+        return { provider: config.id, query, messages };
+      } catch {
+        request.log.warn({ providerId: config.id }, 'Read-only Gmail message retrieval failed');
+        return reply.code(502).send({ error: 'Gmail messages could not be retrieved.' });
       }
     },
   );

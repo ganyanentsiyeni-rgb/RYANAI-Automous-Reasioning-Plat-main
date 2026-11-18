@@ -275,4 +275,240 @@ describe('provider authorization HTTP lifecycle', () => {
     });
     await app.close();
   });
+
+  it('reads only the signed-in owner Google Calendar events and returns normalized metadata', async () => {
+    vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
+    vi.stubEnv('RYANAI_PLUGIN_GOOGLE_CALENDAR_CLIENT_ID', 'synthetic-client');
+    vi.stubEnv('RYANAI_PLUGIN_GOOGLE_CALENDAR_CLIENT_SECRET', 'synthetic-secret');
+    vi.stubEnv('RYANAI_PLUGIN_GOOGLE_CALENDAR_REDIRECT_URI', 'https://api.example.test/api/plugins/oauth/google-calendar/callback');
+    const { app, connectionRows } = await createApp();
+    const encrypted = encryptProviderCredential(
+      'synthetic-calendar-access-token', Buffer.from(key, 'hex'),
+      'plugin-token:google-calendar:owner-user-1',
+    );
+    connectionRows.set(`${owner.id}:google-calendar`, {
+      id: 'calendar-connection', ownerUserId: owner.id, providerId: 'google-calendar',
+      status: 'connected', encryptedAccessToken: encrypted,
+      accessTokenExpiresAt: new Date(Date.now() + 60_000),
+      grantedScopes: ['https://www.googleapis.com/auth/calendar.readonly'],
+    });
+    const fetchMock = vi.fn(async (url: URL, init: RequestInit) => {
+      expect(url.origin).toBe('https://www.googleapis.com');
+      expect(url.pathname).toBe('/calendar/v3/calendars/primary/events');
+      expect(url.searchParams.get('maxResults')).toBe('20');
+      expect(new Headers(init.headers).get('authorization')).toBe('Bearer synthetic-calendar-access-token');
+      return new Response(JSON.stringify({ items: [{
+        id: 'event-1', summary: 'RyanAI planning', start: { dateTime: '2026-11-18T10:00:00Z' },
+        end: { dateTime: '2026-11-18T10:30:00Z' }, location: 'Johannesburg',
+      }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/plugins/google-calendar/events?start=2026-11-18T00:00:00Z&end=2026-11-19T00:00:00Z&limit=20',
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      provider: 'google-calendar',
+      events: [{ id: 'event-1', title: 'RyanAI planning', location: 'Johannesburg' }],
+    });
+    expect(response.body).not.toContain('synthetic-calendar-access-token');
+    expect(fetchMock).toHaveBeenCalledOnce();
+    await app.close();
+  });
+
+  it('reads only the signed-in owner Microsoft 365 calendar events and normalizes Graph metadata', async () => {
+    vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
+    vi.stubEnv('RYANAI_PLUGIN_MICROSOFT_365_CLIENT_ID', 'synthetic-ms-client');
+    vi.stubEnv('RYANAI_PLUGIN_MICROSOFT_365_CLIENT_SECRET', 'synthetic-ms-secret');
+    vi.stubEnv('RYANAI_PLUGIN_MICROSOFT_365_REDIRECT_URI', 'https://api.example.test/api/plugins/oauth/microsoft-365-calendar/callback');
+    const { app, connectionRows } = await createApp();
+    const encrypted = encryptProviderCredential(
+      'synthetic-microsoft-calendar-access-token', Buffer.from(key, 'hex'),
+      'plugin-token:microsoft-365-calendar:owner-user-1',
+    );
+    connectionRows.set(`${owner.id}:microsoft-365-calendar`, {
+      id: 'ms-calendar-connection', ownerUserId: owner.id, providerId: 'microsoft-365-calendar',
+      status: 'connected', encryptedAccessToken: encrypted,
+      accessTokenExpiresAt: new Date(Date.now() + 60_000),
+      grantedScopes: ['User.Read', 'Calendars.Read'],
+    });
+    const fetchMock = vi.fn(async (url: URL, init: RequestInit) => {
+      expect(url.origin).toBe('https://graph.microsoft.com');
+      expect(url.pathname).toBe('/v1.0/me/calendarView');
+      expect(url.searchParams.get('startDateTime')).toBe('2026-11-18T00:00:00.000Z');
+      expect(url.searchParams.get('endDateTime')).toBe('2026-11-19T00:00:00.000Z');
+      expect(url.searchParams.get('$top')).toBe('15');
+      expect(url.searchParams.get('$orderby')).toBe('start/dateTime');
+      expect(new Headers(init.headers).get('authorization')).toBe('Bearer synthetic-microsoft-calendar-access-token');
+      return new Response(JSON.stringify({ value: [{
+        id: 'graph-event-1', subject: 'Architecture review',
+        start: { dateTime: '2026-11-18T10:00:00.0000000', timeZone: 'South Africa Standard Time' },
+        end: { dateTime: '2026-11-18T10:45:00.0000000', timeZone: 'South Africa Standard Time' },
+        location: { displayName: 'Johannesburg office' },
+        organizer: { emailAddress: { name: 'RyanAI owner', address: 'owner@example.test' } },
+        showAs: 'busy',
+      }] }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/plugins/microsoft-365-calendar/events?start=2026-11-18T00:00:00Z&end=2026-11-19T00:00:00Z&limit=15',
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      provider: 'microsoft-365-calendar',
+      events: [{
+        id: 'graph-event-1', title: 'Architecture review',
+        start: '2026-11-18T10:00:00.0000000', end: '2026-11-18T10:45:00.0000000',
+        location: 'Johannesburg office', organizer: 'owner@example.test',
+      }],
+    });
+    expect(response.body).not.toContain('synthetic-microsoft-calendar-access-token');
+    expect(fetchMock).toHaveBeenCalledOnce();
+    await app.close();
+  });
+  it('rejects Microsoft calendar reads when the owner has not granted Calendars.Read', async () => {
+    vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
+    vi.stubEnv('RYANAI_PLUGIN_MICROSOFT_365_CLIENT_ID', 'synthetic-ms-client');
+    vi.stubEnv('RYANAI_PLUGIN_MICROSOFT_365_CLIENT_SECRET', 'synthetic-ms-secret');
+    vi.stubEnv('RYANAI_PLUGIN_MICROSOFT_365_REDIRECT_URI', 'https://api.example.test/api/plugins/oauth/microsoft-365-calendar/callback');
+    const { app, connectionRows } = await createApp();
+    connectionRows.set(`${owner.id}:microsoft-365-calendar`, {
+      id: 'ms-calendar-connection', ownerUserId: owner.id, providerId: 'microsoft-365-calendar',
+      status: 'connected', encryptedAccessToken: 'ciphertext',
+      accessTokenExpiresAt: new Date(Date.now() + 60_000), grantedScopes: ['User.Read'],
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await app.inject({ method: 'GET', url: '/api/plugins/microsoft-365-calendar/events?start=2026-11-18T00:00:00Z&end=2026-11-19T00:00:00Z' });
+    expect(response.statusCode).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('does not call Microsoft Graph with an expired calendar access token', async () => {
+    vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
+    vi.stubEnv('RYANAI_PLUGIN_MICROSOFT_365_CLIENT_ID', 'synthetic-ms-client');
+    vi.stubEnv('RYANAI_PLUGIN_MICROSOFT_365_CLIENT_SECRET', 'synthetic-ms-secret');
+    vi.stubEnv('RYANAI_PLUGIN_MICROSOFT_365_REDIRECT_URI', 'https://api.example.test/api/plugins/oauth/microsoft-365-calendar/callback');
+    const { app, connectionRows } = await createApp();
+    connectionRows.set(`${owner.id}:microsoft-365-calendar`, {
+      id: 'ms-calendar-connection', ownerUserId: owner.id, providerId: 'microsoft-365-calendar',
+      status: 'connected', encryptedAccessToken: 'ciphertext',
+      accessTokenExpiresAt: new Date(Date.now() - 60_000), grantedScopes: ['User.Read', 'Calendars.Read'],
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await app.inject({ method: 'GET', url: '/api/plugins/microsoft-365-calendar/events?start=2026-11-18T00:00:00Z&end=2026-11-19T00:00:00Z' });
+    expect(response.statusCode).toBe(409);
+    expect(fetchMock).not.toHaveBeenCalled();
+    await app.close();
+  });
+  it('rejects calendar event requests with invalid or excessive date ranges', async () => {
+    vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
+    vi.stubEnv('RYANAI_PLUGIN_GOOGLE_CALENDAR_CLIENT_ID', 'synthetic-client');
+    vi.stubEnv('RYANAI_PLUGIN_GOOGLE_CALENDAR_CLIENT_SECRET', 'synthetic-secret');
+    vi.stubEnv('RYANAI_PLUGIN_GOOGLE_CALENDAR_REDIRECT_URI', 'https://api.example.test/api/plugins/oauth/google-calendar/callback');
+    const { app } = await createApp();
+    const invalid = await app.inject({ method: 'GET', url: '/api/plugins/google-calendar/events?start=not-a-date' });
+    const excessive = await app.inject({
+      method: 'GET',
+      url: '/api/plugins/google-calendar/events?start=2026-01-01T00:00:00Z&end=2026-03-01T00:00:00Z',
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(excessive.statusCode).toBe(400);
+    await app.close();
+  });
+
+
+  it('reads only owner Gmail message metadata with the read-only scope and never returns credentials', async () => {
+    vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
+    vi.stubEnv('RYANAI_PLUGIN_GMAIL_CLIENT_ID', 'synthetic-gmail-client');
+    vi.stubEnv('RYANAI_PLUGIN_GMAIL_CLIENT_SECRET', 'synthetic-gmail-secret');
+    vi.stubEnv('RYANAI_PLUGIN_GMAIL_REDIRECT_URI', 'https://api.example.test/api/plugins/oauth/gmail/callback');
+    const { app, connectionRows } = await createApp();
+    const encrypted = encryptProviderCredential(
+      'synthetic-gmail-access-token', Buffer.from(key, 'hex'),
+      'plugin-token:gmail:owner-user-1',
+    );
+    connectionRows.set(`${owner.id}:gmail`, {
+      id: 'gmail-connection', ownerUserId: owner.id, providerId: 'gmail',
+      status: 'connected', encryptedAccessToken: encrypted,
+      accessTokenExpiresAt: new Date(Date.now() + 60_000),
+      grantedScopes: ['https://www.googleapis.com/auth/gmail.readonly'],
+    });
+    const fetchMock = vi.fn(async (url: URL, init: RequestInit) => {
+      expect(url.origin).toBe('https://gmail.googleapis.com');
+      expect(new Headers(init.headers).get('authorization')).toBe('Bearer synthetic-gmail-access-token');
+      if (url.pathname.endsWith('/messages')) {
+        expect(url.searchParams.get('maxResults')).toBe('5');
+        expect(url.searchParams.get('q')).toBe('from:owner@example.test');
+        return new Response(JSON.stringify({ messages: [{ id: 'message-1', threadId: 'thread-1' }] }), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        });
+      }
+      expect(url.pathname).toBe('/gmail/v1/users/me/messages/message-1');
+      expect(url.searchParams.get('format')).toBe('metadata');
+      expect(url.searchParams.getAll('metadataHeaders')).toEqual(['From', 'Subject']);
+      return new Response(JSON.stringify({
+        id: 'message-1', threadId: 'thread-1', snippet: 'A short preview',
+        internalDate: '1795000000000',
+        payload: { headers: [
+          { name: 'From', value: 'Owner <owner@example.test>' },
+          { name: 'Subject', value: 'RyanAI review' },
+        ] },
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/plugins/gmail/messages?q=from%3Aowner%40example.test&limit=5',
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      provider: 'gmail',
+      messages: [{
+        id: 'message-1', threadId: 'thread-1', snippet: 'A short preview',
+        from: 'Owner <owner@example.test>', subject: 'RyanAI review',
+      }],
+    });
+    expect(response.body).not.toContain('synthetic-gmail-access-token');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await app.close();
+  });
+
+  it('rejects Gmail message retrieval without the read-only scope before contacting Google', async () => {
+    vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
+    vi.stubEnv('RYANAI_PLUGIN_GMAIL_CLIENT_ID', 'synthetic-gmail-client');
+    vi.stubEnv('RYANAI_PLUGIN_GMAIL_CLIENT_SECRET', 'synthetic-gmail-secret');
+    vi.stubEnv('RYANAI_PLUGIN_GMAIL_REDIRECT_URI', 'https://api.example.test/api/plugins/oauth/gmail/callback');
+    const { app, connectionRows } = await createApp();
+    connectionRows.set(`${owner.id}:gmail`, {
+      id: 'gmail-connection', ownerUserId: owner.id, providerId: 'gmail',
+      status: 'connected', encryptedAccessToken: 'ciphertext',
+      accessTokenExpiresAt: new Date(Date.now() + 60_000), grantedScopes: [],
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await app.inject({ method: 'GET', url: '/api/plugins/gmail/messages' });
+    expect(response.statusCode).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('starts Gmail OAuth with only the Gmail read-only scope', async () => {
+    vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
+    vi.stubEnv('RYANAI_PLUGIN_GMAIL_CLIENT_ID', 'synthetic-gmail-client');
+    vi.stubEnv('RYANAI_PLUGIN_GMAIL_CLIENT_SECRET', 'synthetic-gmail-secret');
+    vi.stubEnv('RYANAI_PLUGIN_GMAIL_REDIRECT_URI', 'https://api.example.test/api/plugins/oauth/gmail/callback');
+    const { app } = await createApp();
+    const response = await app.inject({ method: 'POST', url: '/api/plugins/gmail/connect' });
+    expect(response.statusCode).toBe(200);
+    const url = new URL((response.json() as { authorizationUrl: string }).authorizationUrl);
+    expect(url.origin).toBe('https://accounts.google.com');
+    expect(url.searchParams.get('scope')).toBe('https://www.googleapis.com/auth/gmail.readonly');
+    expect(url.searchParams.get('access_type')).toBe('offline');
+    await app.close();
+  });
 });

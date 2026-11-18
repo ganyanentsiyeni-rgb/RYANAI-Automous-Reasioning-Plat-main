@@ -6,6 +6,9 @@ type PluginCategory = 'Workflows' | 'PA Agent' | 'Communications' | 'Knowledge &
 type PluginPreference = { enabled: boolean; scopes: string[] };
 type Preferences = Record<string, PluginPreference>;
 type RegistryProvider = { id: string; adapterStatus: 'adapter_required' | 'adapter_registered' };
+type GitHubIntegrationStatus = { status: string; connected?: boolean; account?: { login?: string }; repository?: { fullName?: string } };
+type CalendarEvent = { id: string | null; title: string; start: string | null; end: string | null; location: string | null; organizer: string | null };
+type GmailMessage = { id: string; threadId: string | null; snippet: string; receivedAt: string | null; from: string | null; subject: string | null };
 type ProviderConnection = {
   providerId: string;
   status: string;
@@ -23,6 +26,7 @@ type PluginDefinition = {
 const OAUTH_PROVIDER_IDS: Record<string, string> = {
   'google-calendar': 'google-calendar',
   'microsoft-calendar': 'microsoft-365-calendar',
+  gmail: 'gmail',
 };
 const CATALOG: PluginDefinition[] = [
   { id: 'phonelink', name: 'RyanAI PhoneLink', category: 'Communications', description: 'Trusted mobile device pairing and permission-scoped event intake. Native device operations require the Android companion.', scopes: ['Mobile workspace', 'Approved event intake'], availability: 'adapter-required' },
@@ -33,7 +37,7 @@ const CATALOG: PluginDefinition[] = [
   { id: 'youtube-music', name: 'YouTube Music', category: 'Media & audio', description: 'Optional music provider; playback requires provider authorization and a reviewed adapter.', scopes: ['Music UI'], availability: 'adapter-required' },
   { id: 'google-calendar', name: 'Google Calendar', category: 'PA Agent', description: 'Calendar context, availability and scheduling workflows.', scopes: ['PA Agent', 'Scheduling workers'], availability: 'oauth-supported' },
   { id: 'microsoft-calendar', name: 'Microsoft 365 Calendar', category: 'PA Agent', description: 'Outlook calendar context and scheduling workflows.', scopes: ['PA Agent', 'Scheduling workers'], availability: 'oauth-supported' },
-  { id: 'gmail', name: 'Gmail', category: 'Communications', description: 'Email search, drafting and explicitly approved dispatch.', scopes: ['PA Agent', 'Comms workers'], availability: 'adapter-required' },
+  { id: 'gmail', name: 'Gmail', category: 'Communications', description: 'Read-only mailbox search and message metadata. Drafting and sending are not enabled.', scopes: ['Gmail read-only'], availability: 'oauth-supported' },
   { id: 'outlook-mail', name: 'Outlook Mail', category: 'Communications', description: 'Mailbox context, drafting and explicitly approved dispatch.', scopes: ['PA Agent', 'Comms workers'], availability: 'adapter-required' },
   { id: 'slack', name: 'Slack', category: 'Communications', description: 'Team messages, channels and human-reviewed workflows.', scopes: ['Comms workers', 'Workforce'], availability: 'adapter-required' },
   { id: 'microsoft-teams', name: 'Microsoft Teams', category: 'Communications', description: 'Team collaboration and approved message workflows.', scopes: ['Comms workers', 'Workforce'], availability: 'adapter-required' },
@@ -100,15 +104,26 @@ function PluginIntegrationsSettingsContent({
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [connections, setConnections] = useState<ProviderConnection[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<Record<string, CalendarEvent[]>>({});
+  const [calendarLoadingId, setCalendarLoadingId] = useState('');
+  const [gmailMessages, setGmailMessages] = useState<GmailMessage[]>([]);
+  const [gmailQuery, setGmailQuery] = useState('');
+  const [gmailLoading, setGmailLoading] = useState(false);
+  const [gmailError, setGmailError] = useState('');
+  const [gmailLoaded, setGmailLoaded] = useState(false);
+  const [calendarErrors, setCalendarErrors] = useState<Record<string, string>>({});
   const [registryProviders, setRegistryProviders] = useState<RegistryProvider[]>([]);
   const [registryLoading, setRegistryLoading] = useState(true);
   const [registryError, setRegistryError] = useState('');
   const [connectionsLoading, setConnectionsLoading] = useState(true);
   const [connectionBusyId, setConnectionBusyId] = useState('');
+  const [githubStatus, setGithubStatus] = useState<GitHubIntegrationStatus>({ status: 'checking' });
+  const [githubBusy, setGithubBusy] = useState(false);
   const [connectionError, setConnectionError] = useState('');
   const [connectionNotice, setConnectionNotice] = useState('');
   const connectionRequestId = useRef(0);
   const registryRequestId = useRef(0);
+  const githubRequestId = useRef(0);
 
   const loadConnections = useCallback(async () => {
     const requestId = ++connectionRequestId.current;
@@ -130,6 +145,18 @@ function PluginIntegrationsSettingsContent({
     } finally {
       window.clearTimeout(timeoutId);
       if (requestId === connectionRequestId.current) setConnectionsLoading(false);
+    }
+  }, [userId]);
+
+  const loadGitHubStatus = useCallback(async () => {
+    const requestId = ++githubRequestId.current;
+    try {
+      const response = await authenticatedFetch('/api/github/status', { headers: { Accept: 'application/json' } }, userId);
+      const payload = await response.json().catch(() => ({})) as GitHubIntegrationStatus;
+      if (!response.ok || typeof payload.status !== 'string') throw new Error('GitHub status is unavailable.');
+      if (requestId === githubRequestId.current) setGithubStatus(payload);
+    } catch {
+      if (requestId === githubRequestId.current) setGithubStatus({ status: 'unverified', connected: false });
     }
   }, [userId]);
 
@@ -162,13 +189,15 @@ function PluginIntegrationsSettingsContent({
     const initialLoad = window.setTimeout(() => {
       void loadConnections();
       void loadRegistry();
+      void loadGitHubStatus();
     }, 0);
     return () => {
       window.clearTimeout(initialLoad);
       connectionRequestId.current += 1;
       registryRequestId.current += 1;
+      githubRequestId.current += 1;
     };
-  }, [loadConnections, loadRegistry]);
+  }, [loadConnections, loadRegistry, loadGitHubStatus]);
 
   const visible = useMemo(() => CATALOG.filter(plugin =>
     (category === 'All' || plugin.category === category) &&
@@ -223,6 +252,48 @@ function PluginIntegrationsSettingsContent({
     }
   }
 
+  async function connectGitHub() {
+    if (githubBusy) return;
+    setGithubBusy(true);
+    setConnectionError('');
+    try {
+      const response = await authenticatedFetch('/api/github/connect', {
+        method: 'POST', headers: { Accept: 'application/json' },
+      }, userId);
+      const payload = await response.json().catch(() => ({})) as { authorizationUrl?: string; error?: string };
+      if (!response.ok || !payload.authorizationUrl) throw new Error(payload.error || 'GitHub authorization is not configured.');
+      const authorizationUrl = new URL(payload.authorizationUrl);
+      if (authorizationUrl.protocol !== 'https:' || authorizationUrl.hostname !== 'github.com' ||
+          authorizationUrl.pathname !== '/login/oauth/authorize' || authorizationUrl.username || authorizationUrl.password) {
+        throw new Error('The server returned an untrusted GitHub authorization URL.');
+      }
+      window.location.assign(authorizationUrl.toString());
+    } catch (cause) {
+      setConnectionError(cause instanceof Error ? cause.message : 'Could not start GitHub authorization.');
+      setGithubBusy(false);
+    }
+  }
+
+  async function disconnectGitHub() {
+    if (githubBusy) return;
+    setGithubBusy(true);
+    setConnectionError('');
+    setConnectionNotice('');
+    try {
+      const response = await authenticatedFetch('/api/github/disconnect', {
+        method: 'POST', headers: { Accept: 'application/json' },
+      }, userId);
+      const payload = await response.json().catch(() => ({})) as { disconnected?: boolean; error?: string };
+      if (!response.ok || payload.disconnected !== true) throw new Error(payload.error || 'GitHub disconnect was not confirmed.');
+      setConnectionNotice('GitHub credentials were removed from this RyanAI account. Remote revocation may remain unconfirmed.');
+      await loadGitHubStatus();
+    } catch (cause) {
+      setConnectionError(cause instanceof Error ? cause.message : 'Could not disconnect GitHub.');
+    } finally {
+      setGithubBusy(false);
+    }
+  }
+
   async function connectProvider(pluginId: string) {
     const providerId = OAUTH_PROVIDER_IDS[pluginId];
     if (!providerId || connectionBusyId) return;
@@ -236,7 +307,7 @@ function PluginIntegrationsSettingsContent({
       const payload = await response.json().catch(() => ({})) as { authorizationUrl?: string; error?: string };
       if (!response.ok || !payload.authorizationUrl) throw new Error(payload.error || 'Provider authorization is not configured.');
       const authorizationUrl = new URL(payload.authorizationUrl);
-      const allowedHost = pluginId === 'google-calendar'
+      const allowedHost = pluginId === 'google-calendar' || pluginId === 'gmail'
         ? authorizationUrl.hostname === 'accounts.google.com'
         : authorizationUrl.hostname === 'login.microsoftonline.com';
       if (authorizationUrl.protocol !== 'https:' || !allowedHost || authorizationUrl.username || authorizationUrl.password) {
@@ -268,6 +339,46 @@ function PluginIntegrationsSettingsContent({
       await loadConnections();
     } finally {
       setConnectionBusyId('');
+    }
+  }
+
+  async function loadCalendarEvents(pluginId: string) {
+    const providerId = OAUTH_PROVIDER_IDS[pluginId];
+    if (!providerId || calendarLoadingId) return;
+    setCalendarLoadingId(pluginId);
+    setCalendarErrors(current => ({ ...current, [pluginId]: '' }));
+    try {
+      const start = new Date();
+      const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const params = new URLSearchParams({ start: start.toISOString(), end: end.toISOString(), limit: '50' });
+      const response = await authenticatedFetch('/api/plugins/' + encodeURIComponent(providerId) + '/events?' + params.toString(), { headers: { Accept: 'application/json' } }, userId);
+      const payload = await response.json().catch(() => ({})) as { events?: CalendarEvent[]; error?: string };
+      if (!response.ok || !Array.isArray(payload.events)) throw new Error(payload.error || 'Calendar events could not be loaded.');
+      setCalendarEvents(current => ({ ...current, [pluginId]: payload.events! }));
+    } catch (cause) {
+      setCalendarErrors(current => ({ ...current, [pluginId]: cause instanceof Error ? cause.message : 'Calendar events could not be loaded.' }));
+    } finally {
+      setCalendarLoadingId('');
+    }
+  }
+  async function loadGmailMessages() {
+    if (gmailLoading) return;
+    setGmailLoading(true);
+    setGmailError('');
+    try {
+      const params = new URLSearchParams({ limit: '20' });
+      if (gmailQuery.trim()) params.set('q', gmailQuery.trim());
+      const response = await authenticatedFetch('/api/plugins/gmail/messages?' + params.toString(), {
+        headers: { Accept: 'application/json' },
+      }, userId);
+      const payload = await response.json().catch(() => ({})) as { messages?: GmailMessage[]; error?: string };
+      if (!response.ok || !Array.isArray(payload.messages)) throw new Error(payload.error || 'Gmail messages could not be loaded.');
+      setGmailMessages(payload.messages);
+      setGmailLoaded(true);
+    } catch (cause) {
+      setGmailError(cause instanceof Error ? cause.message : 'Gmail messages could not be loaded.');
+    } finally {
+      setGmailLoading(false);
     }
   }
 
@@ -318,15 +429,17 @@ function PluginIntegrationsSettingsContent({
         const connection = providerId ? connections.find(item => item.providerId === providerId) : undefined;
         const reauthorizationRequired = Boolean(connection && REAUTHORIZATION_STATES.has(connection.credentialState));
         const registry = registryProviders.find(item => item.id === (OAUTH_PROVIDER_IDS[plugin.id] ?? plugin.id));
-        const adapterLabel = registryLoading
-          ? 'Checking backend registry…'
-          : registryError
-            ? 'Registry unavailable'
-            : registry?.adapterStatus === 'adapter_registered'
-              ? 'Adapter registered'
-              : registry
-                ? 'Adapter required'
-                : 'Not in backend registry';
+        const adapterLabel = plugin.id === 'gmail'
+          ? 'Read-only mailbox API'
+          : registryLoading
+            ? 'Checking backend registry…'
+            : registryError
+              ? 'Registry unavailable'
+              : registry?.adapterStatus === 'adapter_registered'
+                ? 'Adapter registered'
+                : registry
+                  ? 'Adapter required'
+                  : 'Not in backend registry';
         const connected = connection?.connectionState === 'connected';
         return <article key={plugin.id} data-plugin-id={plugin.id} className="rounded-xl border border-white/10 bg-slate-950/60 p-4">
           <div className="flex items-start justify-between gap-3">
@@ -340,6 +453,24 @@ function PluginIntegrationsSettingsContent({
             {plugin.availability === 'oauth-supported' && <span className="rounded-full border border-cyan-300/20 px-2 py-1 text-[10px] text-cyan-100">OAuth supported</span>}
           </div>
           <p className="mt-2 text-xs leading-5 text-slate-400">{plugin.description}</p>
+          {plugin.id === 'github' && <div className="mt-3 rounded-lg border border-white/10 bg-slate-900/70 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs text-slate-300">
+                {githubStatus.status === 'connected'
+                  ? 'Connected · repository access verified'
+                  : githubStatus.status === 'checking' ? 'Checking GitHub connection…'
+                    : githubStatus.status.replaceAll('_', ' ')}
+                {githubStatus.account?.login ? ' · @' + githubStatus.account.login : ''}
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {githubStatus.status !== 'connected' && <button type="button" onClick={() => void connectGitHub()} disabled={githubBusy} className="rounded-md border border-cyan-300/20 px-2.5 py-1.5 text-xs text-cyan-100 disabled:opacity-50">{githubBusy ? 'Connecting…' : 'Connect GitHub'}</button>}
+                {githubStatus.status === 'connected' && <button type="button" onClick={() => void disconnectGitHub()} disabled={githubBusy} className="rounded-md border border-rose-300/20 px-2.5 py-1.5 text-xs text-rose-200 disabled:opacity-50">{githubBusy ? 'Disconnecting…' : 'Disconnect'}</button>}
+                <button type="button" onClick={() => void loadGitHubStatus()} disabled={githubBusy} className="rounded-md border border-white/10 px-2.5 py-1.5 text-xs text-slate-300 disabled:opacity-50">Refresh</button>
+              </div>
+            </div>
+            {githubStatus.repository?.fullName && <p className="mt-2 text-[10px] text-slate-500">Verified repository: {githubStatus.repository.fullName}</p>}
+            <p className="mt-2 text-[10px] leading-4 text-slate-500">Connection is shown as verified only after the API confirms the signed-in GitHub identity and repository access. OAuth credentials remain server-side.</p>
+          </div>}
           {providerId && <div className="mt-3 rounded-lg border border-white/10 bg-slate-900/70 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs text-slate-300">{connectionsLoading ? 'Checking connection…' : connectionLabel(connection)}</span>
@@ -352,6 +483,43 @@ function PluginIntegrationsSettingsContent({
             <p className="mt-2 text-[10px] leading-4 text-slate-500">OAuth authorization is stored encrypted server-side. A connected record is not a live provider health check.</p>
           </div>}
           <p className="mt-2 text-[11px] text-slate-500">Intended scopes: {plugin.scopes.join(' · ')}</p>
+          {plugin.id === 'gmail' && connected && <div className="mt-3 border-t border-white/5 pt-3">
+            <form onSubmit={event => { event.preventDefault(); void loadGmailMessages(); }} className="flex flex-col gap-2 sm:flex-row">
+              <label className="min-w-0 flex-1 text-[11px] text-slate-400">Gmail search
+                <input aria-label="Gmail search query" value={gmailQuery} onChange={event => setGmailQuery(event.target.value)} maxLength={200} placeholder="from:example@email.com or subject:invoice" className="mt-1 block w-full rounded-md border border-white/10 bg-slate-950 px-2.5 py-2 text-xs text-white" />
+              </label>
+              <button type="submit" disabled={gmailLoading || connectionsLoading} className="self-end rounded-md border border-cyan-300/20 px-3 py-2 text-xs text-cyan-100 disabled:opacity-50">
+                {gmailLoading ? 'Searching…' : 'Search mailbox'}
+              </button>
+            </form>
+            {gmailError && <p role="alert" className="mt-2 text-xs text-rose-200">{gmailError}</p>}
+            {gmailLoaded && <ul className="mt-3 space-y-2" aria-label="Gmail search results">
+              {gmailMessages.length === 0
+                ? <li className="text-xs text-slate-400">No messages matched this search.</li>
+                : gmailMessages.map(message => <li key={message.id} className="rounded-md bg-slate-950/70 p-2 text-xs">
+                  <p className="font-medium text-slate-200">{message.subject || '(No subject)'}</p>
+                  <p className="mt-1 text-slate-400">{message.from || 'Sender unavailable'}{message.receivedAt ? ' · ' + new Date(message.receivedAt).toLocaleString() : ''}</p>
+                  {message.snippet && <p className="mt-1 text-slate-500">{message.snippet}</p>}
+                </li>)}
+            </ul>}
+            <p className="mt-2 text-[10px] leading-4 text-slate-500">Read-only access: RyanAI retrieves message metadata and short snippets only. It cannot read full message bodies, create drafts or send email from this integration.</p>
+          </div>}
+          {providerId && providerId !== 'gmail' && connected && <div className="mt-3 border-t border-white/5 pt-3">
+            <button type="button" onClick={() => void loadCalendarEvents(plugin.id)} disabled={calendarLoadingId === plugin.id || connectionsLoading} className="rounded-md border border-cyan-300/20 px-2.5 py-1.5 text-xs text-cyan-100 disabled:opacity-50">
+              {calendarLoadingId === plugin.id ? 'Loading events…' : 'Load next 7 days'}
+            </button>
+            {calendarErrors[plugin.id] && <p role="alert" className="mt-2 text-xs text-rose-200">{calendarErrors[plugin.id]}</p>}
+            {calendarEvents[plugin.id] && <ul className="mt-2 space-y-2" aria-label={plugin.name + ' events'}>
+              {calendarEvents[plugin.id].length === 0
+                ? <li className="text-xs text-slate-400">No events returned for the next seven days.</li>
+                : calendarEvents[plugin.id].map((event, index) => <li key={event.id ?? index} className="rounded-md bg-slate-950/70 p-2 text-xs">
+                  <p className="font-medium text-slate-200">{event.title}</p>
+                  <p className="mt-1 text-slate-400">{event.start ? new Date(event.start).toLocaleString() : 'Time unavailable'}{event.end ? ' – ' + new Date(event.end).toLocaleString() : ''}</p>
+                  {event.location && <p className="mt-1 text-slate-500">{event.location}</p>}
+                </li>)}
+            </ul>}
+            <p className="mt-2 text-[10px] text-slate-500">Read-only calendar access. RyanAI does not create, edit or delete events here.</p>
+          </div>}
           <label className={`mt-3 flex items-center gap-2 text-xs ${allowed ? 'text-slate-200' : 'text-slate-500'}`}>
             <input type="checkbox" aria-label={`Request ${plugin.name} for eligible workers`} checked={enabled} disabled={!allowed || saving} onChange={event => toggle(plugin.id, event.target.checked)} className="h-4 w-4 accent-cyan-400" />
             Request availability for eligible workers{!allowed && <span className="text-amber-300">(Owner/admin controlled)</span>}
