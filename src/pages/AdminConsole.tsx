@@ -12,6 +12,19 @@ interface AdminIdentity {
 interface DirectoryProfile { id: string; email: string | null; fullName: string | null; createdAt: string | null; updatedAt: string | null; }
 interface AuthDirectoryUser { id: string; email: string | null; createdAt: string | null; lastSignInAt: string | null; role: string | null; }
 interface AuthInventory { status: 'available' | 'not_configured' | 'unavailable'; users: AuthDirectoryUser[]; page: number; perPage: number; }
+interface LifecycleRequest {
+  id: string;
+  action?: 'role_change' | 'suspend_account' | 'revoke_sessions';
+  targetUserId?: string;
+  requestedRole?: 'user' | 'admin' | null;
+  reason?: string;
+  state?: string;
+  policyDecision?: string;
+  policyRuleId?: string;
+  capabilityNote?: string | null;
+  actorId: string;
+  createdAt: string;
+}
 interface AuditEvent {
   id: string;
   actorId: string;
@@ -82,7 +95,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [directoryProfiles, setDirectoryProfiles] = useState<DirectoryProfile[]>([]);
   const [authInventory, setAuthInventory] = useState<AuthInventory | null>(null);
-  const [authPage, setAuthPage] = useState(1);
+  const [authPage, setAuthPage] = useState(1);\n  const [lifecycleRequests, setLifecycleRequests] = useState<LifecycleRequest[]>([]);\n  const [lifecycleAction, setLifecycleAction] = useState<LifecycleRequest['action']>('role_change');\n  const [lifecycleTarget, setLifecycleTarget] = useState('');\n  const [lifecycleRole, setLifecycleRole] = useState<'user' | 'admin'>('user');\n  const [lifecycleReason, setLifecycleReason] = useState('');
   const [metrics, setMetrics] = useState<RuntimeMetrics | null>(null);
   const [actions, setActions] = useState<PendingAction[]>([]);
   const [jobs, setJobs] = useState<EngineeringJob[]>([]);
@@ -104,6 +117,17 @@ export default function AdminConsole({ userId }: { userId: string }) {
     ]);
     if (requestId !== refreshRequestId.current) return;
     const nextErrors: string[] = [];
+    if (results[0].status === 'fulfilled' && results[0].value.authenticated && results[0].value.user?.id === userId && results[0].value.user.isOwner) {
+      try {
+        const ledger = await readJson<{ requests: LifecycleRequest[] }>('/api/admin/account-lifecycle/requests', userId);
+        setLifecycleRequests(ledger.requests ?? []);
+      } catch (cause) {
+        setLifecycleRequests([]);
+        nextErrors.push('Owner lifecycle ledger: ' + String(cause));
+      }
+    } else {
+      setLifecycleRequests([]);
+    }
     if (results[0].status === 'fulfilled' && results[0].value.authenticated && results[0].value.user?.id === userId) {
       setIdentity(results[0].value);
     } else {
@@ -201,6 +225,61 @@ export default function AdminConsole({ userId }: { userId: string }) {
       await refresh();
     } catch (cause) {
       setErrors([cause instanceof Error ? cause.message : 'Could not approve engineering plan.']);
+    } finally {
+      setBusyId('');
+    }
+  }
+
+  async function submitLifecycleRequest() {
+    if (!identity?.user.isOwner || busyId) return;
+    if (!window.confirm('Create a pending ' + lifecycleAction + ' request for Auth user ' + lifecycleTarget + '? No account change will occur now.')) return;
+    setBusyId('lifecycle-create');
+    setErrors([]);
+    setNotice('');
+    try {
+      const response = await authenticatedFetch('/api/admin/account-lifecycle/requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          action: lifecycleAction,
+          targetUserId: lifecycleTarget.trim(),
+          ...(lifecycleAction === 'role_change' ? { requestedRole: lifecycleRole } : {}),
+          reason: lifecycleReason.trim(),
+        }),
+      }, userId);
+      const payload = await response.json().catch(() => ({})) as { error?: string; requestId?: string; state?: string };
+      if (!response.ok) throw new Error(payload.error || 'Lifecycle request failed (' + response.status + ').');
+      setNotice('Pending lifecycle request recorded: ' + payload.requestId + ' · ' + payload.state + '. No account mutation was performed.');
+      setLifecycleTarget('');
+      setLifecycleReason('');
+      await refresh();
+    } catch (cause) {
+      setErrors([cause instanceof Error ? cause.message : 'Could not create lifecycle request.']);
+    } finally {
+      setBusyId('');
+    }
+  }
+
+  async function confirmLifecycleRequest(item: LifecycleRequest) {
+    if (!identity?.user.isOwner || !item.id || busyId) return;
+    const expected = 'CONFIRM ' + item.id;
+    const entered = window.prompt('To explicitly confirm this exact request, type:\\n' + expected);
+    if (entered !== expected) return;
+    setBusyId(item.id);
+    setErrors([]);
+    setNotice('');
+    try {
+      const response = await authenticatedFetch('/api/admin/account-lifecycle/requests/' + encodeURIComponent(item.id) + '/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ confirmation: entered }),
+      }, userId);
+      const payload = await response.json().catch(() => ({})) as { error?: string; state?: string; capabilityNote?: string };
+      if (!response.ok) throw new Error(payload.error || 'Lifecycle confirmation failed (' + response.status + ').');
+      setNotice('Owner confirmation recorded: ' + payload.state + '. ' + (payload.capabilityNote || 'No account mutation was performed.'));
+      await refresh();
+    } catch (cause) {
+      setErrors([cause instanceof Error ? cause.message : 'Could not confirm lifecycle request.']);
     } finally {
       setBusyId('');
     }
@@ -335,6 +414,46 @@ export default function AdminConsole({ userId }: { userId: string }) {
         </div>
         <p className="mt-3 text-[11px] leading-5 text-slate-500">The profile table above lists only rows in public.profiles. Auth accounts and profile records are separate sources and may not have a one-to-one match.</p>
       </section>
+
+      {identity?.user.isOwner && <section id="admin-account-lifecycle" className="scroll-mt-6 rounded-2xl border border-amber-300/20 bg-slate-900/70 p-5 sm:p-6" aria-labelledby="admin-account-lifecycle-title">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><h2 id="admin-account-lifecycle-title" className="text-lg font-semibold text-white">Owner account lifecycle requests</h2><p className="mt-1 text-sm text-slate-400">Role changes, suspensions and session-revocation requests. Every request is Gen-X checked and recorded in the append-only audit ledger.</p></div>
+          <span className="rounded-full border border-amber-300/25 px-3 py-1 text-xs text-amber-200">Owner only · no direct execution</span>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <label className="text-xs text-slate-300">Requested operation
+            <select value={lifecycleAction} onChange={(event) => setLifecycleAction(event.target.value as LifecycleRequest['action'])} className="mt-1 w-full rounded-lg border border-white/15 bg-slate-950 px-3 py-2 text-sm text-white">
+              <option value="role_change">Change role</option><option value="suspend_account">Suspend account</option><option value="revoke_sessions">Revoke sessions</option>
+            </select>
+          </label>
+          {lifecycleAction === 'role_change' && <label className="text-xs text-slate-300">New application role
+            <select value={lifecycleRole} onChange={(event) => setLifecycleRole(event.target.value as 'user' | 'admin')} className="mt-1 w-full rounded-lg border border-white/15 bg-slate-950 px-3 py-2 text-sm text-white">
+              <option value="user">User</option><option value="admin">Administrator</option>
+            </select>
+          </label>}
+          <label className="text-xs text-slate-300 sm:col-span-2">Target Supabase Auth user UUID
+            <input value={lifecycleTarget} onChange={(event) => setLifecycleTarget(event.target.value)} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className="mt-1 w-full rounded-lg border border-white/15 bg-slate-950 px-3 py-2 text-sm text-white" autoComplete="off" />
+          </label>
+          <label className="text-xs text-slate-300 sm:col-span-2">Reason (10–500 characters)
+            <textarea value={lifecycleReason} onChange={(event) => setLifecycleReason(event.target.value)} rows={2} maxLength={500} placeholder="Explain the access change and its authorization basis." className="mt-1 w-full rounded-lg border border-white/15 bg-slate-950 px-3 py-2 text-sm text-white" />
+          </label>
+          <button type="button" onClick={() => void submitLifecycleRequest()} disabled={busyId !== '' || !lifecycleTarget.trim() || lifecycleReason.trim().length < 10} className="rounded-lg border border-amber-300/30 bg-amber-300/10 px-4 py-2 text-sm font-semibold text-amber-100 disabled:opacity-40 sm:col-span-2">Create pending request</button>
+        </div>
+        <p className="mt-3 text-[11px] leading-5 text-slate-500">Requests do not change Auth roles or bans. Confirmation requires typing the exact request ID. Session revocation remains capability-blocked because Supabase requires the target user’s JWT; RyanAI will not collect or store another user’s token. Role/suspension execution remains disabled pending separate staging validation and production authorization.</p>
+        <div className="mt-5 border-t border-white/10 pt-4">
+          <h3 className="text-sm font-semibold text-white">Recent lifecycle requests</h3>
+          {lifecycleRequests.length === 0 ? <p className="mt-2 text-xs text-slate-500">No lifecycle requests recorded.</p> : <div className="mt-3 space-y-2">
+            {lifecycleRequests.map((item) => <div key={item.id} className="rounded-xl border border-white/10 bg-slate-950/50 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-semibold text-white">{item.action?.replaceAll('_', ' ') || 'Lifecycle request'} · {item.requestedRole || '—'}</span><span className={'text-xs ' + statusTone(item.state || '')}>{item.state || 'Unknown state'}</span></div>
+              <p className="mt-1 break-all font-mono text-[10px] text-slate-500">{item.id}</p>
+              <p className="mt-1 break-all text-xs text-slate-300">Target: {item.targetUserId || 'Not recorded'}</p>
+              <p className="mt-1 text-xs text-slate-400">{item.reason || 'No reason recorded'}</p>
+              {item.capabilityNote && <p className="mt-2 text-[11px] leading-5 text-amber-200/80">{item.capabilityNote}</p>}
+              {item.state === 'PENDING_OWNER_CONFIRMATION' && <button type="button" onClick={() => void confirmLifecycleRequest(item)} disabled={busyId !== ''} className="mt-3 rounded-lg border border-amber-300/30 px-3 py-2 text-xs font-semibold text-amber-100 disabled:opacity-40">Confirm this request</button>}
+            </div>)}
+          </div>}
+        </div>
+      </section>}
 
       <section id="admin-identity" className="scroll-mt-6 rounded-2xl border border-cyan-300/15 bg-slate-900/70 p-5 sm:p-6" aria-labelledby="admin-identity-title">
         <div className="flex flex-wrap items-start justify-between gap-3">
