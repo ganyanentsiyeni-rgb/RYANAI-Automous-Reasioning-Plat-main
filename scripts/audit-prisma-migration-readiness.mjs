@@ -71,7 +71,7 @@ async function main() {
       pool.query("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='reasoning_cache'"),
       pool.query("SELECT table_name, column_name FROM information_schema.columns WHERE table_schema='public' AND table_name IN ('profiles','conversations','messages','memory_entries','rooms','room_members','room_messages')"),
       pool.query("SELECT column_name, format_type(a.atttypid, a.atttypmod) AS formatted_type FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='intelligence_event_attempts' AND a.attnum > 0 AND NOT a.attisdropped"),
-      pool.query("SELECT conname FROM pg_constraint WHERE conrelid='public.intelligence_event_attempts'::regclass"),
+      pool.query("SELECT conname FROM pg_constraint WHERE conrelid=to_regclass('public.intelligence_event_attempts')"),
       pool.query("SELECT indexname FROM pg_indexes WHERE schemaname='public' AND tablename='intelligence_event_attempts'"),
       pool.query("SELECT relrowsecurity FROM pg_class WHERE oid=to_regclass('public.intelligence_event_attempts')"),
     ]);
