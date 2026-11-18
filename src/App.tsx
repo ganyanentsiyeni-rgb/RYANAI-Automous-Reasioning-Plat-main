@@ -63,7 +63,6 @@ import Greeting from '@/components/Greeting';
 import NeuralIcon from '@/components/brand/NeuralIcon';
 import { authenticatedFetch } from '@/lib/authenticatedFetch';
 import { DEFAULT_LANGUAGE, OWNER_DEFAULT_LANGUAGE, isRyanLanguage } from '@/shared/languages';
-import { getEnabledDashboardUiIds } from '@/shared/dashboardUis';
 import { DEFAULT_MODEL, MODEL_LIST } from '@/lib/models';
 import type { ModelId } from '@/lib/types';
 import { normalizeAudiobookSettings, normalizeCopilotSettings, normalizeDashboardUiPreferences, normalizeInferenceSettings, normalizeMusicSettings, normalizePhoneLinkSettings, normalizeRyanVoiceSettings, type DashboardUiId } from '@/lib/settingsPreferences';
@@ -133,37 +132,25 @@ export default function App() {
   const isAdmin = user?.app_metadata?.role === 'admin';
   const isOwner = user?.app_metadata?.owner === true || Boolean(user && verifiedIdentity?.userId === user.id && verifiedIdentity.isOwner);
   const storedUiPreferences = user?.user_metadata?.ryanai_dashboard_ui_preferences;
-  // Existing accounts predate the Music and PhoneLink workspaces; preserve their
-  // compatibility defaults without mutating the shared enabled-workspace result.
-  const legacyCompatibilityIds = new Set<DashboardUiId>();
-  if (Array.isArray(user?.user_metadata?.ryanai_dashboard_ui) && (!storedUiPreferences || typeof storedUiPreferences !== 'object' || !('music' in storedUiPreferences))) {
-    legacyCompatibilityIds.add('music');
-  }
-  if (Array.isArray(user?.user_metadata?.ryanai_dashboard_ui) && (!storedUiPreferences || typeof storedUiPreferences !== 'object' || !('phonelink' in storedUiPreferences))) {
-    legacyCompatibilityIds.add('phonelink');
-  }
-  const enabledUiIds = Array.from(new Set([
-    ...getEnabledDashboardUiIds(user?.user_metadata?.ryanai_dashboard_ui, isOwner, isAdmin),
-    ...legacyCompatibilityIds,
-  ]));
+  // All authenticated workspaces remain discoverable. Account preferences may
+  // customize dashboard layout, but cannot hide or block a registered workspace.
+  const enabledUiIds = Array.from(new Set(
+    Object.values(routeUiOptions).filter((id): id is DashboardUiId => Boolean(id)),
+  ));
   const roleAccessDenied = Boolean(user && (
     (route === 'admin' && !isAdmin)
     || (route === 'comms' && !isOwner)
   ));
-  const routeRequiresToggle = !['landing', 'dashboard', 'settings', 'signin', 'signup', 'copilot', 'survey', 'help', 'architecture'].includes(route);
-  const routeDisabled = Boolean(user && routeRequiresToggle && !enabledUiIds.some((id) => id === route));
   const displayName =
     typeof user?.user_metadata?.full_name === 'string'
       ? user.user_metadata.full_name
       : user?.email?.split('@')[0];
   const dashboardUiPreferences = normalizeDashboardUiPreferences(user?.user_metadata?.ryanai_dashboard_ui_preferences);
-  // Keep dashboard cards aligned with the effective workspace list used by navigation.
-  // This also preserves legacy accounts that have the array preference but no object preference yet.
+  // Keep every registered workspace visible on the dashboard regardless of stale
+  // per-account hide flags. Role checks below still protect privileged destinations.
   const effectiveDashboardUiPreferences = { ...dashboardUiPreferences };
   for (const preferenceId of Object.values(routeUiOptions)) {
-    if (preferenceId) {
-      effectiveDashboardUiPreferences[preferenceId] = enabledUiIds.some((enabledId) => enabledId === preferenceId);
-    }
+    if (preferenceId) effectiveDashboardUiPreferences[preferenceId] = true;
   }
   const audiobookSettings = normalizeAudiobookSettings(user?.user_metadata?.ryanai_audiobook_settings);
   const inferenceSettings = normalizeInferenceSettings(user?.user_metadata?.ryanai_inference_settings, MODEL_LIST, DEFAULT_MODEL);
@@ -171,8 +158,6 @@ export default function App() {
   const phoneLinkSettings = normalizePhoneLinkSettings(user?.user_metadata?.ryanai_phonelink_settings);
   const ryanVoiceSettings = normalizeRyanVoiceSettings(user?.user_metadata?.ryanai_voice_settings);
   const copilotSettings = normalizeCopilotSettings(user?.user_metadata?.ryanai_copilot_settings);
-  const activeUiOption = routeUiOptions[route];
-  const isDisabledUiRoute = Boolean(user && activeUiOption && !effectiveDashboardUiPreferences[activeUiOption]);
 
   const handleSignOut = async () => {
     if (await signOut()) window.location.hash = '/signin';
@@ -232,8 +217,7 @@ export default function App() {
       ? id !== 'signin' && id !== 'signup' && id !== 'survey'
         && (id !== 'comms' || isOwner)
         && (id !== 'admin' || isAdmin)
-        && (id === 'landing' || id === 'dashboard' || id === 'settings' || id === 'copilot' || id === 'survey' || id === 'help' || id === 'architecture' || enabledUiIds.some((enabledId) => enabledId === id))
-        && (!routeUiOptions[id] || effectiveDashboardUiPreferences[routeUiOptions[id] as DashboardUiId])
+        && (id === 'landing' || id === 'dashboard' || id === 'settings' || id === 'copilot' || id === 'survey' || id === 'help' || id === 'architecture' || Boolean(routeUiOptions[id]))
       : id === 'landing' || id === 'signin' || id === 'signup' || id === 'survey' || id === 'help',
   );
   const currentTitle = destinations.find(({ id }) => id === route)?.label ?? 'Workspace';
@@ -293,7 +277,7 @@ export default function App() {
               : loading ? <p role="status" className="p-8 text-slate-300">Restoring your session…</p>
               : !user ? <AuthPage key={route} mode={route === 'signup' ? 'signup' : 'signin'} />
               : roleAccessDenied ? <p role="alert" className="p-8 text-sm text-rose-200">Your account does not have permission to open this RyanAI workspace.</p>
-              : (routeDisabled || isDisabledUiRoute) ? (
+              : false ? (
                 <section className="mx-auto max-w-3xl p-8" aria-labelledby="disabled-workspace-title">
                   <h1 id="disabled-workspace-title" className="text-xl font-semibold text-white">Workspace disabled</h1>
                   <p className="mt-2 text-sm leading-6 text-slate-400">This workspace is turned off in your dashboard preferences. Enable it in Settings to restore its dashboard card, navigation link and direct access.</p>
@@ -304,7 +288,7 @@ export default function App() {
                 {route === 'dashboard' && <DashboardPage isOwner={isOwner} isAdmin={isAdmin} enabledModules={effectiveDashboardUiPreferences} musicSettings={musicSettings} />}
                 {route === 'copilot' && <DarksideCopilot onSignOut={() => void handleSignOut()} userId={user.id} userEmail={user.email ?? ''} userFullName={displayName} showInferenceConsole={dashboardUiPreferences.inferenceConsole} defaultInferenceModel={inferenceSettings.preferredModel as ModelId} voiceSettings={ryanVoiceSettings} copilotSettings={copilotSettings} />}
                 {route === 'pa' && <PAAgentPage />}
-                {route === 'settings' && <ProfileSettings key={user.id} userId={user.id} email={user.email ?? ''} initialDisplayName={displayName || ''} initialLanguage={typeof user.user_metadata?.ryanai_language === 'string' ? user.user_metadata?.ryanai_language : isOwner ? OWNER_DEFAULT_LANGUAGE : DEFAULT_LANGUAGE} initialVoiceEnabled={typeof user.user_metadata?.ryanai_voice_enabled === 'boolean' ? user.user_metadata?.ryanai_voice_enabled : undefined} initialRyanVoiceSettings={ryanVoiceSettings} initialCopilotSettings={copilotSettings} initialDashboardUiIds={enabledUiIds} initialDashboardUiPreferences={dashboardUiPreferences} initialAudiobookSettings={audiobookSettings} initialInferenceSettings={inferenceSettings} initialMusicSettings={user.user_metadata?.ryanai_music_settings} initialPhoneLinkSettings={phoneLinkSettings} initialPluginPreferences={user.user_metadata?.ryanai_plugin_preferences} isAdmin={isAdmin} isOwner={isOwner} onSignOut={() => void handleSignOut()} signingOut={signingOut} />}
+                {route === 'settings' && <ProfileSettings key={user.id} userId={user.id} email={user.email ?? ''} initialDisplayName={displayName || ''} initialLanguage={typeof user.user_metadata?.ryanai_language === 'string' ? user.user_metadata?.ryanai_language : isOwner ? OWNER_DEFAULT_LANGUAGE : DEFAULT_LANGUAGE} initialVoiceEnabled={typeof user.user_metadata?.ryanai_voice_enabled === 'boolean' ? user.user_metadata?.ryanai_voice_enabled : undefined} initialRyanVoiceSettings={ryanVoiceSettings} initialCopilotSettings={copilotSettings} initialDashboardUiIds={enabledUiIds} initialDashboardUiPreferences={effectiveDashboardUiPreferences} initialAudiobookSettings={audiobookSettings} initialInferenceSettings={inferenceSettings} initialMusicSettings={user.user_metadata?.ryanai_music_settings} initialPhoneLinkSettings={phoneLinkSettings} initialPluginPreferences={user.user_metadata?.ryanai_plugin_preferences} isAdmin={isAdmin} isOwner={isOwner} onSignOut={() => void handleSignOut()} signingOut={signingOut} />}
                 {route === 'operator' && <OperatorConsole userId={user.id} />}
                 {route === 'operations' && <OperationsCenter userId={user.id} isAdmin={isAdmin} />}
                 {route === 'admin' && (isAdmin ? <AdminConsole key={user.id} userId={user.id} /> : <p role="alert" className="p-8 text-sm text-rose-200">Administrator access is required to open the RyanAI Admin Console.</p>)}
