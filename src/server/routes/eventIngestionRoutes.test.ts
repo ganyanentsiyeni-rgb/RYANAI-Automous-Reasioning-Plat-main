@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { signEventRequest } from '../../events/eventSignature.js';
+import { IntelligenceEventInbox } from '../../events/intelligenceEventInbox.js';
 import { eventIngestionRoutes } from './eventIngestionRoutes.js';
 
 const secret = 'test-only-secret-that-is-at-least-thirty-two-bytes';
@@ -17,17 +18,15 @@ const event = {
 
 afterEach(() => {
   delete process.env.RYANAI_EVENT_INGESTION_SECRET;
+  vi.restoreAllMocks();
 });
 
 async function makeServer(enqueue = vi.fn().mockResolvedValue({
-  duplicate: false, event: { eventId: event.eventId },
+  duplicate: false, event: { eventId: event.eventId } as never,
 })) {
   const app = Fastify();
   app.decorate('prisma', { intelligenceEventInbox: {} } as never);
-  const enqueueSpy = vi.spyOn(
-    (await import('../../events/intelligenceEventInbox.js')).IntelligenceEventInbox.prototype,
-    'enqueue',
-  ).mockImplementation(enqueue);
+  const enqueueSpy = vi.spyOn(IntelligenceEventInbox.prototype, 'enqueue').mockImplementation(enqueue as never);
   await app.register(eventIngestionRoutes);
   await app.ready();
   return { app, enqueue, enqueueSpy };
@@ -70,7 +69,7 @@ describe('signed event ingestion route', () => {
     expect(response.statusCode).toBe(202);
     expect(response.json()).toMatchObject({ status: 'accepted', eventId: event.eventId });
     expect(enqueueSpy).toHaveBeenCalledTimes(1);
-    enqueue.mockResolvedValueOnce({ duplicate: true, event: { eventId: event.eventId } });
+    enqueue.mockResolvedValueOnce({ duplicate: true, event: { eventId: event.eventId } as never });
     const duplicate = await app.inject({
       method: 'POST', url: '/api/events/ingest',
       headers: { 'x-ryanai-timestamp': timestamp, 'x-ryanai-signature': signature },
