@@ -56,6 +56,12 @@ export function evaluateGenXSecurityEvent(event: GenXSecurityEvent): GenXPolicyR
   // Validate untrusted target strings before granting any read-only tool exception.
   // Otherwise a nominally safe reader could receive shell-control or injection payloads.
   if (event.target !== undefined && COMMAND_CONTROL.test(event.target)) {
+  if (event.action === 'CREDENTIAL_ACCESS' || SENSITIVE_TARGET.test(event.target ?? '')) {
+    return { decision: 'DENY', ruleId: 'GX-SECRETS-001', reason: 'Agents cannot read or export credentials, secrets, private keys, or environment files.', severity: 'CRITICAL' };
+  }
+  // Validate untrusted target strings before granting any read-only tool exception.
+  // Otherwise a nominally safe reader could receive shell-control or injection payloads.
+  if (event.target && COMMAND_CONTROL.test(event.target)) {
     return { decision: 'DENY', ruleId: 'GX-INJECTION-001', reason: 'Target contains shell-control or command-injection syntax.', severity: 'HIGH' };
   }
   // Owner-confirmed lifecycle request records are allowed only through the
