@@ -147,9 +147,12 @@ export class IntelligenceEventInbox {
   async claimNext(workerId: string, now = new Date(), eventTypes?: string[]) {
     const owner = workerId.trim();
     if (!owner || owner.length > 128) throw new RangeError('workerId must contain 1-128 characters.');
+    const allowedTypes = eventTypes?.filter((value) => typeof value === 'string' && value.length > 0);
+    if (eventTypes && (!allowedTypes || allowedTypes.length === 0)) return null;
     return this.db.$transaction(async (tx) => {
       const candidate = await tx.intelligenceEventInbox.findFirst({
         where: {
+          ...(allowedTypes ? { eventType: { in: allowedTypes } } : {}),
           OR: [
             { status: 'pending', availableAt: { lte: now } },
             { status: 'retry', availableAt: { lte: now } },
@@ -293,8 +296,8 @@ export class IntelligenceEventInbox {
   }
 
   /** Runs one event through a trusted handler. Handler failures are retried or dead-lettered. */
-  async processNext(workerId: string, handler: EventHandler, now = new Date()) {
-    const claimed = await this.claimNext(workerId, now);
+  async processNext(workerId: string, handler: EventHandler, now = new Date(), eventTypes?: string[]) {
+    const claimed = await this.claimNext(workerId, now, eventTypes);
     if (!claimed) return { status: 'idle' as const };
 
     // Keep long-running handlers from losing their lease while work is in flight.
