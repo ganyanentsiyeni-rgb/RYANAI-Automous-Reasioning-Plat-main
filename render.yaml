@@ -35,7 +35,6 @@ projects:
                   property: connectionString
               # Require an explicitly verified U2EB Supabase project mapping.
               - key: SUPABASE_URL
-                value: https://narsvpwymvlrhurqbthu.supabase.co
                 sync: false
               - key: SUPABASE_SESSION_POOLER_HOST
                 sync: false
@@ -77,7 +76,7 @@ projects:
               - key: VITE_SUPABASE_URL
                 sync: false
               - key: VITE_SUPABASE_PUBLISHABLE_KEY
-                value: sb_publishable_2EnJpO2OEpC8m35ev0GpiA_gPUPIBz_
+                sync: false
           - type: keyvalue
             name: ryanai-redis-u2eb
             plan: free
