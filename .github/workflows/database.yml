@@ -517,6 +517,7 @@ jobs:
             await pool.end();
           }
           NODE
+          # Keep the anonymous PL/pgSQL block delimiter distinct from shell heredoc markers.
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
           DO $block$
           DECLARE fk RECORD;
