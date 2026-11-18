@@ -51,7 +51,7 @@ export function assessSchema({ columns, tables, indexes, extensions, memoryColum
         && values.length === allowed.length && values.every((value, index) => value === [...allowed].sort()[index]);
     }
     if (name === 'intelligence_event_attempts_event_inbox_id_fkey') {
-      return /foreign key \\(event_inbox_id\\) references intelligence_event_inbox\\(id\\)/.test(actual)
+      return actual.includes('foreign key (event_inbox_id) references intelligence_event_inbox(id)')
         && /on delete cascade/.test(actual)
         && /on update cascade/.test(actual);
     }
