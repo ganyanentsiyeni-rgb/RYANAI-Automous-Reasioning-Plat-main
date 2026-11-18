@@ -192,7 +192,7 @@ describe('RyanAI Comms inbox controls', () => {
     expect(comms.sendCommsMessage).not.toHaveBeenCalled();
   });
 
-  it('disables attachment selection when the server reports the private-storage or scanner gate is off', async () => {
+  it('keeps file selection available while accurately reporting server-side storage/scanner gating', async () => {
     comms.getCommsStatus.mockResolvedValueOnce({
       status: 'configuration_snapshot',
       channels: { whatsapp: true, sms: false, voice: false, email: true, attachments: false },
@@ -200,9 +200,9 @@ describe('RyanAI Comms inbox controls', () => {
     });
     await render();
     expect(container.textContent).toContain('Disabled · storage/scanner required');
-    expect(container.textContent).toContain('Uploads are disabled until owner-bound private storage and malware scanning are configured.');
+    expect(container.textContent).toContain('File selection is available.');
     const input = container.querySelector('input[type="file"]') as HTMLInputElement;
     expect(input).not.toBeNull();
-    expect(input.disabled).toBe(true);
+    expect(input.disabled).toBe(false);
   });
 });
