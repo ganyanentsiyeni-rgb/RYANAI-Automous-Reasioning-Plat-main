@@ -20,8 +20,8 @@ export const eventIngestionRoutes: FastifyPluginAsync = async (fastify) => {
 
     const verification = verifyEventRequestSignature({
       secret,
-      timestamp: request.headers['x-ryanai-timestamp'],
-      signature: request.headers['x-ryanai-signature'],
+      timestamp: typeof request.headers['x-ryanai-timestamp'] === 'string' ? request.headers['x-ryanai-timestamp'] : undefined,
+      signature: typeof request.headers['x-ryanai-signature'] === 'string' ? request.headers['x-ryanai-signature'] : undefined,
       body: request.body,
     });
     if (!verification.valid) {
