@@ -35,7 +35,6 @@ export interface EventInboxOptions {
 }
 
 export interface EnqueueEventResult {
-  event: Prisma.IntelligenceEventInboxGetPayload<object>;
   event: Prisma.IntelligenceEventInboxGetPayload<{}>;
   duplicate: boolean;
 }
@@ -69,7 +68,6 @@ function isUniqueConstraintError(error: unknown): boolean {
     && (error as { code?: unknown }).code === 'P2002';
 }
 
-function toEnvelope(row: Prisma.IntelligenceEventInboxGetPayload<object>): RyanAIEventEnvelope {
 function toEnvelope(row: Prisma.IntelligenceEventInboxGetPayload<{}>): RyanAIEventEnvelope {
   return {
     eventId: row.eventId,
@@ -83,7 +81,6 @@ function toEnvelope(row: Prisma.IntelligenceEventInboxGetPayload<{}>): RyanAIEve
     ...(row.correlationId ? { correlationId: row.correlationId } : {}),
     idempotencyKey: row.idempotencyKey,
     classification: row.classification as RyanAIEventEnvelope['classification'],
-    payload: row.payload as Record<string, unknown>,
     payload: row.payload as unknown as Record<string, unknown>,
   };
 }
@@ -302,14 +299,6 @@ export class IntelligenceEventInbox {
   async processNext(workerId: string, handler: EventHandler, now = new Date(), eventTypes?: string[]) {
     const claimed = await this.claimNext(workerId, now, eventTypes);
     if (!claimed) return { status: 'idle' as const };
-    try {
-      await handler(toEnvelope(claimed));
-      await this.acknowledge(claimed.id, workerId, new Date());
-      return { status: 'processed' as const, eventId: claimed.eventId };
-    } catch (error) {
-      const outcome = await this.fail(claimed.id, workerId, error, new Date());
-      return { ...outcome, eventId: claimed.eventId };
-
     // Keep long-running handlers from losing their lease while work is in flight.
     let leaseLost = false;
     const heartbeat = setInterval(() => {
