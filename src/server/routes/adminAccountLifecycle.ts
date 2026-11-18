@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { createAuditIntegrity, verifyAuditIntegrity, type AuditIntegrityRecord } from '../../security/auditIntegrity.js';
 import type { FastifyPluginAsync } from 'fastify';
 import { evaluateGenXSecurityEvent } from '../../security/genxPolicy.js';
 import { requireOwner } from './auth.js';
@@ -27,10 +28,14 @@ interface LifecycleEventDetails {
   policyDecision?: string;
   policyRuleId?: string;
   capabilityNote?: string;
+  integrity?: { version: 1; previousHash: string; eventHash: string };
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ACTIONS = new Set<LifecycleAction>(['role_change', 'suspend_account', 'revoke_sessions']);
+const LIFECYCLE_EVENT_TYPES = ['ACCOUNT_LIFECYCLE_REQUESTED', 'ACCOUNT_LIFECYCLE_CONFIRMED'];
+const LIFECYCLE_CHAIN_LOCK = 'ryanai-account-lifecycle-audit-integrity-chain';
+const MAX_INTEGRITY_EVENTS = 10000;
 
 function detailsOf(value: unknown): LifecycleEventDetails {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -93,6 +98,33 @@ export const adminAccountLifecycleRoutes: FastifyPluginAsync = async (fastify) =
     };
   });
 
+  fastify.get('/api/admin/account-lifecycle/audit-integrity', async (_request, reply) => {
+    const events = await fastify.prisma.jarvisAuditEvent.findMany({
+      where: { eventType: { in: LIFECYCLE_EVENT_TYPES } },
+      take: MAX_INTEGRITY_EVENTS,
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: { id: true, actorId: true, eventType: true, resourceId: true, details: true },
+    });
+    const truncated = events.length === MAX_INTEGRITY_EVENTS;
+    const verification = verifyAuditIntegrity(events as AuditIntegrityRecord[]);
+    const integrityStatus = truncated ? 'INCOMPLETE'
+      : !verification.valid ? 'INVALID'
+      : verification.checked === 0 ? 'LEGACY_UNVERIFIED'
+      : verification.legacyUnverified > 0 ? 'VALID_WITH_LEGACY_PREFIX' : 'VALID';
+    return reply.send({
+      integrityStatus,
+      verified: !truncated && verification.valid && verification.checked > 0,
+      checked: verification.checked,
+      legacyUnverified: verification.legacyUnverified,
+      firstInvalidEventId: verification.firstInvalidEventId,
+      headHash: verification.headHash,
+      scanned: events.length,
+      scanLimit: MAX_INTEGRITY_EVENTS,
+      truncated,
+      trustBoundary: 'Database-resident hash links detect payload and chain edits but cannot prove integrity against a privileged database writer who can rewrite and recompute the entire chain. A separately held signed checkpoint is required for that threat model.',
+    });
+  });
+
   fastify.post<{ Body: CreateRequestBody }>('/api/admin/account-lifecycle/requests', async (request, reply) => {
     const body = request.body ?? {} as CreateRequestBody;
     const action = body.action;
@@ -128,13 +160,26 @@ export const adminAccountLifecycleRoutes: FastifyPluginAsync = async (fastify) =
       policyRuleId: policy.ruleId,
       capabilityNote,
     };
-    await fastify.prisma.jarvisAuditEvent.create({
-      data: {
-        actorId: request.authUser!.id,
-        eventType: 'ACCOUNT_LIFECYCLE_REQUESTED',
-        resourceId: targetUserId,
-        details,
-      },
+    const eventId = randomUUID();
+    await fastify.prisma.$transaction(async (tx) => {
+      await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', LIFECYCLE_CHAIN_LOCK);
+      const history = await tx.jarvisAuditEvent.findMany({
+        where: { eventType: { in: LIFECYCLE_EVENT_TYPES } },
+        take: MAX_INTEGRITY_EVENTS,
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        select: { id: true, actorId: true, eventType: true, resourceId: true, details: true },
+      });
+      if (history.length === MAX_INTEGRITY_EVENTS) throw new Error('Lifecycle audit integrity scan limit reached; refusing to append.');
+      const verification = verifyAuditIntegrity(history as AuditIntegrityRecord[]);
+      if (!verification.valid) throw new Error('Lifecycle audit integrity verification failed; refusing to append.');
+      const integrity = createAuditIntegrity({
+        id: eventId, actorId: request.authUser!.id, eventType: 'ACCOUNT_LIFECYCLE_REQUESTED',
+        resourceId: targetUserId, details,
+      }, verification.headHash);
+      await tx.jarvisAuditEvent.create({
+        data: { id: eventId, actorId: request.authUser!.id, eventType: 'ACCOUNT_LIFECYCLE_REQUESTED',
+          resourceId: targetUserId, details: { ...details, integrity } },
+      });
     });
     return reply.code(201).send({
       requestId,
@@ -193,13 +238,28 @@ export const adminAccountLifecycleRoutes: FastifyPluginAsync = async (fastify) =
           policyRuleId: policy.ruleId,
           capabilityNote,
         };
+        await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', LIFECYCLE_CHAIN_LOCK);
+        const history = await tx.jarvisAuditEvent.findMany({
+          where: { eventType: { in: LIFECYCLE_EVENT_TYPES } },
+          take: MAX_INTEGRITY_EVENTS,
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          select: { id: true, actorId: true, eventType: true, resourceId: true, details: true },
+        });
+        if (history.length === MAX_INTEGRITY_EVENTS) {
+          return { statusCode: 409 as const, body: { error: 'Lifecycle audit integrity scan limit reached; confirmation was not recorded.' } };
+        }
+        const verification = verifyAuditIntegrity(history as AuditIntegrityRecord[]);
+        if (!verification.valid) {
+          return { statusCode: 409 as const, body: { error: 'Lifecycle audit integrity verification failed; confirmation was not recorded.' } };
+        }
+        const eventId = randomUUID();
+        const integrity = createAuditIntegrity({
+          id: eventId, actorId: request.authUser!.id, eventType: 'ACCOUNT_LIFECYCLE_CONFIRMED',
+          resourceId: details.targetUserId, details: confirmed,
+        }, verification.headHash);
         await tx.jarvisAuditEvent.create({
-          data: {
-            actorId: request.authUser!.id,
-            eventType: 'ACCOUNT_LIFECYCLE_CONFIRMED',
-            resourceId: details.targetUserId,
-            details: confirmed,
-          },
+          data: { id: eventId, actorId: request.authUser!.id, eventType: 'ACCOUNT_LIFECYCLE_CONFIRMED',
+            resourceId: details.targetUserId, details: { ...confirmed, integrity } },
         });
         return {
           statusCode: 200 as const,
