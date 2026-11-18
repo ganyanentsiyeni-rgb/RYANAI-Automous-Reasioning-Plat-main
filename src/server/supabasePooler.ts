@@ -59,7 +59,7 @@ export function resolveSupabaseSessionPoolerUrl(
   const directHost = `db.${projectRef}.supabase.co`;
   const currentHost = database.hostname.toLowerCase();
   const poolerHostValue = poolerHost.trim().toLowerCase();
-  const poolerHostMatch = poolerHostValue.match(/^(?:host=)?([a-z0-9-]+\\.pooler\\.supabase\\.com)(?::5432)?$/);
+  const poolerHostMatch = poolerHostValue.match(/^(?:host=)?([a-z0-9-]+\.pooler\.supabase\.com)(?::5432)?$/);
   const normalizedPoolerHost = poolerHostMatch?.[1] ?? poolerHostValue;
   const isSupabaseDirect = currentHost === directHost;
   const isSupabaseSharedPooler = currentHost.endsWith('.pooler.supabase.com');
