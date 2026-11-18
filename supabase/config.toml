@@ -4,14 +4,11 @@ project_id = "ryanai"
 
 [api]
 enabled = true
-port = 54321
 schemas = ["public", "graphql_public"]
 extra_search_path = ["public", "extensions"]
 max_rows = 1000
 
 [db]
-port = 54322
-shadow_port = 54320
 health_timeout = "2m"
 
 [db.migrations]
@@ -23,7 +20,6 @@ sql_paths = ["./migrations/seed.sql"]
 
 [studio]
 enabled = true
-port = 54323
 
 [auth]
 enabled = true
