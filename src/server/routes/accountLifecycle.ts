@@ -82,11 +82,11 @@ export const accountLifecycleRoutes: FastifyPluginAsync = async (fastify) => {
         },
         select: { id: true, requestType: true, targetUserId: true, requestedRole: true, status: true, policyDecision: true, policyRuleId: true, createdAt: true },
       });
-      await tx.jarvisAuditEvent.create({
+      await tx.accountLifecycleAuditEvent.create({
         data: {
+          requestId: record.id,
           actorId: owner.id,
           eventType: 'account.lifecycle.requested',
-          resourceId: record.id,
           details: {
             requestType,
             targetUserId,
