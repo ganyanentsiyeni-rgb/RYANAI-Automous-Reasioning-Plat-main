@@ -105,7 +105,10 @@ const originalListeners = new Map(
 );
 
 beforeAll(async () => {
-  vi.stubEnv('CORS_ORIGINS', 'https://ryanai-web.onrender.com');
+  vi.stubEnv(
+    'CORS_ORIGINS',
+    'https://ryanai-web-u2eb.onrender.com,https://ryanai-web-authfix.onrender.com,https://ryanai-web.onrender.com',
+  );
   state.listen.mockImplementation(async () => {
     state.events.push('listen');
     return 'http://localhost:3000';
@@ -236,6 +239,24 @@ describe('launcher reasoning routes', () => {
     expect(response.headers['access-control-allow-headers']?.toLowerCase()).toContain(
       'content-type',
     );
+  });
+
+  it('handles preflight for the active U2EB frontend on registry and connection endpoints', async () => {
+    for (const url of ['/api/plugins/registry', '/api/plugins/connections', '/api/github/status']) {
+      const response = await state.app!.inject({
+        method: 'OPTIONS',
+        url,
+        headers: {
+          origin: 'https://ryanai-web-u2eb.onrender.com',
+          'access-control-request-method': 'GET',
+          'access-control-request-headers': 'authorization,content-type',
+        },
+      });
+      expect(response.statusCode, url).toBe(204);
+      expect(response.headers['access-control-allow-origin'], url).toBe('https://ryanai-web-u2eb.onrender.com');
+      expect(response.headers['access-control-allow-methods'], url).toContain('GET');
+      expect(response.headers['access-control-allow-headers']?.toLowerCase(), url).toContain('authorization');
+    }
   });
 
   it('does not grant CORS access to an unconfigured origin', async () => {
