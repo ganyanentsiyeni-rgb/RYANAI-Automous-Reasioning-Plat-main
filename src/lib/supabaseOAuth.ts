@@ -1,6 +1,6 @@
 import { SUPABASE_URL } from '@/lib/supabase';
 
-const configuredSupabaseUrl = SUPABASE_URL.replace(/\\/+$/, '');
+const configuredSupabaseUrl = SUPABASE_URL.replace(/\/+$/, '');
 const supabaseEndpoint = (path: string): string | null =>
   configuredSupabaseUrl ? `${configuredSupabaseUrl}${path}` : null;
 
