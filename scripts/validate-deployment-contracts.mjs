@@ -113,7 +113,10 @@ const hasLegacyVercelIntegration =
 const checks = [
   ['Vercel project, build package, deployment workflows, and CI credentials are absent', !hasLegacyVercelIntegration],
   ['Render Blueprint declares services through a supported top-level or project-environment list', Array.isArray(renderConfig.services) || renderProjects.some((project) => (project.environments ?? []).some((environment) => Array.isArray(environment.services)))],
-  ['Render Blueprint declares exactly the API, web, and Redis resources', renderServices.length === 3 && expectedRenderServiceNames.every((name) => renderServiceNames.includes(name)) && new Set(renderServiceNames).size === 3],
+  ['Render Blueprint declares exactly the expected API, web, Redis, and MCP resources', renderServices.length === expectedRenderServiceNames.length && expectedRenderServiceNames.every((name) => renderServiceNames.includes(name)) && new Set(renderServiceNames).size === expectedRenderServiceNames.length],
+  ['U2EB MCP host allowlist contains the active and canonical Render hostnames', envVar(u2ebMcp, 'MCP_ALLOWED_HOSTS', renderConfig)?.value === 'ryanai-mcp-u2eb-u2eb.onrender.com,ryanai-mcp-u2eb.onrender.com'],
+  ['U2EB MCP health observer targets the active Render service', envVar(u2ebApi, 'RYANAI_MCP_HEALTH_URL', renderConfig)?.value === 'https://ryanai-mcp-u2eb-u2eb.onrender.com/health'],
+  ['U2EB MCP delegation and service credentials remain secret references', isSyncFalse(u2ebApi, 'RYANAI_MCP_DELEGATION_SECRET', renderConfig) && isSyncFalse(u2ebApi, 'RYANAI_MCP_SERVICE_TOKEN', renderConfig) && isSyncFalse(u2ebMcp, 'RYANAI_MCP_DELEGATION_SECRET', renderConfig) && isSyncFalse(u2ebMcp, 'RYANAI_MCP_SERVICE_TOKEN', renderConfig)],
   ['Render API and web environment variable keys are unique', hasUniqueEnvKeys(renderApi, renderConfig) && hasUniqueEnvKeys(renderWeb, renderConfig) && hasUniqueEnvKeys(u2ebMcp, renderConfig)],
   ['Render API and web use the official repository and main branch', renderApi?.repo === 'https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main' && renderWeb?.repo === renderApi?.repo && renderApi?.branch === 'main' && renderWeb?.branch === 'main'],
   ['Render API uses the standalone Docker image and /health', renderApi?.runtime === 'docker' && renderApi?.dockerfilePath === './Dockerfile.api' && renderApi?.healthCheckPath === '/health'],
