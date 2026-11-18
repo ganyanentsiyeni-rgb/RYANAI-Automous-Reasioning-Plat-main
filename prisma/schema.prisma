@@ -1399,11 +1399,7 @@ model CommsSendApproval {
   @@schema("public")
 }
 
-// Provider-neutral durable inbox for externally delivered RyanAI events.
-// Delivery is at-least-once; eventId and provider/idempotencyKey enforce deduplication.
-model IntegrationEventInbox {
-
-/// Durable provider-neutral inbox for validated integration events.
+// Durable, provider-neutral inbox for validated external intelligence events.
 model IntelligenceEventInbox {
   id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   eventId         String    @unique @map("event_id") @db.Uuid
@@ -1414,11 +1410,6 @@ model IntelligenceEventInbox {
   sourceService   String?   @map("source_service") @db.VarChar(80)
   correlationId   String?   @map("correlation_id") @db.VarChar(160)
   idempotencyKey  String    @map("idempotency_key") @db.VarChar(200)
-  classification  String    @db.VarChar(24)
-  payload         Json
-  status          String    @default("pending") @db.VarChar(24)
-  attempts        Int       @default(0)
-  maxAttempts     Int       @default(8) @map("max_attempts")
   classification  String    @db.VarChar(16)
   payload         Json
   payloadHash     String    @map("payload_hash") @db.Char(64)
@@ -1431,16 +1422,6 @@ model IntelligenceEventInbox {
   lastError       String?   @map("last_error") @db.Text
   receivedAt      DateTime  @default(now()) @map("received_at") @db.Timestamptz(6)
   processedAt     DateTime? @map("processed_at") @db.Timestamptz(6)
-  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  @@unique([sourceProvider, idempotencyKey], map: "integration_event_inbox_provider_idempotency_key")
-  @@index([status, availableAt, receivedAt], map: "integration_event_inbox_claim_idx")
-  @@index([status, leaseExpiresAt], map: "integration_event_inbox_lease_idx")
-  @@index([correlationId], map: "integration_event_inbox_correlation_idx")
-  @@map("integration_event_inbox")
-  @@schema("public")
-}
-
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   attemptsLog     IntelligenceEventAttempt[]
