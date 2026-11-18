@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { CheckCircle2, Globe2, Save, Volume2, LayoutDashboard, Calculator, BookAudio, BrainCircuit, UserRound, LogOut, Code2, LockKeyhole, ShieldCheck, Smartphone } from 'lucide-react';
 import { DEFAULT_LANGUAGE, isRyanLanguage, RYANAI_LANGUAGES } from '@/shared/languages';
 import { supabase } from '@/lib/supabase';
@@ -33,6 +33,12 @@ export default function ProfileSettings({
   onSignOut,
   signingOut = false,
 }: Props) {
+  useEffect(() => {
+    const sectionId = new URLSearchParams(window.location.search).get('section');
+    if (!sectionId || !/^[a-z][a-z0-9-]{0,80}$/.test(sectionId)) return;
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
   const [displayName, setDisplayName] = useState(initialDisplayName);
   const [language, setLanguage] = useState(isRyanLanguage(initialLanguage) ? initialLanguage : DEFAULT_LANGUAGE);
   const [voiceEnabled, setVoiceEnabled] = useState(() => {

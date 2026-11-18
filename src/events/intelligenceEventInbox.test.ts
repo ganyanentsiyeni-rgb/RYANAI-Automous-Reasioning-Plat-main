@@ -101,6 +101,20 @@ describe('IntelligenceEventInbox', () => {
     }));
   });
 
+
+  it('renews a live worker lease only for its current owner', async () => {
+    const now = new Date('2026-11-18T12:00:00Z');
+    inboxDelegate.updateMany.mockResolvedValue({ count: 1 });
+    await expect(inbox.renewLease('row-1', 'worker-a', now)).resolves.toBe(true);
+    expect(inboxDelegate.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: 'row-1', status: 'processing', leaseOwner: 'worker-a',
+        leaseExpiresAt: { gt: now },
+      }),
+      data: { leaseExpiresAt: new Date(now.getTime() + 500) },
+    }));
+  });
+
   it('acknowledges only a live lease owned by the worker', async () => {
     inboxDelegate.updateMany.mockResolvedValue({ count: 0 });
     await expect(inbox.acknowledge('row-1', 'wrong-worker')).rejects.toBeInstanceOf(EventLeaseLostError);
@@ -178,6 +192,7 @@ describe('IntelligenceEventInbox', () => {
     attemptDelegate.create.mockResolvedValue({});
     const handler = vi.fn().mockResolvedValue(undefined);
     const result = await inbox.processNext('worker-a', handler, new Date('2026-11-18T12:00:00Z'));
+    const result = await inbox.processNext('worker-a', handler);
     expect(result).toMatchObject({ status: 'processed', eventId: validEvent.eventId });
     expect(handler).toHaveBeenCalledWith(expect.objectContaining({
       eventId: validEvent.eventId, source: { provider: 'tapmap', service: 'desktop-agent' },
