@@ -97,7 +97,7 @@ it.each([
       `${label} sign-in is not enabled for this Supabase project`,
     );
     expect(container.querySelector('[role=alert]')?.textContent).toContain(
-      'https://narsvpwymvlrhurqbthu.supabase.co/auth/v1/callback',
+      'the callback URL shown in Supabase Dashboard',
     );
   },
 );
