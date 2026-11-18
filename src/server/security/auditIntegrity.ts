@@ -77,8 +77,12 @@ export function verifyAuditIntegrity(
       : {};
     const metadata = details.integrity as Partial<AuditIntegrityMetadata> | undefined;
     if (!metadata) {
-      if (!chainStarted) legacyUnverified += 1;
-      continue;
+      if (!chainStarted) {
+        legacyUnverified += 1;
+        continue;
+      }
+      firstInvalidEventId = record.id;
+      break;
     }
     chainStarted = true;
     if (metadata.version !== 1 || metadata.previousHash !== headHash ||
