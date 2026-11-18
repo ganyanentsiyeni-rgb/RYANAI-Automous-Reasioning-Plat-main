@@ -33,10 +33,11 @@ const renderWeb = productionEnvironment
 const renderRedis = productionEnvironment
   ? renderServices.find((service) => service.name === 'ryanai-redis')
   : u2ebRedis;
-// Keep Production names separate from the active U2EB service list so the
-// isolation check does not compare U2EB resources against themselves.
-const renderServiceNames = productionEnvironment
-  ? renderServices.map((service) => service.name)
+const renderServiceNames = renderServices.map((service) => service.name);
+// Keep Production/top-level names separate from the active U2EB service list
+// so isolation checks never compare U2EB resources against themselves.
+const productionServiceNames = productionEnvironment
+  ? productionEnvironment.services.map((service) => service.name)
   : (Array.isArray(renderConfig.services) ? renderConfig.services.map((service) => service.name) : []);
 const expectedRenderServiceNames = productionEnvironment
   ? ['ryanai-api', 'ryanai-web', 'ryanai-redis']
@@ -115,7 +116,7 @@ const hasLegacyVercelIntegration =
 const checks = [
   ['Vercel project, build package, deployment workflows, and CI credentials are absent', !hasLegacyVercelIntegration],
   ['Render Blueprint declares services through a supported top-level or project-environment list', Array.isArray(renderConfig.services) || renderProjects.some((project) => (project.environments ?? []).some((environment) => Array.isArray(environment.services)))],
-  ['Render Blueprint declares exactly the API, web, and Redis resources', renderServices.length === expectedRenderServiceNames.length && expectedRenderServiceNames.every((name) => renderServiceNames.includes(name)) && new Set(renderServiceNames).size === 3],
+  ['Render Blueprint declares exactly the API, web, and Redis resources', renderServices.length === expectedRenderServiceNames.length && expectedRenderServiceNames.every((name) => renderServiceNames.includes(name)) && new Set(renderServiceNames).size === renderServiceNames.length],
   ['Render API and web environment variable keys are unique', hasUniqueEnvKeys(renderApi, renderConfig) && hasUniqueEnvKeys(renderWeb, renderConfig) && hasUniqueEnvKeys(u2ebMcp, renderConfig)],
   ['Render API and web use the official repository and main branch', renderApi?.repo === 'https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main' && renderWeb?.repo === renderApi?.repo && renderApi?.branch === 'main' && renderWeb?.branch === 'main'],
   ['Render API uses the standalone Docker image and /health', renderApi?.runtime === 'docker' && renderApi?.dockerfilePath === './Dockerfile.api' && renderApi?.healthCheckPath === '/health'],
@@ -176,8 +177,8 @@ checks.push(
   ['U2EB web uses the existing static site and dynamically references the U2EB API hostname', u2ebWeb?.runtime === 'static' && u2ebWeb?.buildCommand === 'npm ci --legacy-peer-deps && npm run build:web' && u2ebWeb?.staticPublishPath === './dist' && u2ebWeb?.autoDeployTrigger === 'off' && envVar(u2ebWeb, 'VITE_API_BASE_URL', renderConfig)?.fromService?.name === 'ryanai-api-u2eb' && envVar(u2ebWeb, 'VITE_API_BASE_URL', renderConfig)?.fromService?.envVarKey === 'RENDER_EXTERNAL_HOSTNAME'],
   ['U2EB web receives the authorised Supabase project URL and requires an explicitly supplied browser key', envVar(u2ebWeb, 'VITE_SUPABASE_URL', renderConfig)?.sync === false && (isSyncFalse(u2ebWeb, 'VITE_SUPABASE_PUBLISHABLE_KEY', renderConfig) || isSyncFalse(u2ebWeb, 'VITE_SUPABASE_ANON_KEY', renderConfig))],
   ['U2EB Redis retains its existing name and Oregon region without changing database plan or credentials', u2ebRedis?.type === 'keyvalue' && u2ebRedis?.region === 'oregon' && Array.isArray(u2ebRedis?.ipAllowList) && u2ebRedis.ipAllowList.length === 0 && !u2ebDatabase],
-  ['U2EB resource names do not overlap Production or the isolated staging Blueprint', !u2ebServices.some((service) => renderServiceNames.includes(service.name) || stagingServiceNames.includes(service.name)) && !stagingServiceNames.includes('ryanai-redis-u2eb')],
-  ['Production and staging Blueprint resource names do not overlap', !renderServiceNames.some((name) => stagingServiceNames.includes(name))],
+  ['U2EB resource names do not overlap Production or the isolated staging Blueprint', !u2ebServices.some((service) => productionServiceNames.includes(service.name) || stagingServiceNames.includes(service.name)) && !stagingServiceNames.includes('ryanai-redis-u2eb')],
+  ['Production and staging Blueprint resource names do not overlap', !productionServiceNames.some((name) => stagingServiceNames.includes(name))],
 );
 
 for (const [name, passed] of checks) console.log((passed ? 'PASS' : 'FAIL') + ' | ' + name);
