@@ -303,10 +303,32 @@ describe('outbound Comms request validation', () => {
 });
 
 describe('Comms feature gates', () => {
-  it('does not register communications routes when the feature is disabled', async () => {
+  it('keeps workspace history and status routes available when outbound communications are disabled', async () => {
+    vi.stubEnv('COMMUNICATIONS_ENABLED', 'false');
+    const app = Fastify();
+    apps.push(app);
+    app.decorateRequest('authUser', null);
+    app.addHook('preHandler', async (request) => {
+      request.authUser = { id: 'owner-test', role: 'user', isOwner: true };
+    });
+    app.decorate('prisma', prismaMock as never);
+    await app.register(commsPlugin);
+
+    const [history, status] = await Promise.all([
+      app.inject({ method: 'GET', url: '/api/comms/conversations' }),
+      app.inject({ method: 'GET', url: '/api/comms/status' }),
+    ]);
+    expect(history.statusCode).toBe(200);
+    expect(history.json().conversations).toEqual([]);
+    expect(status.statusCode).toBe(200);
+    expect(status.json().enabled).toBe(false);
+  });
+
+  it('blocks outbound dispatch with a clear 503 while keeping the route registered', async () => {
     vi.stubEnv('COMMUNICATIONS_ENABLED', 'false');
     const response = await send('/api/comms/send', '', {});
-    expect(response.statusCode).toBe(404);
+    expect(response.statusCode).toBe(503);
+    expect(response.json().error).toContain('history and workspace access remain available');
     expect(invoke).not.toHaveBeenCalled();
   });
 
