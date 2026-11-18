@@ -353,7 +353,7 @@ jobs:
         with:
           version: 3.0.0
       - name: Start isolated local Supabase stack
-        run: supabase start -x studio,mailpit,edge-runtime,logflare,vector
+        run: supabase start
       - name: Apply all migrations to a fresh local database
         run: |
           set -euo pipefail
@@ -366,7 +366,7 @@ jobs:
             20261107150000 20261108020000 99999999999999; do
             grep -F "$version" /tmp/fresh-migration-list.txt
           done
-          eval "$(supabase status -o env)"
+          eval "$(supabase status --env)"
           psql "$DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
           DO $$
           BEGIN
@@ -448,7 +448,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          eval "$(supabase status -o env)"
+          eval "$(supabase status --env)"
           export SUPABASE_URL="$API_URL"
           export SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
           export SUPABASE_ANON_KEY="$ANON_KEY"
@@ -457,7 +457,7 @@ jobs:
       - name: Simulate recorded far-future legacy migration and apply corrective migration
         run: |
           set -euo pipefail
-          eval "$(supabase status -o env)"
+          eval "$(supabase status --env)"
           # This fixture changes only the disposable CI database.
           psql "$DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
           DO $$
@@ -540,7 +540,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          eval "$(supabase status -o env)"
+          eval "$(supabase status --env)"
           export DATABASE_URL="$DB_URL"
           export SUPABASE_URL="$API_URL"
           export SUPABASE_SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
@@ -551,7 +551,7 @@ jobs:
           npm run test:comms-attachments:integration
       - name: Stop isolated Supabase stack
         if: always() && steps.setup_supabase_cli.outcome == 'success'
-        run: supabase stop --no-backup
+        run: supabase stop
 
   render-api-config-audit:
     name: Audit Render API configuration (read-only)

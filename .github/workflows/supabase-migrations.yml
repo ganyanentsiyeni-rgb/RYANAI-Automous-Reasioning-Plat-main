@@ -45,5 +45,5 @@ jobs:
 
       - name: Stop disposable local Supabase stack
         if: always()
-        run: supabase stop --no-backup
+        run: supabase stop
         continue-on-error: true

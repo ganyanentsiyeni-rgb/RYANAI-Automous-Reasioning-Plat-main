@@ -301,7 +301,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          eval "$(supabase status -o env)"
+          eval "$(supabase status --env)"
           test -n "${DB_URL:-}"
           echo "DATABASE_URL=$DB_URL" >> "$GITHUB_ENV"
 
