@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export function compareMigrationState(localNames, appliedRows) {
   const applied = new Set(appliedRows.filter((row) => row.finished_at && !row.rolled_back_at).map((row) => row.migration_name));
-  const local = [...localNames].filter((name) => /^\\d{14}_[a-z0-9_]+$/.test(name)).sort();
+  const local = [...localNames].filter((name) => /^\d{14}_[a-z0-9_]+$/.test(name)).sort();
   return { local, applied: [...applied].sort(), pending: local.filter((name) => !applied.has(name)), databaseOnly: [...applied].filter((name) => !local.includes(name)).sort() };
 }
 
