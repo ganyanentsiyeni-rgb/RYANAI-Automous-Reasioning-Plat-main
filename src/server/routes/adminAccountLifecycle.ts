@@ -187,6 +187,7 @@ export const adminAccountLifecycleRoutes: FastifyPluginAsync = async (fastify) =
         data: { id: eventId, actorId: request.authUser!.id, eventType: 'ACCOUNT_LIFECYCLE_REQUESTED',
           resourceId: targetUserId, details: toPrismaJsonObject({ ...details, integrity }) },
       });
+      return true;
     }).catch((error: unknown) => {
       if (error instanceof Error && error.message.startsWith('Lifecycle audit integrity')) return null;
       throw error;

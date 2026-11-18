@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mock = vi.hoisted(() => ({ url: 'https://example.supabase.co/' }));
-vi.mock('@/lib/supabase', () => ({ SUPABASE_URL: mock.url }));
+vi.mock('@/lib/supabase', () => ({ get SUPABASE_URL() { return mock.url; } }));
 
 afterEach(() => {
   vi.resetModules();
@@ -22,6 +22,7 @@ describe('Supabase OAuth endpoint configuration', () => {
   });
 
   it('does not emit malformed project endpoints when Supabase is not configured', async () => {
+    vi.resetModules();
     mock.url = '';
     const { SUPABASE_OAUTH_ENDPOINTS } = await import('./supabaseOAuth');
     expect(SUPABASE_OAUTH_ENDPOINTS.authorization).toBeNull();
