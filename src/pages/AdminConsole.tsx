@@ -570,10 +570,10 @@ export default function AdminConsole({ userId }: { userId: string }) {
                 <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-5 text-slate-300">{JSON.stringify(action.args, null, 2)}</pre>
               </details>
               <div className="mt-4 flex flex-wrap justify-end gap-2">
-                <button type="button" onClick={() => void decideAction(action, 'reject')} disabled={Boolean(busyId)} className="inline-flex items-center gap-2 rounded-lg border border-rose-300/25 px-3 py-2 text-xs font-semibold text-rose-200 hover:bg-rose-300/10 disabled:opacity-50">
+                <button type="button" onClick={() => void decideAction(action, 'reject')} disabled={Boolean(busyId) || Boolean(resourceErrors.actions)} className="inline-flex items-center gap-2 rounded-lg border border-rose-300/25 px-3 py-2 text-xs font-semibold text-rose-200 hover:bg-rose-300/10 disabled:opacity-50">
                   <XCircle className="h-3.5 w-3.5" /> Reject
                 </button>
-                <button type="button" onClick={() => void decideAction(action, 'approve')} disabled={Boolean(busyId)} className="inline-flex items-center gap-2 rounded-lg bg-cyan-300 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-cyan-200 disabled:opacity-50">
+                <button type="button" onClick={() => void decideAction(action, 'approve')} disabled={Boolean(busyId) || Boolean(resourceErrors.actions)} className="inline-flex items-center gap-2 rounded-lg bg-cyan-300 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-cyan-200 disabled:opacity-50">
                   <CheckCircle2 className="h-3.5 w-3.5" /> {busyId === action.id ? 'Processing…' : 'Approve and execute'}
                 </button>
               </div>
@@ -619,7 +619,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
                 {job.userId === userId && job.approvalStatus === 'pending' && <p className="mt-3 text-xs text-amber-200">You created this job. Ask a different administrator to review it.</p>}
                 {job.approvalStatus === 'pending' && !job.planHash && <p className="mt-3 text-xs text-rose-200">Missing plan bindings; approval is unavailable.</p>}
                 <div className="mt-4 flex justify-end">
-                  <button type="button" onClick={() => void approveJob(job)} disabled={!canApprove || Boolean(busyId)} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/30 px-3 py-2 text-xs font-semibold text-cyan-100 hover:bg-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-40">
+                  <button type="button" onClick={() => void approveJob(job)} disabled={!canApprove || Boolean(busyId) || Boolean(resourceErrors.jobs)} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/30 px-3 py-2 text-xs font-semibold text-cyan-100 hover:bg-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-40">
                     <ClipboardCheck className="h-3.5 w-3.5" /> {busyId === job.id ? 'Approving…' : 'Approve exact plan'}
                   </button>
                 </div>
