@@ -64,6 +64,6 @@ describe('lifecycle audit hash-chain integrity', () => {
     expect(verifyAuditIntegrity([
       { ...first, details: { ...(first.details as object), integrity } },
       record('event-2'),
-    ])).toMatchObject({ valid: true, checked: 1, legacyUnverified: 0 });
+    ])).toMatchObject({ valid: false, checked: 1, legacyUnverified: 0, firstInvalidEventId: 'event-2' });
   });
 });
