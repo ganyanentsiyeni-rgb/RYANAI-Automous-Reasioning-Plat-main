@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import twilio from 'twilio';
 import { evaluateGenXSecurityEvent } from '../../security/genxPolicy.js';
-import { isCommunicationsEnabled } from './featureFlags.js';
+import { isCommunicationsEnabled, isCommunicationsTestAuthorized } from './featureFlags.js';
 import { addressOwnerMessage } from './personalization.js';
 
 export type CommsChannel = 'whatsapp' | 'sms' | 'voice' | 'email';
@@ -162,8 +162,8 @@ type AuthorizationBody = {
 };
 
 export const commsAuthorizationRoutes: FastifyPluginAsync = async (fastify) => {
-  if (!isCommunicationsEnabled()) return;
-
+  // Keep destination management and approval/history UI routes registered even
+  // while outbound communications are disabled. Provider actions are gated per route.
   const ownerId = (request: { authUser?: { id: string; isOwner?: boolean } | null }) =>
     request.authUser?.isOwner ? request.authUser.id : null;
 
@@ -173,6 +173,9 @@ export const commsAuthorizationRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const userId = ownerId(request);
       if (!userId) return reply.code(403).send({ error: 'Owner access is required.' });
+      if (!isCommunicationsEnabled() || !isCommunicationsTestAuthorized()) {
+        return reply.code(503).send({ error: 'Destination verification is unavailable until communications are enabled and an owner-authorized provider test is active.' });
+      }
       const channel = request.body?.channel;
       const rawRecipient = typeof request.body?.recipient === 'string' ? request.body.recipient.trim() : '';
       if (channel !== 'phone' && channel !== 'email') return reply.code(400).send({ error: 'Choose phone or email verification.' });
