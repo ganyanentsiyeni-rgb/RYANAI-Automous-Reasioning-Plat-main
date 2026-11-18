@@ -23,11 +23,17 @@ describe('owner account lifecycle request ledger', () => {
       return event;
     });
     const findMany = vi.fn(async () => events);
+    const queryRawUnsafe = vi.fn(async () => []);
+    const prisma = {
+      jarvisAuditEvent: { create, findMany },
+      $queryRawUnsafe: queryRawUnsafe,
+    };
+    const transaction = vi.fn(async (callback: (tx: typeof prisma) => Promise<unknown>) => callback(prisma));
     const app = Fastify();
     apps.push(app);
     app.decorateRequest('authUser', null);
-    app.decorate('prisma', { jarvisAuditEvent: { create, findMany } } as never);
-    return { app, create, findMany, events };
+    app.decorate('prisma', { ...prisma, $transaction: transaction } as never);
+    return { app, create, findMany, queryRawUnsafe, transaction, events };
   }
 
   it('blocks administrators who are not the verified owner', async () => {
@@ -77,6 +83,21 @@ describe('owner account lifecycle request ledger', () => {
     });
     expect(confirmed.statusCode).toBe(200);
     expect(confirmed.json()).toMatchObject({ state: 'OWNER_CONFIRMED_PENDING_EXECUTION_REVIEW', accountMutationPerformed: false });
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(queryRawUnsafe).toHaveBeenCalledWith(
+      'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+      'ryanai-account-lifecycle-confirm:' + requestId,
+    );
+
+    const replay = await app.inject({
+      method: 'POST',
+      url: '/api/admin/account-lifecycle/requests/' + requestId + '/confirm',
+      headers,
+      payload: { confirmation: 'CONFIRM ' + requestId },
+    });
+    expect(replay.statusCode).toBe(409);
+    expect(replay.json().error).toContain('already been confirmed');
+    expect(create).toHaveBeenCalledTimes(2); // request + exactly one confirmation
   });
 
   it('records session-revocation requests as capability-blocked without collecting another user token', async () => {

@@ -158,50 +158,62 @@ export const adminAccountLifecycleRoutes: FastifyPluginAsync = async (fastify) =
         return reply.code(400).send({ error: 'Explicit confirmation phrase does not match this request ID.' });
       }
 
-      const events = await fastify.prisma.jarvisAuditEvent.findMany({
-        where: { eventType: { in: ['ACCOUNT_LIFECYCLE_REQUESTED', 'ACCOUNT_LIFECYCLE_CONFIRMED'] } },
-        take: 500,
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        select: { actorId: true, eventType: true, details: true },
+      // Serialize confirmations per request across API instances. The lock is
+      // transaction-scoped, so the audit lookup and append are one atomic decision.
+      const outcome = await fastify.prisma.$transaction(async (tx) => {
+        await tx.$queryRawUnsafe(
+          'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+          'ryanai-account-lifecycle-confirm:' + requestId,
+        );
+        const events = await tx.jarvisAuditEvent.findMany({
+          where: { eventType: { in: ['ACCOUNT_LIFECYCLE_REQUESTED', 'ACCOUNT_LIFECYCLE_CONFIRMED'] } },
+          take: 500,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          select: { actorId: true, eventType: true, details: true },
+        });
+        const prior = events.find((event) => detailsOf(event.details).requestId === requestId);
+        if (!prior || prior.eventType !== 'ACCOUNT_LIFECYCLE_REQUESTED') {
+          return { statusCode: 409 as const, body: { error: 'This lifecycle request has already been confirmed or is no longer pending.' } };
+        }
+        const details = detailsOf(prior.details);
+        if (!details.targetUserId || !UUID_PATTERN.test(details.targetUserId) || !details.action) {
+          return { statusCode: 409 as const, body: { error: 'The stored lifecycle request is incomplete and cannot be confirmed.' } };
+        }
+        const policy = policyFor(request.authUser!.id, details.targetUserId, 'UPDATE');
+        if (policy.decision !== 'ALLOW') {
+          return { statusCode: 403 as const, body: { error: 'Gen-X blocked lifecycle confirmation.', policy: { decision: policy.decision, ruleId: policy.ruleId } } };
+        }
+        const capabilityNote = details.action === 'revoke_sessions'
+          ? 'Session revocation remains blocked until a secure, verified target-session token flow exists.'
+          : 'Owner confirmation is recorded; execution remains disabled pending separate staging verification and production authorization.';
+        const confirmed: LifecycleEventDetails = {
+          ...details,
+          state: details.action === 'revoke_sessions' ? 'CONFIRMED_CAPABILITY_BLOCKED' : 'OWNER_CONFIRMED_PENDING_EXECUTION_REVIEW',
+          policyDecision: policy.decision,
+          policyRuleId: policy.ruleId,
+          capabilityNote,
+        };
+        await tx.jarvisAuditEvent.create({
+          data: {
+            actorId: request.authUser!.id,
+            eventType: 'ACCOUNT_LIFECYCLE_CONFIRMED',
+            resourceId: details.targetUserId,
+            details: confirmed,
+          },
+        });
+        return {
+          statusCode: 200 as const,
+          body: {
+            requestId,
+            state: confirmed.state,
+            policy: { decision: policy.decision, ruleId: policy.ruleId },
+            confirmationRecorded: true,
+            accountMutationPerformed: false,
+            capabilityNote,
+          },
+        };
       });
-      const prior = events.find((event) => detailsOf(event.details).requestId === requestId);
-      if (!prior || prior.eventType !== 'ACCOUNT_LIFECYCLE_REQUESTED') {
-        return reply.code(404).send({ error: 'A pending lifecycle request was not found.' });
-      }
-      const details = detailsOf(prior.details);
-      if (!details.targetUserId || !UUID_PATTERN.test(details.targetUserId) || !details.action) {
-        return reply.code(409).send({ error: 'The stored lifecycle request is incomplete and cannot be confirmed.' });
-      }
-      const policy = policyFor(request.authUser!.id, details.targetUserId, 'UPDATE');
-      if (policy.decision !== 'ALLOW') {
-        return reply.code(403).send({ error: 'Gen-X blocked lifecycle confirmation.', policy: { decision: policy.decision, ruleId: policy.ruleId } });
-      }
-      const capabilityNote = details.action === 'revoke_sessions'
-        ? 'Session revocation remains blocked until a secure, verified target-session token flow exists.'
-        : 'Owner confirmation is recorded; execution remains disabled pending separate staging verification and production authorization.';
-      const confirmed: LifecycleEventDetails = {
-        ...details,
-        state: details.action === 'revoke_sessions' ? 'CONFIRMED_CAPABILITY_BLOCKED' : 'OWNER_CONFIRMED_PENDING_EXECUTION_REVIEW',
-        policyDecision: policy.decision,
-        policyRuleId: policy.ruleId,
-        capabilityNote,
-      };
-      await fastify.prisma.jarvisAuditEvent.create({
-        data: {
-          actorId: request.authUser!.id,
-          eventType: 'ACCOUNT_LIFECYCLE_CONFIRMED',
-          resourceId: details.targetUserId,
-          details: confirmed,
-        },
-      });
-      return {
-        requestId,
-        state: confirmed.state,
-        policy: { decision: policy.decision, ruleId: policy.ruleId },
-        confirmationRecorded: true,
-        accountMutationPerformed: false,
-        capabilityNote,
-      };
+      return reply.code(outcome.statusCode).send(outcome.body);
     },
   );
 };
