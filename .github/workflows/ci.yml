@@ -230,13 +230,6 @@ jobs:
         run: |
           npx prisma migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
           npm run db:setup
-      - name: Verify Studio worker remains disabled and leaves queued work untouched
-        run: node --import tsx/esm scripts/test-studio-worker-disabled.integration.mjs
-
-      - name: Verify Studio worker queue lifecycle against disposable PostgreSQL
-        run: node --import tsx/esm scripts/test-studio-worker-queue.integration.mjs
-      - name: Verify durable agent queue claims and lease recovery against disposable PostgreSQL
-        run: node --import tsx/esm scripts/test-agent-queue.mjs
 
       # Vite's build uses emptyOutDir=true and clears dist/. Build the frontend
       # first, then compile the API so the server output survives for startup.
@@ -245,6 +238,14 @@ jobs:
           npm run build:client
           npm run build:server
           test -s dist/server/server/launcher.js
+      - name: Verify Studio worker remains disabled and leaves queued work untouched
+        run: node --import tsx/esm scripts/test-studio-worker-disabled.integration.mjs
+
+      - name: Verify Studio worker queue lifecycle against disposable PostgreSQL
+        run: node --import tsx/esm scripts/test-studio-worker-queue.integration.mjs
+      - name: Verify durable agent queue claims and lease recovery against disposable PostgreSQL
+        run: node --import tsx/esm scripts/test-agent-queue.mjs
+
 
       - name: Verify production startup failure and recovery against disposable services
         run: node --test scripts/redis-probe.test.mjs && node scripts/test-startup-resilience.mjs && npx vitest run src/server/startupConfig.test.ts

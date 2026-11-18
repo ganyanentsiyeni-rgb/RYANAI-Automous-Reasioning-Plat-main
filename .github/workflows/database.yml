@@ -185,6 +185,11 @@ jobs:
           docker run --rm --network host --env NODE_ENV=test --env DATABASE_URL="$MIGRATION_DATABASE_URL" ryanai-migrate:ci
           # A second invocation must be a no-op, proving safe restart behavior.
           docker run --rm --network host --env NODE_ENV=test --env DATABASE_URL="$MIGRATION_DATABASE_URL" ryanai-migrate:ci
+          # Supabase Auth owns this cross-schema FK. Its presence is asserted by
+          # the dedicated Auth bridge test; remove it only from this disposable
+          # database before comparing Prisma-owned public models.
+          psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -c \
+            "ALTER TABLE public.memory_entries DROP CONSTRAINT IF EXISTS memory_entries_user_id_fkey"
           npx prisma migrate diff --from-url "$MIGRATION_DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
 
       - name: Create a disposable upgrade-path database
@@ -246,6 +251,8 @@ jobs:
           DATABASE_URL="$UPGRADE_DATABASE_URL" node scripts/test-agent-runtime-contract.mjs
           DATABASE_URL="$UPGRADE_DATABASE_URL" npx prisma migrate deploy --schema=prisma/schema.prisma
           DATABASE_URL="$UPGRADE_DATABASE_URL" node scripts/test-agent-queue-migration-upgrade.mjs
+          psql "$UPGRADE_DATABASE_URL" -v ON_ERROR_STOP=1 -c \
+            "ALTER TABLE public.memory_entries DROP CONSTRAINT IF EXISTS memory_entries_user_id_fkey"
           docker run --rm --network host -e PGPASSWORD=ci_password \
             postgres:16-alpine psql -h 127.0.0.1 -U ryanai -d ryanai_upgrade \
               -v ON_ERROR_STOP=1 -c "SELECT 1 FROM public.agent_runs LIMIT 0" \
@@ -485,7 +492,8 @@ jobs:
         # its public models without trying to introspect Supabase-owned auth.
         run: |
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
-            "ALTER TABLE public.conversations DROP CONSTRAINT conversations_user_id_fkey"
+            "ALTER TABLE public.conversations DROP CONSTRAINT conversations_user_id_fkey" \
+            -c "ALTER TABLE public.memory_entries DROP CONSTRAINT IF EXISTS memory_entries_user_id_fkey"
 
       - name: Compare the migrated Supabase and Prisma database with the Prisma data model
         # Supabase-owned Auth relationships are asserted separately above; this
