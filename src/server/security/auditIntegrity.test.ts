@@ -58,7 +58,7 @@ describe('lifecycle audit hash-chain integrity', () => {
     expect(() => createAuditIntegrity(second, 'bad')).toThrow('previousHash');
   });
 
-  it('does not treat missing metadata after chain start as a valid gap', () => {
+  it('detects a missing integrity record after the chain has started', () => {
     const first = record('event-1');
     const integrity = createAuditIntegrity(first);
     expect(verifyAuditIntegrity([
