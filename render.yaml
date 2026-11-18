@@ -35,9 +35,9 @@ projects:
                   property: connectionString
               # Require an explicitly verified U2EB Supabase project mapping.
               - key: SUPABASE_URL
-                sync: false
+                value: https://omqavyppdoniehseokvx.supabase.co
               - key: SUPABASE_SESSION_POOLER_HOST
-                sync: false
+                value: aws-1-eu-central-1.pooler.supabase.com
               - key: SUPABASE_ANON_KEY
                 sync: false
               - key: SUPABASE_PUBLISHABLE_KEY
@@ -71,10 +71,10 @@ projects:
                 fromService:
                   name: ryanai-api-u2eb
                   type: web
-                  envVarKey: RENDER_EXTERNAL_HOSTNAME
+                  envVarKey: RENDER_EXTERNAL_URL
               # Require an explicitly verified U2EB Supabase project mapping.
               - key: VITE_SUPABASE_URL
-                sync: false
+                value: https://omqavyppdoniehseokvx.supabase.co
               - key: VITE_SUPABASE_PUBLISHABLE_KEY
                 sync: false
           - type: keyvalue
