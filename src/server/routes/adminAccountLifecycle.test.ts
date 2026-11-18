@@ -127,4 +127,54 @@ describe('owner account lifecycle request ledger', () => {
     expect(confirmed.statusCode).toBe(200);
     expect(confirmed.json()).toMatchObject({ state: 'CONFIRMED_CAPABILITY_BLOCKED', accountMutationPerformed: false });
   });
+
+  it('does not append a confirmation event when Gen-X denies confirmation', async () => {
+    const requestId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const events: Array<Record<string, unknown>> = [{
+      actorId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      eventType: 'ACCOUNT_LIFECYCLE_REQUESTED',
+      details: { requestId, action: 'suspend_account', targetUserId: '123e4567-e89b-42d3-a456-426614174000', reason: 'Security review requires temporary suspension', state: 'PENDING_OWNER_CONFIRMATION' },
+    }];
+    const { app, create } = makeApp(events);
+    const policy = vi.spyOn(genxPolicy, 'evaluateGenXSecurityEvent').mockReturnValue({
+      decision: 'DENY', ruleId: 'GX-TEST-DENY', reason: 'Test policy denial', severity: 'HIGH',
+    });
+    try {
+      await app.register(adminAccountLifecycleRoutes);
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/admin/account-lifecycle/requests/' + requestId + '/confirm',
+        headers: { 'x-test-role': 'owner' },
+        payload: { confirmation: 'CONFIRM ' + requestId },
+      });
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({ policy: { decision: 'DENY', ruleId: 'GX-TEST-DENY' } });
+      expect(create).not.toHaveBeenCalled();
+      expect(events).toHaveLength(1);
+    } finally {
+      policy.mockRestore();
+    }
+  });
+
+  it('rejects malformed stored request details without appending an audit event', async () => {
+    const requestId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    const events: Array<Record<string, unknown>> = [{
+      actorId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      eventType: 'ACCOUNT_LIFECYCLE_REQUESTED',
+      details: { requestId, action: 'suspend_account', targetUserId: 'not-a-uuid', reason: 'Original request record', state: 'PENDING_OWNER_CONFIRMATION' },
+    }];
+    const { app, create } = makeApp(events);
+    await app.register(adminAccountLifecycleRoutes);
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/account-lifecycle/requests/' + requestId + '/confirm',
+      headers: { 'x-test-role': 'owner' },
+      payload: { confirmation: 'CONFIRM ' + requestId },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error).toContain('incomplete');
+    expect(create).not.toHaveBeenCalled();
+    expect(events).toHaveLength(1);
+  });
+
 });
