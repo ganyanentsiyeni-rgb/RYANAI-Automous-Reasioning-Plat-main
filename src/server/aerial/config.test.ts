@@ -24,4 +24,17 @@ describe('Aerial development configuration', () => {
     expect(config.baseUrl).toBe('https://aerial.example.test');
     expect(config.inferenceUrl).toBe('https://aerial.example.test/v1/inference');
   });
+
+  it('keeps the external runtime when the simulator flag is also enabled', () => {
+    const config = loadAerialConfig({
+      NODE_ENV: 'development',
+      AERIAL_DEV_SIMULATOR: 'true',
+      AERIAL_BASE_URL: 'https://aerial.example.test',
+      AERIAL_INFERENCE_URL: 'https://aerial.example.test/v1/inference',
+    } as NodeJS.ProcessEnv);
+
+    expect(config.enabled).toBe(true);
+    expect(config.mode).toBe('external');
+    expect(config.baseUrl).toBe('https://aerial.example.test');
+  });
 });
