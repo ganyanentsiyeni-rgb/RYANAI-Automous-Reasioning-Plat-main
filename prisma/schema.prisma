@@ -1398,3 +1398,38 @@ model CommsSendApproval {
   @@map("comms_send_approvals")
   @@schema("public")
 }
+
+
+/// Durable provider-neutral inbox for validated integration events.
+model IntelligenceEventInbox {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventId         String    @unique @map("event_id") @db.Uuid
+  eventType       String    @map("event_type") @db.VarChar(160)
+  schemaVersion   Int       @map("schema_version")
+  occurredAt      DateTime  @map("occurred_at") @db.Timestamptz(6)
+  sourceProvider  String    @map("source_provider") @db.VarChar(80)
+  sourceService   String?   @map("source_service") @db.VarChar(80)
+  correlationId   String?   @map("correlation_id") @db.VarChar(160)
+  idempotencyKey  String    @map("idempotency_key") @db.VarChar(200)
+  classification  String    @db.VarChar(16)
+  payload         Json
+  payloadHash     String    @map("payload_hash") @db.Char(64)
+  status          String    @default("pending") @db.VarChar(16)
+  attempts        Int       @default(0)
+  maxAttempts     Int       @default(5) @map("max_attempts")
+  availableAt     DateTime  @default(now()) @map("available_at") @db.Timestamptz(6)
+  leaseOwner      String?   @map("lease_owner") @db.VarChar(128)
+  leaseExpiresAt  DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  lastError       String?   @map("last_error") @db.Text
+  receivedAt      DateTime  @default(now()) @map("received_at") @db.Timestamptz(6)
+  processedAt     DateTime? @map("processed_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([sourceProvider, idempotencyKey], map: "intelligence_event_inbox_provider_idempotency_key")
+  @@index([status, availableAt, receivedAt], map: "intelligence_event_inbox_claim_idx")
+  @@index([status, leaseExpiresAt], map: "intelligence_event_inbox_lease_idx")
+  @@index([eventType, receivedAt(sort: Desc)], map: "intelligence_event_inbox_type_received_idx")
+  @@map("intelligence_event_inbox")
+  @@schema("public")
+}
