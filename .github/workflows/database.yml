@@ -556,6 +556,7 @@ jobs:
 
       - name: Provision Supabase Auth objects in Prisma shadow database
         run: |
+          SUPABASE_DB_PORT="$(node -e 'console.log(new URL(process.env.DATABASE_URL).port || 5432)')"
           docker run --rm --network host -e PGPASSWORD=postgres \
             -v "$GITHUB_WORKSPACE/tests/fixtures/supabase-auth-ci-bootstrap.sql:/tmp/supabase-auth-ci-bootstrap.sql:ro" \
             postgres:16-alpine psql -h 127.0.0.1 -p "$SUPABASE_DB_PORT" -U postgres -d ryanai_prisma_shadow \
