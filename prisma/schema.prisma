@@ -745,6 +745,28 @@ model JarvisAuditEvent {
   @@schema("public")
 }
 
+/// Owner-authorized account lifecycle requests. This record is a request only;
+/// execution is intentionally handled by a separate, explicitly approved workflow.
+model AccountLifecycleRequest {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requestType    String   @map("request_type") @db.VarChar(32)
+  targetUserId   String   @map("target_user_id") @db.Uuid
+  requestedRole  String?  @map("requested_role") @db.VarChar(16)
+  reason         String   @db.VarChar(1000)
+  status         String   @default("pending") @db.VarChar(24)
+  policyDecision String   @map("policy_decision") @db.VarChar(24)
+  policyRuleId   String   @map("policy_rule_id") @db.VarChar(64)
+  createdBy      String   @map("created_by") @db.Uuid
+  confirmedAt    DateTime @map("confirmed_at") @db.Timestamptz(6)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([status, createdAt(sort: Desc)], map: "account_lifecycle_requests_status_created_idx")
+  @@index([targetUserId, createdAt(sort: Desc)], map: "account_lifecycle_requests_target_created_idx")
+  @@map("account_lifecycle_requests")
+  @@schema("public")
+}
+
+
 /// Legacy vector-backed cache. The pgvector column is accessed through raw SQL;
 /// Prisma intentionally treats the extension type as unsupported.
 model ReasoningCache {
