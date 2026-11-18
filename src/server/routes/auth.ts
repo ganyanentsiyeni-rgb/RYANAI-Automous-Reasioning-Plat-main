@@ -143,6 +143,9 @@ export function installAuthentication(fastify: FastifyInstance) {
       return;
     }
 
+    // Provider-neutral event ingestion verifies a timestamped HMAC in its own route.
+    if (request.method === 'POST' && path === '/api/events/ingest') return;
+
     // Webhooks with their own signature verification
     if (
       request.method === 'POST' &&
