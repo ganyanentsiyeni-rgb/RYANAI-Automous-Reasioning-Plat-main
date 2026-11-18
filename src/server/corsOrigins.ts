@@ -12,7 +12,7 @@ export function normalizeCorsOrigin(value: string): string | null {
   const candidate = value.trim();
   if (!candidate || candidate === '*') return null;
 
-  const withProtocol = /^[a-z][a-z\\d+.-]*:\\/\\//i.test(candidate)
+  const withProtocol = /^[a-z][a-z\d+.-]*:\/\//i.test(candidate)
     ? candidate
     : `https://${candidate}`;
 
