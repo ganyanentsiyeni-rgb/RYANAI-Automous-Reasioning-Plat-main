@@ -109,6 +109,30 @@ describe('production and staging connection configuration', () => {
     expect(database.searchParams.get('sslmode')).toBe('verify-full');
   });
 
+  it('routes the dedicated U2EB Supabase project through its exact EU Central Session Pooler', () => {
+    const u2ebProjectRef = 'omqavyppdoniehseokvx';
+    const u2ebProjectUrl = `https://${u2ebProjectRef}.supabase.co`;
+    const u2ebPoolerHost = 'aws-1-eu-central-1.pooler.supabase.com';
+    const result = resolveConnectionUrls(
+      'staging',
+      `postgresql://postgres.${u2ebProjectRef}:test-placeholder@db.${u2ebProjectRef}.supabase.co:5432/postgres`,
+      'redis://u2eb-cache',
+      u2ebProjectUrl,
+      u2ebPoolerHost,
+      '/usr/local/share/ca-certificates/supabase-prod-ca-2021.crt',
+    );
+    const database = new URL(result.databaseUrl);
+
+    expect(database.hostname).toBe(u2ebPoolerHost);
+    expect(database.port).toBe('5432');
+    expect(database.username).toBe(`postgres.${u2ebProjectRef}`);
+    expect(database.searchParams.get('sslmode')).toBe('verify-full');
+    expect(database.searchParams.get('sslrootcert')).toBe(
+      '/usr/local/share/ca-certificates/supabase-prod-ca-2021.crt',
+    );
+    expect(database.searchParams.get('sslaccept')).toBe('strict');
+  });
+
   it('rejects Supabase pooler routing when its project or verified host is missing', () => {
     expect(() => resolveConnectionUrls(
       'production',
