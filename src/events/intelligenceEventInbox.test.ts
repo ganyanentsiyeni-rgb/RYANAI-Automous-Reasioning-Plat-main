@@ -205,11 +205,39 @@ describe('IntelligenceEventInbox', () => {
     inboxDelegate.findUnique.mockResolvedValue({ ...candidate, status: 'processing', leaseOwner: 'worker-a' });
     attemptDelegate.create.mockResolvedValue({});
     const handler = vi.fn().mockResolvedValue(undefined);
-    const result = await inbox.processNext('worker-a', handler, new Date('2026-11-18T12:00:00Z'));
     const result = await inbox.processNext('worker-a', handler);
     expect(result).toMatchObject({ status: 'processed', eventId: validEvent.eventId });
     expect(handler).toHaveBeenCalledWith(expect.objectContaining({
       eventId: validEvent.eventId, source: { provider: 'tapmap', service: 'desktop-agent' },
     }));
   });
+
+  it('routes trusted handler failures through the retry path without acknowledging', async () => {
+    const candidate = {
+      id: 'row-failure', eventId: validEvent.eventId, eventType: validEvent.eventType,
+      schemaVersion: 1, occurredAt: new Date(validEvent.occurredAt),
+      sourceProvider: 'tapmap', sourceService: 'desktop-agent', correlationId: 'corr-123',
+      idempotencyKey: validEvent.idempotencyKey, classification: 'internal',
+      payload: validEvent.payload, status: 'pending', attempts: 0, leaseExpiresAt: null,
+    };
+    inboxDelegate.findFirst
+      .mockResolvedValueOnce(candidate)
+      .mockResolvedValueOnce({
+        id: 'row-failure', attempts: 1, maxAttempts: 5,
+        leaseExpiresAt: new Date(Date.now() + 60_000),
+      });
+    inboxDelegate.updateMany.mockResolvedValue({ count: 1 });
+    inboxDelegate.findUnique.mockResolvedValue({ ...candidate, status: 'processing', leaseOwner: 'worker-a' });
+    attemptDelegate.create.mockResolvedValue({});
+    const handler = vi.fn().mockRejectedValue(new Error('handler rejected untrusted payload'));
+    const result = await inbox.processNext('worker-a', handler);
+    expect(result).toMatchObject({ status: 'retry', eventId: validEvent.eventId });
+    expect(inboxDelegate.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: 'retry', lastError: 'handler rejected untrusted payload' }),
+    }));
+    expect(attemptDelegate.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: 'retry', error: 'handler rejected untrusted payload' }),
+    }));
+  });
+
 });
