@@ -34,7 +34,7 @@ export function assessSchema({ columns, tables, indexes, extensions, memoryColum
   const normalizeDefinition = (value) => String(value ?? '').toLowerCase().replace(/\s+/g, ' ').replace(/\bpublic\./g, '').trim();
   const constraintByName = new Map(eventAttemptConstraints.map((item) => [item.conname, normalizeDefinition(item.definition)]));
   const expectedAttemptConstraints = {
-    intelligence_event_attempts_event_inbox_id_fkey: 'foreign key (event_inbox_id) references intelligence_event_inbox(id) on delete cascade',
+    intelligence_event_attempts_event_inbox_id_fkey: 'foreign key (event_inbox_id) references intelligence_event_inbox(id) on delete cascade on update cascade',
     intelligence_event_attempt_event_attempt_key: 'unique (event_inbox_id, attempt)',
     intelligence_event_attempts_attempt_check: 'check (attempt > 0)',
     intelligence_event_attempts_status_check: 'check (status in started,succeeded,retry,dead_letter,lease_expired)',
@@ -49,6 +49,11 @@ export function assessSchema({ columns, tables, indexes, extensions, memoryColum
       const values = [...actual.matchAll(/'([^']+)'/g)].map((match) => match[1]).sort();
       return /\bstatus\b/.test(actual) && (actual.includes('= any') || /\bin\s*\(/.test(actual))
         && values.length === allowed.length && values.every((value, index) => value === [...allowed].sort()[index]);
+    }
+    if (name === 'intelligence_event_attempts_event_inbox_id_fkey') {
+      return actual.includes('foreign key (event_inbox_id) references intelligence_event_inbox(id)')
+        && /on delete cascade/.test(actual)
+        && /on update cascade/.test(actual);
     }
     return actual.includes(normalizeDefinition(expected));
   };
