@@ -18,11 +18,13 @@ describe('owner account lifecycle request ledger', () => {
 
   function makeApp(events: Array<Record<string, unknown>> = []) {
     const create = vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
-      const event = { ...data, id: 'event-' + (events.length + 1), createdAt: new Date('2026-11-18T12:00:00Z') };
+      const event = { ...data, id: (data.id as string | undefined) ?? 'event-' + (events.length + 1), createdAt: new Date('2026-11-18T12:00:00Z') };
       events.unshift(event);
       return event;
     });
-    const findMany = vi.fn(async () => events);
+    const findMany = vi.fn(async (args?: { orderBy?: Array<{ createdAt?: string }> }) =>
+      args?.orderBy?.[0]?.createdAt === 'asc' ? [...events].reverse() : events,
+    );
     const queryRawUnsafe = vi.fn(async () => []);
     const prisma = {
       jarvisAuditEvent: { create, findMany },
@@ -35,6 +37,29 @@ describe('owner account lifecycle request ledger', () => {
     app.decorate('prisma', { ...prisma, $transaction: transaction } as never);
     return { app, create, findMany, queryRawUnsafe, transaction, events };
   }
+
+  it('exposes owner-protected audit integrity status and distinguishes a legacy-only ledger', async () => {
+    const { app } = makeApp([{
+      id: 'legacy-1',
+      actorId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      eventType: 'ACCOUNT_LIFECYCLE_REQUESTED',
+      resourceId: '123e4567-e89b-42d3-a456-426614174000',
+      details: { requestId: 'legacy-request', action: 'suspend_account' },
+      createdAt: new Date('2026-11-18T12:00:00Z'),
+    }]);
+    await app.register(adminAccountLifecycleRoutes);
+    const denied = await app.inject({ method: 'GET', url: '/api/admin/account-lifecycle/audit-integrity', headers: { 'x-test-role': 'admin' } });
+    expect(denied.statusCode).toBe(403);
+    const response = await app.inject({ method: 'GET', url: '/api/admin/account-lifecycle/audit-integrity', headers: { 'x-test-role': 'owner' } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      integrityStatus: 'LEGACY_UNVERIFIED',
+      verified: false,
+      checked: 0,
+      legacyUnverified: 1,
+      truncated: false,
+    });
+  });
 
   it('blocks administrators who are not the verified owner', async () => {
     const { app, create } = makeApp();
@@ -69,7 +94,7 @@ describe('owner account lifecycle request ledger', () => {
     });
     expect(created.statusCode).toBe(201);
     expect(created.json()).toMatchObject({ state: 'PENDING_OWNER_CONFIRMATION', accountMutationPerformed: false });
-    expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: 'ACCOUNT_LIFECYCLE_REQUESTED' }) }));
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: 'ACCOUNT_LIFECYCLE_REQUESTED', details: expect.objectContaining({ integrity: expect.objectContaining({ version: 1, eventHash: expect.any(String) }) }) }) }));
 
     const requestId = created.json().requestId as string;
     const wrong = await app.inject({
