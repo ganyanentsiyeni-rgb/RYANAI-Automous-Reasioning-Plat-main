@@ -16,6 +16,11 @@ test('Supabase local service ports are dynamically allocated', () => {
   }
 });
 
+test('Supabase managed local stack allocates ports automatically', () => {
+  assert.match(section('experimental'), /^\s*stack\s*=\s*true\s*$/m,
+    '[experimental] stack = true must enable managed per-project port allocation');
+});
+
 test('Supabase local config does not pin auxiliary service ports', () => {
   for (const name of ['db.pooler', 'local_smtp', 'analytics', 'edge_runtime']) {
     assert.doesNotMatch(section(name), /^\s*(?:port|shadow_port|inspector_port|smtp_port|pop3_port|vector_port)\s*=/m, '[' + name + '] must not pin a local port');
