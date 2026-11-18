@@ -1,3 +1,23 @@
+-- The Supabase migration chain is independent from Prisma's migration chain.
+-- Create the ledger here as well so a fresh Supabase stack has the table before
+-- the append-only triggers are installed.
+CREATE TABLE IF NOT EXISTS public.jarvis_audit_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  actor_id text NOT NULL,
+  event_type text NOT NULL,
+  resource_id text,
+  details jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS jarvis_audit_events_created_at_idx
+  ON public.jarvis_audit_events (created_at DESC);
+CREATE INDEX IF NOT EXISTS jarvis_audit_events_actor_created_idx
+  ON public.jarvis_audit_events (actor_id, created_at DESC);
+
+ALTER TABLE public.jarvis_audit_events ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.jarvis_audit_events FROM PUBLIC, anon, authenticated;
+
 -- Make the existing audit ledger append-only at the database boundary.
 -- This migration is prepared for review only; it has not been applied to any database.
 CREATE OR REPLACE FUNCTION public.reject_jarvis_audit_event_mutation()
