@@ -518,7 +518,7 @@ jobs:
           }
           NODE
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-          DO $
+          DO $block$
           DECLARE fk RECORD;
           BEGIN
             FOR fk IN
@@ -537,7 +537,7 @@ jobs:
               EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT %I',
                 fk.source_schema, fk.source_table, fk.constraint_name);
             END LOOP;
-          END $;
+          END $block$;
           SQL
 
       - name: Compare the migrated Supabase and Prisma database with the Prisma data model
