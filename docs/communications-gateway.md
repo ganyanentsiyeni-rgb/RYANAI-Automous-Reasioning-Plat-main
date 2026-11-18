@@ -157,3 +157,8 @@ history, approval records, database health checks, or other durable services.
 It therefore does not make the full RyanAI API database-independent. Never
 configure the ephemeral mode on a production service or treat it as a
 substitute for staging/production PostgreSQL.
+
+ 
+## Inbound WhatsApp reply authorization
+
+The WhatsApp webhook verifies the Twilio signature and owner sender before persisting an inbound event. It stores the inbound message and any permitted attachment data even when `RYANAI_COMMS_TEST_AUTHORIZED` is not exactly `true`, but returns an empty TwiML response and does not invoke RyanAI or send an automatic reply. Set this gate to `true` only for an explicitly authorized communications test after the owner destination and provider callbacks have been verified. This gate does not replace the separate owner authentication, approval, destination verification, idempotency, or delivery-status requirements for outbound API sends.
