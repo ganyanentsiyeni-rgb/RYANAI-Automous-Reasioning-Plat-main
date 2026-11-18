@@ -43,3 +43,24 @@ CREATE INDEX IF NOT EXISTS intelligence_event_inbox_type_received_idx
 -- No client-facing policies are created. Only the trusted server database role
 -- should read or mutate the inbox; external providers must use authenticated adapters.
 ALTER TABLE public.intelligence_event_inbox ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE IF NOT EXISTS public.intelligence_event_attempts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_inbox_id uuid NOT NULL REFERENCES public.intelligence_event_inbox(id) ON DELETE CASCADE,
+  attempt integer NOT NULL CHECK (attempt > 0),
+  worker_id varchar(128) NOT NULL,
+  status varchar(24) NOT NULL
+    CHECK (status IN ('started', 'succeeded', 'retry', 'dead_letter', 'lease_expired')),
+  error text,
+  started_at timestamptz NOT NULL DEFAULT now(),
+  finished_at timestamptz,
+  CONSTRAINT intelligence_event_attempt_event_attempt_key UNIQUE (event_inbox_id, attempt)
+);
+
+CREATE INDEX IF NOT EXISTS intelligence_event_attempt_event_started_idx
+  ON public.intelligence_event_attempts (event_inbox_id, started_at DESC);
+
+CREATE INDEX IF NOT EXISTS intelligence_event_attempt_status_started_idx
+  ON public.intelligence_event_attempts (status, started_at DESC);
+
+ALTER TABLE public.intelligence_event_attempts ENABLE ROW LEVEL SECURITY;
