@@ -8,21 +8,38 @@ import { supabase } from './lib/supabase';
 import { AuthContext, type AuthValue, type OAuthProvider } from './authContext';
 
 const redirectTo = makeRedirectUri({ scheme: 'ryanai', path: 'auth/callback' });
-const handledOAuthCodes = new Set<string>();
+// A deep-link event and WebBrowser result can deliver the same callback nearly
+// simultaneously. Share the in-flight exchange so both callers await one result.
+const oauthCodeExchanges = new Map<string, Promise<void>>();
 
 async function completeOAuthCallback(url: string) {
   const callback = new URL(url);
   const errorDescription = callback.searchParams.get('error_description') ?? callback.searchParams.get('error');
   if (errorDescription) throw new Error(errorDescription);
+  if (callback.protocol !== 'ryanai:' || callback.hostname !== 'auth' || callback.pathname !== '/callback') {
+    throw new Error('Unexpected OAuth callback URL.');
+  }
 
   // Supabase PKCE flow returns a one-time authorization code in the query.
   const code = callback.searchParams.get('code');
-  if (!code || handledOAuthCodes.has(code)) return;
-  handledOAuthCodes.add(code);
+  if (!code) return;
 
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
-  if (error) {
-    handledOAuthCodes.delete(code);
+  const existingExchange = oauthCodeExchanges.get(code);
+  if (existingExchange) {
+    await existingExchange;
+    return;
+  }
+
+  const exchange = supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
+    if (error) throw error;
+  });
+  oauthCodeExchanges.set(code, exchange);
+
+  try {
+    await exchange;
+  } catch (error) {
+    // Permit a deliberate retry if the exchange failed before a session was made.
+    oauthCodeExchanges.delete(code);
     throw error;
   }
 }
@@ -55,7 +72,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
       });
 
     const handleUrl = (url: string) => {
-      if (!url.startsWith('ryanai://auth/callback')) return;
+      let callback: URL;
+      try {
+        callback = new URL(url);
+      } catch {
+        return;
+      }
+      if (callback.protocol !== 'ryanai:' || callback.hostname !== 'auth' || callback.pathname !== '/callback') return;
       void completeOAuthCallback(url).catch((error: unknown) => {
         console.error('Mobile OAuth callback failed:', error);
       });
