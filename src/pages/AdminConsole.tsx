@@ -9,6 +9,7 @@ interface AdminIdentity {
   authenticated: boolean;
   user: { id: string; email?: string; role: 'user' | 'admin'; displayName?: string; isOwner: boolean };
 }
+interface DirectoryProfile { id: string; email: string | null; fullName: string | null; createdAt: string | null; updatedAt: string | null; }
 interface AuditEvent {
   id: string;
   actorId: string;
@@ -77,6 +78,7 @@ function statusTone(value: string) {
 export default function AdminConsole({ userId }: { userId: string }) {
   const [identity, setIdentity] = useState<AdminIdentity | null>(null);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [directoryProfiles, setDirectoryProfiles] = useState<DirectoryProfile[]>([]);
   const [metrics, setMetrics] = useState<RuntimeMetrics | null>(null);
   const [actions, setActions] = useState<PendingAction[]>([]);
   const [jobs, setJobs] = useState<EngineeringJob[]>([]);
@@ -91,6 +93,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
     const results = await Promise.allSettled([
       readJson<AdminIdentity>('/api/auth/verify', userId),
       readJson<{ events: AuditEvent[] }>('/api/admin/audit-events?limit=30', userId),
+      readJson<{ profiles: DirectoryProfile[] }>('/api/admin/users?limit=50', userId),
       readJson<RuntimeMetrics>('/api/admin/metrics', userId),
       readJson<{ actions: PendingAction[] }>('/api/actions', userId),
       readJson<{ jobs: EngineeringJob[] }>('/api/engineering/jobs', userId),
@@ -106,6 +109,8 @@ export default function AdminConsole({ userId }: { userId: string }) {
         : 'Identity verification: the API did not confirm this signed-in account.');
     }
     if (results[1].status === 'fulfilled') setAuditEvents(results[1].value.events ?? []);
+    if (results[2].status === 'fulfilled') setDirectoryProfiles(results[2].value.profiles ?? []);
+    else { setDirectoryProfiles([]); nextErrors.push('User directory: ' + String(results[2].reason)); }
     else { setAuditEvents([]); nextErrors.push('Security audit: ' + String(results[1].reason)); }
     if (results[2].status === 'fulfilled') setMetrics(results[2].value);
     else { setMetrics(null); nextErrors.push('Runtime metrics: ' + String(results[2].reason)); }
@@ -283,6 +288,25 @@ export default function AdminConsole({ userId }: { userId: string }) {
           ))}
         </div>
         <p className="mt-4 border-t border-white/10 pt-3 text-[11px] leading-5 text-slate-500">Administrator access never overrides Gen-X policy. Production mutations, secrets, paid upgrades and deployments remain outside this U2EB console and require separate authorization.</p>
+      </section>
+
+      <section id="admin-user-directory" className="scroll-mt-6 rounded-2xl border border-cyan-300/15 bg-slate-900/70 p-5 sm:p-6" aria-labelledby="admin-user-directory-title">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><h2 id="admin-user-directory-title" className="text-lg font-semibold text-white">User directory</h2><p className="mt-1 text-sm text-slate-400">Read-only view of profile records currently stored in public.profiles.</p></div>
+          <span className="rounded-full border border-white/15 px-3 py-1 text-xs text-slate-300">{directoryProfiles.length} profiles returned · max 50</span>
+        </div>
+        {directoryProfiles.length === 0
+          ? <EmptyState text="No public profile records were returned. This does not prove that no Supabase Auth accounts exist." />
+          : <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[620px] text-left text-xs">
+            <thead><tr className="border-b border-white/10 text-slate-500"><th className="py-2 pr-3 font-medium">Profile</th><th className="py-2 pr-3 font-medium">Email</th><th className="py-2 pr-3 font-medium">Created</th><th className="py-2 font-medium">Updated</th></tr></thead>
+            <tbody>{directoryProfiles.map((profile) => <tr key={profile.id} className="border-b border-white/5 text-slate-300">
+              <td className="py-3 pr-3">{profile.fullName || 'Name not set'}<span className="mt-1 block font-mono text-[10px] text-slate-600">{profile.id}</span></td>
+              <td className="py-3 pr-3">{profile.email || 'Email not recorded'}</td>
+              <td className="py-3 pr-3 whitespace-nowrap">{dateLabel(profile.createdAt)}</td>
+              <td className="py-3 whitespace-nowrap">{dateLabel(profile.updatedAt)}</td>
+            </tr>)}</tbody>
+          </table></div>}
+        <p className="mt-3 text-[11px] leading-5 text-slate-500">Coverage limitation: this endpoint lists only rows present in public.profiles. It does not enumerate the Supabase Auth user store, change roles, suspend accounts or revoke sessions. Those privileged lifecycle actions require a separately secured Auth Admin integration, Gen-X authorization and immutable audit evidence.</p>
       </section>
 
       <section id="admin-identity" className="scroll-mt-6 rounded-2xl border border-cyan-300/15 bg-slate-900/70 p-5 sm:p-6" aria-labelledby="admin-identity-title">
