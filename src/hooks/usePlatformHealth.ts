@@ -15,7 +15,8 @@ export function usePlatformHealth(refreshIntervalMs = 30_000) {
       setError(null);
     } catch (cause) {
       if (signal?.aborted) return;
-      setHealth(null);
+      // Preserve the last successful snapshot for diagnosis. Consumers must
+      // treat it as stale or unverified while this refresh error remains present.
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       if (!signal?.aborted) setChecking(false);
