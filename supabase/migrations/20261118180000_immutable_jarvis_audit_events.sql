@@ -24,5 +24,7 @@ CREATE TRIGGER jarvis_audit_events_no_truncate
   FOR EACH STATEMENT
   EXECUTE FUNCTION public.reject_jarvis_audit_event_mutation();
 
+REVOKE ALL ON FUNCTION public.reject_jarvis_audit_event_mutation() FROM PUBLIC, anon, authenticated;
+
 COMMENT ON FUNCTION public.reject_jarvis_audit_event_mutation()
   IS 'Prevents UPDATE, DELETE and TRUNCATE against the append-only RyanAI audit ledger.';
