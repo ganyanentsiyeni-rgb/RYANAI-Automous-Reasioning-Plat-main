@@ -86,6 +86,13 @@ export function evaluateGenXSecurityEvent(event: GenXSecurityEvent): GenXPolicyR
       event.action === 'NETWORK' && event.target === 'configured-approved-provider') {
     return { decision: 'ALLOW', ruleId: 'GX-HUMAN-REASONING-001', reason: 'Verified user requested reasoning through the configured provider policy.', severity: 'LOW' };
   }
+  // Aerial development inference is an explicit authenticated-human request against
+  // the configured development runtime. Staging/production remains approval-gated.
+  if (event.actorType === 'human' && event.toolName === 'aerial_ai_ran_inference' &&
+      event.action === 'NETWORK' && event.target === 'configured-aerial-runtime' &&
+      event.environment === 'development') {
+    return { decision: 'ALLOW', ruleId: 'GX-HUMAN-AERIAL-DEV-001', reason: 'Verified user requested inference through the configured development Aerial runtime.', severity: 'LOW' };
+  }
   if (event.action === 'CREATE' || event.action === 'UPDATE' || event.action === 'DELETE' || event.action === 'NETWORK') {
     return { decision: 'REQUIRE_APPROVAL', ruleId: 'GX-HIL-001', reason: 'Mutating or network actions require an authenticated human approval and scoped credentials.', severity: 'HIGH' };
   }
