@@ -1,6 +1,7 @@
 # U2EB-only Render Blueprint.
 # Deliberately excludes Production and all repair-only duplicate services.
-# The database is dedicated to U2EB and must not contain Production data.
+# U2EB PostgreSQL is the explicitly selected Supabase project; credentials
+# remain manual secrets and are never committed to this repository.
 version: "1"
 
 projects:
@@ -25,21 +26,25 @@ projects:
                 value: staging
               - key: HOST
                 value: 0.0.0.0
+              - key: PORT
+                value: "3000"
               - key: NODE_USE_SYSTEM_CA
                 value: "1"
+              # Supply the U2EB Supabase Session Pooler URI privately in Render.
+              # Do not use the separate Render Postgres database reference here.
               - key: DATABASE_URL
-                fromDatabase:
-                  name: ryanai_database_u2eb
-                  property: connectionString
+                sync: false
               - key: REDIS_URL
                 fromService:
                   name: ryanai-redis-u2eb
                   type: keyvalue
                   property: connectionString
               - key: SUPABASE_URL
-                value: https://narsvpwymvlrhurqbthu.supabase.co
+                value: https://omqavyppdoniehseokvx.supabase.co
               - key: SUPABASE_SESSION_POOLER_HOST
-                sync: false
+                value: aws-1-eu-central-1.pooler.supabase.com
+              - key: SUPABASE_SSL_ROOT_CERT_PATH
+                value: /usr/local/share/ca-certificates/supabase-prod-ca-2021.crt
               - key: SUPABASE_ANON_KEY
                 sync: false
               - key: SUPABASE_PUBLISHABLE_KEY
@@ -73,9 +78,9 @@ projects:
                 fromService:
                   name: ryanai-api-u2eb
                   type: web
-                  envVarKey: RENDER_EXTERNAL_HOSTNAME
+                  envVarKey: RENDER_EXTERNAL_URL
               - key: VITE_SUPABASE_URL
-                value: https://narsvpwymvlrhurqbthu.supabase.co
+                value: https://omqavyppdoniehseokvx.supabase.co
               - key: VITE_SUPABASE_PUBLISHABLE_KEY
                 sync: false
               - key: VITE_SUPABASE_ANON_KEY
@@ -86,8 +91,3 @@ projects:
             region: oregon
             ipAllowList: []
             maxmemoryPolicy: noeviction
-        databases:
-          - name: ryanai_database_u2eb
-            plan: free
-            region: oregon
-            postgresMajorVersion: 18
