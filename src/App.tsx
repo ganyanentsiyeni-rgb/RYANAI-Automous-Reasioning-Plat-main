@@ -131,7 +131,6 @@ export default function App() {
   const user = session?.user;
   const isAdmin = user?.app_metadata?.role === 'admin';
   const isOwner = user?.app_metadata?.owner === true || Boolean(user && verifiedIdentity?.userId === user.id && verifiedIdentity.isOwner);
-  const storedUiPreferences = user?.user_metadata?.ryanai_dashboard_ui_preferences;
   // All authenticated workspaces remain discoverable. Account preferences may
   // customize dashboard layout, but cannot hide or block a registered workspace.
   const enabledUiIds = Array.from(new Set(
@@ -277,13 +276,7 @@ export default function App() {
               : loading ? <p role="status" className="p-8 text-slate-300">Restoring your session…</p>
               : !user ? <AuthPage key={route} mode={route === 'signup' ? 'signup' : 'signin'} />
               : roleAccessDenied ? <p role="alert" className="p-8 text-sm text-rose-200">Your account does not have permission to open this RyanAI workspace.</p>
-              : false ? (
-                <section className="mx-auto max-w-3xl p-8" aria-labelledby="disabled-workspace-title">
-                  <h1 id="disabled-workspace-title" className="text-xl font-semibold text-white">Workspace disabled</h1>
-                  <p className="mt-2 text-sm leading-6 text-slate-400">This workspace is turned off in your dashboard preferences. Enable it in Settings to restore its dashboard card, navigation link and direct access.</p>
-                  <a href="#/settings" className="mt-4 inline-flex rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300">Open Settings</a>
-                </section>
-              ) : <>
+              : <>
                 {route === 'architecture' && <MissionOperatingSystem />}
                 {route === 'dashboard' && <DashboardPage isOwner={isOwner} isAdmin={isAdmin} enabledModules={effectiveDashboardUiPreferences} musicSettings={musicSettings} />}
                 {route === 'copilot' && <DarksideCopilot onSignOut={() => void handleSignOut()} userId={user.id} userEmail={user.email ?? ''} userFullName={displayName} showInferenceConsole={dashboardUiPreferences.inferenceConsole} defaultInferenceModel={inferenceSettings.preferredModel as ModelId} voiceSettings={ryanVoiceSettings} copilotSettings={copilotSettings} />}
