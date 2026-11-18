@@ -85,7 +85,8 @@ describe('owner account lifecycle request ledger', () => {
     });
     expect(confirmed.statusCode).toBe(200);
     expect(confirmed.json()).toMatchObject({ state: 'OWNER_CONFIRMED_PENDING_EXECUTION_REVIEW', accountMutationPerformed: false });
-    expect(transaction).toHaveBeenCalledTimes(1);
+    // One transaction records the confirmation; a second locks and rejects the replay.
+    expect(transaction).toHaveBeenCalledTimes(2);
     expect(queryRawUnsafe).toHaveBeenCalledWith(
       'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
       'ryanai-account-lifecycle-confirm:' + requestId,
