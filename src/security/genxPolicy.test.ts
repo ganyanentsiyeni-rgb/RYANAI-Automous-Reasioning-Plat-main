@@ -16,6 +16,26 @@ describe('Gen-X deterministic security enforcement', () => {
   });
   it('blocks credential access', () => {
     expect(evaluateGenXSecurityEvent({ ...base, action: 'CREDENTIAL_ACCESS', target: 'vault' }).decision).toBe('DENY');
+    expect(evaluateGenXSecurityEvent({ ...base, action: 'CREDENTIAL_ACCESS' })).toMatchObject({
+      decision: 'DENY', ruleId: 'GX-SECRETS-001',
+    });
+  });
+  it('blocks reads of sensitive targets without blocking the owner lifecycle exception', () => {
+    for (const target of ['secrets/provider-key', 'user.credentials', 'private_key.pem', '.env.production', 'password-reset-token']) {
+      expect(evaluateGenXSecurityEvent({ ...base, action: 'READ', target })).toMatchObject({
+        decision: 'DENY', ruleId: 'GX-SECRETS-001',
+      });
+    }
+    expect(evaluateGenXSecurityEvent({
+      ...base,
+      agentId: 'ryanai-admin-console',
+      principal: 'verified-owner-id',
+      toolName: 'ryanai_account_lifecycle',
+      target: 'auth.users/123e4567-e89b-42d3-a456-426614174000',
+      action: 'CREATE',
+      actorType: 'human',
+      ownerAuthorized: true,
+    })).toMatchObject({ decision: 'ALLOW', ruleId: 'GX-OWNER-LIFECYCLE-REQUEST-001' });
   });
   it('requires approval for network and write actions', () => {
     expect(evaluateGenXSecurityEvent({ ...base, action: 'NETWORK' }).decision).toBe('REQUIRE_APPROVAL');
@@ -84,6 +104,27 @@ describe('Gen-X deterministic security enforcement', () => {
       principal: 'verified-user-id', target: 'https://arbitrary.example.test',
       action: 'NETWORK', actorType: 'human',
     }).decision).toBe('REQUIRE_APPROVAL');
+  });
+
+  it('allows owner-guarded lifecycle request records but not unconfirmed transitions', () => {
+    const lifecycle = {
+      ...base,
+      agentId: 'ryanai-admin-console',
+      principal: 'verified-owner-id',
+      toolName: 'ryanai_account_lifecycle',
+      target: 'auth.users/123e4567-e89b-42d3-a456-426614174000',
+      actorType: 'human' as const,
+      ownerAuthorized: true,
+    };
+    expect(evaluateGenXSecurityEvent({ ...lifecycle, action: 'CREATE' }))
+      .toMatchObject({ decision: 'ALLOW', ruleId: 'GX-OWNER-LIFECYCLE-REQUEST-001' });
+    expect(evaluateGenXSecurityEvent({ ...lifecycle, action: 'UPDATE' }).decision).toBe('REQUIRE_APPROVAL');
+    expect(evaluateGenXSecurityEvent({ ...lifecycle, action: 'UPDATE', ownerConfirmed: true }))
+      .toMatchObject({ decision: 'ALLOW', ruleId: 'GX-OWNER-LIFECYCLE-CONFIRM-001' });
+    expect(evaluateGenXSecurityEvent({ ...lifecycle, action: 'UPDATE', ownerConfirmed: true, ownerAuthorized: false }).decision)
+      .toBe('REQUIRE_APPROVAL');
+    expect(evaluateGenXSecurityEvent({ ...lifecycle, action: 'UPDATE', ownerConfirmed: true, actorType: 'agent' }).decision)
+      .toBe('REQUIRE_APPROVAL');
   });
 
 });

@@ -37,6 +37,8 @@ import { slackInteractionsPlugin } from './routes/slackInteractions.js';
 import { twilioWebhookPlugin } from './routes/twilioWebhook.js';
 import { metricsRoutes } from './routes/metrics.js';
 import { adminAuditRoutes } from './routes/adminAudit.js';
+import { adminUsersRoutes } from './routes/adminUsers.js';
+import { adminAccountLifecycleRoutes } from './routes/adminAccountLifecycle.js';
 import { quantRoutes } from './routes/quantRoutes.js';
 import { quantPortfolioOptimizationRoutes } from './routes/quantPortfolioOptimizationRoutes.js';
 import { quantReconciliationRoutes } from './routes/quantReconciliationRoutes.js';
@@ -62,6 +64,7 @@ import { startAttachmentOrphanCleanup } from './attachments/orphanCleanup.js';
 import { pluginRegistryRoutes } from './plugins/routes.js';
 import { providerAuthorizationRoutes } from './plugins/providerAuthorizationRoutes.js';
 import { phoneLinkRoutes } from './routes/phoneLink.js';
+import { eventIngestionRoutes } from './routes/eventIngestionRoutes.js';
 
 const { Pool } = pg;
 
@@ -787,6 +790,7 @@ async function registerPlugins() {
   await fastify.register(pluginRegistryRoutes);
   await fastify.register(providerAuthorizationRoutes);
   await fastify.register(phoneLinkRoutes);
+  await fastify.register(eventIngestionRoutes);
   await fastify.register(commsPlugin);
   await fastify.register(commsAuthorizationRoutes);
   await fastify.register(approvalRoutes);
@@ -795,6 +799,8 @@ async function registerPlugins() {
   await fastify.register(twilioWebhookPlugin);
   await fastify.register(metricsRoutes);
   await fastify.register(adminAuditRoutes);
+  await fastify.register(adminUsersRoutes);
+  await fastify.register(adminAccountLifecycleRoutes);
   await fastify.register(quantRoutes);
   await fastify.register(quantPortfolioOptimizationRoutes);
   await fastify.register(quantStreamingRoutes);

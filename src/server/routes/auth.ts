@@ -106,6 +106,22 @@ export async function requireAdmin(
   }
 }
 
+/**
+ * Require the separately configured RyanAI owner identity.
+ * Administrator role alone is deliberately insufficient for owner-level
+ * account lifecycle, credential, or security operations.
+ */
+export async function requireOwner(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  await requireUser(request, reply);
+  if (reply.sent) return;
+  if (!request.authUser?.isOwner) {
+    return reply.code(403).send({ error: 'RyanAI owner authorization is required.' });
+  }
+}
+
 // --- Global Hook Installer ---
 
 /**
@@ -142,6 +158,9 @@ export function installAuthentication(fastify: FastifyInstance) {
     ) {
       return;
     }
+
+    // Signed provider-neutral event ingestion authenticates its own HMAC.
+    if (request.method === 'POST' && path === '/api/events/ingest') return;
 
     // Webhooks with their own signature verification
     if (
