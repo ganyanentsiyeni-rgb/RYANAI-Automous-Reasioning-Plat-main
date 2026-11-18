@@ -13,7 +13,7 @@ const OAUTH_PROVIDER_LABELS: Record<OAuthProvider, string> = {
 };
 
 const SUPABASE_CALLBACK_URL = (() => {
-  const projectUrl = import.meta.env.VITE_SUPABASE_URL?.trim().replace(/\\/+$/, '');
+  const projectUrl = import.meta.env.VITE_SUPABASE_URL?.trim().replace(/\/+$/, '');
   return projectUrl
     ? `${projectUrl}/auth/v1/callback`
     : 'the callback URL shown in Supabase Dashboard → Authentication → Sign In / Providers';
