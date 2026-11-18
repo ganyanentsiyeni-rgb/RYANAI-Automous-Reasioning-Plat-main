@@ -62,10 +62,14 @@ export function evaluateGenXSecurityEvent(event: GenXSecurityEvent): GenXPolicyR
   // owner-guarded API route. This authorizes appending request/audit events;
   // it does not authorize a Supabase Auth mutation or agent execution.
   if (event.toolName === 'ryanai_account_lifecycle' && event.actorType === 'human' &&
-      event.ownerAuthorized === true && event.ownerConfirmed === true &&
-      ['CREATE', 'UPDATE'].includes(event.action) &&
+      event.ownerAuthorized === true && event.action === 'CREATE' &&
       /^auth\\.users\\/[0-9a-f-]{36}$/i.test(event.target ?? '')) {
-    return { decision: 'ALLOW', ruleId: 'GX-OWNER-LIFECYCLE-REQUEST-001', reason: 'Verified owner explicitly confirmed an account-lifecycle request record; no account mutation is authorized by this rule.', severity: 'HIGH' };
+    return { decision: 'ALLOW', ruleId: 'GX-OWNER-LIFECYCLE-REQUEST-001', reason: 'Verified owner may create a pending account-lifecycle request record; no account mutation is authorized by this rule.', severity: 'HIGH' };
+  }
+  if (event.toolName === 'ryanai_account_lifecycle' && event.actorType === 'human' &&
+      event.ownerAuthorized === true && event.ownerConfirmed === true && event.action === 'UPDATE' &&
+      /^auth\\.users\\/[0-9a-f-]{36}$/i.test(event.target ?? '')) {
+    return { decision: 'ALLOW', ruleId: 'GX-OWNER-LIFECYCLE-CONFIRM-001', reason: 'Verified owner explicitly confirmed the lifecycle request record; no account mutation is authorized by this rule.', severity: 'HIGH' };
   }
   // Authenticated human requests may manage only their own Memory Vault records.
   // Agent/service callers do not inherit this exception; their mutations still require approval.
