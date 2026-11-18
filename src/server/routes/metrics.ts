@@ -1,31 +1,45 @@
+import { arch, cpus, freemem, loadavg, platform, release, totalmem } from 'node:os';
 import { requireAdmin } from './auth.js';
-import { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync } from 'fastify';
 
 /**
- * Register admin-only process metrics: uptime in seconds and memory in MiB.
- * Database status is reported as unknown without probing the database.
+ * Register admin-only, read-only host and process diagnostics.
+ * Host resource figures describe the runtime host/container view exposed by Node.
+ * Database readiness remains independently reported by /health.
  */
 export const metricsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', requireAdmin);
 
   fastify.get('/api/admin/metrics', async () => {
-    // This endpoint reports process metrics; dependency health is available at /health.
-    const dbStatus = 'unknown';
-
     const memory = process.memoryUsage();
+    const cpu = process.cpuUsage();
 
     return {
-      status: 'operational',
-      uptime: process.uptime(), // Uptime in seconds
+      status: 'available',
+      readiness: 'not_checked',
+      uptime: process.uptime(),
       timestamp: new Date().toISOString(),
       database: {
-        status: dbStatus,
+        status: 'unknown',
         driver: 'PostgreSQL (@langchain/langgraph-checkpoint-postgres)',
+        note: 'Database readiness is reported by the independent /health endpoint.',
       },
       system: {
         nodeVersion: process.version,
+        platform: platform(),
+        platformRelease: release(),
+        architecture: arch(),
+        logicalProcessors: cpus().length,
+        loadAverage: loadavg(),
+        totalMemoryMB: Math.round(totalmem() / 1024 / 1024),
+        freeMemoryMB: Math.round(freemem() / 1024 / 1024),
         rssMemoryMB: Math.round(memory.rss / 1024 / 1024),
         heapUsedMB: Math.round(memory.heapUsed / 1024 / 1024),
+        heapTotalMB: Math.round(memory.heapTotal / 1024 / 1024),
+        externalMemoryMB: Math.round(memory.external / 1024 / 1024),
+        arrayBuffersMB: Math.round(memory.arrayBuffers / 1024 / 1024),
+        processCpuUserMs: Math.round(cpu.user / 1000),
+        processCpuSystemMs: Math.round(cpu.system / 1000),
       },
     };
   });

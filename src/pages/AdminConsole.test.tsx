@@ -108,6 +108,31 @@ describe('Admin Console request ownership', () => {
     expect(container.textContent).not.toContain('admin@example.test');
   });
 
+  it('reports a failed approval queue as unavailable instead of showing a false empty state', async () => {
+    apiFetch.mockImplementation(async (input) => {
+      const path = String(input);
+      if (path === '/api/auth/verify') return response({ authenticated: true, user: {
+        id: 'admin-account-a', email: 'admin@example.test', role: 'admin', isOwner: true,
+      } });
+      if (path === '/api/admin/audit-events?limit=30') return response({ events: [] });
+      if (path === '/api/admin/users?limit=50&page=1') return response(userDirectoryResponse);
+      if (path === '/api/admin/metrics') return response({
+        status: 'available', uptime: 60, timestamp: '2026-11-18T12:00:00.000Z',
+        database: { status: 'unknown', driver: 'postgresql' },
+        system: { nodeVersion: 'v24.0.0', rssMemoryMB: 128, heapUsedMB: 64 },
+      });
+      if (path === '/api/actions') return response({ error: 'Approval queue database unavailable.' }, false);
+      if (path === '/api/engineering/jobs') return response({ jobs: [] });
+      if (path === '/api/admin/account-lifecycle/requests') return response({ requests: [] });
+      throw new Error('Unexpected Admin Console request: ' + path);
+    });
+    await mount('admin-account-a');
+    await vi.waitFor(() => expect(container.textContent).toContain('External action queue unavailable'));
+    expect(container.textContent).not.toContain('No unexpired actions are waiting for administrator approval.');
+    expect(container.textContent).toContain('Approval queue database unavailable.');
+    expect(container.textContent).toContain('Unavailable');
+  });
+
   it('scopes an explicitly confirmed pending-action decision to the same account', async () => {
     await mount('admin-account-a');
     await vi.waitFor(() => expect(container.textContent).toContain('Send approved test message'));

@@ -82,7 +82,8 @@ export default function DashboardPage({ isOwner = false, isAdmin = false, enable
         }
       } catch (cause) {
         if (!disposed && !(cause instanceof DOMException && cause.name === 'AbortError')) {
-          setPaStatus(null);
+          // Retain the last successful observer snapshot for diagnosis.
+          // The error banner below prevents this snapshot being described as live.
           setPaError(cause instanceof Error ? cause.message : 'PA status could not be loaded.');
         }
       }
@@ -104,15 +105,16 @@ export default function DashboardPage({ isOwner = false, isAdmin = false, enable
   const hasTimestamp = healthFreshness !== 'unknown' && Number.isFinite(reportedAt);
   const ageMs = hasTimestamp ? healthNow - reportedAt : null;
   const isStale = healthFreshness === 'stale';
-  const healthFresh = Boolean(health && healthFreshness === 'fresh');
+  const healthStale = isStale || Boolean(health && error);
+  const healthFresh = Boolean(health && healthFreshness === 'fresh' && !error);
   const healthFreshnessUnknown = Boolean(health && healthFreshness === 'unknown');
   const paHeartbeatFreshness = getSnapshotFreshness(paStatus?.lastHeartbeat, now, PA_HEARTBEAT_STALE_AFTER_MS);
   const paHeartbeatAt = paStatus?.lastHeartbeat ? Date.parse(paStatus.lastHeartbeat) : Number.NaN;
   const paHeartbeatKnown = paHeartbeatFreshness !== 'unknown' && Number.isFinite(paHeartbeatAt);
   const paHeartbeatStale = paHeartbeatFreshness === 'stale';
   const paHeartbeatUnverified = paHeartbeatFreshness === 'unknown';
-  const paMonitoring = Boolean(paStatus?.active && paStatus.workState === 'monitoring' && paHeartbeatFreshness === 'fresh');
-  const paStateLabel = !paStatus ? 'Not reporting' : paHeartbeatStale ? 'Heartbeat stale' : paHeartbeatUnverified ? 'Heartbeat unverified' : paStatus.workState;
+  const paMonitoring = Boolean(paStatus?.active && paStatus.workState === 'monitoring' && paHeartbeatFreshness === 'fresh' && !paError);
+  const paStateLabel = paError ? 'Refresh failed · last-known state' : !paStatus ? 'Not reporting' : paHeartbeatStale ? 'Heartbeat stale' : paHeartbeatUnverified ? 'Heartbeat unverified' : paStatus.workState;
   const workspaces = [
     {
       id: 'pa',
@@ -236,9 +238,9 @@ export default function DashboardPage({ isOwner = false, isAdmin = false, enable
             Central command view for platform health, agent activity and every authorised workspace. Unknown or stale signals are never presented as healthy.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-            <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${isStale ? 'border-amber-300/30 bg-amber-300/5 text-amber-200' : healthFresh ? 'border-emerald-300/20 text-emerald-200' : 'border-slate-500/30 text-slate-300'}`}>
+            <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${healthStale ? 'border-amber-300/30 bg-amber-300/5 text-amber-200' : healthFresh ? 'border-emerald-300/20 text-emerald-200' : 'border-slate-500/30 text-slate-300'}`}>
               <Clock3 className="h-3.5 w-3.5" />
-              {checking && !health ? 'Checking health…' : hasTimestamp ? `Health signal ${isStale ? 'stale' : 'updated'} ${formatAge(ageMs!)} ago` : health ? 'Health timestamp missing, invalid or future · unverified' : 'Health timestamp not reported'}
+              {checking && !health ? 'Checking health…' : hasTimestamp ? `Health signal ${healthStale ? 'stale / refresh failed' : 'updated'} ${formatAge(ageMs!)} ago` : health ? 'Health timestamp missing, invalid or future · unverified' : 'Health timestamp not reported'}
             </span>
             {hasTimestamp && (
               <span className="text-slate-500">Reported at {new Date(reportedAt).toLocaleString()}</span>
@@ -253,7 +255,7 @@ export default function DashboardPage({ isOwner = false, isAdmin = false, enable
       {isOwner && <RyanAIAnniversaryCard />}
 
       {error && <div role="alert" className="mt-6 flex items-start gap-3 rounded-xl border border-rose-400/20 bg-rose-400/5 p-4 text-sm text-rose-200"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div>}
-      {isStale && <div role="status" className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-sm text-amber-100">The API timestamp is more than 90 seconds old. Treat this snapshot as stale until a fresh health response is received.</div>}
+      {healthStale && <div role="status" className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-sm text-amber-100">The health snapshot is stale or its latest refresh failed. Treat this last-known snapshot as unverified until a fresh health response is received.</div>}
       {healthFreshnessUnknown && <div role="status" className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-300">The API returned a missing, invalid or future timestamp. Service signals are unverified until a valid current timestamp is received.</div>}
 
       <article className="mt-6 rounded-2xl border border-cyan-300/20 bg-slate-900/70 p-5" aria-live="polite">
@@ -280,15 +282,16 @@ export default function DashboardPage({ isOwner = false, isAdmin = false, enable
         </p>
       </article>
 
+      {paError && paStatus && <div role="status" className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/5 p-3 text-xs text-amber-100">PA observer refresh failed. The displayed heartbeat and dependency values are the last successful observation, not a live confirmation.</div>}
       <OperationalAwarenessPanel compact />
 
       {enabledModules?.music !== false && <MusicPlayer settings={musicSettings} />}
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatusCard title="API gateway" value={healthServiceLabel(health?.status === 'online', checking, isStale, healthFresh)} icon={Server} healthy={healthFresh ? health?.status === 'online' : undefined} />
-        <StatusCard title="PostgreSQL" value={serviceLabel(health?.services?.database, checking, isStale, healthFresh)} icon={Database} healthy={healthFresh ? health?.services?.database : undefined} />
-        <StatusCard title="Redis" value={serviceLabel(health?.services?.redis, checking, isStale, healthFresh)} icon={Wifi} healthy={healthFresh ? health?.services?.redis : undefined} />
-        <StatusCard title="Agent checkpointer" value={serviceLabel(health?.services?.agentCheckpointer, checking, isStale, healthFresh)} icon={Activity} healthy={healthFresh ? health?.services?.agentCheckpointer : undefined} />
+        <StatusCard title="API gateway" value={healthServiceLabel(health?.status === 'online', checking, healthStale, healthFresh)} icon={Server} healthy={healthFresh ? health?.status === 'online' : undefined} />
+        <StatusCard title="PostgreSQL" value={serviceLabel(health?.services?.database, checking, healthStale, healthFresh)} icon={Database} healthy={healthFresh ? health?.services?.database : undefined} />
+        <StatusCard title="Redis" value={serviceLabel(health?.services?.redis, checking, healthStale, healthFresh)} icon={Wifi} healthy={healthFresh ? health?.services?.redis : undefined} />
+        <StatusCard title="Agent checkpointer" value={serviceLabel(health?.services?.agentCheckpointer, checking, healthStale, healthFresh)} icon={Activity} healthy={healthFresh ? health?.services?.agentCheckpointer : undefined} />
       </div>
 
       <section className="mt-8" aria-labelledby="platform-workspaces-title">

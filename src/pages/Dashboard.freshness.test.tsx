@@ -79,4 +79,16 @@ describe('System Dashboard health freshness', () => {
 
     expect(container.textContent).toContain(FUTURE_BANNER);
   });
+
+  it('marks the retained last-known health snapshot unverified after a failed refresh', async () => {
+    await mountThenReceiveHealth(MOUNTED_AT + 300, MOUNTED_AT + 400);
+    hoisted.value = { ...(hoisted.value as ReturnType<typeof healthState>), error: 'API health check timed out.' };
+    await act(async () => {
+      root.render(<DashboardPage />);
+    });
+
+    expect(container.textContent).toContain('latest refresh failed');
+    expect(container.textContent).toContain('API health check timed out.');
+    expect(container.textContent).toContain('The health snapshot is stale or its latest refresh failed.');
+  });
 });
