@@ -32,7 +32,10 @@ function normalizeUrl(value: string | undefined): string | null {
 }
 
 export function loadAerialConfig(env: NodeJS.ProcessEnv = process.env): AerialConfig {
-  const simulator = readBool(env.AERIAL_DEV_SIMULATOR);
+  // Development must raise the integration boundary without requiring a manually
+  // supplied flag. An explicit external endpoint always takes precedence.
+  const simulator = readBool(env.AERIAL_DEV_SIMULATOR) ||
+    (env.NODE_ENV === 'development' && !env.AERIAL_BASE_URL?.trim());
   const baseUrl = normalizeUrl(env.AERIAL_BASE_URL);
   const inferenceUrl = normalizeUrl(env.AERIAL_INFERENCE_URL);
   const enabled = readBool(env.AERIAL_ENABLED) || simulator || Boolean(baseUrl);
