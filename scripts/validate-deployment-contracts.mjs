@@ -22,6 +22,7 @@ const u2ebDatabases = u2ebEnvironment?.databases ?? [];
 const u2ebApi = u2ebServices.find((service) => service.name === 'ryanai-api-u2eb');
 const u2ebWeb = u2ebServices.find((service) => service.name === 'ryanai-web-u2eb');
 const u2ebRedis = u2ebServices.find((service) => service.name === 'ryanai-redis-u2eb');
+const u2ebMcp = u2ebServices.find((service) => service.name === 'ryanai-mcp-u2eb');
 const u2ebDatabase = u2ebDatabases.find((database) => database.name === 'ryanai_database');
 const renderApi = productionEnvironment
   ? renderServices.find((service) => service.name === 'ryanai-api')
@@ -39,7 +40,7 @@ const productionServices = productionEnvironment?.services
 const renderServiceNames = productionServices.map((service) => service.name);
 const expectedRenderServiceNames = productionEnvironment
   ? ['ryanai-api', 'ryanai-web', 'ryanai-redis']
-  : ['ryanai-api-u2eb', 'ryanai-web-u2eb', 'ryanai-redis-u2eb'];
+  : ['ryanai-api-u2eb', 'ryanai-web-u2eb', 'ryanai-redis-u2eb', 'ryanai-mcp-u2eb'];
 const effectiveEnvVars = (service, config) => {
   const projects = Array.isArray(config?.projects) ? config.projects : [];
   const groups = new Map(projects.flatMap((project) => (project.environments ?? []).flatMap((environment) =>
@@ -114,7 +115,7 @@ const hasLegacyVercelIntegration =
 const checks = [
   ['Vercel project, build package, deployment workflows, and CI credentials are absent', !hasLegacyVercelIntegration],
   ['Render Blueprint declares services through a supported top-level or project-environment list', Array.isArray(renderConfig.services) || renderProjects.some((project) => (project.environments ?? []).some((environment) => Array.isArray(environment.services)))],
-  ['Render Blueprint declares exactly the API, web, and Redis resources', renderServices.length === 3 && expectedRenderServiceNames.every((name) => renderServiceNames.includes(name)) && new Set(renderServiceNames).size === 3],
+  ['Render Blueprint declares the API, web, Redis, and MCP resources', renderServices.length === 4 && expectedRenderServiceNames.every((name) => renderServiceNames.includes(name)) && new Set(renderServiceNames).size === 4],
   ['Render API and web environment variable keys are unique', hasUniqueEnvKeys(renderApi, renderConfig) && hasUniqueEnvKeys(renderWeb, renderConfig)],
   ['Render API and web use the official repository and main branch', renderApi?.repo === 'https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main' && renderWeb?.repo === renderApi?.repo && renderApi?.branch === 'main' && renderWeb?.branch === 'main'],
   ['Render API uses the standalone Docker image and /health', renderApi?.runtime === 'docker' && renderApi?.dockerfilePath === './Dockerfile.api' && renderApi?.healthCheckPath === '/health'],
@@ -164,7 +165,10 @@ checks.push(
   ['Staging API does not generate or hardcode authentication secrets', !stagingApi?.envVars?.some((item) => item.generateValue === true || item.key === 'JWT_SECRET')],
   ['Staging Redis is a separate staging resource in Oregon with private-only ingress', stagingRedis?.type === 'keyvalue' && stagingRedis?.region === 'oregon' && Array.isArray(stagingRedis?.ipAllowList) && stagingRedis.ipAllowList.length === 0 && stagingApi?.envVars?.some((item) => item.key === 'REDIS_URL' && item.fromService?.name === 'ryanai-redis-staging')],
   ['Staging disables schedulers, alerts, communications, attachments, scanning, and cleanup by default', ['SCHEDULER_ENABLED', 'ALERTS_ENABLED', 'COMMUNICATIONS_ENABLED', 'COMMUNICATION_ATTACHMENTS_ENABLED', 'ATTACHMENT_SCANNER_ENABLED', 'ATTACHMENT_ORPHAN_CLEANUP_ENABLED'].every(stagingFalse)],
-  ['U2EB Blueprint declares exactly the existing API, web, and Redis resources without a managed database', u2ebServices.length === 3 && new Set(u2ebServices.map((service) => service.name)).size === 3 && !u2ebDatabase],
+  ['U2EB Blueprint declares the existing API, web, Redis, and MCP resources without a managed database', u2ebServices.length === 4 && new Set(u2ebServices.map((service) => service.name)).size === 4 && !u2ebDatabase],
+  ['U2EB MCP service uses the authorised repository, Dockerfile, health endpoint, and manual deployment', u2ebMcp?.repo === u2ebApi?.repo && u2ebMcp?.branch === 'main' && u2ebMcp?.runtime === 'docker' && u2ebMcp?.dockerfilePath === './mcp-server/Dockerfile' && u2ebMcp?.healthCheckPath === '/health' && u2ebMcp?.autoDeployTrigger === 'off'],
+  ['U2EB MCP requires shared delegation and service credentials without generating secrets', isSyncFalse(u2ebMcp, 'RYANAI_MCP_DELEGATION_SECRET', renderConfig) && isSyncFalse(u2ebMcp, 'RYANAI_MCP_SERVICE_TOKEN', renderConfig) && isSyncFalse(u2ebApi, 'RYANAI_MCP_DELEGATION_SECRET', renderConfig) && isSyncFalse(u2ebApi, 'RYANAI_MCP_SERVICE_TOKEN', renderConfig)],
+  ['U2EB MCP host, API target, and tool allowlist are explicitly configured', envVar(u2ebMcp, 'MCP_ALLOWED_HOSTS', renderConfig)?.value === 'ryanai-mcp-u2eb.onrender.com' && envVar(u2ebMcp, 'RYANAI_API_BASE_URL', renderConfig)?.value === 'https://ryanai-api-u2eb.onrender.com' && envVar(u2ebMcp, 'RYANAI_MCP_ENABLED_TOOLS', renderConfig)?.value === 'tool_registry,platform_health,ryanai_stack_manifest'],
   ['U2EB API adopts the existing Docker service and remains manual-deploy only', u2ebApi?.runtime === 'docker' && u2ebApi?.dockerfilePath === './Dockerfile.api' && u2ebApi?.healthCheckPath === '/health' && u2ebApi?.autoDeployTrigger === 'off' && u2ebApi?.repo === 'https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main'],
   ['U2EB API receives PostgreSQL and Redis URLs through resource references, not hardcoded credentials', isSyncFalse(u2ebApi, 'DATABASE_URL', renderConfig) && envVar(u2ebApi, 'REDIS_URL', renderConfig)?.fromService?.name === 'ryanai-redis-u2eb' && envVar(u2ebApi, 'REDIS_URL', renderConfig)?.fromService?.property === 'connectionString'],
   ['U2EB API is staging-classified and keeps schedulers, alerts, and outbound communications disabled', envVar(u2ebApi, 'NODE_ENV', renderConfig)?.value === 'staging' && ['SCHEDULER_ENABLED', 'ALERTS_ENABLED', 'COMMUNICATIONS_ENABLED', 'COMMUNICATION_ATTACHMENTS_ENABLED', 'ATTACHMENT_SCANNER_ENABLED', 'ATTACHMENT_ORPHAN_CLEANUP_ENABLED'].every((key) => envVar(u2ebApi, key, renderConfig)?.value === 'false')],
