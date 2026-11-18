@@ -11,7 +11,6 @@ interface CreateRequestBody {
   targetUserId: string;
   requestedRole?: LifecycleRole;
   reason: string;
-  confirmation: string;
 }
 
 interface ConfirmRequestBody {
@@ -48,7 +47,7 @@ function policyFor(actorId: string, targetUserId: string, action: 'CREATE' | 'UP
     target: 'auth.users/' + targetUserId,
     actorType: 'human',
     ownerAuthorized: true,
-    ownerConfirmed: true,
+    ownerConfirmed: action === 'UPDATE',
   });
 }
 
@@ -109,11 +108,6 @@ export const adminAccountLifecycleRoutes: FastifyPluginAsync = async (fastify) =
     if (action !== 'role_change' && body.requestedRole !== undefined) {
       return reply.code(400).send({ error: 'requestedRole is valid only for role_change requests.' });
     }
-    const expectedPhrase = 'REQUEST ' + action.toUpperCase() + ' ' + targetUserId;
-    if (body.confirmation !== expectedPhrase) {
-      return reply.code(400).send({ error: 'Explicit confirmation phrase does not match the requested action and target.' });
-    }
-
     const policy = policyFor(request.authUser!.id, targetUserId, 'CREATE');
     if (policy.decision !== 'ALLOW') {
       return reply.code(403).send({ error: 'Gen-X blocked this lifecycle request.', policy: { decision: policy.decision, ruleId: policy.ruleId } });
@@ -121,15 +115,15 @@ export const adminAccountLifecycleRoutes: FastifyPluginAsync = async (fastify) =
 
     const requestId = randomUUID();
     const capabilityNote = action === 'revoke_sessions'
-      ? 'Execution is not enabled: Supabase session revocation requires the target user JWT. The platform will not collect or store another user’s JWT.'
-      : 'Request is owner-confirmed and recorded. No Auth role or ban state is changed by this endpoint.';
+      ? 'Pending owner confirmation. Session revocation later requires the target user JWT; the platform will not collect or store another user’s JWT.'
+      : 'Pending owner confirmation. No Auth role or ban state is changed by this endpoint.';
     const details: LifecycleEventDetails = {
       requestId,
       action,
       targetUserId,
       requestedRole: body.requestedRole,
       reason,
-      state: action === 'revoke_sessions' ? 'CONFIRMED_CAPABILITY_BLOCKED' : 'CONFIRMED_PENDING_EXECUTION_REVIEW',
+      state: 'PENDING_OWNER_CONFIRMATION',
       policyDecision: policy.decision,
       policyRuleId: policy.ruleId,
       capabilityNote,
@@ -150,7 +144,7 @@ export const adminAccountLifecycleRoutes: FastifyPluginAsync = async (fastify) =
       requestedRole: body.requestedRole ?? null,
       policy: { decision: policy.decision, ruleId: policy.ruleId },
       capabilityNote,
-      confirmationRecorded: true,
+      confirmationRecorded: false,
       accountMutationPerformed: false,
     });
   });
@@ -187,7 +181,7 @@ export const adminAccountLifecycleRoutes: FastifyPluginAsync = async (fastify) =
         : 'Owner confirmation is recorded; execution remains disabled pending separate staging verification and production authorization.';
       const confirmed: LifecycleEventDetails = {
         ...details,
-        state: details.action === 'revoke_sessions' ? 'CONFIRMED_CAPABILITY_BLOCKED' : 'CONFIRMED_PENDING_EXECUTION_REVIEW',
+        state: details.action === 'revoke_sessions' ? 'CONFIRMED_CAPABILITY_BLOCKED' : 'OWNER_CONFIRMED_PENDING_EXECUTION_REVIEW',
         policyDecision: policy.decision,
         policyRuleId: policy.ruleId,
         capabilityNote,
