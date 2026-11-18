@@ -112,6 +112,9 @@ beforeAll(async () => {
   });
   await import('./launcher');
   await vi.waitFor(() => expect(state.listen).toHaveBeenCalledOnce());
+  // The mocked listen() call does not mutate Node's underlying server state.
+  // Model the post-listen state so the liveness contract is tested faithfully.
+  Object.defineProperty(state.app!.server, 'listening', { configurable: true, value: true });
 });
 
 afterAll(async () => {

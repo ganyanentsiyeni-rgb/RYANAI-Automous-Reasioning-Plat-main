@@ -10,7 +10,7 @@ interface GatewayBody {
   responseFormat?: 'text' | 'json_object';
 }
 
-function requireMcpService(request: FastifyRequest, reply: FastifyReply): void {
+async function requireMcpService(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const expected = process.env.RYANAI_MCP_SERVICE_TOKEN?.trim() ?? '';
   if (expected.length < 32) {
     reply.code(503).send({ success: false, error: 'MCP service authentication is not configured.' });

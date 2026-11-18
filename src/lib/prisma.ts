@@ -1,7 +1,7 @@
 // File path: ./src/lib/prisma.ts
 
 import { PrismaClient } from "@prisma/client";
-import { resolveConnectionUrls } from "../server/startupConfig.js";
+import { resolveConnectionUrls } from "../server/startupConfig.ts";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;

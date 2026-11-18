@@ -19,7 +19,10 @@ describe('Community Help Centre', () => {
  it('filters answers while preserving relevant category context', async () => {
   await act(async () => root.render(<CommunityHelpPage />));
   const search = container.querySelector<HTMLInputElement>('#faq-search')!;
-  await act(async () => { search.value = 'Gen-X'; search.dispatchEvent(new Event('input', { bubbles: true })); });
+  await act(async () => {
+   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(search, 'Gen-X');
+   search.dispatchEvent(new Event('input', { bubbles: true }));
+  });
   expect(container.textContent).toContain('What is Gen-X?');
   expect(container.textContent).not.toContain('Can I use Quant Lab for live trading?');
  });
