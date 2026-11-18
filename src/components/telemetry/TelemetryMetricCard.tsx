@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import type { TelemetryMetricSnapshot } from '@/lib/telemetry/contracts';
 import { getSnapshotFreshness } from '@/lib/healthFreshness';
 export interface TelemetryMetricCardProps {
@@ -11,24 +11,21 @@ export interface TelemetryMetricCardProps {
   status?: 'available' | 'unavailable' | 'error';
   icon?: ReactNode;
   snapshot?: TelemetryMetricSnapshot;
+  nowMs?: number;
 }
 
 /** Shared snapshot card. It never invents a trend from a single observation. */
 export default function TelemetryMetricCard({
   label, value, detail, source, observedAt = null, staleAfterMs = 90_000,
-  status = 'available', icon, snapshot,
+  status = 'available', icon, snapshot, nowMs,
 }: TelemetryMetricCardProps) {
-  const [nowMs, setNowMs] = useState<number | null>(null);
-  useEffect(() => {
-    setNowMs(Date.now());
-  }, [observedAt, snapshot?.observedAt]);
 
   const resolvedStatus = snapshot?.status ?? status;
   const resolvedObservedAt = snapshot ? snapshot.observedAt : observedAt;
   const resolvedSource = snapshot?.source ?? source;
-  const freshness = snapshot?.freshness ?? (nowMs === null
-    ? 'unknown'
-    : getSnapshotFreshness(resolvedObservedAt, nowMs, staleAfterMs));
+  const freshness = snapshot?.freshness ?? (typeof nowMs === 'number'
+    ? getSnapshotFreshness(resolvedObservedAt, nowMs, staleAfterMs)
+    : 'unknown');
   const freshnessLabel = resolvedStatus === 'error' ? 'Error'
     : resolvedStatus === 'unavailable' ? 'Unavailable'
     : freshness === 'fresh' ? 'Fresh'
