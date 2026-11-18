@@ -11,6 +11,10 @@ export interface GenXSecurityEvent {
   environment?: 'development' | 'staging' | 'production';
   /** Set only by trusted API handlers after Supabase verification; never from model/tool input. */
   actorType?: 'human' | 'agent' | 'service';
+  /** Trusted route-only context: true only after requireOwner succeeds. */
+  ownerAuthorized?: boolean;
+  /** True only after the owner has supplied the request-specific confirmation phrase. */
+  ownerConfirmed?: boolean;
 }
 
 export interface GenXPolicyResult {
@@ -53,6 +57,15 @@ export function evaluateGenXSecurityEvent(event: GenXSecurityEvent): GenXPolicyR
   // Otherwise a nominally safe reader could receive shell-control or injection payloads.
   if (event.target && COMMAND_CONTROL.test(event.target)) {
     return { decision: 'DENY', ruleId: 'GX-INJECTION-001', reason: 'Target contains shell-control or command-injection syntax.', severity: 'HIGH' };
+  }
+  // Owner-confirmed lifecycle request records are allowed only through the
+  // owner-guarded API route. This authorizes appending request/audit events;
+  // it does not authorize a Supabase Auth mutation or agent execution.
+  if (event.toolName === 'ryanai_account_lifecycle' && event.actorType === 'human' &&
+      event.ownerAuthorized === true && event.ownerConfirmed === true &&
+      ['CREATE', 'UPDATE'].includes(event.action) &&
+      /^auth\\.users\\/[0-9a-f-]{36}$/i.test(event.target ?? '')) {
+    return { decision: 'ALLOW', ruleId: 'GX-OWNER-LIFECYCLE-REQUEST-001', reason: 'Verified owner explicitly confirmed an account-lifecycle request record; no account mutation is authorized by this rule.', severity: 'HIGH' };
   }
   // Authenticated human requests may manage only their own Memory Vault records.
   // Agent/service callers do not inherit this exception; their mutations still require approval.
