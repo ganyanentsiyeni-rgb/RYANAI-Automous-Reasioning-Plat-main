@@ -177,7 +177,7 @@ describe('IntelligenceEventInbox', () => {
     inboxDelegate.findUnique.mockResolvedValue({ ...candidate, status: 'processing', leaseOwner: 'worker-a' });
     attemptDelegate.create.mockResolvedValue({});
     const handler = vi.fn().mockResolvedValue(undefined);
-    const result = await inbox.processNext('worker-a', handler, new Date('2026-11-18T12:00:00Z'));
+    const result = await inbox.processNext('worker-a', handler);
     expect(result).toMatchObject({ status: 'processed', eventId: validEvent.eventId });
     expect(handler).toHaveBeenCalledWith(expect.objectContaining({
       eventId: validEvent.eventId, source: { provider: 'tapmap', service: 'desktop-agent' },
