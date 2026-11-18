@@ -46,7 +46,7 @@ export default function AdminSettingsHub() {
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {settingsAreas.map(({ id, title, description, icon: Icon, capability }) => (
-          <a key={id} href="#/settings" className="group rounded-xl border border-white/10 bg-slate-950/60 p-4 transition hover:border-cyan-300/35 hover:bg-cyan-300/[0.04]" aria-label={title + ': open Settings'}>
+          <a key={id} href={`?section=${encodeURIComponent(id)}#/settings`} className="group rounded-xl border border-white/10 bg-slate-950/60 p-4 transition hover:border-cyan-300/35 hover:bg-cyan-300/[0.04]" aria-label={title + ': open Settings'}>
             <div className="flex items-center justify-between gap-2">
               <Icon className="h-5 w-5 text-cyan-300" aria-hidden="true" />
               <ArrowUpRight className="h-3.5 w-3.5 text-slate-600 transition group-hover:text-cyan-200" aria-hidden="true" />
