@@ -109,7 +109,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   const workflow = yaml.parse(readFileSync(workflowPath, 'utf8'));
   const errors = validateProviderVerification(workflow);
   if (errors.length) {
-    console.error(errors.map((error) => \`FAIL \${error}\`).join(String.fromCharCode(10)));
+    console.error(errors.map((error) => `FAIL ${error}`).join(String.fromCharCode(10)));
     process.exit(1);
   }
   console.log('PASS provider verification is manual-only, read-only, isolated, and credential-safe');

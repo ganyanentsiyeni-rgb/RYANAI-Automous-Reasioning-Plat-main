@@ -11,17 +11,21 @@ export interface TelemetryMetricCardProps {
   status?: 'available' | 'unavailable' | 'error';
   icon?: ReactNode;
   snapshot?: TelemetryMetricSnapshot;
+  nowMs?: number;
 }
 
 /** Shared snapshot card. It never invents a trend from a single observation. */
 export default function TelemetryMetricCard({
   label, value, detail, source, observedAt = null, staleAfterMs = 90_000,
-  status = 'available', icon, snapshot,
+  status = 'available', icon, snapshot, nowMs,
 }: TelemetryMetricCardProps) {
+
   const resolvedStatus = snapshot?.status ?? status;
   const resolvedObservedAt = snapshot ? snapshot.observedAt : observedAt;
   const resolvedSource = snapshot?.source ?? source;
-  const freshness = snapshot?.freshness ?? getSnapshotFreshness(resolvedObservedAt, Date.now(), staleAfterMs);
+  const freshness = snapshot?.freshness ?? (typeof nowMs === 'number'
+    ? getSnapshotFreshness(resolvedObservedAt, nowMs, staleAfterMs)
+    : 'unknown');
   const freshnessLabel = resolvedStatus === 'error' ? 'Error'
     : resolvedStatus === 'unavailable' ? 'Unavailable'
     : freshness === 'fresh' ? 'Fresh'
