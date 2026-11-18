@@ -30,9 +30,8 @@ function authAdminConfiguration() {
 }
 
 /**
- * Read-only directory of public profile records.
- * This intentionally does not claim to enumerate every Supabase Auth identity:
- * accounts without a corresponding public.profiles row are not represented.
+ * Read-only directory combining public profile rows with one optional,
+ * paginated Supabase Auth Admin page. No Auth mutation methods are exposed.
  */
 export const adminUsersRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', requireAdmin);
@@ -94,7 +93,8 @@ export const adminUsersRoutes: FastifyPluginAsync = async (fastify) => {
         );
         if (response.ok) {
           const payload = await response.json() as { users?: Array<Record<string, unknown>> };
-          const users = Array.isArray(payload.users) ? payload.users : [];
+          if (!Array.isArray(payload.users)) throw new Error('Supabase Auth Admin returned an invalid user page.');
+          const users = payload.users;
           authInventory = {
             status: 'available',
             page,
