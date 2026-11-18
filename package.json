@@ -161,7 +161,9 @@
     "test:deploy:contracts": "python3 -m unittest discover -s scripts -p 'test-deploy-production.py'",
     "test:prisma-breaking-guard": "python3 -m unittest scripts/test_check_breaking_schema.py -v",
     "db:validate": "prisma validate --schema=prisma/schema.prisma && prisma validate --schema=prisma/audiobook/schema.prisma",
-    "db:status": "prisma migrate status --schema=prisma/schema.prisma"
+    "db:status": "prisma migrate status --schema=prisma/schema.prisma",
+    "aerial:smoke": "node scripts/aerial-ai-ran-smoke.mjs",
+    "aerial:dev:bridge": "python3 aerial-bridge/server.py"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1169.0",
