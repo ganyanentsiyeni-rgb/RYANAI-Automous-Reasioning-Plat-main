@@ -3,6 +3,7 @@ import Fastify from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as genxPolicy from '../../security/genxPolicy.js';
 import { adminAccountLifecycleRoutes } from './adminAccountLifecycle.js';
+import { createAuditIntegrity } from '../security/auditIntegrity.js';
 
 vi.mock('./auth.js', () => ({
   requireOwner: async (request: { headers: Record<string, unknown>; authUser?: unknown }, reply: { code: (status: number) => { send: (body: unknown) => unknown } }) => {
@@ -19,7 +20,7 @@ describe('owner account lifecycle request ledger', () => {
 
   function makeApp(events: Array<Record<string, unknown>> = []) {
     const create = vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
-      const event = { ...data, id: 'event-' + (events.length + 1), createdAt: new Date('2026-11-18T12:00:00Z') };
+      const event = { ...data, id: data.id ?? 'event-' + (events.length + 1), createdAt: new Date('2026-11-18T12:00:00Z') };
       events.unshift(event);
       return event;
     });
