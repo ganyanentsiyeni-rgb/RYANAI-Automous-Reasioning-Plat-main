@@ -35,7 +35,7 @@ export interface EventInboxOptions {
 }
 
 export interface EnqueueEventResult {
-  event: Prisma.IntelligenceEventInboxGetPayload<{}>;
+  event: Prisma.IntelligenceEventInboxGetPayload<true>;
   duplicate: boolean;
 }
 
@@ -68,7 +68,7 @@ function isUniqueConstraintError(error: unknown): boolean {
     && (error as { code?: unknown }).code === 'P2002';
 }
 
-function toEnvelope(row: Prisma.IntelligenceEventInboxGetPayload<{}>): RyanAIEventEnvelope {
+function toEnvelope(row: Prisma.IntelligenceEventInboxGetPayload<true>): RyanAIEventEnvelope {
   return {
     eventId: row.eventId,
     eventType: row.eventType,
