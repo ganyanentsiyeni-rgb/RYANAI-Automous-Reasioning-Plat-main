@@ -352,7 +352,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
             <h2 className="mt-1 text-xl font-semibold text-white">Platform administration</h2>
             <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-400">Operational areas are shown with their actual implementation status. Unavailable modules are not presented as working controls.</p>
           </div>
-          <span className="rounded-full border border-emerald-300/25 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-200">Environment scoped · U2EB</span>
+          <span className="rounded-full border border-slate-400/25 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-300">Verified capabilities only · U2EB</span>
         </div>
         <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           <a href="#admin-runtime" className="rounded-xl border border-cyan-300/20 bg-cyan-300/[0.06] p-3 transition hover:border-cyan-200/50 hover:bg-cyan-300/10">
@@ -381,22 +381,20 @@ export default function AdminConsole({ userId }: { userId: string }) {
             <span className="mt-1 block text-xs text-slate-400">Recent event metadata, actor and resource references</span>
           </a>
           {[
-
-            ['Infrastructure', 'U2EB Render services, database and Redis controls'],
-
-            ['Integrations', 'Provider registry, adapters and connection diagnostics'],
-            ['AI workforce', 'Agent inventory, task queues and worker operations'],
-            ['Models & inference', 'Provider routing, model health and usage controls'],
-            ['Database operations', 'Schema, migration and backup evidence'],
-            ['Communications', 'Channel policy, consent and verified delivery status'],
-            ['Observability', 'Logs, traces, alerts and incident investigation'],
-            ['Configuration', 'Environment-scoped feature and policy configuration'],
-          ].map(([title, description]) => (
-            <div key={title} aria-disabled="true" className="rounded-xl border border-white/10 bg-slate-950/50 p-3 opacity-80">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-200">Not yet wired</span>
-              <span className="mt-1 block text-sm font-semibold text-slate-200">{title}</span>
-              <span className="mt-1 block text-xs text-slate-500">{description}</span>
-            </div>
+            ['Infrastructure', 'Runtime CPU, memory and dependency observations', '#admin-runtime', 'Read-only diagnostics'],
+            ['Integrations', 'Provider readiness and connection inventory', '#/cockpit', 'Open Cockpit'],
+            ['AI workforce', 'Agent tasks, queues and execution progress', '#/operator', 'Open Operator'],
+            ['Models & inference', 'Model routing and inference availability', '#/cockpit', 'Open Cockpit'],
+            ['Database operations', 'Database readiness and runtime dependency signals', '#admin-runtime', 'Read-only diagnostics'],
+            ['Communications', 'Owner-authorised channel status and conversations', identity?.user.isOwner ? '#/comms' : '#admin-identity', identity?.user.isOwner ? 'Open Comms' : 'Owner access required'],
+            ['Observability', 'Platform health freshness and operational awareness', '#/dashboard', 'Open Dashboard'],
+            ['Configuration', 'Account preferences and workspace settings', '#/settings', 'Open Settings'],
+          ].map(([title, description, href, action]) => (
+            <a key={title} href={href} className="rounded-xl border border-white/10 bg-slate-950/50 p-3 transition hover:border-cyan-300/30 hover:bg-cyan-300/[0.04] focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-cyan-200">{action}</span>
+              <span className="mt-1 block text-sm font-semibold text-white">{title}</span>
+              <span className="mt-1 block text-xs text-slate-400">{description}</span>
+            </a>
           ))}
         </div>
         <p className="mt-4 border-t border-white/10 pt-3 text-[11px] leading-5 text-slate-500">Administrator access never overrides Gen-X policy. Production mutations, secrets, paid upgrades and deployments remain outside this U2EB console and require separate authorization.</p>
@@ -407,8 +405,10 @@ export default function AdminConsole({ userId }: { userId: string }) {
           <div><h2 id="admin-user-directory-title" className="text-lg font-semibold text-white">User directory</h2><p className="mt-1 text-sm text-slate-400">Read-only view of profile records currently stored in public.profiles.</p></div>
           <span className="rounded-full border border-white/15 px-3 py-1 text-xs text-slate-300">{directoryProfiles.length} profiles returned · max 50</span>
         </div>
-        {directoryProfiles.length === 0
-          ? <EmptyState text="No public profile records were returned. This does not prove that no Supabase Auth accounts exist." />
+        {resourceErrors.directory
+          ? <UnavailableState label="Profile directory unavailable" detail={resourceErrors.directory} />
+          : directoryProfiles.length === 0
+            ? <EmptyState text="No public profile records were returned. This does not prove that no Supabase Auth accounts exist." />
           : <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[620px] text-left text-xs">
             <thead><tr className="border-b border-white/10 text-slate-500"><th className="py-2 pr-3 font-medium">Profile</th><th className="py-2 pr-3 font-medium">Email</th><th className="py-2 pr-3 font-medium">Created</th><th className="py-2 font-medium">Updated</th></tr></thead>
             <tbody>{directoryProfiles.map((profile) => <tr key={profile.id} className="border-b border-white/5 text-slate-300">
@@ -519,7 +519,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
         <TelemetryMetricCard label="Admin metrics endpoint" value={metrics?.status ?? 'Unavailable'} detail="Protected process-metrics snapshot." source="/api/admin/metrics" observedAt={metrics?.timestamp ?? null} status={metrics ? 'available' : 'unavailable'} />
         <TelemetryMetricCard label="API process uptime" value={metrics ? durationLabel(metrics.uptime) : 'Not reported'} detail="Process uptime only; not a deployment-health guarantee." source="/api/admin/metrics" observedAt={metrics?.timestamp ?? null} status={metrics ? 'available' : 'unavailable'} snapshot={uptimeSnapshot} />
         <TelemetryMetricCard label="Runtime memory" value={metrics ? metrics.system.rssMemoryMB + ' MB RSS' : 'Not reported'} detail={metrics ? metrics.system.heapUsedMB + ' MB heap · ' + metrics.system.nodeVersion : 'Not reported'} source="/api/admin/metrics" observedAt={metrics?.timestamp ?? null} status={metrics ? 'available' : 'unavailable'} snapshot={memorySnapshot} />
-        <TelemetryMetricCard label="Pending approvals" value={String(actions.length + pendingJobs.length)} detail={actions.length + ' external actions · ' + pendingJobs.length + ' engineering plans'} source="Actions and engineering queue" status="available" />
+        <TelemetryMetricCard label="Pending approvals" value={approvalQueuesAvailable ? String(pendingApprovalCount) : 'Unavailable'} detail={approvalQueuesAvailable ? actions.length + ' external actions · ' + pendingJobs.length + ' engineering plans' : 'One or more approval queues could not be verified.'} source="Actions and engineering queue" status={approvalQueuesAvailable ? 'available' : 'unavailable'} />
       </div>
 
       <section className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 sm:p-6">
@@ -531,18 +531,26 @@ export default function AdminConsole({ userId }: { userId: string }) {
           <InfoRow label="Database driver" value={metrics?.database.driver ?? 'Not reported'} />
           <InfoRow label="Database connectivity" value={metrics?.database.status ?? 'Unknown'} />
           <InfoRow label="Node runtime" value={metrics?.system.nodeVersion ?? 'Not reported'} />
+          <InfoRow label="Host platform / architecture" value={metrics?.system.platform && metrics.system.architecture ? metrics.system.platform + ' / ' + metrics.system.architecture : 'Not reported'} />
+          <InfoRow label="Logical processors" value={metrics?.system.logicalProcessors === undefined ? 'Not reported' : String(metrics.system.logicalProcessors)} />
+          <InfoRow label="Host memory" value={metrics?.system.totalMemoryMB === undefined ? 'Not reported' : String(metrics.system.freeMemoryMB) + ' MB free / ' + String(metrics.system.totalMemoryMB) + ' MB total'} />
+          <InfoRow label="Heap allocation" value={metrics?.system.heapTotalMB === undefined ? 'Not reported' : metrics.system.heapUsedMB + ' MB used / ' + metrics.system.heapTotalMB + ' MB allocated'} />
+          <InfoRow label="External / ArrayBuffer" value={metrics?.system.externalMemoryMB === undefined ? 'Not reported' : metrics.system.externalMemoryMB + ' MB external / ' + String(metrics.system.arrayBuffersMB) + ' MB buffers'} />
+          <InfoRow label="Process CPU time" value={metrics?.system.processCpuUserMs === undefined ? 'Not reported' : metrics.system.processCpuUserMs + ' ms user / ' + String(metrics.system.processCpuSystemMs) + ' ms system'} />
+          <InfoRow label="Load average (1 / 5 / 15 min)" value={metrics?.system.loadAverage?.map(value => value.toFixed(2)).join(' / ') ?? 'Not reported'} />
           <InfoRow label="Metrics timestamp" value={dateLabel(metrics?.timestamp)} />
         </dl>
-        <p className="mt-4 text-xs leading-5 text-slate-500">The metrics route intentionally reports database state as unknown rather than probing it. Use the System Dashboard for independent API, PostgreSQL, Redis and checkpoint health signals.</p>
+        <p className="mt-4 text-xs leading-5 text-slate-500">{metrics?.database.note ?? 'Database state is unknown until independently verified.'} Host memory and load figures describe the runtime host view and may not equal the service container's configured resource limits. No database write or mutation is performed by this endpoint.</p>
       </section>
 
       <section id="admin-approvals" className="scroll-mt-6 space-y-4" aria-labelledby="pending-actions-title">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div><h2 id="pending-actions-title" className="text-xl font-semibold text-white">Pending external actions</h2><p className="mt-1 text-sm text-slate-400">Approving executes the queued action. Review its summary and arguments before deciding.</p></div>
-          <span className="text-xs text-slate-500">{actions.length} awaiting a decision</span>
+          <span className="text-xs text-slate-500">{resourceErrors.actions ? 'Queue status unavailable' : actions.length + ' awaiting a decision'}</span>
         </div>
         {loading && <p className="text-sm text-slate-400">Loading administrator queue…</p>}
-        {!loading && actions.length === 0 && <EmptyState text="No unexpired actions are waiting for administrator approval." />}
+        {resourceErrors.actions && <UnavailableState label="External action queue unavailable" detail={resourceErrors.actions} />}
+        {!loading && !resourceErrors.actions && actions.length === 0 && <EmptyState text="No unexpired actions are waiting for administrator approval." />}
         <div className="space-y-3">
           {actions.map((action) => (
             <article key={action.id} className="rounded-xl border border-amber-300/15 bg-slate-900/60 p-4">
@@ -574,9 +582,10 @@ export default function AdminConsole({ userId }: { userId: string }) {
       <section id="admin-engineering" className="scroll-mt-6 space-y-4" aria-labelledby="engineering-approvals-title">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div><h2 id="engineering-approvals-title" className="text-xl font-semibold text-white">Engineering plan approvals</h2><p className="mt-1 text-sm text-slate-400">Approval binds the stored plan hash, base commit and proposed diff hash. Self-approval is blocked by the API.</p></div>
-          <span className="text-xs text-slate-500">{pendingJobs.length} awaiting review</span>
+          <span className="text-xs text-slate-500">{resourceErrors.jobs ? 'Queue status unavailable' : pendingJobs.length + ' awaiting review'}</span>
         </div>
-        {!loading && jobs.length === 0 && <EmptyState text="No engineering jobs are currently visible to this administrator." />}
+        {resourceErrors.jobs && <UnavailableState label="Engineering approval queue unavailable" detail={resourceErrors.jobs} />}
+        {!loading && !resourceErrors.jobs && jobs.length === 0 && <EmptyState text="No engineering jobs are currently visible to this administrator." />}
         <div className="space-y-3">
           {jobs.map((job) => {
             const canApprove = job.status === 'queued' && job.approvalStatus === 'pending'
@@ -631,4 +640,11 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 function EmptyState({ text }: { text: string }) {
   return <div className="rounded-xl border border-dashed border-white/15 bg-slate-950/30 p-5 text-sm text-slate-500">{text}</div>;
+}
+function UnavailableState({ label, detail }: { label: string; detail: string }) {
+  return <div role="alert" className="rounded-xl border border-rose-300/20 bg-rose-950/20 p-4">
+    <p className="text-sm font-semibold text-rose-200">{label}</p>
+    <p className="mt-1 break-words text-xs text-rose-200/70">{detail}</p>
+    <p className="mt-2 text-[11px] text-slate-400">The last successful snapshot is retained where available. This is not an empty queue.</p>
+  </div>;
 }
