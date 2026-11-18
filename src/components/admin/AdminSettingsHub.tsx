@@ -1,4 +1,4 @@
-import { ArrowUpRight, Blocks, BrainCircuit, Github, LayoutDashboard, Link2, LockKeyhole, Plug, Settings2, ShieldCheck, Smartphone, UserRound, Workflow } from 'lucide-react';
+import { ArrowUpRight, Blocks, BrainCircuit, Github, LayoutDashboard, Link2, LockKeyhole, Plug, ShieldCheck, Smartphone, UserRound, Workflow } from 'lucide-react';
 
 type SettingsArea = {
   id: string;
