@@ -35,8 +35,6 @@ const renderRedis = productionEnvironment
   : u2ebRedis;
 // Keep Production names separate from the active U2EB service list so the
 // isolation check does not compare U2EB resources against themselves.
-const productionServices = productionEnvironment?.services
-  ?? (Array.isArray(renderConfig.services) ? renderConfig.services : []);
 const renderServiceNames = renderServices.map((service) => service.name);
 const expectedRenderServiceNames = productionEnvironment
   ? ['ryanai-api', 'ryanai-web', 'ryanai-redis']
