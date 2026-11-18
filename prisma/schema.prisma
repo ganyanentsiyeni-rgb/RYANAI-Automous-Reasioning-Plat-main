@@ -1479,7 +1479,7 @@ model IntelligenceEventAttempt {
 
 /// Append-only audit ledger for owner account lifecycle requests.
 model AccountLifecycleAuditEvent {
-  id        String   @id @default(dbgenerated("gen_random_uuid()"))) @db.Uuid
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   requestId String   @map("request_id") @db.Uuid
   actorId   String   @map("actor_id") @db.Uuid
   eventType String   @map("event_type") @db.VarChar(64)
