@@ -101,10 +101,8 @@ function smtpTransport() {
 
 /** Real provider-backed channels. Twilio and Resend webhooks are signature verified. */
 export const commsPlugin: FastifyPluginAsync = async (fastify) => {
-  if (!isCommunicationsEnabled()) {
-    fastify.log.info('Communications routes are disabled by configuration.');
-    return;
-  }
+  // Keep the Comms workspace and read-only history/status routes registered.
+  // Dispatch remains separately gated below; attachments retain their scanner gate.
   await fastify.register(formbody);
   await fastify.register(rawBody, { field: 'rawBody', global: false, encoding: 'utf8', runFirst: true });
 
@@ -227,6 +225,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
 
   fastify.post<{ Body: CommsBody }>('/api/comms/send', async (request, reply) => {
     if (!request.authUser?.isOwner) return reply.code(403).send({ success: false, error: 'Owner access is required for outbound communications.' });
+    if (!isCommunicationsEnabled()) return reply.code(503).send({ success: false, error: 'Outbound communications are disabled by configuration. Comms history and workspace access remain available.' });
     if (!isCommunicationsTestAuthorized()) return reply.code(503).send({ success: false, error: 'Outbound provider dispatch is disabled until an owner explicitly authorizes a communications test.' });
     const { channel, recipient, message, subject, contentSid, contentVariables, idempotencyKey, attachmentIds = [] } = request.body ?? {};
     if (attachmentIds.length && !areCommunicationAttachmentsEnabled()) return reply.code(503).send({ success: false, error: 'Communication attachments are disabled.' });
@@ -383,6 +382,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
 
   fastify.get('/api/comms/status', async () => ({
     status: 'configuration_snapshot',
+    enabled: isCommunicationsEnabled(),
     channels: {
       whatsapp: Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_WHATSAPP_NUMBER && process.env.TWILIO_WHATSAPP_WEBHOOK_URL && process.env.RYANAI_OWNER_PHONE),
       sms: Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER && process.env.TWILIO_SMS_WEBHOOK_URL && process.env.RYANAI_OWNER_PHONE),
