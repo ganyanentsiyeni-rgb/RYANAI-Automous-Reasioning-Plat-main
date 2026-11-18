@@ -146,6 +146,72 @@ describe('Admin Console request ownership', () => {
     expect(approve?.hasAttribute('disabled')).toBe(true);
   });
 
+  it('shows the LangGraph initialization control only to the server-verified owner', async () => {
+    await mount('admin-account-a');
+    await vi.waitFor(() => expect(container.textContent).toContain('LangGraph checkpointer initialization'));
+    expect([...container.querySelectorAll('button')].some(button =>
+      button.textContent?.includes('Initialize LangGraph checkpointer'),
+    )).toBe(true);
+  });
+
+  it('does not show the LangGraph initialization control to a non-owner administrator', async () => {
+    apiFetch.mockImplementation(async (input, init) => {
+      const path = String(input);
+      if (path === '/api/auth/verify') return response({ authenticated: true, user: {
+        id: 'admin-account-a', email: 'admin@example.test', role: 'admin', isOwner: false,
+      } });
+      if (path === '/api/admin/audit-events?limit=30') return response({ events: [] });
+      if (path === '/api/admin/users?limit=50&page=1') return response(userDirectoryResponse);
+      if (path === '/api/admin/metrics') return response({
+        status: 'ok', uptime: 60, timestamp: '2026-11-18T12:00:00.000Z',
+        database: { status: 'unknown', driver: 'postgresql' },
+        system: { nodeVersion: 'v24.0.0', rssMemoryMB: 128, heapUsedMB: 64 },
+      });
+      if (path === '/api/actions' && !init?.method) return response({ actions: [] });
+      if (path === '/api/engineering/jobs') return response({ jobs: [] });
+      throw new Error('Unexpected Admin Console request: ' + path);
+    });
+    await mount('admin-account-a');
+    await vi.waitFor(() => expect(container.textContent).toContain('Session verified'));
+    expect(container.textContent).not.toContain('LangGraph checkpointer initialization');
+  });
+
+  it('requires the exact owner confirmation before invoking LangGraph setup and displays its result', async () => {
+    const prompt = vi.fn().mockReturnValue('INITIALIZE LANGGRAPH');
+    vi.stubGlobal('prompt', prompt);
+    apiFetch.mockImplementation(async (input, init) => {
+      const path = String(input);
+      if (path === '/api/auth/verify') return response({ authenticated: true, user: {
+        id: 'admin-account-a', email: 'admin@example.test', role: 'admin', isOwner: true,
+      } });
+      if (path === '/api/admin/audit-events?limit=30') return response({ events: [] });
+      if (path === '/api/admin/users?limit=50&page=1') return response(userDirectoryResponse);
+      if (path === '/api/admin/metrics') return response({
+        status: 'ok', uptime: 60, timestamp: '2026-11-18T12:00:00.000Z',
+        database: { status: 'unknown', driver: 'postgresql' },
+        system: { nodeVersion: 'v24.0.0', rssMemoryMB: 128, heapUsedMB: 64 },
+      });
+      if (path === '/api/actions' && !init?.method) return response({ actions: [] });
+      if (path === '/api/engineering/jobs') return response({ jobs: [] });
+      if (path === '/api/admin/operations/langgraph-checkpointer/setup' && init?.method === 'POST') {
+        return response({ status: 'initialized', agentCheckpointer: true, migrationVersion: 5 });
+      }
+      throw new Error('Unexpected Admin Console request: ' + path);
+    });
+    await mount('admin-account-a');
+    await vi.waitFor(() => expect(container.textContent).toContain('LangGraph checkpointer initialization'));
+    await click([...container.querySelectorAll('button')].find(button =>
+      button.textContent?.includes('Initialize LangGraph checkpointer'),
+    ) ?? null);
+    await vi.waitFor(() => expect(container.textContent).toContain('migration version 5'));
+    expect(prompt).toHaveBeenCalledWith(expect.stringContaining('INITIALIZE LANGGRAPH'));
+    expect(apiFetch).toHaveBeenCalledWith(
+      '/api/admin/operations/langgraph-checkpointer/setup',
+      { method: 'POST', headers: { Accept: 'application/json' } },
+      'admin-account-a',
+    );
+  });
+
   it('scopes an explicitly confirmed pending-action decision to the same account', async () => {
     await mount('admin-account-a');
     await vi.waitFor(() => expect(container.textContent).toContain('Send approved test message'));

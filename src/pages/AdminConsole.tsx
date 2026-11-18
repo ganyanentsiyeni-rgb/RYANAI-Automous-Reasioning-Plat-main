@@ -126,6 +126,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
+  const [langGraphSetupStatus, setLangGraphSetupStatus] = useState('Not run');
   const refreshRequestId = useRef(0);
 
   const refresh = useCallback(async () => {
@@ -310,6 +311,38 @@ export default function AdminConsole({ userId }: { userId: string }) {
     }
   }
 
+  async function initializeLangGraphCheckpointer() {
+    if (!identity?.user.isOwner || busyId) return;
+    const confirmation = window.prompt(
+      'This runs the LangGraph package setup against the configured RyanAI database. It may apply the package migration ledger. No other database changes are authorized here. Type INITIALIZE LANGGRAPH to continue.',
+    );
+    if (confirmation !== 'INITIALIZE LANGGRAPH') return;
+    setBusyId('langgraph-checkpointer-setup');
+    setErrors([]);
+    setNotice('');
+    setLangGraphSetupStatus('Running owner-authorized initialization…');
+    try {
+      const response = await authenticatedFetch('/api/admin/operations/langgraph-checkpointer/setup', {
+        method: 'POST',
+        headers: { Accept: 'application/json' },
+      }, userId);
+      const payload = await response.json().catch(() => ({})) as {
+        status?: string; agentCheckpointer?: boolean; migrationVersion?: number; error?: string;
+      };
+      if (!response.ok) throw new Error(payload.error || 'Checkpointer initialization failed (' + response.status + ').');
+      const result = payload.status || 'unknown';
+      setLangGraphSetupStatus(result + ' · schema ' + (payload.agentCheckpointer ? 'verified' : 'not verified') +
+        ' · migration version ' + String(payload.migrationVersion ?? 'not reported'));
+      setNotice('LangGraph checkpointer operation returned: ' + result + '. Verify the API readiness endpoint and worker state separately.');
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Could not initialize the LangGraph checkpointer.';
+      setLangGraphSetupStatus('Failed · ' + message);
+      setErrors([message]);
+    } finally {
+      setBusyId('');
+    }
+  }
+
   const pendingJobs = jobs.filter((job) => job.status === 'queued' && job.approvalStatus === 'pending');
   const approvalQueuesAvailable = !resourceErrors.actions && !resourceErrors.jobs;
   const pendingApprovalCount = actions.length + pendingJobs.length;
@@ -344,6 +377,22 @@ export default function AdminConsole({ userId }: { userId: string }) {
       {notice && <p role="status" className="rounded-lg border border-cyan-300/20 bg-cyan-950/20 p-3 text-sm text-cyan-100">{notice}</p>}
 
       <AdminSettingsHub />
+
+      {identity?.user.isOwner && <section id="admin-langgraph-setup" className="scroll-mt-6 rounded-2xl border border-amber-300/25 bg-slate-900/70 p-5 sm:p-6" aria-labelledby="admin-langgraph-setup-title">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-200">Owner-only · explicit execution</p>
+            <h2 id="admin-langgraph-setup-title" className="mt-1 text-lg font-semibold text-white">LangGraph checkpointer initialization</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">Runs the supported PostgresSaver setup against RyanAI's configured database. This is a one-time schema initialization action, not a general database migration or a readiness guarantee.</p>
+          </div>
+          <span className="rounded-full border border-amber-300/25 px-3 py-1 text-xs text-amber-100">Server verifies owner identity</span>
+        </div>
+        <p className="mt-3 break-words rounded-lg border border-white/10 bg-slate-950/60 p-3 text-xs text-slate-300" role="status">Last result: {langGraphSetupStatus}</p>
+        <button type="button" onClick={() => void initializeLangGraphCheckpointer()} disabled={busyId !== ''} className="mt-4 inline-flex w-full items-center justify-center rounded-lg border border-amber-300/35 bg-amber-300/10 px-4 py-3 text-sm font-semibold text-amber-100 hover:bg-amber-300/15 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto">
+          {busyId === 'langgraph-checkpointer-setup' ? 'Initializing…' : 'Initialize LangGraph checkpointer'}
+        </button>
+        <p className="mt-3 text-[11px] leading-5 text-slate-500">The button is rendered only after the API verifies this session as the configured owner. The endpoint independently enforces owner authorization. It does not change secrets, environment variables, hosting configuration or deployment state. After success, confirm /readyz, agentCheckpointer and agentWorker independently.</p>
+      </section>}
 
       <section aria-label="Administrative workspaces" className="rounded-2xl border border-cyan-300/15 bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 p-4 sm:p-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
