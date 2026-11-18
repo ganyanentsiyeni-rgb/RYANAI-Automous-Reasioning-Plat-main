@@ -31,14 +31,11 @@ describe('optional browser Supabase client', () => {
     },
   );
 
-  it('uses the RyanAI project URL fallback when only a publishable key is configured', async () => {
+  it('fails closed when the Supabase URL is missing even if a publishable key exists', async () => {
     vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'sb_publishable_test');
     const { supabase } = await import('./supabase');
-    expect(supabase).toBeTruthy();
-    expect(createClient).toHaveBeenCalledExactlyOnceWith(
-      'https://narsvpwymvlrhurqbthu.supabase.co',
-      'sb_publishable_test',
-    );
+    expect(supabase).toBeNull();
+    expect(createClient).not.toHaveBeenCalled();
   });
 
   it('creates one client with the publishable key, trimming whitespace', async () => {
