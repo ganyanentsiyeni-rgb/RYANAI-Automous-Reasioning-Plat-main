@@ -501,9 +501,11 @@ export default function AdminConsole({ userId }: { userId: string }) {
           <div><h2 id="admin-audit-title" className="text-lg font-semibold text-white">Security &amp; audit events</h2><p className="mt-1 text-sm text-slate-400">Latest persisted Jarvis audit metadata, newest first. This view does not expose free-form event details.</p></div>
           <span className="rounded-full border border-white/15 px-3 py-1 text-xs text-slate-300">{auditEvents.length} events returned</span>
         </div>
-        {auditEvents.length === 0
-          ? <EmptyState text="No audit events were returned, or the audit endpoint is unavailable. Check the administrator diagnostics above." />
-          : <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[620px] text-left text-xs">
+        {resourceErrors.audit
+          ? <UnavailableState label="Audit feed unavailable" detail={resourceErrors.audit} />
+          : auditEvents.length === 0
+            ? <EmptyState text="No audit events were returned by the API." />
+            : <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[620px] text-left text-xs">
             <thead><tr className="border-b border-white/10 text-slate-500"><th className="py-2 pr-3 font-medium">Time</th><th className="py-2 pr-3 font-medium">Event</th><th className="py-2 pr-3 font-medium">Actor ID</th><th className="py-2 font-medium">Resource ID</th></tr></thead>
             <tbody>{auditEvents.map((event) => <tr key={event.id} className="border-b border-white/5 text-slate-300">
               <td className="py-3 pr-3 whitespace-nowrap">{dateLabel(event.createdAt)}</td>
@@ -516,9 +518,10 @@ export default function AdminConsole({ userId }: { userId: string }) {
       </section>
 
       <div id="admin-runtime" className="grid scroll-mt-6 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <TelemetryMetricCard label="Admin metrics endpoint" value={metrics?.status ?? 'Unavailable'} detail="Protected process-metrics snapshot." source="/api/admin/metrics" observedAt={metrics?.timestamp ?? null} status={metrics ? 'available' : 'unavailable'} />
-        <TelemetryMetricCard label="API process uptime" value={metrics ? durationLabel(metrics.uptime) : 'Not reported'} detail="Process uptime only; not a deployment-health guarantee." source="/api/admin/metrics" observedAt={metrics?.timestamp ?? null} status={metrics ? 'available' : 'unavailable'} snapshot={uptimeSnapshot} />
-        <TelemetryMetricCard label="Runtime memory" value={metrics ? metrics.system.rssMemoryMB + ' MB RSS' : 'Not reported'} detail={metrics ? metrics.system.heapUsedMB + ' MB heap · ' + metrics.system.nodeVersion : 'Not reported'} source="/api/admin/metrics" observedAt={metrics?.timestamp ?? null} status={metrics ? 'available' : 'unavailable'} snapshot={memorySnapshot} />
+        {resourceErrors.metrics && <UnavailableState label="Runtime metrics unavailable" detail={resourceErrors.metrics} />}
+        <TelemetryMetricCard label="Admin metrics endpoint" value={metrics?.status ?? 'Unavailable'} detail={resourceErrors.metrics ? 'Latest metrics request failed; retained values are last-known only.' : 'Protected process-metrics snapshot.'} source="/api/admin/metrics" observedAt={metrics?.timestamp ?? null} status={metrics && !resourceErrors.metrics ? 'available' : 'unavailable'} />
+        <TelemetryMetricCard label="API process uptime" value={metrics ? durationLabel(metrics.uptime) : 'Not reported'} detail="Process uptime only; not a deployment-health guarantee." source="/api/admin/metrics" observedAt={metrics?.timestamp ?? null} status={metrics && !resourceErrors.metrics ? 'available' : 'unavailable'} snapshot={uptimeSnapshot} />
+        <TelemetryMetricCard label="Runtime memory" value={metrics ? metrics.system.rssMemoryMB + ' MB RSS' : 'Not reported'} detail={metrics ? metrics.system.heapUsedMB + ' MB heap · ' + metrics.system.nodeVersion : 'Not reported'} source="/api/admin/metrics" observedAt={metrics?.timestamp ?? null} status={metrics && !resourceErrors.metrics ? 'available' : 'unavailable'} snapshot={memorySnapshot} />
         <TelemetryMetricCard label="Pending approvals" value={approvalQueuesAvailable ? String(pendingApprovalCount) : 'Unavailable'} detail={approvalQueuesAvailable ? actions.length + ' external actions · ' + pendingJobs.length + ' engineering plans' : 'One or more approval queues could not be verified.'} source="Actions and engineering queue" status={approvalQueuesAvailable ? 'available' : 'unavailable'} />
       </div>
 
