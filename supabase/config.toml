@@ -36,3 +36,8 @@ allow_dynamic_registration = false
 [storage]
 enabled = true
 file_size_limit = "20MiB"
+
+# Use Supabase's experimental local-stack manager so omitted service ports are
+# automatically allocated per project instead of falling back to fixed defaults.
+[experimental]
+stack = true
