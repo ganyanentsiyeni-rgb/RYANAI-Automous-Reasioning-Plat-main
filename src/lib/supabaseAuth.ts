@@ -1,7 +1,7 @@
-import type { OAuthProvider, Session, User } from '@supabase/supabase-js';
+import type { Provider, Session, User } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 
-export type RyanOAuthProvider = Extract<OAuthProvider, 'google' | 'github'>;
+export type RyanOAuthProvider = Extract<Provider, 'google' | 'github'>;
 
 function requireSupabase() {
   if (!supabase) {
