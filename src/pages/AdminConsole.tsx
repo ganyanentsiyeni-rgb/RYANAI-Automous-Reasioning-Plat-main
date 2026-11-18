@@ -96,7 +96,11 @@ export default function AdminConsole({ userId }: { userId: string }) {
   const [directoryProfiles, setDirectoryProfiles] = useState<DirectoryProfile[]>([]);
   const [authInventory, setAuthInventory] = useState<AuthInventory | null>(null);
   const [authPage, setAuthPage] = useState(1);
-  const [lifecycleRequests, setLifecycleRequests] = useState<LifecycleRequest[]>([]);\n  const [lifecycleAction, setLifecycleAction] = useState<LifecycleRequest['action']>('role_change');\n  const [lifecycleTarget, setLifecycleTarget] = useState('');\n  const [lifecycleRole, setLifecycleRole] = useState<'user' | 'admin'>('user');\n  const [lifecycleReason, setLifecycleReason] = useState('');
+  const [lifecycleRequests, setLifecycleRequests] = useState<LifecycleRequest[]>([]);
+  const [lifecycleAction, setLifecycleAction] = useState<LifecycleRequest['action']>('role_change');
+  const [lifecycleTarget, setLifecycleTarget] = useState('');
+  const [lifecycleRole, setLifecycleRole] = useState<'user' | 'admin'>('user');
+  const [lifecycleReason, setLifecycleReason] = useState('');
   const [metrics, setMetrics] = useState<RuntimeMetrics | null>(null);
   const [actions, setActions] = useState<PendingAction[]>([]);
   const [jobs, setJobs] = useState<EngineeringJob[]>([]);
@@ -264,7 +268,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
   async function confirmLifecycleRequest(item: LifecycleRequest) {
     if (!identity?.user.isOwner || !item.id || busyId) return;
     const expected = 'CONFIRM ' + item.id;
-    const entered = window.prompt('To explicitly confirm this exact request, type:\\n' + expected);
+    const entered = window.prompt('To explicitly confirm this exact request, type:\n' + expected);
     if (entered !== expected) return;
     setBusyId(item.id);
     setErrors([]);
