@@ -264,8 +264,6 @@ jobs:
       # This URL is the disposable local Supabase database started below.
       # Never replace it with a hosted project URL or a production secret.
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
-      # Dedicated empty database inside disposable local Supabase Postgres for Prisma diff.
-      SHADOW_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/ryanai_prisma_shadow
 
     steps:
       - name: Checkout
@@ -471,6 +469,12 @@ jobs:
           }
           NODE
 
+      - name: Compare the migrated Supabase and Prisma database with the Prisma data model
+        # The clean-stack steps above already replay Supabase migrations and then
+        # deploy the full Prisma history. Comparing that resulting database avoids
+        # replaying a Prisma-only shadow history that cannot contain Supabase-owned
+        # auth.users from the no-op platform baseline marker.
+        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
       - name: Create isolated Prisma shadow database
         env:
           PGPASSWORD: postgres
