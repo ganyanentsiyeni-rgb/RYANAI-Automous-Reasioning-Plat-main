@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { TelemetryMetricSnapshot } from '@/lib/telemetry/contracts';
 import { getSnapshotFreshness } from '@/lib/healthFreshness';
 export interface TelemetryMetricCardProps {
@@ -18,10 +18,17 @@ export default function TelemetryMetricCard({
   label, value, detail, source, observedAt = null, staleAfterMs = 90_000,
   status = 'available', icon, snapshot,
 }: TelemetryMetricCardProps) {
+  const [nowMs, setNowMs] = useState<number | null>(null);
+  useEffect(() => {
+    setNowMs(Date.now());
+  }, [observedAt, snapshot?.observedAt]);
+
   const resolvedStatus = snapshot?.status ?? status;
   const resolvedObservedAt = snapshot ? snapshot.observedAt : observedAt;
   const resolvedSource = snapshot?.source ?? source;
-  const freshness = snapshot?.freshness ?? getSnapshotFreshness(resolvedObservedAt, Date.now(), staleAfterMs);
+  const freshness = snapshot?.freshness ?? (nowMs === null
+    ? 'unknown'
+    : getSnapshotFreshness(resolvedObservedAt, nowMs, staleAfterMs));
   const freshnessLabel = resolvedStatus === 'error' ? 'Error'
     : resolvedStatus === 'unavailable' ? 'Unavailable'
     : freshness === 'fresh' ? 'Fresh'
