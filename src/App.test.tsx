@@ -202,12 +202,12 @@ describe('application authentication boundary', () => {
     await expectContent('Private RyanAI Music workspace');
     expect(container.querySelector('nav a[href="#/music"]')).not.toBeNull();
   });
-  it('respects an explicit Music workspace visibility preference', async () => {
+  it('keeps a workspace reachable when stale account preferences mark it hidden', async () => {
     const optedOut = { ...session, user: { ...session.user, user_metadata: { ryanai_dashboard_ui: ['pa'], ryanai_dashboard_ui_preferences: { music: false } } } } as Session;
     auth.getSession.mockResolvedValue({ data: { session: optedOut }, error: null });
     await mount('/music');
-    await expectContent('Workspace disabled');
-    expect(container.textContent).not.toContain('Private RyanAI Music workspace');
+    await expectContent('Private RyanAI Music workspace');
+    expect(container.textContent).not.toContain('Workspace disabled');
   });
   it('keeps the landing page public', async () => {
     await mount('/');
@@ -261,8 +261,8 @@ describe('application authentication boundary', () => {
     const enabledModules = JSON.parse(dashboard?.dataset.enabledModules ?? '{}') as Record<string, boolean>;
     expect(enabledModules.pa).toBe(true);
     expect(enabledModules.workspace).toBe(true);
-    expect(enabledModules.cockpit).toBe(false);
-    expect(enabledModules.quant).toBe(false);
+    expect(enabledModules.cockpit).toBe(true);
+    expect(enabledModules.quant).toBe(true);
     // Music and PhoneLink retain the explicit legacy compatibility defaults.
     expect(enabledModules.music).toBe(true);
     expect(enabledModules.phonelink).toBe(true);
@@ -286,12 +286,12 @@ describe('application authentication boundary', () => {
     }
   });
 
-  it('hides disabled workspaces and blocks direct links using account dashboard preferences', async () => {
+  it('keeps every registered regular-account workspace visible and directly reachable despite hide preferences', async () => {
     const limitedSession = {
       ...session,
       user: {
         ...session.user,
-        user_metadata: { ryanai_dashboard_ui: ['pa', 'workspace'] },
+        user_metadata: { ryanai_dashboard_ui: ['pa', 'workspace'], ryanai_dashboard_ui_preferences: { cockpit: false, quant: false, audiobook: false } },
       },
     } as Session;
     auth.getSession.mockResolvedValue({ data: { session: limitedSession }, error: null });
@@ -299,19 +299,17 @@ describe('application authentication boundary', () => {
     await expectContent('Private dashboard');
 
     for (const navigation of ['Main navigation', 'Mobile navigation']) {
-      expect(container.querySelector(`nav[aria-label="${navigation}"] a[href="#/pa"]`)).not.toBeNull();
-      expect(container.querySelector(`nav[aria-label="${navigation}"] a[href="#/workspace"]`)).not.toBeNull();
-      expect(container.querySelector(`nav[aria-label="${navigation}"] a[href="#/cockpit"]`)).toBeNull();
-      expect(container.querySelector(`nav[aria-label="${navigation}"] a[href="#/settings"]`)).not.toBeNull();
+      for (const path of ['/pa', '/workspace', '/cockpit', '/quant', '/audiobook', '/settings']) {
+        expect(container.querySelector(`nav[aria-label="${navigation}"] a[href="#${path}"]`)).not.toBeNull();
+      }
     }
 
     await act(async () => {
       window.location.hash = '/cockpit';
       window.dispatchEvent(new Event('hashchange'));
     });
-    await expectContent('Workspace disabled');
-    expect(container.textContent).not.toContain('Private cockpit');
-    expect(container.querySelector('a[href="#/settings"]')).not.toBeNull();
+    await expectContent('Private cockpit');
+    expect(container.textContent).not.toContain('Workspace disabled');
   });
 
   it('opens Profile & Settings for an authenticated account', async () => {
