@@ -66,6 +66,9 @@ import { pluginRegistryRoutes } from './plugins/routes.js';
 import { providerAuthorizationRoutes } from './plugins/providerAuthorizationRoutes.js';
 import { phoneLinkRoutes } from './routes/phoneLink.js';
 import { eventIngestionRoutes } from './routes/eventIngestionRoutes.js';
+import { adminEventQueueRoutes } from './routes/adminEventQueue.js';
+import { intelligenceEventHandlers } from '../events/eventHandlers.js';
+import { startIntelligenceEventWorker } from '../events/eventWorker.js';
 
 const { Pool } = pg;
 
@@ -792,6 +795,7 @@ async function registerPlugins() {
   await fastify.register(providerAuthorizationRoutes);
   await fastify.register(phoneLinkRoutes);
   await fastify.register(eventIngestionRoutes);
+  await fastify.register(adminEventQueueRoutes);
   await fastify.register(commsPlugin);
   await fastify.register(commsAuthorizationRoutes);
   await fastify.register(approvalRoutes);
@@ -893,6 +897,14 @@ async function start() {
       }
     };
     syncAgentWorker(databaseReady, redisReady);
+
+    if (process.env.INTELLIGENCE_EVENT_WORKER_ENABLED === 'true' && databaseReady) {
+      stopIntelligenceEventWorker = startIntelligenceEventWorker(prisma, intelligenceEventHandlers, {
+        onError: (error) => fastify.log.error({ err: error }, 'Intelligence event worker iteration failed.'),
+      }) ?? undefined;
+      if (stopIntelligenceEventWorker) fastify.log.info({ handlers: intelligenceEventHandlers.supportedEventTypes() }, 'Intelligence event worker started.');
+      else fastify.log.warn('Intelligence event worker requested but remains inactive: no trusted event handlers are registered.');
+    }
     const paObserver = new AgentPAScript({
       fastifyPort: config.port,
       heartbeatIntervalMs: Number(process.env.PA_HEARTBEAT_INTERVAL_MS ?? 15000),
@@ -1003,6 +1015,7 @@ let stopAttachmentScanner: (() => void) | undefined;
 let stopAttachmentOrphanCleanup: (() => void) | undefined;
 let stopAlerts: (() => void) | undefined;
 let stopAgentPA: (() => void) | undefined;
+let stopIntelligenceEventWorker: (() => void) | undefined;
 const shutdown = async () => {
   console.log('\n📴 Shutting down gracefully...');
   stopScheduler?.();
@@ -1012,6 +1025,7 @@ const shutdown = async () => {
   stopAttachmentOrphanCleanup?.();
   stopAlerts?.();
   stopAgentPA?.();
+  stopIntelligenceEventWorker?.();
   if (redisClient && !redisClientManagedByFastify) {
     redisClient.disconnect();
   }

@@ -102,6 +102,20 @@ describe('IntelligenceEventInbox', () => {
   });
 
 
+  it('restricts worker claims to explicitly registered event types', async () => {
+    const now = new Date('2026-11-18T12:00:00Z');
+    inboxDelegate.findFirst.mockResolvedValue(null);
+    await inbox.claimNext('worker-a', now, ['tapmap.connection.observed']);
+    expect(inboxDelegate.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        eventType: { in: ['tapmap.connection.observed'] },
+      }),
+    }));
+    inboxDelegate.findFirst.mockClear();
+    await expect(inbox.claimNext('worker-a', now, [])).resolves.toBeNull();
+    expect(inboxDelegate.findFirst).not.toHaveBeenCalled();
+  });
+
   it('renews a live worker lease only for its current owner', async () => {
     const now = new Date('2026-11-18T12:00:00Z');
     inboxDelegate.updateMany.mockResolvedValue({ count: 1 });
