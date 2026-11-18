@@ -486,14 +486,59 @@ jobs:
           }
           NODE
 
-      - name: Exclude the externally owned Auth FK from the Prisma-only drift comparison
-        # The preceding assertion verifies this FK exists and targets auth.users.
-        # Remove it only from the disposable CI database so Prisma can compare
-        # its public models without trying to introspect Supabase-owned auth.
+      - name: Exclude Supabase-owned Auth foreign keys from the Prisma-only drift comparison
+        # Supabase Auth owns auth.users and these cross-schema relationships.
+        # Assert the phone-link relationship is present, then remove every
+        # public -> auth FK only from this disposable CI database. The
+        # production schema and Supabase migration chain remain unchanged.
         run: |
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
-            "ALTER TABLE public.conversations DROP CONSTRAINT conversations_user_id_fkey" \
-            -c "ALTER TABLE public.memory_entries DROP CONSTRAINT IF EXISTS memory_entries_user_id_fkey"
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { Pool } from 'pg';
+          const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
+          try {
+            const phoneLink = await pool.query(`
+              SELECT 1
+              FROM pg_constraint c
+              JOIN pg_class src ON src.oid = c.conrelid
+              JOIN pg_namespace src_ns ON src_ns.oid = src.relnamespace
+              JOIN pg_class target ON target.oid = c.confrelid
+              JOIN pg_namespace target_ns ON target_ns.oid = target.relnamespace
+              WHERE c.contype = 'f'
+                AND src_ns.nspname = 'public'
+                AND src.relname = 'phonelink_devices'
+                AND c.conname = 'phonelink_devices_user_id_fkey'
+                AND target_ns.nspname = 'auth'
+                AND target.relname = 'users'
+            `);
+            assert.equal(phoneLink.rowCount, 1,
+              'phonelink_devices_user_id_fkey must remain owned by Supabase Auth and target auth.users');
+          } finally {
+            await pool.end();
+          }
+          NODE
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $
+          DECLARE fk RECORD;
+          BEGIN
+            FOR fk IN
+              SELECT src_ns.nspname AS source_schema,
+                     src.relname AS source_table,
+                     c.conname AS constraint_name
+              FROM pg_constraint c
+              JOIN pg_class src ON src.oid = c.conrelid
+              JOIN pg_namespace src_ns ON src_ns.oid = src.relnamespace
+              JOIN pg_class target ON target.oid = c.confrelid
+              JOIN pg_namespace target_ns ON target_ns.oid = target.relnamespace
+              WHERE c.contype = 'f'
+                AND src_ns.nspname = 'public'
+                AND target_ns.nspname = 'auth'
+            LOOP
+              EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT %I',
+                fk.source_schema, fk.source_table, fk.constraint_name);
+            END LOOP;
+          END $;
+          SQL
 
       - name: Compare the migrated Supabase and Prisma database with the Prisma data model
         # Supabase-owned Auth relationships are asserted separately above; this
