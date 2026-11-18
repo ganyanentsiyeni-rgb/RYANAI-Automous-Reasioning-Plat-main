@@ -67,6 +67,7 @@ import { providerAuthorizationRoutes } from './plugins/providerAuthorizationRout
 import { phoneLinkRoutes } from './routes/phoneLink.js';
 import { eventIngestionRoutes } from './routes/eventIngestionRoutes.js';
 import { adminEventQueueRoutes } from './routes/adminEventQueue.js';
+import { aerialRoutes } from './aerial/routes.js';
 import { intelligenceEventHandlers } from '../events/eventHandlers.js';
 import { startIntelligenceEventWorker } from '../events/eventWorker.js';
 
@@ -796,6 +797,7 @@ async function registerPlugins() {
   await fastify.register(phoneLinkRoutes);
   await fastify.register(eventIngestionRoutes);
   await fastify.register(adminEventQueueRoutes);
+  await fastify.register(aerialRoutes);
   await fastify.register(commsPlugin);
   await fastify.register(commsAuthorizationRoutes);
   await fastify.register(approvalRoutes);
