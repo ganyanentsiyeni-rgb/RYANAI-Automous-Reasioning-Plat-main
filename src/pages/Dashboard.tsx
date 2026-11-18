@@ -82,7 +82,8 @@ export default function DashboardPage({ isOwner = false, isAdmin = false, enable
         }
       } catch (cause) {
         if (!disposed && !(cause instanceof DOMException && cause.name === 'AbortError')) {
-          setPaStatus(null);
+          // Retain the last successful observer snapshot for diagnosis.
+          // The error banner below prevents this snapshot being described as live.
           setPaError(cause instanceof Error ? cause.message : 'PA status could not be loaded.');
         }
       }
@@ -287,10 +288,10 @@ export default function DashboardPage({ isOwner = false, isAdmin = false, enable
       {enabledModules?.music !== false && <MusicPlayer settings={musicSettings} />}
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatusCard title="API gateway" value={healthServiceLabel(health?.status === 'online', checking, isStale, healthFresh)} icon={Server} healthy={healthFresh ? health?.status === 'online' : undefined} />
-        <StatusCard title="PostgreSQL" value={serviceLabel(health?.services?.database, checking, isStale, healthFresh)} icon={Database} healthy={healthFresh ? health?.services?.database : undefined} />
-        <StatusCard title="Redis" value={serviceLabel(health?.services?.redis, checking, isStale, healthFresh)} icon={Wifi} healthy={healthFresh ? health?.services?.redis : undefined} />
-        <StatusCard title="Agent checkpointer" value={serviceLabel(health?.services?.agentCheckpointer, checking, isStale, healthFresh)} icon={Activity} healthy={healthFresh ? health?.services?.agentCheckpointer : undefined} />
+        <StatusCard title="API gateway" value={healthServiceLabel(health?.status === 'online', checking, healthStale, healthFresh)} icon={Server} healthy={healthFresh ? health?.status === 'online' : undefined} />
+        <StatusCard title="PostgreSQL" value={serviceLabel(health?.services?.database, checking, healthStale, healthFresh)} icon={Database} healthy={healthFresh ? health?.services?.database : undefined} />
+        <StatusCard title="Redis" value={serviceLabel(health?.services?.redis, checking, healthStale, healthFresh)} icon={Wifi} healthy={healthFresh ? health?.services?.redis : undefined} />
+        <StatusCard title="Agent checkpointer" value={serviceLabel(health?.services?.agentCheckpointer, checking, healthStale, healthFresh)} icon={Activity} healthy={healthFresh ? health?.services?.agentCheckpointer : undefined} />
       </div>
 
       <section className="mt-8" aria-labelledby="platform-workspaces-title">
