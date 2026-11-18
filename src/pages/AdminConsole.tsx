@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, ClipboardCheck, RefreshCw, XCircle } from 
 import { authenticatedFetch } from '@/lib/authenticatedFetch';
 import TelemetryMetricCard from '@/components/telemetry/TelemetryMetricCard';
 import { createTelemetryMetricSnapshot } from '@/lib/telemetry/contracts';
+import AdminSettingsHub from '@/components/admin/AdminSettingsHub';
 
 interface AdminIdentity {
   authenticated: boolean;
@@ -224,6 +225,8 @@ export default function AdminConsole({ userId }: { userId: string }) {
 
       {errors.map((error, index) => <p key={index} role="alert" className="rounded-lg border border-rose-400/25 bg-rose-950/20 p-3 text-sm text-rose-200">{error}</p>)}
       {notice && <p role="status" className="rounded-lg border border-cyan-300/20 bg-cyan-950/20 p-3 text-sm text-cyan-100">{notice}</p>}
+
+      <AdminSettingsHub />
 
       <section aria-label="Administrative workspaces" className="rounded-2xl border border-cyan-300/15 bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 p-4 sm:p-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
