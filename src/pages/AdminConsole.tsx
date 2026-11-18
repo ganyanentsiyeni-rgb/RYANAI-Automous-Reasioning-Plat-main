@@ -109,15 +109,15 @@ export default function AdminConsole({ userId }: { userId: string }) {
         : 'Identity verification: the API did not confirm this signed-in account.');
     }
     if (results[1].status === 'fulfilled') setAuditEvents(results[1].value.events ?? []);
+    else { setAuditEvents([]); nextErrors.push('Security audit: ' + String(results[1].reason)); }
     if (results[2].status === 'fulfilled') setDirectoryProfiles(results[2].value.profiles ?? []);
     else { setDirectoryProfiles([]); nextErrors.push('User directory: ' + String(results[2].reason)); }
-    else { setAuditEvents([]); nextErrors.push('Security audit: ' + String(results[1].reason)); }
-    if (results[2].status === 'fulfilled') setMetrics(results[2].value);
-    else { setMetrics(null); nextErrors.push('Runtime metrics: ' + String(results[2].reason)); }
-    if (results[3].status === 'fulfilled') setActions(results[3].value.actions ?? []);
-    else { setActions([]); nextErrors.push('Pending actions: ' + String(results[3].reason)); }
-    if (results[4].status === 'fulfilled') setJobs(results[4].value.jobs ?? []);
-    else { setJobs([]); nextErrors.push('Engineering approvals: ' + String(results[4].reason)); }
+    if (results[3].status === 'fulfilled') setMetrics(results[3].value);
+    else { setMetrics(null); nextErrors.push('Runtime metrics: ' + String(results[3].reason)); }
+    if (results[4].status === 'fulfilled') setActions(results[4].value.actions ?? []);
+    else { setActions([]); nextErrors.push('Pending actions: ' + String(results[4].reason)); }
+    if (results[5].status === 'fulfilled') setJobs(results[5].value.jobs ?? []);
+    else { setJobs([]); nextErrors.push('Engineering approvals: ' + String(results[5].reason)); }
     if (requestId === refreshRequestId.current) {
       setErrors(nextErrors);
       setLoading(false);
