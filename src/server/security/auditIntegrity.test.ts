@@ -58,7 +58,8 @@ describe('lifecycle audit hash-chain integrity', () => {
     const first = record('event-1');
     const integrity = createAuditIntegrity(first);
     const missing = record('event-2');
-    // A stripped final hash and a genuine pre-chain legacy row are indistinguishable without an external anchor.\n    expect(verifyAuditIntegrity([linked(first, integrity), missing])).toMatchObject({
+    // A stripped final hash and a genuine pre-chain legacy row are indistinguishable without an external anchor.
+    expect(verifyAuditIntegrity([linked(first, integrity), missing])).toMatchObject({
       valid: true, checked: 1, legacyUnverified: 1, firstInvalidEventId: null,
     });
   });
