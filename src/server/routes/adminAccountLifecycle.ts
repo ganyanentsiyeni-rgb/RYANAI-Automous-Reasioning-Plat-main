@@ -161,7 +161,7 @@ export const adminAccountLifecycleRoutes: FastifyPluginAsync = async (fastify) =
       capabilityNote,
     };
     const eventId = randomUUID();
-    await fastify.prisma.$transaction(async (tx) => {
+    const appendResult = await fastify.prisma.$transaction(async (tx) => {
       await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', LIFECYCLE_CHAIN_LOCK);
       const history = await tx.jarvisAuditEvent.findMany({
         where: { eventType: { in: LIFECYCLE_EVENT_TYPES } },
@@ -180,7 +180,13 @@ export const adminAccountLifecycleRoutes: FastifyPluginAsync = async (fastify) =
         data: { id: eventId, actorId: request.authUser!.id, eventType: 'ACCOUNT_LIFECYCLE_REQUESTED',
           resourceId: targetUserId, details: { ...details, integrity } },
       });
+    }).catch((error: unknown) => {
+      if (error instanceof Error && error.message.startsWith('Lifecycle audit integrity')) return null;
+      throw error;
     });
+    if (!appendResult) {
+      return reply.code(409).send({ error: 'Lifecycle audit integrity could not be verified; request was not recorded.' });
+    }
     return reply.code(201).send({
       requestId,
       state: details.state,
