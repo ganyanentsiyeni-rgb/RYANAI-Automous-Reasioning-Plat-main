@@ -54,7 +54,6 @@ describe('owner account lifecycle request ledger', () => {
     const { app, create, events } = makeApp();
     await app.register(adminAccountLifecycleRoutes);
     const headers = { 'x-test-role': 'owner' };
-    const requestId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
     const targetUserId = '123e4567-e89b-42d3-a456-426614174000';
     const created = await app.inject({
       method: 'POST',
@@ -66,8 +65,7 @@ describe('owner account lifecycle request ledger', () => {
     expect(created.json()).toMatchObject({ state: 'PENDING_OWNER_CONFIRMATION', accountMutationPerformed: false });
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: 'ACCOUNT_LIFECYCLE_REQUESTED' }) }));
 
-    const recorded = events[0] as { details: Record<string, unknown> };
-    recorded.details.requestId = requestId;
+    const requestId = created.json().requestId as string;
     const wrong = await app.inject({
       method: 'POST', url: '/api/admin/account-lifecycle/requests/' + requestId + '/confirm',
       headers, payload: { confirmation: 'CONFIRM wrong' },
