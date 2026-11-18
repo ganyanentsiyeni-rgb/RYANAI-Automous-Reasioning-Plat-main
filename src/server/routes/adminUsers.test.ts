@@ -99,6 +99,7 @@ describe('administrator user directory', () => {
       select: { id: true, email: true, fullName: true, createdAt: true, updatedAt: true },
     });
     expect(fetchSpy).not.toHaveBeenCalled();
+    expect(findMany).toHaveBeenCalledTimes(1);
   });
 
   it('uses only a configured server credential for a bounded read-only Auth page and sanitizes returned fields', async () => {

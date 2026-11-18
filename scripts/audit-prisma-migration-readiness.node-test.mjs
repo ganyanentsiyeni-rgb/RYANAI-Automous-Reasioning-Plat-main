@@ -73,3 +73,66 @@ test('accepts a complete schema and vector-memory installation', () => {
   assert.deepEqual(result.vector.missingIndexes, []);
   assert.equal(result.vector.indexPresent, true);
 });
+
+const validAttemptColumns = [
+  ['id', 'uuid'], ['event_inbox_id', 'uuid'], ['attempt', 'integer'], ['worker_id', 'character varying(128)'],
+  ['status', 'character varying(24)'], ['error', 'text'], ['started_at', 'timestamp with time zone'], ['finished_at', 'timestamp with time zone'],
+].map(([column_name, formatted_type]) => ({ column_name, formatted_type }));
+const attemptConstraints = [
+  { conname: 'intelligence_event_attempts_event_inbox_id_fkey', definition: 'FOREIGN KEY (event_inbox_id) REFERENCES public.intelligence_event_inbox(id) ON DELETE CASCADE' },
+  { conname: 'intelligence_event_attempt_event_attempt_key', definition: 'UNIQUE (event_inbox_id, attempt)' },
+];
+const attemptIndexes = [
+  { indexname: 'intelligence_event_attempt_event_started_idx', indexdef: 'CREATE INDEX intelligence_event_attempt_event_started_idx ON public.intelligence_event_attempts USING btree (event_inbox_id, started_at DESC)' },
+  { indexname: 'intelligence_event_attempt_status_started_idx', indexdef: 'CREATE INDEX intelligence_event_attempt_status_started_idx ON public.intelligence_event_attempts USING btree (status, started_at DESC)' },
+];
+
+test('detects missing and mismatched intelligence event attempt schema objects', () => {
+  const result = assessSchema({
+    columns: new Set(), tables: new Set(['intelligence_event_attempts']), indexes: new Set(), extensions: new Set(),
+    memoryColumns: new Set(), cacheColumns: new Set(),
+    eventAttemptColumns: [{ column_name: 'event_inbox_id', formatted_type: 'text' }],
+    eventAttemptConstraints: [], eventAttemptIndexes: [], eventAttemptRlsEnabled: false,
+  });
+  assert.ok(result.eventAttempts.missingColumns.includes('id'));
+  assert.deepEqual(result.eventAttempts.mismatchedColumns, [{ column: 'event_inbox_id', expected: 'uuid', actual: 'text' }]);
+  assert.deepEqual(result.eventAttempts.missingConstraints, attemptConstraints.map((item) => item.conname));
+  assert.deepEqual(result.eventAttempts.missingIndexes, attemptIndexes.map((item) => item.indexname));
+  assert.equal(result.eventAttempts.rlsEnabled, false);
+});
+
+test('accepts the expected intelligence event attempt table contract', () => {
+  const result = assessSchema({
+    columns: new Set(), tables: new Set(['intelligence_event_attempts']), indexes: new Set(), extensions: new Set(),
+    memoryColumns: new Set(), cacheColumns: new Set(), eventAttemptColumns: validAttemptColumns,
+    eventAttemptConstraints: attemptConstraints, eventAttemptIndexes: attemptIndexes, eventAttemptRlsEnabled: true,
+  });
+  assert.equal(result.eventAttempts.tablePresent, true);
+  assert.deepEqual(result.eventAttempts.missingColumns, []);
+  assert.deepEqual(result.eventAttempts.mismatchedColumns, []);
+  assert.deepEqual(result.eventAttempts.missingConstraints, []);
+  assert.deepEqual(result.eventAttempts.mismatchedConstraints, []);
+  assert.deepEqual(result.eventAttempts.missingIndexes, []);
+  assert.deepEqual(result.eventAttempts.mismatchedIndexes, []);
+  assert.equal(result.eventAttempts.rlsEnabled, true);
+});
+
+test('detects wrong foreign-key actions, unique columns, and index definitions despite matching names', () => {
+  const result = assessSchema({
+    columns: new Set(), tables: new Set(['intelligence_event_attempts']), indexes: new Set(), extensions: new Set(),
+    memoryColumns: new Set(), cacheColumns: new Set(), eventAttemptColumns: validAttemptColumns,
+    eventAttemptConstraints: [
+      { conname: 'intelligence_event_attempts_event_inbox_id_fkey', definition: 'FOREIGN KEY (event_inbox_id) REFERENCES public.intelligence_event_inbox(id) ON DELETE SET NULL' },
+      { conname: 'intelligence_event_attempt_event_attempt_key', definition: 'UNIQUE (event_inbox_id)' },
+    ],
+    eventAttemptIndexes: [
+      { indexname: 'intelligence_event_attempt_event_started_idx', indexdef: 'CREATE INDEX intelligence_event_attempt_event_started_idx ON public.intelligence_event_attempts USING btree (event_inbox_id)' },
+      { indexname: 'intelligence_event_attempt_status_started_idx', indexdef: 'CREATE INDEX intelligence_event_attempt_status_started_idx ON public.intelligence_event_attempts USING btree (status, started_at)' },
+    ],
+    eventAttemptRlsEnabled: true,
+  });
+  assert.equal(result.eventAttempts.missingConstraints.length, 0);
+  assert.equal(result.eventAttempts.mismatchedConstraints.length, 2);
+  assert.equal(result.eventAttempts.missingIndexes.length, 0);
+  assert.equal(result.eventAttempts.mismatchedIndexes.length, 2);
+});

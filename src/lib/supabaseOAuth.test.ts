@@ -22,6 +22,7 @@ describe('Supabase OAuth endpoint configuration', () => {
   });
 
   it('does not emit malformed project endpoints when Supabase is not configured', async () => {
+    vi.resetModules();
     mock.url = '';
     const { SUPABASE_OAUTH_ENDPOINTS } = await import('./supabaseOAuth');
     expect(SUPABASE_OAUTH_ENDPOINTS.authorization).toBeNull();
