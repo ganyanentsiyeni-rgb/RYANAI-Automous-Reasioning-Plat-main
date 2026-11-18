@@ -108,7 +108,8 @@ describe('Admin Console request ownership', () => {
     expect(container.textContent).not.toContain('admin@example.test');
   });
 
-  it('reports a failed approval queue as unavailable instead of showing a false empty state', async () => {
+  it('retains last-known queue items but disables decisions after a failed refresh', async () => {
+    let actionReads = 0;
     apiFetch.mockImplementation(async (input) => {
       const path = String(input);
       if (path === '/api/auth/verify') return response({ authenticated: true, user: {
@@ -121,16 +122,28 @@ describe('Admin Console request ownership', () => {
         database: { status: 'unknown', driver: 'postgresql' },
         system: { nodeVersion: 'v24.0.0', rssMemoryMB: 128, heapUsedMB: 64 },
       });
-      if (path === '/api/actions') return response({ error: 'Approval queue database unavailable.' }, false);
+      if (path === '/api/actions') {
+        actionReads += 1;
+        return actionReads === 1
+          ? response({ actions: [{
+            id: 'pending-action-1', userId: 'another-user', tool: 'send_message',
+            args: { destination: 'test destination' }, summary: 'Send approved test message',
+            createdAt: '2026-11-08T11:00:00.000Z', expiresAt: '2026-11-08T13:00:00.000Z',
+          }] })
+          : response({ error: 'Approval queue database unavailable.' }, false);
+      }
       if (path === '/api/engineering/jobs') return response({ jobs: [] });
       if (path === '/api/admin/account-lifecycle/requests') return response({ requests: [] });
       throw new Error('Unexpected Admin Console request: ' + path);
     });
     await mount('admin-account-a');
+    await vi.waitFor(() => expect(container.textContent).toContain('Send approved test message'));
+    await click([...container.querySelectorAll('button')].find(button => button.textContent?.includes('Refresh control plane')) ?? null);
     await vi.waitFor(() => expect(container.textContent).toContain('External action queue unavailable'));
+    expect(container.textContent).toContain('Send approved test message');
     expect(container.textContent).not.toContain('No unexpired actions are waiting for administrator approval.');
-    expect(container.textContent).toContain('Approval queue database unavailable.');
-    expect(container.textContent).toContain('Unavailable');
+    const approve = [...container.querySelectorAll('button')].find(button => button.textContent?.includes('Approve and execute'));
+    expect(approve?.hasAttribute('disabled')).toBe(true);
   });
 
   it('scopes an explicitly confirmed pending-action decision to the same account', async () => {
