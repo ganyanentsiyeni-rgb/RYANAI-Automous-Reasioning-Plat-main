@@ -34,10 +34,27 @@ interface AuditEvent {
 }
 interface RuntimeMetrics {
   status: string;
+  readiness?: string;
   uptime: number;
   timestamp: string;
-  database: { status: string; driver: string };
-  system: { nodeVersion: string; rssMemoryMB: number; heapUsedMB: number };
+  database: { status: string; driver: string; note?: string };
+  system: {
+    nodeVersion: string;
+    platform?: string;
+    platformRelease?: string;
+    architecture?: string;
+    logicalProcessors?: number;
+    loadAverage?: number[];
+    totalMemoryMB?: number;
+    freeMemoryMB?: number;
+    rssMemoryMB: number;
+    heapUsedMB: number;
+    heapTotalMB?: number;
+    externalMemoryMB?: number;
+    arrayBuffersMB?: number;
+    processCpuUserMs?: number;
+    processCpuSystemMs?: number;
+  };
 }
 interface PendingAction {
   id: string;
@@ -105,6 +122,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
   const [actions, setActions] = useState<PendingAction[]>([]);
   const [jobs, setJobs] = useState<EngineeringJob[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
+  const [resourceErrors, setResourceErrors] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
@@ -122,12 +140,13 @@ export default function AdminConsole({ userId }: { userId: string }) {
     ]);
     if (requestId !== refreshRequestId.current) return;
     const nextErrors: string[] = [];
+    const nextResourceErrors: Record<string, string> = {};
     if (results[0].status === 'fulfilled' && results[0].value.authenticated && results[0].value.user?.id === userId && results[0].value.user.isOwner) {
       try {
         const ledger = await readJson<{ requests: LifecycleRequest[] }>('/api/admin/account-lifecycle/requests', userId);
         setLifecycleRequests(ledger.requests ?? []);
       } catch (cause) {
-        setLifecycleRequests([]);
+        nextResourceErrors.lifecycle = String(cause);
         nextErrors.push('Owner lifecycle ledger: ' + String(cause));
       }
     } else {
@@ -142,19 +161,20 @@ export default function AdminConsole({ userId }: { userId: string }) {
         : 'Identity verification: the API did not confirm this signed-in account.');
     }
     if (results[1].status === 'fulfilled') setAuditEvents(results[1].value.events ?? []);
-    else { setAuditEvents([]); nextErrors.push('Security audit: ' + String(results[1].reason)); }
+    else { nextResourceErrors.audit = String(results[1].reason); nextErrors.push('Security audit: ' + String(results[1].reason)); }
     if (results[2].status === 'fulfilled') {
       setDirectoryProfiles(results[2].value.profiles ?? []);
       setAuthInventory(results[2].value.authInventory ?? null);
-    } else { setDirectoryProfiles([]); setAuthInventory(null); nextErrors.push('User directory: ' + String(results[2].reason)); }
+    } else { nextResourceErrors.directory = String(results[2].reason); nextErrors.push('User directory: ' + String(results[2].reason)); }
     if (results[3].status === 'fulfilled') setMetrics(results[3].value);
-    else { setMetrics(null); nextErrors.push('Runtime metrics: ' + String(results[3].reason)); }
+    else { nextResourceErrors.metrics = String(results[3].reason); nextErrors.push('Runtime metrics: ' + String(results[3].reason)); }
     if (results[4].status === 'fulfilled') setActions(results[4].value.actions ?? []);
-    else { setActions([]); nextErrors.push('Pending actions: ' + String(results[4].reason)); }
+    else { nextResourceErrors.actions = String(results[4].reason); nextErrors.push('Pending actions: ' + String(results[4].reason)); }
     if (results[5].status === 'fulfilled') setJobs(results[5].value.jobs ?? []);
-    else { setJobs([]); nextErrors.push('Engineering approvals: ' + String(results[5].reason)); }
+    else { nextResourceErrors.jobs = String(results[5].reason); nextErrors.push('Engineering approvals: ' + String(results[5].reason)); }
     if (requestId === refreshRequestId.current) {
       setErrors(nextErrors);
+      setResourceErrors(nextResourceErrors);
       setLoading(false);
     }
   }, [userId, authPage]);
@@ -291,6 +311,8 @@ export default function AdminConsole({ userId }: { userId: string }) {
   }
 
   const pendingJobs = jobs.filter((job) => job.status === 'queued' && job.approvalStatus === 'pending');
+  const approvalQueuesAvailable = !resourceErrors.actions && !resourceErrors.jobs;
+  const pendingApprovalCount = actions.length + pendingJobs.length;
   const uptimeSnapshot = createTelemetryMetricSnapshot({
     metricId: 'api.process.uptime', label: 'API process uptime',
     value: metrics?.uptime ?? null, unit: 'seconds', source: '/api/admin/metrics',
