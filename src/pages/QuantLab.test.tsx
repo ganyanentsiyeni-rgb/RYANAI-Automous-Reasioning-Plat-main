@@ -82,8 +82,10 @@ describe('Quant Lab market data workflow', () => {
 
     await clickButton('Import 250 daily bars');
     await vi.waitFor(() => expect(container.textContent).toContain('Imported 250 completed daily bars'));
-    const selector = container.querySelector('select') as HTMLSelectElement;
-    expect(selector.value).toBe(marketImport.id);
+    const savedDatasetsLabel = Array.from(container.querySelectorAll('label'))
+      .find((label) => label.textContent?.includes('Saved datasets'));
+    const selector = savedDatasetsLabel?.querySelector('select') as HTMLSelectElement | null;
+    expect(selector?.value).toBe(marketImport.id);
 
     await clickButton('Generate SMA crossover signal');
     await vi.waitFor(() => expect(container.textContent).toContain('SPY · sma crossover'));

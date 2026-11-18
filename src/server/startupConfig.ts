@@ -1,4 +1,4 @@
-import { resolveSupabaseSessionPoolerUrl } from './supabasePooler.js';
+import { resolveSupabaseSessionPoolerUrl } from './supabasePooler.ts';
 
 export interface ConnectionUrls {
   databaseUrl: string;

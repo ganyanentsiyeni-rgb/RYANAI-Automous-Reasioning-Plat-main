@@ -12,7 +12,7 @@ import { pluginRegistry } from '../plugins/pluginCatalog.js';
 import { describeCapabilityState } from '../plugins/capabilityState.js';
 import { getAgentTaskWorkerStatus } from '../../agent/operations.js';
 import { getStudioExecutionDescriptor, submitStudioProject } from '../engineering/studioExecution.js';
-import { createStudioProject, getStudioNativeRuntimeDescriptor, listStudioProjects } from '../engineering/studioNativeCore.js';
+import { createStudioProject, getStudioDeliveryReadiness, getStudioNativeRuntimeDescriptor, listStudioProjects } from '../engineering/studioNativeCore.js';
 import { resolveProviderCapabilityState } from '../plugins/providerCapabilityState.js';
 import { approveStudioTask } from '../engineering/studioApprovals.js';
 import { createStudioArtifactDownloadUrl } from '../engineering/studioArtifactStorage.js';
@@ -81,6 +81,21 @@ export const engineeringEvidenceRoutes: FastifyPluginAsync = async (fastify) => 
     projects: await listStudioProjects(request.authUser!.id),
     runtime: getStudioNativeRuntimeDescriptor(),
   }));
+
+  fastify.get<{ Params: { projectId: string } }>('/api/engineering/studio/native/projects/:projectId/delivery', {
+    schema: {
+      params: {
+        type: 'object',
+        required: ['projectId'],
+        additionalProperties: false,
+        properties: { projectId: { type: 'string', minLength: 1, maxLength: 64 } },
+      },
+    },
+  }, async (request, reply) => {
+    const readiness = await getStudioDeliveryReadiness(request.params.projectId, request.authUser!.id);
+    if (!readiness) return reply.code(404).send({ error: 'Studio project not found.' });
+    return reply.send(readiness);
+  });
 
   fastify.post<{ Body: NativeStudioProjectBody }>('/api/engineering/studio/native/projects', {
     schema: { body: {
@@ -258,6 +273,7 @@ export const engineeringEvidenceRoutes: FastifyPluginAsync = async (fastify) => 
           ...state,
         })),
         adapterStatus: provider.adapterStatus,
+        ...state,
         connectionStatus: capabilityState.connectionStatus,
         authenticationStatus: capabilityState.authenticationStatus,
         healthStatus: capabilityState.healthStatus,

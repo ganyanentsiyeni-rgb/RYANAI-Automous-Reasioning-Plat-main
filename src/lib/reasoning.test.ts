@@ -102,7 +102,7 @@ describe('authenticated reasoning requests', () => {
   });
 
   it('uses an explicitly supplied account language without reading device-global storage', async () => {
-    const bytes = new TextEncoder().encode('data: {"status":"complete","result":"Tshivenda"}\\n\\n');
+    const bytes = new TextEncoder().encode('data: {"status":"complete","result":"Tshivenda"}\n\n');
     authenticatedFetch.mockResolvedValue(new Response(new ReadableStream({
       start(controller) { controller.enqueue(bytes); controller.close(); },
     })));

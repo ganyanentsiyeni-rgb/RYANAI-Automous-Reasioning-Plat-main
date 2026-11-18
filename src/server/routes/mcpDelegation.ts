@@ -14,7 +14,7 @@ const scopeToolNames: Record<string, string> = {
   reasoning_request: 'api_reasoning_request',
 };
 
-function requireMcpService(request: FastifyRequest, reply: FastifyReply): void {
+async function requireMcpService(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const expected = process.env.RYANAI_MCP_SERVICE_TOKEN?.trim() ?? '';
   if (expected.length < 32) {
     reply.code(503).send({ error: 'MCP service authentication is not configured.' });
@@ -34,7 +34,7 @@ async function requireMcpDelegationAuth(
   request: FastifyRequest,
   reply: FastifyReply,
 ): Promise<void> {
-  requireMcpService(request, reply);
+  await requireMcpService(request, reply);
   if (reply.sent) return;
   await requireUser(request, reply);
 }

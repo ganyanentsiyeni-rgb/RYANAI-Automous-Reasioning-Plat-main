@@ -7,11 +7,11 @@
  */
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { prisma } from '../src/lib/prisma.ts';
-import { claimNextAgentRun } from '../src/agent/operations.ts';
-import { persistAgentRunCompletion } from '../src/agent/agentRunPersistence.ts';
-import { planQueuedAgentRun } from '../src/agent/agentRunExecution.ts';
-import { recordRunEvidence, verifyEvidenceChain } from '../src/agent/engineeringEvidence.ts';
+import { prisma } from '../dist/server/lib/prisma.js';
+import { claimNextAgentRun } from '../dist/server/agent/operations.js';
+import { persistAgentRunCompletion } from '../dist/server/agent/agentRunPersistence.js';
+import { planQueuedAgentRun } from '../dist/server/agent/agentRunExecution.js';
+import { recordRunEvidence, verifyEvidenceChain } from '../dist/server/agent/engineeringEvidence.js';
 
 if (!process.env.DATABASE_URL) {
   throw new Error('DATABASE_URL must target a disposable PostgreSQL database.');

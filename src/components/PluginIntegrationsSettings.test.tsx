@@ -325,6 +325,7 @@ describe('Plugin integrations centre', () => {
     const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => undefined);
     await mount();
     const gmailCard = container.querySelector('[data-plugin-id="gmail"]') as HTMLElement;
+    await vi.waitFor(() => expect(gmailCard.textContent).toContain('Not connected'));
     await click([...gmailCard.querySelectorAll('button')].find(button => button.textContent === 'Connect account') ?? null);
     expect(api.authenticatedFetch).toHaveBeenCalledWith('/api/plugins/gmail/connect', { method: 'POST', headers: { Accept: 'application/json' } }, 'user-a');
     expect(assign).toHaveBeenCalledWith(expect.stringContaining('https://accounts.google.com/'));
