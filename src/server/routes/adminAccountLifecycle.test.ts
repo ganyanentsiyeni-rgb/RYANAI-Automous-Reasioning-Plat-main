@@ -95,5 +95,14 @@ describe('owner account lifecycle request ledger', () => {
     expect(response.statusCode).toBe(201);
     expect(response.json()).toMatchObject({ state: 'PENDING_OWNER_CONFIRMATION', accountMutationPerformed: false });
     expect(response.json().capabilityNote).toContain('will not collect or store another user');
+    const requestId = response.json().requestId as string;
+    const confirmed = await app.inject({
+      method: 'POST',
+      url: '/api/admin/account-lifecycle/requests/' + requestId + '/confirm',
+      headers: { 'x-test-role': 'owner' },
+      payload: { confirmation: 'CONFIRM ' + requestId },
+    });
+    expect(confirmed.statusCode).toBe(200);
+    expect(confirmed.json()).toMatchObject({ state: 'CONFIRMED_CAPABILITY_BLOCKED', accountMutationPerformed: false });
   });
 });
