@@ -23,10 +23,20 @@ const u2ebApi = u2ebServices.find((service) => service.name === 'ryanai-api-u2eb
 const u2ebWeb = u2ebServices.find((service) => service.name === 'ryanai-web-u2eb');
 const u2ebRedis = u2ebServices.find((service) => service.name === 'ryanai-redis-u2eb');
 const u2ebDatabase = u2ebDatabases.find((database) => database.name === 'ryanai_database');
-const renderApi = renderServices.find((service) => service.name === 'ryanai-api');
-const renderWeb = renderServices.find((service) => service.name === 'ryanai-web');
-const renderRedis = renderServices.find((service) => service.name === 'ryanai-redis');
-const renderServiceNames = renderServices.map((service) => service.name);
+const renderApi = productionEnvironment
+  ? renderServices.find((service) => service.name === 'ryanai-api')
+  : u2ebApi;
+const renderWeb = productionEnvironment
+  ? renderServices.find((service) => service.name === 'ryanai-web')
+  : u2ebWeb;
+const renderRedis = productionEnvironment
+  ? renderServices.find((service) => service.name === 'ryanai-redis')
+  : u2ebRedis;
+// Keep Production names separate from the active U2EB service list so the
+// isolation check does not compare U2EB resources against themselves.
+const productionServices = productionEnvironment?.services
+  ?? (Array.isArray(renderConfig.services) ? renderConfig.services : []);
+const renderServiceNames = productionServices.map((service) => service.name);
 const expectedRenderServiceNames = productionEnvironment
   ? ['ryanai-api', 'ryanai-web', 'ryanai-redis']
   : ['ryanai-api-u2eb', 'ryanai-web-u2eb', 'ryanai-redis-u2eb'];
@@ -156,7 +166,7 @@ checks.push(
   ['Staging disables schedulers, alerts, communications, attachments, scanning, and cleanup by default', ['SCHEDULER_ENABLED', 'ALERTS_ENABLED', 'COMMUNICATIONS_ENABLED', 'COMMUNICATION_ATTACHMENTS_ENABLED', 'ATTACHMENT_SCANNER_ENABLED', 'ATTACHMENT_ORPHAN_CLEANUP_ENABLED'].every(stagingFalse)],
   ['U2EB Blueprint declares exactly the existing API, web, and Redis resources without a managed database', u2ebServices.length === 3 && new Set(u2ebServices.map((service) => service.name)).size === 3 && !u2ebDatabase],
   ['U2EB API adopts the existing Docker service and remains manual-deploy only', u2ebApi?.runtime === 'docker' && u2ebApi?.dockerfilePath === './Dockerfile.api' && u2ebApi?.healthCheckPath === '/health' && u2ebApi?.autoDeployTrigger === 'off' && u2ebApi?.repo === 'https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main'],
-  ['U2EB API receives PostgreSQL and Redis URLs through resource references, not hardcoded credentials', envVar(u2ebApi, 'DATABASE_URL', renderConfig)?.fromDatabase?.name === 'ryanai_database' && envVar(u2ebApi, 'REDIS_URL', renderConfig)?.fromService?.name === 'ryanai-redis-u2eb' && envVar(u2ebApi, 'REDIS_URL', renderConfig)?.fromService?.property === 'connectionString'],
+  ['U2EB API receives PostgreSQL and Redis URLs through resource references, not hardcoded credentials', isSyncFalse(u2ebApi, 'DATABASE_URL', renderConfig) && envVar(u2ebApi, 'REDIS_URL', renderConfig)?.fromService?.name === 'ryanai-redis-u2eb' && envVar(u2ebApi, 'REDIS_URL', renderConfig)?.fromService?.property === 'connectionString'],
   ['U2EB API is staging-classified and keeps schedulers, alerts, and outbound communications disabled', envVar(u2ebApi, 'NODE_ENV', renderConfig)?.value === 'staging' && ['SCHEDULER_ENABLED', 'ALERTS_ENABLED', 'COMMUNICATIONS_ENABLED', 'COMMUNICATION_ATTACHMENTS_ENABLED', 'ATTACHMENT_SCANNER_ENABLED', 'ATTACHMENT_ORPHAN_CLEANUP_ENABLED'].every((key) => envVar(u2ebApi, key, renderConfig)?.value === 'false')],
   ['U2EB web uses the existing static site and dynamically references the U2EB API hostname', u2ebWeb?.runtime === 'static' && u2ebWeb?.buildCommand === 'npm ci --legacy-peer-deps && npm run build:web' && u2ebWeb?.staticPublishPath === './dist' && u2ebWeb?.autoDeployTrigger === 'off' && envVar(u2ebWeb, 'VITE_API_BASE_URL', renderConfig)?.fromService?.name === 'ryanai-api-u2eb' && envVar(u2ebWeb, 'VITE_API_BASE_URL', renderConfig)?.fromService?.envVarKey === 'RENDER_EXTERNAL_HOSTNAME'],
   ['U2EB web receives the authorised Supabase project URL and requires an explicitly supplied browser key', envVar(u2ebWeb, 'VITE_SUPABASE_URL', renderConfig)?.sync === false && (isSyncFalse(u2ebWeb, 'VITE_SUPABASE_PUBLISHABLE_KEY', renderConfig) || isSyncFalse(u2ebWeb, 'VITE_SUPABASE_ANON_KEY', renderConfig))],
