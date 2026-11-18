@@ -80,6 +80,32 @@ describe('owner-triggered LangGraph checkpointer setup', () => {
     expect(checkpointer.setup).not.toHaveBeenCalled();
   });
 
+  it('runs setup when checkpoint tables exist but the package migration ledger is empty', async () => {
+    vi.mocked(inspectDatabaseSchema)
+      .mockResolvedValueOnce({ communications: true, agentCheckpointer: true })
+      .mockResolvedValueOnce({ communications: true, agentCheckpointer: true });
+    vi.mocked(checkpointer.setup).mockResolvedValue(undefined);
+    vi.mocked(postgresPool.query)
+      .mockResolvedValueOnce({ rows: [{ version: null }] } as never)
+      .mockResolvedValueOnce({ rows: [{ version: 5 }] } as never);
+
+    const app = await createApp();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/operations/langgraph-checkpointer/setup',
+      headers: { 'x-test-owner': 'true' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: 'initialized',
+      agentCheckpointer: true,
+      migrationVersion: 5,
+    });
+    expect(checkpointer.setup).toHaveBeenCalledTimes(1);
+    expect(postgresPool.query).toHaveBeenCalledTimes(2);
+  });
+
   it('runs the supported setup method and verifies migration version 5+', async () => {
     vi.mocked(inspectDatabaseSchema)
       .mockResolvedValueOnce({ communications: true, agentCheckpointer: false })
