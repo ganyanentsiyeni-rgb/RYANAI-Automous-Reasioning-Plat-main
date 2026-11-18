@@ -62,50 +62,77 @@ export function createAuditIntegrity(
   return { version: 1, previousHash: previousHash.toLowerCase(), eventHash };
 }
 
+/**
+ * Verifies by following previousHash links, not by trusting database sort order.
+ * This makes equal timestamps and random UUID tie-breakers irrelevant. A fork,
+ * disconnected component, duplicate predecessor, malformed link, or payload
+ * edit is invalid. Unhashed historical rows remain explicitly unverified.
+ */
 export function verifyAuditIntegrity(
   records: readonly AuditIntegrityRecord[],
 ): AuditIntegrityVerification {
-  let headHash = GENESIS_HASH;
-  let checked = 0;
-  let legacyUnverified = 0;
-  let firstInvalidEventId: string | null = null;
-  let chainStarted = false;
-
-  for (const record of records) {
+  const legacy = records.filter((record) => {
     const details = record.details && typeof record.details === 'object' && !Array.isArray(record.details)
       ? record.details as Record<string, unknown>
       : {};
+    return !Object.prototype.hasOwnProperty.call(details, 'integrity');
+  });
+  const linked = records.filter((record) => {
+    const details = record.details && typeof record.details === 'object' && !Array.isArray(record.details)
+      ? record.details as Record<string, unknown>
+      : {};
+    return Object.prototype.hasOwnProperty.call(details, 'integrity');
+  });
+  const byPreviousHash = new Map<string, AuditIntegrityRecord[]>();
+  for (const record of linked) {
+    const details = record.details as Record<string, unknown>;
     const metadata = details.integrity as Partial<AuditIntegrityMetadata> | undefined;
-    if (!metadata) {
-      if (!chainStarted) {
-        legacyUnverified += 1;
-        continue;
-      }
-      firstInvalidEventId = record.id;
-      break;
+    const previousHash = metadata?.previousHash;
+    if (typeof previousHash !== 'string' || !/^[a-f0-9]{64}$/i.test(previousHash)) {
+      return { valid: false, checked: 0, legacyUnverified: legacy.length, firstInvalidEventId: record.id, headHash: GENESIS_HASH };
     }
-    chainStarted = true;
-    if (metadata.version !== 1 || metadata.previousHash !== headHash ||
+    const key = previousHash.toLowerCase();
+    const bucket = byPreviousHash.get(key) ?? [];
+    bucket.push(record);
+    byPreviousHash.set(key, bucket);
+  }
+
+  let headHash = GENESIS_HASH;
+  let checked = 0;
+  const visited = new Set<string>();
+  while (true) {
+    const candidates = byPreviousHash.get(headHash) ?? [];
+    if (candidates.length === 0) break;
+    if (candidates.length !== 1) {
+      return { valid: false, checked, legacyUnverified: legacy.length, firstInvalidEventId: candidates[0].id, headHash };
+    }
+    const record = candidates[0];
+    const details = record.details as Record<string, unknown>;
+    const metadata = details.integrity as Partial<AuditIntegrityMetadata>;
+    if (visited.has(record.id) || metadata.version !== 1 ||
         typeof metadata.eventHash !== 'string' || !/^[a-f0-9]{64}$/i.test(metadata.eventHash)) {
-      firstInvalidEventId = record.id;
-      break;
+      return { valid: false, checked, legacyUnverified: legacy.length, firstInvalidEventId: record.id, headHash };
     }
     const expected = createAuditIntegrity(record, headHash);
     if (expected.eventHash !== metadata.eventHash.toLowerCase()) {
-      firstInvalidEventId = record.id;
-      break;
+      return { valid: false, checked, legacyUnverified: legacy.length, firstInvalidEventId: record.id, headHash };
     }
+    visited.add(record.id);
     headHash = expected.eventHash;
     checked += 1;
   }
 
-  return {
-    valid: firstInvalidEventId === null,
-    checked,
-    legacyUnverified,
-    firstInvalidEventId,
-    headHash,
-  };
+  if (checked !== linked.length) {
+    const disconnected = linked.find((record) => !visited.has(record.id));
+    return {
+      valid: false,
+      checked,
+      legacyUnverified: legacy.length,
+      firstInvalidEventId: disconnected?.id ?? null,
+      headHash,
+    };
+  }
+  return { valid: true, checked, legacyUnverified: legacy.length, firstInvalidEventId: null, headHash };
 }
 
 export const AUDIT_INTEGRITY_GENESIS_HASH = GENESIS_HASH;

@@ -10,6 +10,9 @@ import {
 function record(id: string, details: Record<string, unknown> = {}): AuditIntegrityRecord {
   return { id, actorId: 'owner-1', eventType: 'ACCOUNT_LIFECYCLE_REQUESTED', resourceId: 'target-1', details };
 }
+function linked(recordValue: AuditIntegrityRecord, integrity: ReturnType<typeof createAuditIntegrity>): AuditIntegrityRecord {
+  return { ...recordValue, details: { ...(recordValue.details as object), integrity } };
+}
 
 describe('lifecycle audit hash-chain integrity', () => {
   it('creates deterministic SHA-256 metadata independent of object key order', () => {
@@ -25,11 +28,7 @@ describe('lifecycle audit hash-chain integrity', () => {
     const firstIntegrity = createAuditIntegrity(first);
     const second = record('event-2', { requestId: 'request-2' });
     const secondIntegrity = createAuditIntegrity(second, firstIntegrity.eventHash);
-    const result = verifyAuditIntegrity([
-      legacy,
-      { ...first, details: { ...(first.details as object), integrity: firstIntegrity } },
-      { ...second, details: { ...(second.details as object), integrity: secondIntegrity } },
-    ]);
+    const result = verifyAuditIntegrity([linked(second, secondIntegrity), legacy, linked(first, firstIntegrity)]);
     expect(result).toMatchObject({ valid: true, checked: 2, legacyUnverified: 1, firstInvalidEventId: null });
     expect(result.headHash).toBe(secondIntegrity.eventHash);
   });
@@ -39,9 +38,7 @@ describe('lifecycle audit hash-chain integrity', () => {
     const integrity = createAuditIntegrity(original);
     const tampered = record('event-1', { reason: 'rewritten request', integrity });
     expect(verifyAuditIntegrity([tampered])).toMatchObject({
-      valid: false,
-      checked: 0,
-      firstInvalidEventId: 'event-1',
+      valid: false, checked: 0, firstInvalidEventId: 'event-1',
     });
   });
 
@@ -51,19 +48,36 @@ describe('lifecycle audit hash-chain integrity', () => {
     const second = record('event-2');
     const secondIntegrity = createAuditIntegrity(second, firstIntegrity.eventHash);
     const broken = { ...second, details: { ...(second.details as object), integrity: { ...secondIntegrity, previousHash: 'f'.repeat(64) } } };
-    expect(verifyAuditIntegrity([
-      { ...first, details: { ...(first.details as object), integrity: firstIntegrity } },
-      broken,
-    ])).toMatchObject({ valid: false, firstInvalidEventId: 'event-2' });
+    expect(verifyAuditIntegrity([linked(first, firstIntegrity), broken])).toMatchObject({
+      valid: false, firstInvalidEventId: 'event-2',
+    });
     expect(() => createAuditIntegrity(second, 'bad')).toThrow('previousHash');
   });
 
-  it('detects a missing integrity record after the chain has started', () => {
+  it('reports an unhashed tail row as legacy because it cannot be distinguished from pre-chain history', () => {
     const first = record('event-1');
     const integrity = createAuditIntegrity(first);
-    expect(verifyAuditIntegrity([
-      { ...first, details: { ...(first.details as object), integrity } },
-      record('event-2'),
-    ])).toMatchObject({ valid: false, checked: 1, legacyUnverified: 0, firstInvalidEventId: 'event-2' });
+    const missing = record('event-2');
+    // A stripped final hash and a genuine pre-chain legacy row are indistinguishable without an external anchor.\n    expect(verifyAuditIntegrity([linked(first, integrity), missing])).toMatchObject({
+      valid: true, checked: 1, legacyUnverified: 1, firstInvalidEventId: null,
+    });
+  });
+
+  it('detects forks that share the same predecessor', () => {
+    const first = record('event-1');
+    const firstIntegrity = createAuditIntegrity(first);
+    const fork = record('event-fork');
+    const forkIntegrity = createAuditIntegrity(fork);
+    expect(verifyAuditIntegrity([linked(first, firstIntegrity), linked(fork, forkIntegrity)])).toMatchObject({
+      valid: false, checked: 0, firstInvalidEventId: 'event-1',
+    });
+  });
+
+  it('detects disconnected or orphaned chain segments', () => {
+    const orphan = record('orphan');
+    const orphanIntegrity = createAuditIntegrity(orphan, 'f'.repeat(64));
+    expect(verifyAuditIntegrity([linked(orphan, orphanIntegrity)])).toMatchObject({
+      valid: false, checked: 0, firstInvalidEventId: 'orphan',
+    });
   });
 });
