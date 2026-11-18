@@ -82,6 +82,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [directoryProfiles, setDirectoryProfiles] = useState<DirectoryProfile[]>([]);
   const [authInventory, setAuthInventory] = useState<AuthInventory | null>(null);
+  const [authPage, setAuthPage] = useState(1);
   const [metrics, setMetrics] = useState<RuntimeMetrics | null>(null);
   const [actions, setActions] = useState<PendingAction[]>([]);
   const [jobs, setJobs] = useState<EngineeringJob[]>([]);
@@ -96,7 +97,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
     const results = await Promise.allSettled([
       readJson<AdminIdentity>('/api/auth/verify', userId),
       readJson<{ events: AuditEvent[] }>('/api/admin/audit-events?limit=30', userId),
-      readJson<{ profiles: DirectoryProfile[]; authInventory?: AuthInventory }>('/api/admin/users?limit=50&page=1', userId),
+      readJson<{ profiles: DirectoryProfile[]; authInventory?: AuthInventory }>('/api/admin/users?limit=50&page=' + authPage, userId),
       readJson<RuntimeMetrics>('/api/admin/metrics', userId),
       readJson<{ actions: PendingAction[] }>('/api/actions', userId),
       readJson<{ jobs: EngineeringJob[] }>('/api/engineering/jobs', userId),
@@ -127,7 +128,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
       setErrors(nextErrors);
       setLoading(false);
     }
-  }, [userId]);
+  }, [userId, authPage]);
 
   useEffect(() => {
     let active = true;
@@ -313,10 +314,14 @@ export default function AdminConsole({ userId }: { userId: string }) {
           </table></div>}
         <div className="mt-6 border-t border-white/10 pt-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><h3 className="text-sm font-semibold text-white">Supabase Auth accounts</h3><p className="mt-1 text-xs text-slate-400">Server-side Auth Admin inventory · page {authInventory?.page ?? 1} · {authInventory?.perPage ?? 50} per page</p></div>
+            <div><h3 className="text-sm font-semibold text-white">Supabase Auth accounts</h3><p className="mt-1 text-xs text-slate-400">Server-side Auth Admin inventory · page {authInventory?.page ?? authPage} · {authInventory?.perPage ?? 50} per page</p></div>
             <span className={authInventory?.status === 'available' ? 'rounded-full border border-emerald-300/25 px-3 py-1 text-xs text-emerald-200' : 'rounded-full border border-amber-300/25 px-3 py-1 text-xs text-amber-200'}>
               {authInventory?.status === 'available' ? 'Auth inventory available' : authInventory?.status === 'unavailable' ? 'Auth provider unavailable' : 'Auth Admin not configured'}
             </span>
+          </div>
+          <div className="mt-3 flex items-center justify-end gap-2">
+            <button type="button" onClick={() => setAuthPage((page) => Math.max(1, page - 1))} disabled={authPage <= 1} className="rounded-lg border border-white/15 px-3 py-2 text-xs text-slate-300 disabled:opacity-40">Previous page</button>
+            <button type="button" onClick={() => setAuthPage((page) => page + 1)} disabled={authInventory?.status !== 'available' || (authInventory.users.length < authInventory.perPage)} className="rounded-lg border border-white/15 px-3 py-2 text-xs text-slate-300 disabled:opacity-40">Next page</button>
           </div>
           {authInventory?.status === 'available' && authInventory.users.length > 0
             ? <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[620px] text-left text-xs">
