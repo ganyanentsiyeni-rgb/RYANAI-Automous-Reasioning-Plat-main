@@ -1475,3 +1475,19 @@ model IntelligenceEventAttempt {
   @@map("intelligence_event_attempts")
   @@schema("public")
 }
+
+
+/// Append-only audit ledger for owner account lifecycle requests.
+model AccountLifecycleAuditEvent {
+  id        String   @id @default(dbgenerated("gen_random_uuid()"))) @db.Uuid
+  requestId String   @map("request_id") @db.Uuid
+  actorId   String   @map("actor_id") @db.Uuid
+  eventType String   @map("event_type") @db.VarChar(64)
+  details   Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([requestId, createdAt(sort: Desc)], map: "account_lifecycle_audit_request_created_idx")
+  @@index([actorId, createdAt(sort: Desc)], map: "account_lifecycle_audit_actor_created_idx")
+  @@map("account_lifecycle_audit_events")
+  @@schema("public")
+}
