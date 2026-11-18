@@ -16,7 +16,7 @@ For the active project, configure these in **Authentication**:
 2. **Sign In / Providers**: enable Google and GitHub and supply each provider's own OAuth Client ID and Client Secret.
 3. In each Google/GitHub OAuth application, set its authorized redirect URI to the Supabase project's callback URL:
    `https://<PROJECT_REF>.supabase.co/auth/v1/callback`
-   Use the callback displayed by the active Supabase project; do not copy a callback from an older project.
+   Current active RyanAI Supabase project verified through the connected Supabase project list: `omqavyppdoniehseokvx` (ACTIVE_HEALTHY, eu-central-1). Its callback is `https://omqavyppdoniehseokvx.supabase.co/auth/v1/callback`. Use this exact callback in Google Cloud and GitHub OAuth app settings; do not use the previous `narsvpwymvlrhurqbthu` project callback.
 4. **Manual identity linking**: enable it only after reviewing identity-linking behavior and account recovery requirements.
 5. **Bot and Abuse Protection**: configure Cloudflare Turnstile or hCaptcha before enabling anonymous sign-ins for public traffic.
 
