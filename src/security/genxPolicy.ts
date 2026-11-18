@@ -53,9 +53,6 @@ export function evaluateGenXSecurityEvent(event: GenXSecurityEvent): GenXPolicyR
   if (event.action === 'CREDENTIAL_ACCESS' || SENSITIVE_TARGET.test(event.target ?? '')) {
     return { decision: 'DENY', ruleId: 'GX-SECRETS-001', reason: 'Agents cannot read or export credentials, secrets, private keys, or environment files.', severity: 'CRITICAL' };
   }
-  // Validate untrusted target strings before granting any read-only tool exception.
-  // Otherwise a nominally safe reader could receive shell-control or injection payloads.
-  if (event.target && COMMAND_CONTROL.test(event.target)) {
   if (event.action === 'CREDENTIAL_ACCESS' || (event.action === 'READ' && SENSITIVE_TARGET.test(event.target ?? ''))) {
     return { decision: 'DENY', ruleId: 'GX-SECRETS-001', reason: 'Credential access and reads of secrets, private keys, passwords, or environment files are prohibited.', severity: 'CRITICAL' };
   }
