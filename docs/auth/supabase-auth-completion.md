@@ -24,7 +24,7 @@ Dashboard provider credentials and toggles are not stored in this repository. A 
 
 ## Anonymous sign-in rollout gate
 
-The client helper supports `signInAnonymously({ options: { captchaToken } })` through its wrapper, but anonymous sign-in must remain disabled in the hosted project until all exposed-table RLS policies explicitly distinguish `auth.jwt()->>'is_anonymous'` from permanent users. Anonymous sessions use the Postgres `authenticated` role. Do not grant them owner, admin, communications, memory-write, or other privileged capabilities.
+The client helper accepts an optional CAPTCHA token and forwards it as `options.captchaToken`, but anonymous sign-in must remain disabled in the hosted project until all exposed-table RLS policies explicitly distinguish `auth.jwt()->>'is_anonymous'` from permanent users. Anonymous sessions use the Postgres `authenticated` role. Do not grant them owner, admin, communications, memory-write, or other privileged capabilities.
 
 Review each table's existing policies against the actual ownership model before enabling anonymous sign-ins. For write policies, enforce ownership in both `USING` and `WITH CHECK`; do not use user-editable `user_metadata` as an authorization source.
 
