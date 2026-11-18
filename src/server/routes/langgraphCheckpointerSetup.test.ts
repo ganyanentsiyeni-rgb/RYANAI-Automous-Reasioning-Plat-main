@@ -131,6 +131,31 @@ describe('owner-triggered LangGraph checkpointer setup', () => {
     expect(checkpointer.setup).toHaveBeenCalledTimes(1);
   });
 
+  it('preserves schema presence when the package migration ledger is still behind', async () => {
+    vi.mocked(inspectDatabaseSchema)
+      .mockResolvedValueOnce({ communications: true, agentCheckpointer: true })
+      .mockResolvedValueOnce({ communications: true, agentCheckpointer: true });
+    vi.mocked(checkpointer.setup).mockResolvedValue(undefined);
+    vi.mocked(postgresPool.query)
+      .mockResolvedValueOnce({ rows: [{ version: 4 }] } as never)
+      .mockResolvedValueOnce({ rows: [{ version: 4 }] } as never);
+
+    const app = await createApp();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/operations/langgraph-checkpointer/setup',
+      headers: { 'x-test-owner': 'true' },
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({
+      status: 'verification_failed',
+      agentCheckpointer: true,
+      migrationVersion: 4,
+    });
+    expect(checkpointer.setup).toHaveBeenCalledTimes(1);
+  });
+
   it('returns 503 when setup does not produce the expected schema version', async () => {
     vi.mocked(inspectDatabaseSchema)
       .mockResolvedValueOnce({ communications: true, agentCheckpointer: false })
