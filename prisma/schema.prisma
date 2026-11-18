@@ -1435,7 +1435,7 @@ model IntelligenceEventInbox {
   @@schema("public")
 }
 
-/// Append-only execution attempt evidence for durable intelligence events.
+/// Per-attempt lifecycle evidence for durable intelligence events.
 model IntelligenceEventAttempt {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   eventInboxId String   @map("event_inbox_id") @db.Uuid
