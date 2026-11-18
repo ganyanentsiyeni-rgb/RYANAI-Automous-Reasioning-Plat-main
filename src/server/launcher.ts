@@ -6,6 +6,7 @@ import '../instrument.js';
 import { shutdownTelemetry } from '../telemetry.js';
 
 import Fastify, { FastifyReply, FastifyRequest } from 'fastify';
+import { parseCorsOrigins } from './corsOrigins.js';
 import fastifyWebsocket from '@fastify/websocket';
 import fastifyRedis from '@fastify/redis';
 import fastifyRateLimit from '@fastify/rate-limit';
@@ -133,7 +134,6 @@ if (!audiobookPrisma) {
 
 // Register CORS with an explicit origin allowlist. Reflecting every Origin while
 // allowing credentials would let arbitrary websites make authenticated API calls.
-const { parseCorsOrigins } = await import('./corsOrigins.js');
 const allowedCorsOrigins = parseCorsOrigins(
   process.env.CORS_ORIGINS,
   process.env.FRONTEND_URL,
