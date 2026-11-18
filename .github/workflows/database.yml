@@ -277,11 +277,6 @@ jobs:
     name: Verify Supabase and Prisma fresh-stack migrations
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      # This URL is the disposable local Supabase database started below.
-      # Never replace it with a hosted project URL or a production secret.
-      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
-
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -302,6 +297,13 @@ jobs:
 
       - name: Start disposable local Supabase stack
         run: supabase start
+      - name: Export dynamically allocated local Supabase database URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval "$(supabase status -o env)"
+          test -n "${DB_URL:-}"
+          echo "DATABASE_URL=$DB_URL" >> "$GITHUB_ENV"
 
       - name: Replay the Supabase-owned migration chain from an empty database
         run: supabase db reset --local
