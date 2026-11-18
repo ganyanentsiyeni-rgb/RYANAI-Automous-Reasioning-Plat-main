@@ -42,6 +42,11 @@ projects:
                 sync: false
               - key: SUPABASE_PUBLISHABLE_KEY
                 sync: false
+              # Shared MCP signing/service credentials must match the MCP service; set from the existing Render test environment group.
+              - key: RYANAI_MCP_DELEGATION_SECRET
+                sync: false
+              - key: RYANAI_MCP_SERVICE_TOKEN
+                sync: false
               - key: CORS_ORIGINS
                 value: https://ryanai-web-u2eb.onrender.com
               - key: SCHEDULER_ENABLED
@@ -56,6 +61,36 @@ projects:
                 value: "false"
               - key: ATTACHMENT_ORPHAN_CLEANUP_ENABLED
                 value: "false"
+          - type: web
+            name: ryanai-mcp-u2eb
+            runtime: docker
+            repo: https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main
+            branch: main
+            region: oregon
+            plan: free
+            dockerContext: .
+            dockerfilePath: ./mcp-server/Dockerfile
+            healthCheckPath: /health
+            autoDeployTrigger: off
+            envVars:
+              - key: NODE_ENV
+                value: production
+              - key: MCP_HOST
+                value: 0.0.0.0
+              - key: MCP_ALLOWED_HOSTS
+                value: ryanai-mcp-u2eb.onrender.com
+              - key: MCP_ALLOWED_ORIGINS
+                value: https://ryanai-web-u2eb.onrender.com,https://ryanai-web-authfix.onrender.com
+              - key: RYANAI_API_BASE_URL
+                value: https://ryanai-api-u2eb.onrender.com
+              - key: RYANAI_API_HEALTH_URL
+                value: https://ryanai-api-u2eb.onrender.com/health
+              - key: RYANAI_MCP_ENABLED_TOOLS
+                value: tool_registry,platform_health,ryanai_stack_manifest
+              - key: RYANAI_MCP_DELEGATION_SECRET
+                sync: false
+              - key: RYANAI_MCP_SERVICE_TOKEN
+                sync: false
           - type: web
             runtime: static
             name: ryanai-web-u2eb
