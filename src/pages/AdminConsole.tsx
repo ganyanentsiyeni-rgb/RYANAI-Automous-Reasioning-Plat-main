@@ -10,6 +10,8 @@ interface AdminIdentity {
   user: { id: string; email?: string; role: 'user' | 'admin'; displayName?: string; isOwner: boolean };
 }
 interface DirectoryProfile { id: string; email: string | null; fullName: string | null; createdAt: string | null; updatedAt: string | null; }
+interface AuthDirectoryUser { id: string; email: string | null; createdAt: string | null; lastSignInAt: string | null; role: string | null; }
+interface AuthInventory { status: 'available' | 'not_configured' | 'unavailable'; users: AuthDirectoryUser[]; page: number; perPage: number; }
 interface AuditEvent {
   id: string;
   actorId: string;
@@ -79,6 +81,8 @@ export default function AdminConsole({ userId }: { userId: string }) {
   const [identity, setIdentity] = useState<AdminIdentity | null>(null);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [directoryProfiles, setDirectoryProfiles] = useState<DirectoryProfile[]>([]);
+  const [authInventory, setAuthInventory] = useState<AuthInventory | null>(null);
+  const [authPage, setAuthPage] = useState(1);
   const [metrics, setMetrics] = useState<RuntimeMetrics | null>(null);
   const [actions, setActions] = useState<PendingAction[]>([]);
   const [jobs, setJobs] = useState<EngineeringJob[]>([]);
@@ -93,7 +97,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
     const results = await Promise.allSettled([
       readJson<AdminIdentity>('/api/auth/verify', userId),
       readJson<{ events: AuditEvent[] }>('/api/admin/audit-events?limit=30', userId),
-      readJson<{ profiles: DirectoryProfile[] }>('/api/admin/users?limit=50', userId),
+      readJson<{ profiles: DirectoryProfile[]; authInventory?: AuthInventory }>('/api/admin/users?limit=50&page=' + authPage, userId),
       readJson<RuntimeMetrics>('/api/admin/metrics', userId),
       readJson<{ actions: PendingAction[] }>('/api/actions', userId),
       readJson<{ jobs: EngineeringJob[] }>('/api/engineering/jobs', userId),
@@ -110,8 +114,10 @@ export default function AdminConsole({ userId }: { userId: string }) {
     }
     if (results[1].status === 'fulfilled') setAuditEvents(results[1].value.events ?? []);
     else { setAuditEvents([]); nextErrors.push('Security audit: ' + String(results[1].reason)); }
-    if (results[2].status === 'fulfilled') setDirectoryProfiles(results[2].value.profiles ?? []);
-    else { setDirectoryProfiles([]); nextErrors.push('User directory: ' + String(results[2].reason)); }
+    if (results[2].status === 'fulfilled') {
+      setDirectoryProfiles(results[2].value.profiles ?? []);
+      setAuthInventory(results[2].value.authInventory ?? null);
+    } else { setDirectoryProfiles([]); setAuthInventory(null); nextErrors.push('User directory: ' + String(results[2].reason)); }
     if (results[3].status === 'fulfilled') setMetrics(results[3].value);
     else { setMetrics(null); nextErrors.push('Runtime metrics: ' + String(results[3].reason)); }
     if (results[4].status === 'fulfilled') setActions(results[4].value.actions ?? []);
@@ -122,7 +128,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
       setErrors(nextErrors);
       setLoading(false);
     }
-  }, [userId]);
+  }, [userId, authPage]);
 
   useEffect(() => {
     let active = true;
@@ -306,7 +312,28 @@ export default function AdminConsole({ userId }: { userId: string }) {
               <td className="py-3 whitespace-nowrap">{dateLabel(profile.updatedAt)}</td>
             </tr>)}</tbody>
           </table></div>}
-        <p className="mt-3 text-[11px] leading-5 text-slate-500">Coverage limitation: this endpoint lists only rows present in public.profiles. It does not enumerate the Supabase Auth user store, change roles, suspend accounts or revoke sessions. Those privileged lifecycle actions require a separately secured Auth Admin integration, Gen-X authorization and immutable audit evidence.</p>
+        <div className="mt-6 border-t border-white/10 pt-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div><h3 className="text-sm font-semibold text-white">Supabase Auth accounts</h3><p className="mt-1 text-xs text-slate-400">Server-side Auth Admin inventory · page {authInventory?.page ?? authPage} · {authInventory?.perPage ?? 50} per page</p></div>
+            <span className={authInventory?.status === 'available' ? 'rounded-full border border-emerald-300/25 px-3 py-1 text-xs text-emerald-200' : 'rounded-full border border-amber-300/25 px-3 py-1 text-xs text-amber-200'}>
+              {authInventory?.status === 'available' ? 'Auth inventory available' : authInventory?.status === 'unavailable' ? 'Auth provider unavailable' : 'Auth Admin not configured'}
+            </span>
+          </div>
+          <div className="mt-3 flex items-center justify-end gap-2">
+            <button type="button" onClick={() => setAuthPage((page) => Math.max(1, page - 1))} disabled={authPage <= 1} className="rounded-lg border border-white/15 px-3 py-2 text-xs text-slate-300 disabled:opacity-40">Previous page</button>
+            <button type="button" onClick={() => setAuthPage((page) => page + 1)} disabled={authInventory?.status !== 'available' || (authInventory.users.length < authInventory.perPage)} className="rounded-lg border border-white/15 px-3 py-2 text-xs text-slate-300 disabled:opacity-40">Next page</button>
+          </div>
+          {authInventory?.status === 'available' && authInventory.users.length > 0
+            ? <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[620px] text-left text-xs">
+              <thead><tr className="border-b border-white/10 text-slate-500"><th className="py-2 pr-3 font-medium">Auth user ID</th><th className="py-2 pr-3 font-medium">Email</th><th className="py-2 pr-3 font-medium">App role</th><th className="py-2 pr-3 font-medium">Created</th><th className="py-2 font-medium">Last sign-in</th></tr></thead>
+              <tbody>{authInventory.users.map((user) => <tr key={user.id} className="border-b border-white/5 text-slate-300">
+                <td className="py-3 pr-3 font-mono">{user.id}</td><td className="py-3 pr-3">{user.email || 'No email'}</td><td className="py-3 pr-3">{user.role || 'user (default)'}</td><td className="py-3 pr-3 whitespace-nowrap">{dateLabel(user.createdAt)}</td><td className="py-3 whitespace-nowrap">{dateLabel(user.lastSignInAt)}</td>
+              </tr>)}</tbody>
+            </table></div>
+            : <p className="mt-3 rounded-lg border border-white/10 bg-slate-950/40 p-3 text-xs text-slate-400">{authInventory?.status === 'not_configured' ? 'No server-side Supabase Auth Admin credential is configured. The profile list above remains available; no credential was created or changed.' : authInventory?.status === 'unavailable' ? 'Supabase Auth Admin did not return a usable response. No provider error details or credentials are exposed.' : 'No Auth users were returned on this page.'}</p>}
+          <p className="mt-3 text-[11px] leading-5 text-slate-500">This is one read-only, paginated Auth Admin page, not a full export. No role changes, invitations, suspensions, deletions or session revocations are exposed here. Privileged lifecycle controls remain separate work requiring Gen-X authorization and immutable audit evidence.</p>
+        </div>
+        <p className="mt-3 text-[11px] leading-5 text-slate-500">The profile table above lists only rows in public.profiles. Auth accounts and profile records are separate sources and may not have a one-to-one match.</p>
       </section>
 
       <section id="admin-identity" className="scroll-mt-6 rounded-2xl border border-cyan-300/15 bg-slate-900/70 p-5 sm:p-6" aria-labelledby="admin-identity-title">
