@@ -42,12 +42,12 @@ export function assessSchema({ columns, tables, indexes, extensions, memoryColum
   const missingAttemptConstraints = Object.keys(expectedAttemptConstraints).filter((name) => !constraintByName.has(name));
   const constraintMatches = (name, actual, expected) => {
     if (name === 'intelligence_event_attempts_attempt_check') {
-      return /check/.test(actual) && /\\battempt\\b/.test(actual) && />\\s*0\\b/.test(actual);
+      return /check/.test(actual) && /\battempt\b/.test(actual) && />\s*0\b/.test(actual);
     }
     if (name === 'intelligence_event_attempts_status_check') {
       const allowed = ['started', 'succeeded', 'retry', 'dead_letter', 'lease_expired'];
       const values = [...actual.matchAll(/'([^']+)'/g)].map((match) => match[1]).sort();
-      return /\\bstatus\\b/.test(actual) && (actual.includes('= any') || /\\bin\\s*\\(/.test(actual))
+      return /\bstatus\b/.test(actual) && (actual.includes('= any') || /\bin\s*\(/.test(actual))
         && values.length === allowed.length && values.every((value, index) => value === [...allowed].sort()[index]);
     }
     return actual.includes(normalizeDefinition(expected));
