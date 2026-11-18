@@ -1,16 +1,21 @@
-
 import { Pool } from "pg";
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
+import { resolveConnectionUrls } from "../server/startupConfig.js";
 
-const databaseUrl = process.env.DATABASE_URL;
+const nodeEnv = process.env.NODE_ENV || "production";
+const { databaseUrl } = resolveConnectionUrls(
+  nodeEnv,
+  process.env.DATABASE_URL,
+  process.env.REDIS_URL,
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SESSION_POOLER_HOST,
+  process.env.SUPABASE_SSL_ROOT_CERT_PATH,
+);
 
-if (!databaseUrl) {
-  throw new Error("DATABASE_URL is not configured");
-}
-
-// Persistent backend connection pool.
-// Use the actual Supabase Session Pooler URL
-// copied from the Supabase Connect dashboard.
+// Keep the worker on the same validated Session Pooler endpoint and TLS
+// configuration as the API's Prisma client. In particular, do not pass a
+// separate ssl object: node-postgres would let it override sslrootcert and
+// sslmode parsed from the connection URI.
 export const postgresPool = new Pool({
   connectionString: databaseUrl,
   max: 5,
@@ -18,9 +23,6 @@ export const postgresPool = new Pool({
   connectionTimeoutMillis: 10000,
   idleTimeoutMillis: 30000,
   keepAlive: true,
-  ssl: {
-    rejectUnauthorized: true,
-  },
   application_name: "ryanai-agent-worker",
 });
 
@@ -28,21 +30,20 @@ postgresPool.on("error", (error) => {
   console.error("[PostgreSQL] Idle client error:", error.message);
 });
 
-// LangGraph checkpoint persistence.
+// LangGraph checkpoint persistence. Schema setup remains an explicit,
+// separately approved operation; this module never runs setup() at startup.
 export const checkpointer = new PostgresSaver(
   postgresPool,
   undefined,
   { schema: "public" }
 );
 
-// Read-only connectivity verification.
-// Does not run migrations or modify application records.
+// Read-only connectivity verification. Does not run migrations or modify records.
 export async function verifyPostgres(): Promise<boolean> {
   try {
     const result = await postgresPool.query(
       "SELECT current_database(), current_timestamp"
     );
-
     return result.rowCount === 1;
   } catch (error) {
     console.error("[PostgreSQL] Health check failed:", error);
