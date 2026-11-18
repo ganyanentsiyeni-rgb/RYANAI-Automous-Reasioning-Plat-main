@@ -16,14 +16,16 @@ function renderCard(props: Partial<ComponentProps<typeof TelemetryMetricCard>> =
 
 describe('TelemetryMetricCard', () => {
   it('labels a recent source timestamp as fresh and displays provenance', () => {
-    const html = renderCard({ observedAt: new Date(Date.now() - 1_000).toISOString() });
+    const nowMs = Date.parse('2026-11-18T12:00:00.000Z');
+    const html = renderCard({ observedAt: new Date(nowMs - 1_000).toISOString(), nowMs });
     expect(html).toContain('Fresh');
     expect(html).toContain('Source: /api/admin/metrics');
     expect(html).toContain('API uptime');
   });
 
   it('keeps old observations visibly stale', () => {
-    const html = renderCard({ observedAt: new Date(Date.now() - 120_000).toISOString() });
+    const nowMs = Date.parse('2026-11-18T12:00:00.000Z');
+    const html = renderCard({ observedAt: new Date(nowMs - 120_000).toISOString(), nowMs });
     expect(html).toContain('Stale');
   });
 
