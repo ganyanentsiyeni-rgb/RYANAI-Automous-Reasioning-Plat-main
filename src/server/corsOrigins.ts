@@ -6,6 +6,8 @@
  * normalize those values to URL.origin. Never turn an empty or wildcard value
  * into an allow-all policy.
  */
+export const DEFAULT_CORS_ORIGINS = ['https://ryanai-web-u2eb.onrender.com'] as const;
+
 export function normalizeCorsOrigin(value: string): string | null {
   const candidate = value.trim();
   if (!candidate || candidate === '*') return null;
@@ -18,8 +20,6 @@ export function normalizeCorsOrigin(value: string): string | null {
     const parsed = new URL(withProtocol);
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null;
     if (parsed.username || parsed.password) return null;
-    // URL.origin deliberately excludes a trailing slash, but paths and query
-    // strings are not valid CORS origin entries and should not be ignored.
     if (parsed.pathname !== '/' || parsed.search || parsed.hash) return null;
     return parsed.origin;
   } catch {
@@ -28,7 +28,7 @@ export function normalizeCorsOrigin(value: string): string | null {
 }
 
 export function parseCorsOrigins(...values: Array<string | undefined>): Set<string> {
-  const origins = new Set<string>();
+  const origins = new Set<string>(DEFAULT_CORS_ORIGINS);
   for (const value of values) {
     for (const entry of value?.split(',') ?? []) {
       const origin = normalizeCorsOrigin(entry);
