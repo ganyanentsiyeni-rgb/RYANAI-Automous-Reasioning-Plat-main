@@ -27,11 +27,17 @@ export const langGraphCheckpointerSetupRoutes: FastifyPluginAsync = async (fasti
         const current = await postgresPool.query(
           'SELECT MAX(v) AS version FROM public.checkpoint_migrations',
         );
-        return {
-          status: 'already_initialized',
-          agentCheckpointer: true,
-          migrationVersion: Number(current.rows[0]?.version ?? -1),
-        };
+        const currentVersion = Number(current.rows[0]?.version ?? -1);
+        if (Number.isInteger(currentVersion) && currentVersion >= 5) {
+          return {
+            status: 'already_initialized',
+            agentCheckpointer: true,
+            migrationVersion: currentVersion,
+          };
+        }
+        // The application schema may have been provisioned by the repository
+        // migration while the LangGraph package's own migration ledger is empty.
+        // In that state PostgresSaver.setup() must still run to reconcile its ledger.
       }
 
       if (!setupInFlight) {
