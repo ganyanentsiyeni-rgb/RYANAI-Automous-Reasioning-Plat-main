@@ -53,6 +53,9 @@ jobs:
       - name: Verify runtime toolchain and installed dependencies
         run: npm run runtime:check && npm run test:runtime:preflight
 
+      - name: Run Gen-X security policy regression tests
+        run: npx vitest run src/security/genxPolicy.test.ts
+
       - name: Run Settings enhancement regression tests
         run: >-
           npx vitest run
