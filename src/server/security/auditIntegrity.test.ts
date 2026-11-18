@@ -54,11 +54,11 @@ describe('lifecycle audit hash-chain integrity', () => {
     expect(() => createAuditIntegrity(second, 'bad')).toThrow('previousHash');
   });
 
-  it('detects a missing integrity record after the chain has started', () => {
+  it('reports an unhashed tail row as legacy because it cannot be distinguished from pre-chain history', () => {
     const first = record('event-1');
     const integrity = createAuditIntegrity(first);
     const missing = record('event-2');
-    expect(verifyAuditIntegrity([linked(first, integrity), missing])).toMatchObject({
+    // A stripped final hash and a genuine pre-chain legacy row are indistinguishable without an external anchor.\n    expect(verifyAuditIntegrity([linked(first, integrity), missing])).toMatchObject({
       valid: true, checked: 1, legacyUnverified: 1, firstInvalidEventId: null,
     });
   });
