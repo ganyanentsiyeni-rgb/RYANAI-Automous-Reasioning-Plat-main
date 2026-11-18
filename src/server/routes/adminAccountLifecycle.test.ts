@@ -59,7 +59,7 @@ describe('owner account lifecycle request ledger', () => {
   });
 
   it('records a pending role-change request and requires a separate request-specific confirmation', async () => {
-    const { app, create, events } = makeApp();
+    const { app, create, transaction, queryRawUnsafe } = makeApp();
     await app.register(adminAccountLifecycleRoutes);
     const headers = { 'x-test-role': 'owner' };
     const targetUserId = '123e4567-e89b-42d3-a456-426614174000';
