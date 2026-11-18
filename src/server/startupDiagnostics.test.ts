@@ -36,6 +36,16 @@ describe('startup readiness reporting', () => {
 });
 
 describe('safe database diagnostics', () => {
+  it('distinguishes a missing communication schema from a network or authentication failure', () => {
+    const result = databaseFailureDiagnostic(
+      new Error('Required communication schema is missing. Run npm run db:migrate before starting the API.'),
+    );
+    expect(result).toContain('PostgreSQL connectivity succeeded');
+    expect(result).toContain('schema-readiness failure');
+    expect(result).toContain('production migration requires separate approval');
+    expect(result).not.toContain('password');
+  });
+
   it('extracts the cause of an empty-message aggregate error', () => {
     const error = new AggregateError(
       [
