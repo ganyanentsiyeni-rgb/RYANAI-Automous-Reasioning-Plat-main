@@ -36,9 +36,23 @@ export function assessSchema({ columns, tables, indexes, extensions, memoryColum
   const expectedAttemptConstraints = {
     intelligence_event_attempts_event_inbox_id_fkey: 'foreign key (event_inbox_id) references intelligence_event_inbox(id) on delete cascade',
     intelligence_event_attempt_event_attempt_key: 'unique (event_inbox_id, attempt)',
+    intelligence_event_attempts_attempt_check: 'check (attempt > 0)',
+    intelligence_event_attempts_status_check: 'check (status in started,succeeded,retry,dead_letter,lease_expired)',
   };
   const missingAttemptConstraints = Object.keys(expectedAttemptConstraints).filter((name) => !constraintByName.has(name));
-  const mismatchedAttemptConstraints = Object.entries(expectedAttemptConstraints).filter(([name, expected]) => constraintByName.has(name) && !constraintByName.get(name).includes(normalizeDefinition(expected))).map(([name, expected]) => ({ name, expected, actual: constraintByName.get(name) }));
+  const constraintMatches = (name, actual, expected) => {
+    if (name === 'intelligence_event_attempts_attempt_check') {
+      return /check/.test(actual) && /\\battempt\\b/.test(actual) && />\\s*0\\b/.test(actual);
+    }
+    if (name === 'intelligence_event_attempts_status_check') {
+      const allowed = ['started', 'succeeded', 'retry', 'dead_letter', 'lease_expired'];
+      const values = [...actual.matchAll(/'([^']+)'/g)].map((match) => match[1]).sort();
+      return /\\bstatus\\b/.test(actual) && (actual.includes('= any') || /\\bin\\s*\\(/.test(actual))
+        && values.length === allowed.length && values.every((value, index) => value === [...allowed].sort()[index]);
+    }
+    return actual.includes(normalizeDefinition(expected));
+  };
+  const mismatchedAttemptConstraints = Object.entries(expectedAttemptConstraints).filter(([name, expected]) => constraintByName.has(name) && !constraintMatches(name, constraintByName.get(name), expected)).map(([name, expected]) => ({ name, expected, actual: constraintByName.get(name) }));
   const indexByName = new Map(eventAttemptIndexes.map((item) => [item.indexname, normalizeDefinition(item.indexdef)]));
   const expectedAttemptIndexes = {
     intelligence_event_attempt_event_started_idx: '(event_inbox_id, started_at desc)',
