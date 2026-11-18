@@ -50,7 +50,7 @@ projects:
               - key: RYANAI_MCP_HEALTH_URL
                 value: https://ryanai-mcp-u2eb-u2eb.onrender.com/health
               - key: CORS_ORIGINS
-                value: https://ryanai-web-u2eb.onrender.com,https://ryanai-web-authfix.onrender.com
+                value: https://ryanai-web-u2eb.onrender.com,https://ryanai-web-authfix.onrender.com,https://ryanai-web.onrender.com
               - key: SCHEDULER_ENABLED
                 value: "false"
               - key: ALERTS_ENABLED
