@@ -13,7 +13,7 @@ export function areCommunicationAttachmentsEnabled(): boolean {
     && process.env.ATTACHMENT_SCANNER_ENABLED === 'true';
 }
 
-/** Outbound provider calls require a separate, explicit owner-authorized test gate. */
+/** Provider-triggered replies and outbound calls require a separate, explicit owner-authorized test gate. */
 export function isCommunicationsTestAuthorized(): boolean {
   return process.env.RYANAI_COMMS_TEST_AUTHORIZED === 'true';
 }

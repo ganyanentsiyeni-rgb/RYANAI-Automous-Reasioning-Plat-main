@@ -5,7 +5,7 @@ import { humanInTheLoopAgent } from '../../agent/approvalEngine.js';
 import { claimInboundCommunication, recordCommunication } from '../comms/history.js';
 import { getOwnerInboundUserId, storeTwilioMediaForCommunication } from '../comms/attachments.js';
 import { addressOwnerResponse, ownerCommunicationInstruction } from '../../shared/ryanIdentity.js';
-import { isCommunicationsEnabled } from '../comms/featureFlags.js';
+import { isCommunicationsEnabled, isCommunicationsTestAuthorized } from '../comms/featureFlags.js';
 
 const extractContent = (content: unknown): string =>
   typeof content === 'string' ? content : JSON.stringify(content) ?? '';
@@ -83,6 +83,14 @@ export const twilioWebhookPlugin: FastifyPluginAsync = async (fastify) => {
       if (media.length) {
         try { await storeTwilioMediaForCommunication(fastify.prisma, body.MessageSid, media); }
         catch (error) { mediaStorageFailed = true; throw error; }
+      }
+      if (!isCommunicationsTestAuthorized()) {
+        await fastify.prisma.communicationMessage.update({
+          where: { providerMessageId: body.MessageSid },
+          data: { status: 'received', metadata: { mediaCount: media.length, replySuppressed: true } },
+        });
+        reply.type('text/xml');
+        return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
       }
       const prompt = incomingText
         ? incomingText + (media.length ? `\\n\\nThe sender attached ${media.length} file(s). They have been stored securely but have not been analyzed. Do not claim to have inspected their contents.` : '')

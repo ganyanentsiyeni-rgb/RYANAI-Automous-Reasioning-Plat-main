@@ -45,6 +45,7 @@ async function sendWebhook(signature?: string, payload = body, host?: string) {
 
 beforeEach(() => {
   vi.stubEnv('COMMUNICATIONS_ENABLED', 'true');
+  vi.stubEnv('RYANAI_COMMS_TEST_AUTHORIZED', 'true');
   prismaMock.communicationConversation.upsert.mockResolvedValue({ id: 'conversation-1' });
   prismaMock.communicationMessage.findUnique.mockResolvedValue(null);
   prismaMock.communicationMessage.upsert.mockResolvedValue({});
@@ -132,6 +133,23 @@ describe('Twilio webhook provider authentication', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body).toContain('This was already handled.');
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('stores an authentic inbound WhatsApp message but suppresses the auto-reply until explicitly authorized', async () => {
+    vi.stubEnv('RYANAI_COMMS_TEST_AUTHORIZED', 'false');
+    const signature = twilio.getExpectedTwilioSignature(token, webhookUrl, body);
+
+    const response = await sendWebhook(signature);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('text/xml');
+    expect(response.body).toContain('<Response/>');
+    expect(response.body).not.toContain('<Message>');
+    expect(prismaMock.communicationMessage.update).toHaveBeenCalledWith({
+      where: { providerMessageId: 'SM123' },
+      data: { status: 'received', metadata: { mediaCount: 0, replySuppressed: true } },
+    });
     expect(invoke).not.toHaveBeenCalled();
   });
 
