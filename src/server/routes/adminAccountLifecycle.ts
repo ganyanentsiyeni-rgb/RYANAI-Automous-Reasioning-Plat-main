@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { Prisma } from '@prisma/client';
 import { createAuditIntegrity, verifyAuditIntegrity, type AuditIntegrityRecord } from '../security/auditIntegrity.js';
 import type { FastifyPluginAsync } from 'fastify';
 import { evaluateGenXSecurityEvent } from '../../security/genxPolicy.js';
@@ -36,6 +37,12 @@ const ACTIONS = new Set<LifecycleAction>(['role_change', 'suspend_account', 'rev
 const LIFECYCLE_EVENT_TYPES = ['ACCOUNT_LIFECYCLE_REQUESTED', 'ACCOUNT_LIFECYCLE_CONFIRMED'];
 const LIFECYCLE_CHAIN_LOCK = 'ryanai-account-lifecycle-audit-integrity-chain';
 const MAX_INTEGRITY_EVENTS = 10000;
+
+function toPrismaJsonObject(value: Record<string, unknown>): Prisma.InputJsonObject {
+  // Prisma's JSON input type excludes undefined values; JSON round-tripping
+  // removes optional undefined fields while preserving the stored audit payload.
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonObject;
+}
 
 function detailsOf(value: unknown): LifecycleEventDetails {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -178,7 +185,7 @@ export const adminAccountLifecycleRoutes: FastifyPluginAsync = async (fastify) =
       }, verification.headHash);
       await tx.jarvisAuditEvent.create({
         data: { id: eventId, actorId: request.authUser!.id, eventType: 'ACCOUNT_LIFECYCLE_REQUESTED',
-          resourceId: targetUserId, details: { ...details, integrity } },
+          resourceId: targetUserId, details: toPrismaJsonObject({ ...details, integrity }) },
       });
     });
     return reply.code(201).send({
@@ -259,7 +266,7 @@ export const adminAccountLifecycleRoutes: FastifyPluginAsync = async (fastify) =
         }, verification.headHash);
         await tx.jarvisAuditEvent.create({
           data: { id: eventId, actorId: request.authUser!.id, eventType: 'ACCOUNT_LIFECYCLE_CONFIRMED',
-            resourceId: details.targetUserId, details: { ...confirmed, integrity } },
+            resourceId: details.targetUserId, details: toPrismaJsonObject({ ...confirmed, integrity }) },
         });
         return {
           statusCode: 200 as const,
