@@ -39,6 +39,7 @@ import { twilioWebhookPlugin } from './routes/twilioWebhook.js';
 import { metricsRoutes } from './routes/metrics.js';
 import { adminAuditRoutes } from './routes/adminAudit.js';
 import { adminUsersRoutes } from './routes/adminUsers.js';
+import { langGraphCheckpointerSetupRoutes } from './routes/langgraphCheckpointerSetup.js';
 import { adminAccountLifecycleRoutes } from './routes/adminAccountLifecycle.js';
 import { quantRoutes } from './routes/quantRoutes.js';
 import { quantPortfolioOptimizationRoutes } from './routes/quantPortfolioOptimizationRoutes.js';
@@ -807,6 +808,7 @@ async function registerPlugins() {
   await fastify.register(metricsRoutes);
   await fastify.register(adminAuditRoutes);
   await fastify.register(adminUsersRoutes);
+  await fastify.register(langGraphCheckpointerSetupRoutes);
   await fastify.register(adminAccountLifecycleRoutes);
   await fastify.register(quantRoutes);
   await fastify.register(quantPortfolioOptimizationRoutes);
