@@ -17,7 +17,7 @@ test('Supabase local service ports are dynamically allocated', () => {
 });
 
 test('Supabase managed local stack allocates ports automatically', () => {
-  assert.match(section('experimental'), /^\\s*stack\\s*=\\s*true\\s*$/m,
+  assert.match(section('experimental'), /^\s*stack\s*=\s*true\s*$/m,
     '[experimental] stack = true must enable managed per-project port allocation');
 });
 
