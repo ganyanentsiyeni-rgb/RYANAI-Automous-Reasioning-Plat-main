@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeCorsOrigin, parseCorsOrigins } from './corsOrigins.js';
+import { DEFAULT_CORS_ORIGINS, normalizeCorsOrigin, parseCorsOrigins } from './corsOrigins.js';
 
 describe('CORS origin normalization', () => {
   it.each([
@@ -18,11 +18,12 @@ describe('CORS origin normalization', () => {
 
   it('parses comma-separated entries and deduplicates normalized origins', () => {
     expect(parseCorsOrigins('https://web.example/, api.example', 'https://web.example')).toEqual(
-      new Set(['https://web.example', 'https://api.example']),
+      new Set([...DEFAULT_CORS_ORIGINS, 'https://web.example', 'https://api.example']),
     );
   });
 
-  it('does not create an allow-all policy from an empty configuration', () => {
-    expect(parseCorsOrigins(undefined, '', '*')).toEqual(new Set());
+  it('keeps the deployed U2EB frontend explicitly allowlisted without opening wildcard access', () => {
+    expect(parseCorsOrigins(undefined, '', '*')).toEqual(new Set(DEFAULT_CORS_ORIGINS));
+    expect(DEFAULT_CORS_ORIGINS).toEqual(['https://ryanai-web-u2eb.onrender.com']);
   });
 });
