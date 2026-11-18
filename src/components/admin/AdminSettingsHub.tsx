@@ -9,7 +9,7 @@ type SettingsArea = {
 };
 
 const settingsAreas: SettingsArea[] = [
-  { id: 'plugin-integrations-settings', title: 'Plugin & integrations centre', description: 'Provider connections, plugin preferences and integration diagnostics.', icon: Plug, capability: 'Existing account-scoped integration controls' },
+  { id: 'plugin-integrations-title', title: 'Plugin & integrations centre', description: 'Provider connections, plugin preferences and integration diagnostics.', icon: Plug, capability: 'Existing account-scoped integration controls' },
   { id: 'dashboard-ui-title', title: 'Dashboard UI options', description: 'Choose which workspaces appear in navigation and dashboard shortcuts.', icon: LayoutDashboard, capability: 'Existing account-scoped preferences' },
   { id: 'copilot-settings-title', title: 'Copilot preferences', description: 'Conversation style, response detail, initiative and collaboration defaults.', icon: BrainCircuit, capability: 'Existing account-scoped preferences' },
   { id: 'phonelink-settings-title', title: 'PhoneLink preferences', description: 'Trusted-device defaults, notifications, transfer and confirmation preferences.', icon: Smartphone, capability: 'Existing account-scoped preferences' },
