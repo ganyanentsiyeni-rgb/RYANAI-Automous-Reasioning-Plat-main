@@ -1,6 +1,7 @@
 // @vitest-environment node
 import Fastify from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as genxPolicy from '../../security/genxPolicy.js';
 import { adminAccountLifecycleRoutes } from './adminAccountLifecycle.js';
 
 vi.mock('./auth.js', () => ({
