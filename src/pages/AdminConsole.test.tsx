@@ -19,6 +19,15 @@ function response(payload: unknown, ok = true) {
   return { ok, json: async () => payload } as Response;
 }
 
+const userDirectoryResponse = {
+  profiles: [],
+  authInventory: { status: 'not_configured', users: [], page: 1, perPage: 50 },
+  coverage: 'public.profiles records plus one paginated Supabase Auth Admin page when server credentials are configured.',
+  limit: 50,
+  page: 1,
+  search: null,
+};
+
 async function mount(userId = 'admin-account-a') {
   await act(async () => root.render(<AdminConsole userId={userId} />));
 }
@@ -39,6 +48,7 @@ beforeEach(() => {
     if (path === '/api/admin/audit-events?limit=30') return response({ events: [{
       id: 'audit-event-1', actorId: 'actor-a', eventType: 'policy.check', resourceId: 'resource-a', createdAt: '2026-11-08T12:00:00.000Z',
     }] });
+    if (path === '/api/admin/users?limit=50&page=1') return response(userDirectoryResponse);
     if (path === '/api/admin/metrics') return response({
       status: 'ok', uptime: 3600, timestamp: '2026-11-08T12:00:00.000Z',
       database: { status: 'unknown', driver: 'postgresql' },
@@ -73,7 +83,7 @@ describe('Admin Console request ownership', () => {
     expect(container.textContent).toContain('Security & audit events');
     expect(container.textContent).toContain('policy.check');
     expect(container.textContent).toContain('Owner identity confirmed by server configuration');
-    for (const path of ['/api/auth/verify', '/api/admin/audit-events?limit=30', '/api/admin/metrics', '/api/actions', '/api/engineering/jobs']) {
+    for (const path of ['/api/auth/verify', '/api/admin/audit-events?limit=30', '/api/admin/users?limit=50&page=1', '/api/admin/metrics', '/api/actions', '/api/engineering/jobs']) {
       expect(apiFetch).toHaveBeenCalledWith(path, expect.any(Object), 'admin-account-a');
     }
   });
@@ -82,6 +92,7 @@ describe('Admin Console request ownership', () => {
     apiFetch.mockImplementation(async (input) => {
       if (String(input) === '/api/auth/verify') return response({ error: 'Invalid or expired session.' }, false);
       if (String(input) === '/api/admin/audit-events?limit=30') return response({ events: [] });
+      if (String(input) === '/api/admin/users?limit=50&page=1') return response(userDirectoryResponse);
       if (String(input) === '/api/admin/metrics') return response({
         status: 'ok', uptime: 60, timestamp: '2026-11-08T12:00:00.000Z',
         database: { status: 'unknown', driver: 'postgresql' },
