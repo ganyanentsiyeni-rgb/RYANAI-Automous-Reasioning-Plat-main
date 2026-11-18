@@ -1,5 +1,7 @@
 # Supabase local development configuration for RyanAI.
 # This file contains no credentials and does not link or deploy to a hosted project.
+# Leave service port keys unset: Supabase CLI 2.121.0+ dynamically allocates free ports.
+# Do not set SUPABASE_*_PORT overrides to fixed values when running concurrent local stacks.
 project_id = "ryanai"
 
 [api]
