@@ -60,7 +60,9 @@ export const langGraphCheckpointerSetupRoutes: FastifyPluginAsync = async (fasti
         );
         return reply.code(503).send({
           status: 'verification_failed',
-          agentCheckpointer: false,
+          // This field reports schema presence; migrationVersion separately
+          // reports whether the LangGraph package initialization is complete.
+          agentCheckpointer: after.agentCheckpointer,
           migrationVersion,
         });
       }
