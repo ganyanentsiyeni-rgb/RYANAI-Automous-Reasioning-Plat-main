@@ -517,10 +517,7 @@ jobs:
             await pool.end();
           }
           NODE
-          # Keep the anonymous PL/pgSQL block delimiter distinct from shell heredoc markers.
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-          DO $block$
-          # Keep the PL/pgSQL block delimiter distinct from the shell heredoc marker.
+          # Remove Supabase Auth-owned cross-schema FKs only from this disposable CI database.
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
           DO $block$
           DECLARE fk RECORD;
@@ -542,7 +539,6 @@ jobs:
                 fk.source_schema, fk.source_table, fk.constraint_name);
             END LOOP;
           END $block$;
-          END $;
           SQL
 
       - name: Compare the migrated Supabase and Prisma database with the Prisma data model
