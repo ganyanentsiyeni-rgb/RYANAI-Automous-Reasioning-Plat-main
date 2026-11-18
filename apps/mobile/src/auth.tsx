@@ -10,23 +10,27 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     let active = true;
-    void supabase.auth.getSession()
-      .then(({ data, error }) => {
-        if (active) {
-          setSession(error ? null : data.session);
-          setLoading(false);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setSession(null);
-          setLoading(false);
-        }
-      });
+    let authChanged = false;
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, next) => {
-      if (active) setSession(next);
+      if (!active) return;
+      // A newer sign-in/sign-out event always wins over delayed session restoration.
+      authChanged = true;
+      setSession(next?.user.is_anonymous ? null : next);
+      setLoading(false);
     });
+
+    void supabase.auth.getSession()
+      .then(({ data, error }) => {
+        if (!active || authChanged) return;
+        setSession(error || data.session?.user.is_anonymous ? null : data.session);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!active || authChanged) return;
+        setSession(null);
+        setLoading(false);
+      });
 
     return () => {
       active = false;
@@ -39,7 +43,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     loading,
     async signIn(email, password) {
       const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email: email.trim().toLowerCase(),
         password,
       });
       if (error) throw error;
