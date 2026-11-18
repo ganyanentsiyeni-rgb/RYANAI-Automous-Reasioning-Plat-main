@@ -15,8 +15,9 @@ Run both migration stages against the same disposable local Supabase database:
 ```sh
 supabase start
 supabase db reset --local
-DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres npx prisma migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
-DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres npx prisma migrate deploy --schema=prisma/schema.prisma
+eval "$(supabase status -o env)"
+DATABASE_URL="$DB_URL" npx prisma migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
+DATABASE_URL="$DB_URL" npx prisma migrate deploy --schema=prisma/schema.prisma
 ```
 
 The committed no-op migration `20261014000000_supabase_platform_baseline` initializes Prisma's ledger after the Supabase platform schema is present. It records the boundary only; it creates no tables or columns. The first real Prisma application migration still runs normally.

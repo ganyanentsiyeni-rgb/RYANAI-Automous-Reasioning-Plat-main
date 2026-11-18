@@ -351,7 +351,7 @@ jobs:
         id: setup_supabase_cli
         uses: supabase/setup-cli@v3
         with:
-          version: 2.120.0
+          version: 3.0.0
       - name: Start isolated local Supabase stack
         run: supabase start -x studio,mailpit,edge-runtime,logflare,vector
       - name: Apply all migrations to a fresh local database
