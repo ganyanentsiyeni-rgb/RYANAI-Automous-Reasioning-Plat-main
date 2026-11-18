@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { createAuditIntegrity, verifyAuditIntegrity, type AuditIntegrityRecord } from '../../security/auditIntegrity.js';
+import { createAuditIntegrity, verifyAuditIntegrity, type AuditIntegrityRecord } from '../security/auditIntegrity.js';
 import type { FastifyPluginAsync } from 'fastify';
 import { evaluateGenXSecurityEvent } from '../../security/genxPolicy.js';
 import { requireOwner } from './auth.js';
