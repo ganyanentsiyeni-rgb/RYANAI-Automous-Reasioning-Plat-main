@@ -47,7 +47,6 @@ ALTER TABLE public.intelligence_event_inbox ENABLE ROW LEVEL SECURITY;
 CREATE TABLE IF NOT EXISTS public.intelligence_event_attempts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   event_inbox_id uuid NOT NULL REFERENCES public.intelligence_event_inbox(id) ON DELETE CASCADE,
-  event_inbox_id uuid NOT NULL REFERENCES public.intelligence_event_inbox(id) ON DELETE CASCADE ON UPDATE CASCADE,
   attempt integer NOT NULL CHECK (attempt > 0),
   worker_id varchar(128) NOT NULL,
   status varchar(24) NOT NULL

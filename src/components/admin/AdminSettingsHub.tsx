@@ -1,4 +1,4 @@
-import { ArrowUpRight, Blocks, BrainCircuit, Github, LayoutDashboard, LockKeyhole, Plug, ShieldCheck, Smartphone, UserRound, Workflow } from 'lucide-react';
+import { ArrowUpRight, Blocks, BrainCircuit, GitBranch, LayoutDashboard, LockKeyhole, Plug, ShieldCheck, Smartphone, UserRound, Workflow } from 'lucide-react';
 
 type SettingsArea = {
   id: string;
@@ -15,7 +15,7 @@ const settingsAreas: SettingsArea[] = [
   { id: 'phonelink-settings-title', title: 'PhoneLink preferences', description: 'Trusted-device defaults, notifications, transfer and confirmation preferences.', icon: Smartphone, capability: 'Existing account-scoped preferences' },
   { id: 'profile-management-title', title: 'Profile management & access control', description: 'Profile details and current role visibility. Role assignment remains server-authorized.', icon: UserRound, capability: 'Profile editing; role changes not exposed' },
   { id: 'studio-profile-title', title: 'RyanAI Studio profile & session', description: 'Shared RyanAI identity, Studio entry and session sign-out.', icon: Workflow, capability: 'Existing shared-session controls' },
-  { id: 'github-settings-title', title: 'GitHub authorization & access', description: 'Open the GitHub connection flow and inspect its granted scope.', icon: Github, capability: 'Existing provider authorization flow' },
+  { id: 'github-settings-title', title: 'GitHub authorization & access', description: 'Open the GitHub connection flow and inspect its granted scope.', icon: GitBranch, capability: 'Existing provider authorization flow' },
   { id: 'account-security-title', title: 'Account security', description: 'Email/password changes and sign-out of other refresh-token sessions.', icon: LockKeyhole, capability: 'Existing Supabase Auth controls' },
 ];
 
