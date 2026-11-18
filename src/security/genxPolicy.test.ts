@@ -86,4 +86,25 @@ describe('Gen-X deterministic security enforcement', () => {
     }).decision).toBe('REQUIRE_APPROVAL');
   });
 
+  it('allows owner-guarded lifecycle request records but not unconfirmed transitions', () => {
+    const lifecycle = {
+      ...base,
+      agentId: 'ryanai-admin-console',
+      principal: 'verified-owner-id',
+      toolName: 'ryanai_account_lifecycle',
+      target: 'auth.users/123e4567-e89b-42d3-a456-426614174000',
+      actorType: 'human' as const,
+      ownerAuthorized: true,
+    };
+    expect(evaluateGenXSecurityEvent({ ...lifecycle, action: 'CREATE' }))
+      .toMatchObject({ decision: 'ALLOW', ruleId: 'GX-OWNER-LIFECYCLE-REQUEST-001' });
+    expect(evaluateGenXSecurityEvent({ ...lifecycle, action: 'UPDATE' }).decision).toBe('REQUIRE_APPROVAL');
+    expect(evaluateGenXSecurityEvent({ ...lifecycle, action: 'UPDATE', ownerConfirmed: true }))
+      .toMatchObject({ decision: 'ALLOW', ruleId: 'GX-OWNER-LIFECYCLE-CONFIRM-001' });
+    expect(evaluateGenXSecurityEvent({ ...lifecycle, action: 'UPDATE', ownerConfirmed: true, ownerAuthorized: false }).decision)
+      .toBe('REQUIRE_APPROVAL');
+    expect(evaluateGenXSecurityEvent({ ...lifecycle, action: 'UPDATE', ownerConfirmed: true, actorType: 'agent' }).decision)
+      .toBe('REQUIRE_APPROVAL');
+  });
+
 });
