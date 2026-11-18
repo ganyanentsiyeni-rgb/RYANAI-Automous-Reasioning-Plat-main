@@ -63,6 +63,7 @@ import { startAttachmentOrphanCleanup } from './attachments/orphanCleanup.js';
 import { pluginRegistryRoutes } from './plugins/routes.js';
 import { providerAuthorizationRoutes } from './plugins/providerAuthorizationRoutes.js';
 import { phoneLinkRoutes } from './routes/phoneLink.js';
+import { eventIngestionRoutes } from './routes/eventIngestionRoutes.js';
 
 const { Pool } = pg;
 
@@ -788,6 +789,7 @@ async function registerPlugins() {
   await fastify.register(pluginRegistryRoutes);
   await fastify.register(providerAuthorizationRoutes);
   await fastify.register(phoneLinkRoutes);
+  await fastify.register(eventIngestionRoutes);
   await fastify.register(commsPlugin);
   await fastify.register(commsAuthorizationRoutes);
   await fastify.register(approvalRoutes);
