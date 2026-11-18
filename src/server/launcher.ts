@@ -65,6 +65,7 @@ import { pluginRegistryRoutes } from './plugins/routes.js';
 import { providerAuthorizationRoutes } from './plugins/providerAuthorizationRoutes.js';
 import { phoneLinkRoutes } from './routes/phoneLink.js';
 import { eventIngestionRoutes } from './routes/eventIngestionRoutes.js';
+import { adminEventQueueRoutes } from './routes/adminEventQueue.js';
 
 const { Pool } = pg;
 
@@ -791,6 +792,7 @@ async function registerPlugins() {
   await fastify.register(providerAuthorizationRoutes);
   await fastify.register(phoneLinkRoutes);
   await fastify.register(eventIngestionRoutes);
+  await fastify.register(adminEventQueueRoutes);
   await fastify.register(commsPlugin);
   await fastify.register(commsAuthorizationRoutes);
   await fastify.register(approvalRoutes);
