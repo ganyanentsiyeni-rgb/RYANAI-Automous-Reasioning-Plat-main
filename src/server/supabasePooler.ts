@@ -8,7 +8,8 @@ export interface SupabasePoolerResolution {
     | 'already-pooled'
     | 'not-supabase-direct'
     | 'invalid-url'
-    | 'invalid-pooler-host';
+    | 'invalid-pooler-host'
+    | 'project-mismatch';
 }
 
 /**
@@ -88,7 +89,17 @@ export function resolveSupabaseSessionPoolerUrl(
   } catch {
     return { databaseUrl: original, changed: false, reason: 'invalid-url' };
   }
-  const role = currentUsername.split('.')[0] || 'postgres';
+  const usernameParts = currentUsername.split('.');
+  const role = usernameParts[0] || 'postgres';
+  const usernameProjectRef = usernameParts.length > 1
+    ? usernameParts.slice(1).join('.').toLowerCase()
+    : undefined;
+
+  // A previously pooled URL carries its project identity in the username.
+  // Never silently retarget it using SUPABASE_URL when those identities differ.
+  if (usernameProjectRef && usernameProjectRef !== projectRef) {
+    return { databaseUrl: original, changed: false, reason: 'project-mismatch' };
+  }
 
   database.hostname = normalizedPoolerHost;
   database.port = '5432';

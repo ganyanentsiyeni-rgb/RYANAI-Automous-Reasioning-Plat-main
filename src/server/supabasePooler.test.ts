@@ -153,4 +153,17 @@ describe('Supabase Session Pooler URL resolution', () => {
     expect(result.changed).toBe(false);
     expect(result.reason).toBe('invalid-pooler-host');
   });
+
+
+  it('rejects an existing pooler URL whose username belongs to a different Supabase project', () => {
+    const otherProjectRef = 'omqavyppdoniehseokvx';
+    const existing = `postgresql://postgres.${otherProjectRef}:secret@${poolerHost}:5432/postgres?sslmode=verify-full`;
+    const result = resolveSupabaseSessionPoolerUrl(existing, projectUrl, poolerHost);
+
+    expect(result).toEqual({
+      databaseUrl: existing,
+      changed: false,
+      reason: 'project-mismatch',
+    });
+  });
 });
