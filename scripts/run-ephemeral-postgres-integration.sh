@@ -85,6 +85,9 @@ npx prisma migrate diff \
   --to-schema-datamodel prisma/schema.prisma \
   --exit-code
 
+log "Building server output required by the durable-queue integration runner"
+npm run build:server
+
 log "Running PostgreSQL durable-queue integration tests"
 # This script imports TypeScript application modules whose ESM imports use
 # emitted .js specifiers. Register tsx so the disposable test runner resolves

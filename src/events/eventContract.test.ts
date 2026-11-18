@@ -47,7 +47,7 @@ describe('RyanAI event envelope', () => {
   });
 
   it('requires an idempotency key and explicit data classification', () => {
-    const { idempotencyKey: _key, classification: _classification, ...incomplete } = validEvent;
+    const incomplete = { ...validEvent, idempotencyKey: undefined, classification: undefined };
     expect(RyanAIEventEnvelopeSchema.safeParse(incomplete).success).toBe(false);
   });
 });
