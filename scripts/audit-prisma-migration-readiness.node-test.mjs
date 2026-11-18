@@ -147,7 +147,7 @@ test('detects wrong foreign-key actions, unique columns, and index definitions d
     ],
     eventAttemptRlsEnabled: true,
   });
-  assert.equal(result.eventAttempts.missingConstraints.length, 0);
+  assert.deepEqual(result.eventAttempts.missingConstraints, ['intelligence_event_attempts_attempt_check', 'intelligence_event_attempts_status_check']);
   assert.equal(result.eventAttempts.mismatchedConstraints.length, 2);
   assert.equal(result.eventAttempts.missingIndexes.length, 0);
   assert.equal(result.eventAttempts.mismatchedIndexes.length, 2);
