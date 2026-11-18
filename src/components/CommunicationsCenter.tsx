@@ -62,17 +62,22 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
   const refresh = useCallback(async () => {
     const requestId = ++refreshRequestId.current;
     try {
-      const [nextStatus, nextConversations] = await Promise.all([
+      const [statusResult, conversationsResult] = await Promise.allSettled([
         getCommsStatus(userId), getCommsConversations(userId),
       ]);
       if (requestId !== refreshRequestId.current) return;
-      setStatus(nextStatus);
-      setConversations(nextConversations);
-      setActiveId((current) => current && nextConversations.some((item) => item.id === current)
-        ? current : nextConversations[0]?.id ?? '');
-      setError('');
-    } catch (cause) {
-      if (requestId === refreshRequestId.current) setError(cause instanceof Error ? cause.message : 'Communications could not be loaded.');
+      const failures: string[] = [];
+      if (statusResult.status === 'fulfilled') setStatus(statusResult.value);
+      else failures.push(statusResult.reason instanceof Error ? statusResult.reason.message : 'Channel status is unavailable.');
+      if (conversationsResult.status === 'fulfilled') {
+        const nextConversations = conversationsResult.value;
+        setConversations(nextConversations);
+        setActiveId((current) => current && nextConversations.some((item) => item.id === current)
+          ? current : nextConversations[0]?.id ?? '');
+      } else failures.push(conversationsResult.reason instanceof Error ? conversationsResult.reason.message : 'Conversation history is unavailable.');
+      setError(failures.length === 2
+        ? failures.join(' ')
+        : failures.length === 1 ? `Some Comms information is unavailable. ${failures[0]}` : '');
     } finally {
       if (requestId === refreshRequestId.current) setLoading(false);
     }
