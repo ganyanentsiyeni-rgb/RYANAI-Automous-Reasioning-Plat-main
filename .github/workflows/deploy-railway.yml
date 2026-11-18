@@ -95,6 +95,7 @@ jobs:
           test -n "$RAILWAY_STAGING_SERVICE_ID" || { echo "::error::Missing isolated Railway staging service"; exit 1; }
           test -n "$RAILWAY_STAGING_ENVIRONMENT_ID" || { echo "::error::Missing Railway staging environment"; exit 1; }
           test "$RAILWAY_STAGING_PROJECT_ID" != "fc58568d-a5f2-4ad1-8a6f-41a5b32962e7" || { echo "::error::Refusing to use the existing unrelated Railway project"; exit 1; }
+          test "$RAILWAY_STAGING_PROJECT_ID" != "df65d6c5-077a-4779-bb99-c6f520e8ee35" || { echo "::error::Refusing to deploy into the existing RyanAI Railway project: staging and production currently share the same service and postgres-volume; provision and verify a separate isolated staging project first."; exit 1; }
 
       - name: Install Railway CLI
         run: npm install --global @railway/cli
