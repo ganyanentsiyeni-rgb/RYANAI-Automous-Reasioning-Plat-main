@@ -13,6 +13,7 @@ describe('administrator user directory', () => {
   const apps: Array<ReturnType<typeof Fastify>> = [];
   afterEach(async () => {
     await Promise.all(apps.splice(0).map((app) => app.close()));
+    vi.restoreAllMocks();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
@@ -69,6 +70,7 @@ describe('administrator user directory', () => {
     const { app, findMany } = createApp(vi.fn().mockResolvedValue(profiles));
     await app.register(adminUsersRoutes);
 
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
     const longSearch = 'x'.repeat(140);
     const response = await app.inject({
       method: 'GET',
@@ -96,6 +98,7 @@ describe('administrator user directory', () => {
       },
       select: { id: true, email: true, fullName: true, createdAt: true, updatedAt: true },
     });
+    expect(fetchSpy).not.toHaveBeenCalled();
     expect(findMany).toHaveBeenCalledTimes(1);
   });
 
