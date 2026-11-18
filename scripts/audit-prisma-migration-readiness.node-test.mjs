@@ -96,8 +96,8 @@ test('detects missing and mismatched intelligence event attempt schema objects',
   });
   assert.ok(result.eventAttempts.missingColumns.includes('id'));
   assert.deepEqual(result.eventAttempts.mismatchedColumns, [{ column: 'event_inbox_id', expected: 'uuid', actual: 'text' }]);
-  assert.deepEqual(result.eventAttempts.missingConstraints, [...attemptConstraints]);
-  assert.deepEqual(result.eventAttempts.missingIndexes, [...attemptIndexes]);
+  assert.deepEqual(result.eventAttempts.missingConstraints, attemptConstraints.map((item) => item.conname));
+  assert.deepEqual(result.eventAttempts.missingIndexes, attemptIndexes.map((item) => item.indexname));
   assert.equal(result.eventAttempts.rlsEnabled, false);
 });
 
@@ -111,7 +111,9 @@ test('accepts the expected intelligence event attempt table contract', () => {
   assert.deepEqual(result.eventAttempts.missingColumns, []);
   assert.deepEqual(result.eventAttempts.mismatchedColumns, []);
   assert.deepEqual(result.eventAttempts.missingConstraints, []);
+  assert.deepEqual(result.eventAttempts.mismatchedConstraints, []);
   assert.deepEqual(result.eventAttempts.missingIndexes, []);
+  assert.deepEqual(result.eventAttempts.mismatchedIndexes, []);
   assert.equal(result.eventAttempts.rlsEnabled, true);
 });
 
