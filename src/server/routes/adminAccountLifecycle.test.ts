@@ -178,4 +178,51 @@ describe('owner account lifecycle request ledger', () => {
     expect(events).toHaveLength(1);
   });
 
+
+  it('fails closed on a tampered ledger when creating a new request', async () => {
+    const original = {
+      id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      actorId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      eventType: 'ACCOUNT_LIFECYCLE_REQUESTED',
+      resourceId: '123e4567-e89b-42d3-a456-426614174000',
+      details: { requestId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', action: 'suspend_account', targetUserId: '123e4567-e89b-42d3-a456-426614174000', reason: 'Original approved security request' },
+    };
+    const integrity = createAuditIntegrity(original);
+    const events = [{ ...original, details: { ...original.details, reason: 'Tampered security request', integrity } }];
+    const { app, create } = makeApp(events);
+    await app.register(adminAccountLifecycleRoutes);
+    const response = await app.inject({
+      method: 'POST', url: '/api/admin/account-lifecycle/requests',
+      headers: { 'x-test-role': 'owner' },
+      payload: { action: 'suspend_account', targetUserId: '123e4567-e89b-42d3-a456-426614174000', reason: 'Request another account suspension' },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error).toContain('integrity could not be verified');
+    expect(create).not.toHaveBeenCalled();
+    expect(events).toHaveLength(1);
+  });
+
+  it('fails closed on a tampered ledger when confirming an existing request', async () => {
+    const original = {
+      id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+      actorId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      eventType: 'ACCOUNT_LIFECYCLE_REQUESTED',
+      resourceId: '123e4567-e89b-42d3-a456-426614174000',
+      details: { requestId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', action: 'suspend_account', targetUserId: '123e4567-e89b-42d3-a456-426614174000', reason: 'Original approved security request', state: 'PENDING_OWNER_CONFIRMATION' },
+    };
+    const integrity = createAuditIntegrity(original);
+    const events = [{ ...original, details: { ...original.details, reason: 'Tampered after approval', integrity } }];
+    const { app, create } = makeApp(events);
+    await app.register(adminAccountLifecycleRoutes);
+    const response = await app.inject({
+      method: 'POST', url: '/api/admin/account-lifecycle/requests/' + original.details.requestId + '/confirm',
+      headers: { 'x-test-role': 'owner' },
+      payload: { confirmation: 'CONFIRM ' + original.details.requestId },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error).toContain('integrity verification failed');
+    expect(create).not.toHaveBeenCalled();
+    expect(events).toHaveLength(1);
+  });
+
 });
