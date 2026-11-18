@@ -37,7 +37,7 @@ const renderRedis = productionEnvironment
 // isolation check does not compare U2EB resources against themselves.
 const productionServices = productionEnvironment?.services
   ?? (Array.isArray(renderConfig.services) ? renderConfig.services : []);
-const renderServiceNames = productionServices.map((service) => service.name);
+const renderServiceNames = renderServices.map((service) => service.name);
 const expectedRenderServiceNames = productionEnvironment
   ? ['ryanai-api', 'ryanai-web', 'ryanai-redis']
   : ['ryanai-api-u2eb', 'ryanai-web-u2eb', 'ryanai-redis-u2eb', 'ryanai-mcp-u2eb'];
