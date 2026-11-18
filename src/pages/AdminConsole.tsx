@@ -95,7 +95,8 @@ export default function AdminConsole({ userId }: { userId: string }) {
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [directoryProfiles, setDirectoryProfiles] = useState<DirectoryProfile[]>([]);
   const [authInventory, setAuthInventory] = useState<AuthInventory | null>(null);
-  const [authPage, setAuthPage] = useState(1);\n  const [lifecycleRequests, setLifecycleRequests] = useState<LifecycleRequest[]>([]);\n  const [lifecycleAction, setLifecycleAction] = useState<LifecycleRequest['action']>('role_change');\n  const [lifecycleTarget, setLifecycleTarget] = useState('');\n  const [lifecycleRole, setLifecycleRole] = useState<'user' | 'admin'>('user');\n  const [lifecycleReason, setLifecycleReason] = useState('');
+  const [authPage, setAuthPage] = useState(1);
+  const [lifecycleRequests, setLifecycleRequests] = useState<LifecycleRequest[]>([]);\n  const [lifecycleAction, setLifecycleAction] = useState<LifecycleRequest['action']>('role_change');\n  const [lifecycleTarget, setLifecycleTarget] = useState('');\n  const [lifecycleRole, setLifecycleRole] = useState<'user' | 'admin'>('user');\n  const [lifecycleReason, setLifecycleReason] = useState('');
   const [metrics, setMetrics] = useState<RuntimeMetrics | null>(null);
   const [actions, setActions] = useState<PendingAction[]>([]);
   const [jobs, setJobs] = useState<EngineeringJob[]>([]);
