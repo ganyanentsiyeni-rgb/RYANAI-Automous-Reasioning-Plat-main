@@ -316,7 +316,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
   const uptimeSnapshot = createTelemetryMetricSnapshot({
     metricId: 'api.process.uptime', label: 'API process uptime',
     value: metrics?.uptime ?? null, unit: 'seconds', source: '/api/admin/metrics',
-    observedAt: metrics?.timestamp ?? null, status: metrics ? 'available' : 'unavailable',
+    observedAt: metrics?.timestamp ?? null, status: metrics && !resourceErrors.metrics ? 'available' : 'unavailable',
   });
   const memorySnapshot = createTelemetryMetricSnapshot({
     metricId: 'api.process.rss_memory', label: 'Runtime memory RSS',
@@ -403,7 +403,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
       <section id="admin-user-directory" className="scroll-mt-6 rounded-2xl border border-cyan-300/15 bg-slate-900/70 p-5 sm:p-6" aria-labelledby="admin-user-directory-title">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div><h2 id="admin-user-directory-title" className="text-lg font-semibold text-white">User directory</h2><p className="mt-1 text-sm text-slate-400">Read-only view of profile records currently stored in public.profiles.</p></div>
-          <span className="rounded-full border border-white/15 px-3 py-1 text-xs text-slate-300">{directoryProfiles.length} profiles returned · max 50</span>
+          <span className="rounded-full border border-white/15 px-3 py-1 text-xs text-slate-300">{resourceErrors.directory ? 'Profile directory unavailable' : directoryProfiles.length + ' profiles returned · max 50'}</span>
         </div>
         {resourceErrors.directory
           ? <UnavailableState label="Profile directory unavailable" detail={resourceErrors.directory} />
@@ -499,7 +499,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
       <section id="admin-audit" className="scroll-mt-6 rounded-2xl border border-white/10 bg-slate-900/70 p-5 sm:p-6" aria-labelledby="admin-audit-title">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div><h2 id="admin-audit-title" className="text-lg font-semibold text-white">Security &amp; audit events</h2><p className="mt-1 text-sm text-slate-400">Latest persisted Jarvis audit metadata, newest first. This view does not expose free-form event details.</p></div>
-          <span className="rounded-full border border-white/15 px-3 py-1 text-xs text-slate-300">{auditEvents.length} events returned</span>
+          <span className="rounded-full border border-white/15 px-3 py-1 text-xs text-slate-300">{resourceErrors.audit ? 'Audit feed unavailable' : auditEvents.length + ' events returned'}</span>
         </div>
         {resourceErrors.audit
           ? <UnavailableState label="Audit feed unavailable" detail={resourceErrors.audit} />
