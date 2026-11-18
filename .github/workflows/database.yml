@@ -32,8 +32,18 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       DATABASE_URL: postgresql://ryanai:ci_password@localhost:5432/ryanai_db
+      REDIS_URL: redis://127.0.0.1:6379
       AUDIOBOOK_DATABASE_URL: postgresql://ryanai:ci_password@localhost:5432/ryanai_audiobook
       AUDIOBOOK_DATABASE_URL_UNPOOLED: postgresql://ryanai:ci_password@localhost:5432/ryanai_audiobook
 
@@ -469,11 +479,17 @@ jobs:
           }
           NODE
 
+      - name: Exclude the externally owned Auth FK from the Prisma-only drift comparison
+        # The preceding assertion verifies this FK exists and targets auth.users.
+        # Remove it only from the disposable CI database so Prisma can compare
+        # its public models without trying to introspect Supabase-owned auth.
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
+            "ALTER TABLE public.conversations DROP CONSTRAINT conversations_user_id_fkey"
+
       - name: Compare the migrated Supabase and Prisma database with the Prisma data model
-        # The clean-stack steps above already replay Supabase migrations and then
-        # deploy the full Prisma history. Comparing that resulting database avoids
-        # replaying a Prisma-only shadow history that cannot contain Supabase-owned
-        # auth.users from the no-op platform baseline marker.
+        # Supabase-owned Auth relationships are asserted separately above; this
+        # comparison is intentionally limited to the Prisma-owned public schema.
         run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
       - name: Create isolated Prisma shadow database
         env:
