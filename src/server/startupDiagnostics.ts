@@ -44,6 +44,12 @@ const connectionHints: Record<string, string> = {
  * Traversal is bounded and handles cyclic causes and aggregate errors.
  */
 export function databaseFailureDiagnostic(error: unknown): string {
+  if (
+    error instanceof Error &&
+    error.message === 'Required communication schema is missing. Run npm run db:migrate before starting the API.'
+  ) {
+    return 'PostgreSQL connectivity succeeded, but required communication tables are missing. This is a schema-readiness failure, not a network or authentication failure. Validate the versioned migration in staging first; production migration requires separate approval. No migration was run.';
+  }
   const pending: unknown[] = [error];
   const seen = new Set<object>();
   const knownCodes = new Set<string>();
