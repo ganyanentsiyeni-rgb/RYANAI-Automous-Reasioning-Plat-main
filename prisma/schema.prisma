@@ -1439,7 +1439,7 @@ model IntelligenceEventInbox {
 model IntelligenceEventAttempt {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   eventInboxId String   @map("event_inbox_id") @db.Uuid
-  event        IntelligenceEventInbox @relation(fields: [eventInboxId], references: [id], onDelete: Cascade)
+  event        IntelligenceEventInbox @relation(fields: [eventInboxId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   attempt      Int
   workerId     String   @map("worker_id") @db.VarChar(128)
   status       String   @db.VarChar(24)
