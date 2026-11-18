@@ -121,7 +121,7 @@ export const adminAccountLifecycleRoutes: FastifyPluginAsync = async (fastify) =
       requestId,
       action,
       targetUserId,
-      requestedRole: body.requestedRole,
+      ...(body.requestedRole ? { requestedRole: body.requestedRole } : {}),
       reason,
       state: 'PENDING_OWNER_CONFIRMATION',
       policyDecision: policy.decision,
