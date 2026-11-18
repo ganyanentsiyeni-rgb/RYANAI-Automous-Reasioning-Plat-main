@@ -21,7 +21,9 @@ These are implemented code paths, not proof that deployment configuration, provi
 
 Configure these as deployment secrets/environment variables, never commit credentials:
 
-- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`
+- `COMMUNICATIONS_ENABLED=true` (registers communications and Twilio webhook routes; Twilio credentials alone do not enable the routes)
+- `RYANAI_COMMS_TEST_AUTHORIZED=true` (separate, explicit authorization gate for provider-triggered replies and outbound provider dispatch; keep false until owner destination and callbacks are verified and an explicit test is authorized)
+- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_VERIFY_SERVICE_SID` (the latter is required only for Twilio Verify destination challenges)
 - `TWILIO_PHONE_NUMBER`, `TWILIO_WHATSAPP_NUMBER`
 - `TWILIO_WHATSAPP_WEBHOOK_URL`
 - `TWILIO_SMS_WEBHOOK_URL`
