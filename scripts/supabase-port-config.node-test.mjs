@@ -12,12 +12,12 @@ function section(name) {
 
 test('Supabase local service ports are dynamically allocated', () => {
   for (const name of ['api', 'db', 'studio']) {
-    assert.doesNotMatch(section(name), /^\\s*(?:port|shadow_port)\\s*=/m, '[' + name + '] must not pin a local port');
+    assert.doesNotMatch(section(name), /^\s*(?:port|shadow_port)\\s*=/m, '[' + name + '] must not pin a local port');
   }
 });
 
 test('Supabase local config does not pin auxiliary service ports', () => {
   for (const name of ['db.pooler', 'local_smtp', 'analytics', 'edge_runtime']) {
-    assert.doesNotMatch(section(name), /^\\s*(?:port|shadow_port|inspector_port|smtp_port|pop3_port|vector_port)\\s*=/m, '[' + name + '] must not pin a local port');
+    assert.doesNotMatch(section(name), /^\s*(?:port|shadow_port|inspector_port|smtp_port|pop3_port|vector_port)\\s*=/m, '[' + name + '] must not pin a local port');
   }
 });
