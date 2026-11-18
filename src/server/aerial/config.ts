@@ -32,17 +32,18 @@ function normalizeUrl(value: string | undefined): string | null {
 }
 
 export function loadAerialConfig(env: NodeJS.ProcessEnv = process.env): AerialConfig {
-  // Development must raise the integration boundary without requiring a manually
-  // supplied flag. An explicit external endpoint always takes precedence.
-  const simulator = readBool(env.AERIAL_DEV_SIMULATOR) ||
-    (env.NODE_ENV === 'development' && !env.AERIAL_BASE_URL?.trim());
   const baseUrl = normalizeUrl(env.AERIAL_BASE_URL);
+  // An explicit external runtime always wins over the development simulator,
+  // including when AERIAL_DEV_SIMULATOR=true is left over from local testing.
+  const simulator = !baseUrl && (
+    readBool(env.AERIAL_DEV_SIMULATOR) || env.NODE_ENV === 'development'
+  );
   const inferenceUrl = normalizeUrl(env.AERIAL_INFERENCE_URL);
   const enabled = readBool(env.AERIAL_ENABLED) || simulator || Boolean(baseUrl);
 
   return {
     enabled,
-    mode: simulator ? 'development-simulator' : baseUrl ? 'external' : 'disabled',
+    mode: baseUrl ? 'external' : simulator ? 'development-simulator' : 'disabled',
     baseUrl,
     healthPath: env.AERIAL_HEALTH_PATH?.trim() || '/health',
     inferenceUrl,
