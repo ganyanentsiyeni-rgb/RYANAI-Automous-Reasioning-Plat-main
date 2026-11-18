@@ -144,7 +144,7 @@ export class IntelligenceEventInbox {
   }
 
   /** Atomically claims the oldest due event; expired leases can be reclaimed. */
-  async claimNext(workerId: string, now = new Date()) {
+  async claimNext(workerId: string, now = new Date(), eventTypes?: string[]) {
     const owner = workerId.trim();
     if (!owner || owner.length > 128) throw new RangeError('workerId must contain 1-128 characters.');
     return this.db.$transaction(async (tx) => {
