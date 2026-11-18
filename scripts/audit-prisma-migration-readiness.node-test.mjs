@@ -81,6 +81,8 @@ const validAttemptColumns = [
 const attemptConstraints = [
   { conname: 'intelligence_event_attempts_event_inbox_id_fkey', definition: 'FOREIGN KEY (event_inbox_id) REFERENCES public.intelligence_event_inbox(id) ON DELETE CASCADE' },
   { conname: 'intelligence_event_attempt_event_attempt_key', definition: 'UNIQUE (event_inbox_id, attempt)' },
+  { conname: 'intelligence_event_attempts_attempt_check', definition: 'CHECK ((attempt > 0))' },
+  { conname: 'intelligence_event_attempts_status_check', definition: "CHECK (((status)::text = ANY ((ARRAY['started'::character varying, 'succeeded'::character varying, 'retry'::character varying, 'dead_letter'::character varying, 'lease_expired'::character varying])::text[])))" },
 ];
 const attemptIndexes = [
   { indexname: 'intelligence_event_attempt_event_started_idx', indexdef: 'CREATE INDEX intelligence_event_attempt_event_started_idx ON public.intelligence_event_attempts USING btree (event_inbox_id, started_at DESC)' },
@@ -135,4 +137,34 @@ test('detects wrong foreign-key actions, unique columns, and index definitions d
   assert.equal(result.eventAttempts.mismatchedConstraints.length, 2);
   assert.equal(result.eventAttempts.missingIndexes.length, 0);
   assert.equal(result.eventAttempts.mismatchedIndexes.length, 2);
+});
+
+
+test('detects missing or weakened attempt and status CHECK constraints even when names match', () => {
+  const base = {
+    columns: new Set(), tables: new Set(['intelligence_event_attempts']), indexes: new Set(), extensions: new Set(),
+    memoryColumns: new Set(), cacheColumns: new Set(), eventAttemptColumns: validAttemptColumns,
+    eventAttemptIndexes: attemptIndexes, eventAttemptRlsEnabled: true,
+  };
+  const wrongAttempt = assessSchema({
+    ...base,
+    eventAttemptConstraints: attemptConstraints.map((item) => item.conname === 'intelligence_event_attempts_attempt_check'
+      ? { ...item, definition: 'CHECK (attempt >= 0)' } : item),
+  });
+  assert.deepEqual(wrongAttempt.eventAttempts.missingConstraints, []);
+  assert.ok(wrongAttempt.eventAttempts.mismatchedConstraints.some((item) => item.name === 'intelligence_event_attempts_attempt_check'));
+
+  const wrongStatus = assessSchema({
+    ...base,
+    eventAttemptConstraints: attemptConstraints.map((item) => item.conname === 'intelligence_event_attempts_status_check'
+      ? { ...item, definition: "CHECK (status IN ('started', 'succeeded', 'retry', 'dead_letter', 'unknown'))" } : item),
+  });
+  assert.deepEqual(wrongStatus.eventAttempts.missingConstraints, []);
+  assert.ok(wrongStatus.eventAttempts.mismatchedConstraints.some((item) => item.name === 'intelligence_event_attempts_status_check'));
+
+  const missingStatus = assessSchema({
+    ...base,
+    eventAttemptConstraints: attemptConstraints.filter((item) => item.conname !== 'intelligence_event_attempts_status_check'),
+  });
+  assert.ok(missingStatus.eventAttempts.missingConstraints.includes('intelligence_event_attempts_status_check'));
 });
