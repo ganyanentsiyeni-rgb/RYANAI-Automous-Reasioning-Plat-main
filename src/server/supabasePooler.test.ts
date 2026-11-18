@@ -128,6 +128,23 @@ describe('Supabase Session Pooler URL resolution', () => {
     expect(result.reason).toBe('missing-password');
   });
 
+  it.each([
+    'host=aws-1-eu-central-1.pooler.supabase.com',
+    'aws-1-eu-central-1.pooler.supabase.com:5432',
+    'host=aws-1-eu-central-1.pooler.supabase.com:5432',
+  ])('accepts a verified pooler hostname copied with connection-field formatting (%s)', (configuredHost) => {
+    const u2ebRef = 'omqavyppdoniehseokvx';
+    const u2ebUrl = `https://${u2ebRef}.supabase.co`;
+    const direct = `postgresql://postgres:secret@db.${u2ebRef}.supabase.co:5432/postgres`;
+    const result = resolveSupabaseSessionPoolerUrl(direct, u2ebUrl, configuredHost);
+
+    expect(result.reason).toBe('rewritten');
+    const url = new URL(result.databaseUrl!);
+    expect(url.hostname).toBe('aws-1-eu-central-1.pooler.supabase.com');
+    expect(url.port).toBe('5432');
+    expect(url.username).toBe(`postgres.${u2ebRef}`);
+  });
+
   it('leaves configuration untouched when the pooler host is invalid', () => {
     const existing = `postgresql://postgres:secret@${directHost}:5432/postgres`;
     const result = resolveSupabaseSessionPoolerUrl(existing, projectUrl, 'not-a-pooler.example.com');
