@@ -3,7 +3,8 @@ import {
   getStudioWorkerHandlerReadiness,
   registerStudioTaskHandler,
 } from '../src/server/engineering/studioNativeCore.js';
-import { analyzeRyanAICiEvidence, createRyanAICiProviderBlockedReport } from '../src/server/engineering/ryanaiCiDiagnostics.js';
+import { analyzeRyanAICiEvidence, createRyanAICiProviderBlockedReport, createRyanAIVerifiedCiReport } from '../src/server/engineering/ryanaiCiDiagnostics.js';
+import { createRyanAICiDiagnosticsTaskHandler } from '../src/server/engineering/ryanaiCiDiagnosticsWorker.js';
 import { generateRepositoryInventory } from './repository-inventory.mjs';
 import { prisma } from '../src/lib/prisma.js';
 import { inspectConnectedGitHubWorkflowEvidence } from '../src/server/routes/githubIntegration.js';
@@ -57,28 +58,7 @@ const runCiDiagnosticsTask = async ({ task }: {
       jobLogs: evidence.jobLogExcerpts,
     }, task.requiredCapabilities);
 
-    return {
-      ...report,
-      source: evidence.source,
-      repositoryFullName: evidence.repositoryFullName,
-      requestedHeadSha: evidence.requestedHeadSha,
-      verifiedHeadSha: evidence.verifiedHeadSha,
-      inspectedAt: evidence.inspectedAt,
-      snapshotComplete: evidence.complete,
-      liveProviderFetchPerformed: true,
-      jobs: evidence.workflowRuns.map((run) => ({
-        runId: run.id,
-        workflow: run.name,
-        jobs: run.jobs,
-      })),
-      notes: [
-        ...report.notes,
-        'Workflow run and job metadata were fetched read-only from the owner-bound GitHub connection.',
-        evidence.jobLogStatus === 'not_requested'
-          ? 'Job logs were not requested; the read-job-logs capability was not present.'
-          : 'Job-log retrieval status: ' + evidence.jobLogStatus + '. Raw log text is never included in this report.',
-      ],
-    };
+    return createRyanAIVerifiedCiReport(report, evidence);
   } catch (error) {
     return createRyanAICiProviderBlockedReport(
       /^[a-f0-9]{40}$/i.test(requestedHeadSha) ? requestedHeadSha.toLowerCase() : null,
@@ -86,6 +66,14 @@ const runCiDiagnosticsTask = async ({ task }: {
     );
   }
 };
+const runCiDiagnosticsTask = createRyanAICiDiagnosticsTaskHandler(
+  (ownerUserId, headSha, options) => inspectConnectedGitHubWorkflowEvidence(
+    { prisma },
+    ownerUserId,
+    headSha,
+    options,
+  ),
+);
 
 // Handlers are registered only for the selected specialist profile. Both
 // adapters are read-only and require their declared capability at admission.

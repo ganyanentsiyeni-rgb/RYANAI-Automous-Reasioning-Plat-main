@@ -526,7 +526,7 @@ describe('owner-bound exact-head GitHub workflow evidence', () => {
     expect(evidence.verifiedHeadSha).toBe(headSha);
     expect(evidence.workflowRuns).toHaveLength(1);
     expect(evidence.workflowRuns[0].jobs[0]).toEqual({
-      name: 'typecheck', status: 'completed', conclusion: 'success',
+      id: 0, name: 'typecheck', status: 'completed', conclusion: 'success',
     });
     expect(JSON.stringify(evidence)).not.toContain(rawAccessToken);
     expect(fetch).toHaveBeenCalledTimes(5);

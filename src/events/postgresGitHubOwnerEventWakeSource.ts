@@ -1,11 +1,9 @@
 import type { RyanAiPostgresWakeListener } from '../lib/postgresGitHubWorkerWake.js';
-import type { GitHubOwnerEventWakeSource } from './githubOwnerEventDispatcher.js';
+import type { RyanAiPostgresQuery } from '../lib/postgresGitHubEventIdempotencyStore.js';
+import { startGitHubOwnerEventWorker, type AuthorizedGitHubOwnerLister, type GitHubOwnerEventWorkerOptions } from './githubOwnerEventDispatcher.js';
+import type { EventHandlerRegistry } from './eventHandlerRegistry.js';
+import type { IntelligenceEventInbox } from './intelligenceEventInbox.js';
 
-/**
- * Dedicated PostgreSQL LISTEN channel for the owner-scoped intelligence inbox.
- * Notifications are deliberately treated as hints only: their payload is
- * ignored, and dispatch always reloads events using trusted owner context.
- */
 export const RYANAI_GITHUB_OWNER_EVENT_WAKE_CHANNEL = 'ryanai_github_owner_events';
 
 export interface GitHubOwnerEventWakeSource {
@@ -13,17 +11,30 @@ export interface GitHubOwnerEventWakeSource {
 }
 
 export type GitHubOwnerWakeErrorHandler = (error: unknown) => void;
+export type GitHubOwnerEventNotifier = (eventId: string) => Promise<void>;
 
 /**
- * Adapts the existing dedicated-connection PostgreSQL listener contract to a
- * synchronous subscribe/unsubscribe lifecycle. The listener owns its
- * connection; this adapter only owns the LISTEN subscription.
-export type GitHubOwnerWakeErrorHandler = (error: unknown) => void;
+ * Publishes a small wake hint only after the caller has durably enqueued the
+ * event. pg_notify's channel argument is parameterized; the channel is fixed.
+ */
+export function createPostgresGitHubOwnerEventNotifier(
+  query: RyanAiPostgresQuery,
+): GitHubOwnerEventNotifier {
+  return async (eventId) => {
+    if (typeof eventId !== 'string' || !eventId.trim() || eventId.length > 200) {
+      throw new RangeError('eventId must contain 1-200 characters.');
+    }
+    await query(
+      'SELECT pg_notify($1, $2)',
+      [RYANAI_GITHUB_OWNER_EVENT_WAKE_CHANNEL, JSON.stringify({ version: 1, eventId })],
+    );
+  };
+}
 
 /**
- * Adapts the existing dedicated-connection PostgreSQL listener contract to the
- * owner worker's synchronous subscribe/unsubscribe lifecycle. The listener
- * owns its connection; this adapter only owns the LISTEN subscription.
+ * Adapts the existing dedicated-connection LISTEN contract. Notification
+ * payloads are intentionally ignored; the durable inbox and trusted owner
+ * resolver remain authoritative.
  */
 export function createPostgresGitHubOwnerEventWakeSource(
   listener: RyanAiPostgresWakeListener,
@@ -36,7 +47,6 @@ export function createPostgresGitHubOwnerEventWakeSource(
 
       void listener.listen(RYANAI_GITHUB_OWNER_EVENT_WAKE_CHANNEL, () => {
         if (active) onWake();
-        // Do not parse or trust NOTIFY payloads; the durable inbox is authoritative.
       }).then((unsubscribe) => {
         if (!active) {
           void unsubscribe().catch(onError);
@@ -55,4 +65,29 @@ export function createPostgresGitHubOwnerEventWakeSource(
       };
     },
   };
+}
+
+
+/**
+ * Composition helper for an explicitly enabled server-side worker process.
+ * Calling this function activates LISTEN; do not invoke from request handlers.
+ */
+export function startPostgresGitHubOwnerEventWorker(
+  listener: RyanAiPostgresWakeListener,
+  inbox: Pick<IntelligenceEventInbox, 'processNextForOwner'>,
+  registry: EventHandlerRegistry,
+  listAuthorizedOwnerUserIds: AuthorizedGitHubOwnerLister,
+  options: GitHubOwnerEventWorkerOptions,
+): () => void {
+  const source = createPostgresGitHubOwnerEventWakeSource(
+    listener,
+    (error) => options.onError?.(error),
+  );
+  return startGitHubOwnerEventWorker(
+    source,
+    inbox,
+    registry,
+    listAuthorizedOwnerUserIds,
+    options,
+  );
 }
