@@ -67,6 +67,8 @@ export function assessSchema({ columns, tables, indexes, extensions, memoryColum
   const mismatchedAttemptIndexes = Object.entries(expectedAttemptIndexes).filter(([name, expected]) => indexByName.has(name) && !indexByName.get(name).includes(normalizeDefinition(expected))).map(([name, expected]) => ({ name, expected, actual: indexByName.get(name) }));
   const expectedCheckpointWritePrimaryKey = ['thread_id', 'checkpoint_ns', 'checkpoint_id', 'task_id', 'idx', 'channel'];
   const checkpointWrites = {
+    tablePresent: tables.has('checkpoint_writes'),
+    primaryKeyPresent: Array.isArray(checkpointWritePrimaryKeyColumns),
     expectedPrimaryKeyColumns: expectedCheckpointWritePrimaryKey,
     actualPrimaryKeyColumns: Array.isArray(checkpointWritePrimaryKeyColumns) ? checkpointWritePrimaryKeyColumns : null,
     primaryKeyMatches: Array.isArray(checkpointWritePrimaryKeyColumns)
