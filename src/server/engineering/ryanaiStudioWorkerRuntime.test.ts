@@ -5,6 +5,7 @@ import { getStudioWorkerHandlerReadiness, registerStudioTaskHandler } from './st
 describe('RyanAI native Studio worker runtime', () => {
   it('reports profiles without registered native handlers as not ready', () => {
     const readiness = getStudioWorkerHandlerReadiness('repository-auditor');
+    expect(readiness).toMatchObject({ workerProfileId: 'repository-auditor', ready: false, registeredTaskTypes: [] });
     expect(readiness).toMatchObject({
       workerProfileId: 'repository-auditor',
       ready: false,
@@ -17,6 +18,7 @@ describe('RyanAI native Studio worker runtime', () => {
     const unregister = registerStudioTaskHandler('coordination', async () => ({ accepted: true }));
     try {
       expect(getStudioWorkerHandlerReadiness('coordinator')).toMatchObject({
+        workerProfileId: 'coordinator', ready: true, registeredTaskTypes: ['coordination'],
         workerProfileId: 'coordinator',
         ready: true,
         registeredTaskTypes: ['coordination'],
