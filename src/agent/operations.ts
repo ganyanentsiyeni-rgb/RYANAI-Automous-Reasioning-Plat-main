@@ -440,26 +440,26 @@ async function processAgentRun(
         if (paDelegationId) {
           const delegation = requirePADelegationRecord(await tx.paDelegation.findUnique({ where: { id: paDelegationId }, select: { id: true, traceId: true } }));
           await tx.paDelegation.update({
-              where: { id: delegation.id },
-              data: { status: cancelled ? 'cancelled' : 'failed' },
-            });
-            await tx.paExecutionReceipt.upsert({
-              where: { delegationId: delegation.id },
-              create: {
-                delegationId: delegation.id,
-                agentRunId: run.id,
-                traceId: delegation.traceId,
-                attempt: run.attempts,
-                status: cancelled ? 'cancelled' : 'failed',
-                error: message,
-              },
-              update: {
-                agentRunId: run.id,
-                traceId: delegation.traceId,
-                attempt: run.attempts,
-                status: cancelled ? 'cancelled' : 'failed',
-                error: message,
-              },
+            where: { id: delegation.id },
+            data: { status: cancelled ? 'cancelled' : 'failed' },
+          });
+          await tx.paExecutionReceipt.upsert({
+            where: { delegationId: delegation.id },
+            create: {
+              delegationId: delegation.id,
+              agentRunId: run.id,
+              traceId: delegation.traceId,
+              attempt: run.attempts,
+              status: cancelled ? 'cancelled' : 'failed',
+              error: message,
+            },
+            update: {
+              agentRunId: run.id,
+              traceId: delegation.traceId,
+              attempt: run.attempts,
+              status: cancelled ? 'cancelled' : 'failed',
+              error: message,
+            },
           });
         }
       }
