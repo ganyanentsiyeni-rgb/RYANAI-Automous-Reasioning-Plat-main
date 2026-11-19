@@ -349,7 +349,13 @@ export class IntelligenceEventInbox {
     const payload = claimed.payload as Record<string, unknown>;
     const owner = payload.owner as Record<string, unknown> | undefined;
     if (!owner || owner.userId !== authenticatedOwnerUserId) {
-      throw new Error('Claimed GitHub event owner does not match authenticated worker context.');
+      const outcome = await this.fail(
+        claimed.id,
+        workerId,
+        new Error('Claimed GitHub event owner does not match authenticated worker context.'),
+        new Date(),
+      );
+      return { ...outcome, eventId: claimed.eventId };
     }
     let leaseLost = false;
     const heartbeat = setInterval(() => {
