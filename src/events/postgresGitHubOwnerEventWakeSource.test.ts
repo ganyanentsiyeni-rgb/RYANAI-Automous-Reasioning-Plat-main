@@ -3,6 +3,7 @@ import type { RyanAiPostgresQuery } from '../lib/postgresGitHubEventIdempotencyS
 import {
   createPostgresGitHubOwnerEventNotifier,
   createPostgresGitHubOwnerEventWakeSource,
+  startPostgresGitHubOwnerEventWorker,
   RYANAI_GITHUB_OWNER_EVENT_WAKE_CHANNEL,
 } from './postgresGitHubOwnerEventWakeSource.js';
 
@@ -85,4 +86,33 @@ describe('PostgreSQL GitHub owner wake adapters', () => {
     await Promise.resolve();
     expect(onError).toHaveBeenCalledWith(cleanupError);
   });
+  it('composes the PostgreSQL listener with the owner-scoped worker', async () => {
+    let notification: (() => void) | undefined;
+    const unsubscribe = vi.fn().mockResolvedValue(undefined);
+    const listen = vi.fn(async (_channel: string, callback: () => void) => {
+      notification = callback;
+      return unsubscribe;
+    });
+    const listOwners = vi.fn().mockResolvedValue([]);
+    const registry = { supportedEventTypes: () => ['github.pull_request'] };
+    const inbox = { processNextForOwner: vi.fn().mockResolvedValue({ status: 'idle' }) };
+    const onError = vi.fn();
+
+    const stop = startPostgresGitHubOwnerEventWorker(
+      { listen },
+      inbox as never,
+      registry as never,
+      listOwners,
+      { workerId: 'github-owner-worker', onError },
+    );
+    await Promise.resolve();
+    notification?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(listOwners).toHaveBeenCalledOnce();
+    expect(onError).not.toHaveBeenCalled();
+    stop();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+
 });
