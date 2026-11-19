@@ -101,4 +101,32 @@ describe('durable agent worker lease fencing', () => {
     expect(onError).toHaveBeenCalledWith(error);
     stop();
   });
+
+  it('revalidates durable ownership and cancellation at an execution boundary', async () => {
+    const isActive = vi.fn().mockResolvedValue(true);
+    await expect(assertAgentRunLeaseActive(
+      { id: 'run-boundary', workerId: 'worker-boundary', attempts: 4 },
+      isActive,
+    )).resolves.toBeUndefined();
+    expect(isActive).toHaveBeenCalledWith({
+      id: 'run-boundary', status: 'running', workerId: 'worker-boundary',
+      attempts: 4, cancelRequestedAt: null,
+    });
+  });
+
+  it('fails closed when cancellation or lease loss is visible at the boundary', async () => {
+    await expect(assertAgentRunLeaseActive(
+      { id: 'run-cancelled', workerId: 'worker-x', attempts: 1 },
+      vi.fn().mockResolvedValue(false),
+    )).rejects.toThrow('Agent run cancelled or worker lease ownership was lost.');
+    const controller = new AbortController();
+    controller.abort(new Error('heartbeat lease lost'));
+    const check = vi.fn();
+    await expect(assertAgentRunLeaseActive(
+      { id: 'run-aborted', workerId: 'worker-y', attempts: 2 },
+      check,
+      controller.signal,
+    )).rejects.toThrow('heartbeat lease lost');
+    expect(check).not.toHaveBeenCalled();
+  });
 });
