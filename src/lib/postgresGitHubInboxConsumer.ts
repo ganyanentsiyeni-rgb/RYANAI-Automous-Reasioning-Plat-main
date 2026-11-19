@@ -278,3 +278,68 @@ export async function processNextRyanAiGitHubInboxEvent(
   }
   return { status: "processed", eventId };
 }
+
+
+import {
+  subscribeRyanAiGitHubWorkerWake,
+  type RyanAiPostgresWakeListener,
+} from "./postgresGitHubWorkerWake";
+
+/**
+ * Event-driven worker lifecycle: subscribe first, drain durable backlog on
+ * startup, then drain again on each NOTIFY hint. A notification is never
+ * treated as the work item; the inbox remains the source of truth.
+ */
+export async function startRyanAiGitHubInboxWorker(
+  consumer: RyanAiGitHubInboxConsumer,
+  listener: RyanAiPostgresWakeListener,
+  target: RyanAiWorkerWakeTarget,
+  workerId: string,
+  handlers: Partial<Record<RyanAiWorkerWakeTarget, RyanAiWorkerWakeHandler>>,
+): Promise<() => Promise<void>> {
+  validateWorkerId(workerId);
+  if (!allowedTargets.has(target)) throw new Error("Unsupported GitHub worker target.");
+
+  let stopped = false;
+  let drainPromise: Promise<void> | null = null;
+  const drain = (): Promise<void> => {
+    if (stopped) return Promise.resolve();
+    if (drainPromise) return drainPromise;
+    drainPromise = (async () => {
+      await consumer.recoverExpired(target);
+      while (!stopped) {
+        const result = await processNextRyanAiGitHubInboxEvent(
+          consumer,
+          target,
+          workerId,
+          handlers,
+        );
+        if (result.status === "empty") break;
+      }
+    })().finally(() => {
+      drainPromise = null;
+    });
+    return drainPromise;
+  };
+
+  const unsubscribe = await subscribeRyanAiGitHubWorkerWake(listener, target, async () => {
+    await drain();
+  });
+
+  try {
+    // Subscribe before startup drain to close the race between backlog scan
+    // and a new event arriving. A concurrent notification coalesces into drain.
+    await drain();
+  } catch (error) {
+    stopped = true;
+    await unsubscribe();
+    throw error;
+  }
+
+  return async () => {
+    if (stopped) return;
+    stopped = true;
+    await unsubscribe();
+    await drainPromise;
+  };
+}
