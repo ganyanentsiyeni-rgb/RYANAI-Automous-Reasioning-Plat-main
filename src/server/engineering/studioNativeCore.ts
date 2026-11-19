@@ -134,7 +134,7 @@ export function isStudioTaskCancellableStatus(status: string): boolean {
 
 export class StudioTaskCancelledError extends Error {
   constructor() {
-    super('Studio task cancellation was requested by its owner.');
+    super('Studio task was cancelled or its worker lease was lost.');
     this.name = 'StudioTaskCancelledError';
   }
 }
