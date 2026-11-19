@@ -439,8 +439,7 @@ async function processAgentRun(
         const paDelegationId = typeof scope.paDelegationId === 'string' ? scope.paDelegationId : null;
         if (paDelegationId) {
           const delegation = requirePADelegationRecord(await tx.paDelegation.findUnique({ where: { id: paDelegationId }, select: { id: true, traceId: true } }));
-          {
-            await tx.paDelegation.update({
+          await tx.paDelegation.update({
               where: { id: delegation.id },
               data: { status: cancelled ? 'cancelled' : 'failed' },
             });
@@ -461,8 +460,7 @@ async function processAgentRun(
                 status: cancelled ? 'cancelled' : 'failed',
                 error: message,
               },
-            });
-          }
+          });
         }
       }
     });
