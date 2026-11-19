@@ -158,3 +158,54 @@ export function createRyanAICiProviderBlockedReport(headSha: string | null, erro
     ],
   };
 }
+
+/** Attach independently verified GitHub provenance to the pure CI analysis result. */
+export function createRyanAIVerifiedCiReport(
+  report: ReturnType<typeof analyzeRyanAICiEvidence>,
+  evidence: {
+    source: 'github-oauth-read-only';
+    repositoryFullName: string;
+    requestedHeadSha: string;
+    verifiedHeadSha: string;
+    inspectedAt: string;
+    complete: boolean;
+    jobLogStatus: 'not_requested' | 'complete' | 'partial' | 'unavailable';
+    workflowRuns: Array<{
+      id: number;
+      name: string;
+      jobs: Array<{ id: number; name: string; status: string; conclusion: string | null }>;
+    }>;
+  },
+) {
+  return {
+    ...report,
+    source: evidence.source,
+    evidenceTrust: 'github_verified_exact_sha' as const,
+    repositoryFullName: evidence.repositoryFullName,
+    requestedHeadSha: evidence.requestedHeadSha,
+    verifiedHeadSha: evidence.verifiedHeadSha,
+    inspectedAt: evidence.inspectedAt,
+    snapshotComplete: evidence.complete,
+    jobLogRetrievalStatus: evidence.jobLogStatus,
+    liveProviderFetchPerformed: true,
+    jobs: evidence.workflowRuns.map((run) => ({
+      runId: run.id,
+      workflow: run.name,
+      jobs: run.jobs,
+    })),
+    notes: [
+      ...report.notes.filter((note) =>
+        note !== 'This worker analyzes the task-supplied snapshot; it does not fetch GitHub data or verify snapshot provenance.',
+      ),
+      'The requested commit SHA was verified against GitHub before its workflow evidence was retrieved.',
+      'Workflow run and job metadata were fetched read-only from the owner-bound GitHub connection.',
+      evidence.complete
+        ? 'Workflow and job metadata pagination completed within the configured bounds.'
+        : 'Workflow or job metadata is partial because the configured pagination bounds were reached or exact-head filtering removed unexpected records.',
+      evidence.jobLogStatus === 'not_requested'
+        ? 'Job logs were not requested; the read-job-logs capability was not present.'
+        : 'Job-log retrieval status: ' + evidence.jobLogStatus + '. Raw log text is never included in this report.',
+    ],
+  };
+}
+
