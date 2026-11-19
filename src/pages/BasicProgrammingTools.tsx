@@ -59,6 +59,7 @@ export default function BasicProgrammingToolsPage() {
   const [title, setTitle] = useState('');
   const [objective, setObjective] = useState('');
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -80,7 +81,8 @@ export default function BasicProgrammingToolsPage() {
   const visibleProjects = projects.filter(project => {
     const typeMatches = tab === 'research' ? project.projectType === 'research' : project.projectType !== 'research';
     const query = search.trim().toLowerCase();
-    return typeMatches && (!query || (project.title + ' ' + project.objective + ' ' + project.id).toLowerCase().includes(query));
+    const statusMatches = statusFilter === 'all' || project.status.toLowerCase() === statusFilter;
+    return typeMatches && statusMatches && (!query || (project.title + ' ' + project.objective + ' ' + project.id).toLowerCase().includes(query));
   });
   async function createContainer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -131,8 +133,8 @@ export default function BasicProgrammingToolsPage() {
         <button type="button" onClick={() => void loadProjects()} disabled={loading} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-200 disabled:opacity-50"><RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />Refresh</button>
       </div>
       <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="Project and research containers">
-        <button type="button" role="tab" aria-selected={tab === 'projects'} onClick={() => { setTab('projects'); setSearch(''); }} className={`rounded-lg px-4 py-2 text-sm font-semibold ${tab === 'projects' ? 'bg-cyan-300/15 text-cyan-100 ring-1 ring-cyan-300/30' : 'border border-white/10 text-slate-400'}`}><FolderKanban className="mr-2 inline h-4 w-4" />Projects</button>
-        <button type="button" role="tab" aria-selected={tab === 'research'} onClick={() => { setTab('research'); setSearch(''); }} className={`rounded-lg px-4 py-2 text-sm font-semibold ${tab === 'research' ? 'bg-violet-300/15 text-violet-100 ring-1 ring-violet-300/30' : 'border border-white/10 text-slate-400'}`}><FlaskConical className="mr-2 inline h-4 w-4" />Research</button>
+        <button type="button" role="tab" aria-selected={tab === 'projects'} onClick={() => { setTab('projects'); setSearch(''); setStatusFilter('all'); }} className={`rounded-lg px-4 py-2 text-sm font-semibold ${tab === 'projects' ? 'bg-cyan-300/15 text-cyan-100 ring-1 ring-cyan-300/30' : 'border border-white/10 text-slate-400'}`}><FolderKanban className="mr-2 inline h-4 w-4" />Projects</button>
+        <button type="button" role="tab" aria-selected={tab === 'research'} onClick={() => { setTab('research'); setSearch(''); setStatusFilter('all'); }} className={`rounded-lg px-4 py-2 text-sm font-semibold ${tab === 'research' ? 'bg-violet-300/15 text-violet-100 ring-1 ring-violet-300/30' : 'border border-white/10 text-slate-400'}`}><FlaskConical className="mr-2 inline h-4 w-4" />Research</button>
       </div>
       <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <form onSubmit={createContainer} className="rounded-xl border border-white/10 bg-slate-950/60 p-4">
@@ -144,7 +146,10 @@ export default function BasicProgrammingToolsPage() {
         </form>
         <div className="min-w-0 rounded-xl border border-white/10 bg-slate-950/60 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold text-white">{tab === 'research' ? 'Research library' : 'Coding projects'}</h3><span className="text-xs text-slate-500">{visibleProjects.length} shown · {projects.length} total</span></div>
-          <label className="mt-3 flex items-center gap-2 rounded-lg border border-white/10 bg-[#070a10] px-3"><Search className="h-4 w-4 text-slate-500" /><input aria-label="Search project containers" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search containers…" className="min-w-0 flex-1 bg-transparent py-2.5 text-sm text-white outline-none" /></label>
+          <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+            <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-[#070a10] px-3"><Search className="h-4 w-4 text-slate-500" /><input aria-label="Search project containers" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search containers…" className="min-w-0 flex-1 bg-transparent py-2.5 text-sm text-white outline-none" /></label>
+            <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-[#070a10] px-3 text-xs text-slate-400">Status<select aria-label="Filter project status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="bg-transparent py-2.5 text-sm text-white outline-none"><option value="all">All statuses</option><option value="queued">Pending / queued</option><option value="in_progress">In progress</option><option value="completed">Completed</option><option value="failed">Failed</option><option value="cancelled">Cancelled</option></select></label>
+          </div>
           {error && <p role="alert" className="mt-3 rounded-lg border border-rose-300/20 bg-rose-300/5 p-3 text-xs text-rose-200">{error}</p>}
           {notice && <p role="status" className="mt-3 rounded-lg border border-emerald-300/20 bg-emerald-300/5 p-3 text-xs text-emerald-200">{notice}</p>}
           <div className="mt-3 space-y-2">
