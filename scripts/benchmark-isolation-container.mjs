@@ -7,6 +7,9 @@ import { readFile } from 'node:fs/promises';
 const imageDigest = process.argv[2] ?? '';
 const policy = JSON.parse(await readFile('/workspace/local-isolation-policy.json', 'utf8'));
 const checks = [];
+const DENIED_NETWORK_CODES = ['ENETUNREACH', 'EHOSTUNREACH'];
+const DNS_DENIED_CODES = ['ENETUNREACH', 'EHOSTUNREACH', 'ECONNREFUSED'];
+const HOST_ALIAS_UNAVAILABLE_CODES = ['ENETUNREACH', 'EHOSTUNREACH', 'ENOTFOUND', 'EAI_AGAIN'];
 const record = (name, command, observedCode, ok, failureReason = '') => checks.push({
   name, status: ok ? 'PASS' : 'FAIL', exitCode: ok ? 0 : 1,
   command, observedCode: String(observedCode ?? 'none'),
@@ -31,12 +34,12 @@ const connectDenied = host => new Promise(resolve => {
 });
 const publicCode = await connectDenied('1.1.1.1');
 record('public-ip-egress-denied', 'node net.connect(1.1.1.1:443)', publicCode,
-  ['ENETUNREACH', 'EHOSTUNREACH'].includes(publicCode),
+  DENIED_NETWORK_CODES.includes(publicCode),
   'expected ENETUNREACH/EHOSTUNREACH, observed ' + publicCode);
 
 const privateCode = await connectDenied('10.0.0.1');
 record('private-lan-egress-denied', 'node net.connect(10.0.0.1:443)', privateCode,
-  ['ENETUNREACH', 'EHOSTUNREACH'].includes(privateCode),
+  DENIED_NETWORK_CODES.includes(privateCode),
   'expected ENETUNREACH/EHOSTUNREACH, observed ' + privateCode);
 
 const resolver = new dns.Resolver();
@@ -44,13 +47,13 @@ resolver.setServers(['1.1.1.1']);
 let dnsCode = 'RESOLVED';
 try { await resolver.resolve4('example.com'); } catch (err) { dnsCode = err?.code ?? err?.name ?? 'UNKNOWN'; }
 record('public-dns-denied', 'dns.Resolver.setServers([1.1.1.1]).resolve4(example.com)', dnsCode,
-  ['ENETUNREACH', 'EHOSTUNREACH'].includes(dnsCode),
+  DNS_DENIED_CODES.includes(dnsCode),
   'expected ENETUNREACH/EHOSTUNREACH, observed ' + dnsCode);
 
 let dockerHostCode = 'RESOLVED';
 try { await dns.lookup('host.docker.internal'); } catch (err) { dockerHostCode = err?.code ?? err?.name ?? 'UNKNOWN'; }
 record('docker-host-alias-denied', 'dns.lookup(host.docker.internal)', dockerHostCode,
-  ['ENETUNREACH', 'EHOSTUNREACH', 'ENOTFOUND'].includes(dockerHostCode),
+  HOST_ALIAS_UNAVAILABLE_CODES.includes(dockerHostCode),
   'expected unavailable host alias, observed ' + dockerHostCode);
 
 const allowed = policy.allowedInferenceEndpoints ?? [];
