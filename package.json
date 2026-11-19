@@ -159,7 +159,7 @@
     "agent-governance:validate": "node scripts/validate-agent-governance.mjs",
     "test:agent-governance": "node --test scripts/agent-governance.node-test.mjs",
     "test:docker:postgres": "bash scripts/run-ephemeral-postgres-integration.sh",
-    "test:pagerduty": "python3 -m unittest discover -s scripts -p 'test-pagerduty-manager.py'",
+    "test:pagerduty": "python scripts/run_unittest_discovery.py --start-directory scripts --pattern test_pagerduty_manager.py && python scripts/test_unittest_discovery_runner.py",
     "test:deploy:contracts": "python3 -m unittest discover -s scripts -p 'test-deploy-production.py'",
     "test:prisma-breaking-guard": "python3 -m unittest scripts/test_check_breaking_schema.py -v",
     "db:validate": "prisma validate --schema=prisma/schema.prisma && prisma validate --schema=prisma/audiobook/schema.prisma",

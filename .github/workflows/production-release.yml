@@ -75,7 +75,7 @@ jobs:
       - name: Run offline PagerDuty and deployment contract tests
         run: |
           npm run test:pagerduty
-          python -m unittest discover -s scripts -p "test-deploy-production.py"
+          python scripts/run_unittest_discovery.py --start-directory scripts --pattern test_deploy_production.py
 
       - name: Execute governed production release
         run: python scripts/deploy_production.py
@@ -169,7 +169,7 @@ jobs:
       - name: Run offline PagerDuty and deployment contract tests
         run: |
           npm run test:pagerduty
-          python -m unittest discover -s scripts -p "test-deploy-production.py"
+          python scripts/run_unittest_discovery.py --start-directory scripts --pattern test_deploy_production.py
 
       - name: Execute governed staging release
         run: python scripts/deploy_production.py
