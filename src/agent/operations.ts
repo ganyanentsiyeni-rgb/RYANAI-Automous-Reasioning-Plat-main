@@ -12,7 +12,7 @@ import { parsePAExecutionScope } from './agentRunExecution.js';
 import { getAgentRunRetryDelayMs, invokeWithCancellationRetry, shouldRetryAgentRun } from './agentRunRetry.js';
 import { persistAgentRunCompletion, requirePADelegationRecord } from './agentRunPersistence.js';
 import { publishAgentTaskNotification } from './queueNotifications.js';
-import { agentRunLeaseFilter, startAgentRunLeaseHeartbeat } from './agentRunLease.js';
+import { agentRunLeaseFilter, assertAgentRunLeaseActive, startAgentRunLeaseHeartbeat } from './agentRunLease.js';
 import { summarizeProviderError } from './providerErrors.js';
 import { assertBrainProbeResponse, BRAIN_PROBE_CHALLENGE, BRAIN_PROBE_ORDER } from './brainProbe.js';
 import { assertPAExecutionHandlersAvailable, buildAgentRunExecutionPrompt, buildPARepositoryInspectionContext, buildSharedReasoningObjective, planQueuedAgentRun } from './agentRunExecution.js';
@@ -378,7 +378,7 @@ async function processAgentRun(
     );
     activeRegion = 'reasoning';
     await recordRegion('reasoning', 'started', { brains: ['primary', 'secondary', 'logic'] });
-    const reasoningPlan = await executeThreeBrainPlan(sharedObjective, (brain, prompt, signal) => testBrainInvoker
+    await assertExecutionLeaseActive();\n    const reasoningPlan = await executeThreeBrainPlan(sharedObjective, (brain, prompt, signal) => testBrainInvoker
       ? testBrainInvoker(brain, prompt, signal)
       : invokeWithRecovery(brain, prompt, signal, run, brain === 'logic' ? run.requested_model ?? undefined : undefined), cancellation.signal);
     const plan = { ...reasoningPlan, capabilityReceipts };
@@ -393,7 +393,7 @@ async function processAgentRun(
     await recordRegion('verification', 'completed', { verified: plan.verification?.verified === true, reason: plan.verification?.reason ?? null });
     activeRegion = null;
 
-    const rows = await prisma.agentHandoff.findMany({
+    await assertExecutionLeaseActive();\n    const rows = await prisma.agentHandoff.findMany({
       where: { runId: run.id },
       orderBy: { startedAt: 'asc' },
     });
