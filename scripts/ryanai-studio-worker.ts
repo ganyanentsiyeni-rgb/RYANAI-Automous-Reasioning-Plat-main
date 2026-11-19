@@ -5,6 +5,8 @@ import {
 } from '../src/server/engineering/studioNativeCore.js';
 import { analyzeRyanAICiEvidence } from '../src/server/engineering/ryanaiCiDiagnostics.js';
 import { generateRepositoryInventory } from './repository-inventory.mjs';
+import { prisma } from '../src/lib/prisma.js';
+import { inspectConnectedGitHubWorkflowEvidence } from '../src/server/routes/githubIntegration.js';
 
 const profileId = process.env.RYANAI_STUDIO_WORKER_PROFILE_ID?.trim() || 'coordinator';
 const workerId = process.env.RYANAI_STUDIO_WORKER_ID?.trim();
@@ -25,12 +27,51 @@ const runRepositoryInventoryTask = async ({ task }: {
 };
 
 const runCiDiagnosticsTask = async ({ task }: {
-  task: { input: unknown; requiredCapabilities: string[] };
+  task: { input: unknown; requiredCapabilities: string[]; ownerUserId: string };
 }) => {
   if (!task.requiredCapabilities.includes('read-workflow-runs')) {
     throw new Error('CI diagnostics requires the explicit read-workflow-runs capability.');
   }
-  return analyzeRyanAICiEvidence(task.input, task.requiredCapabilities);
+  const input = task.input !== null && typeof task.input === 'object' && !Array.isArray(task.input)
+    ? task.input as Record<string, unknown>
+    : {};
+  const requestedHeadSha = typeof input.headSha === 'string' ? input.headSha : '';
+  const evidence = await inspectConnectedGitHubWorkflowEvidence(
+    { prisma } as never,
+    task.ownerUserId,
+    requestedHeadSha,
+  );
+  const report = analyzeRyanAICiEvidence({
+    headSha: evidence.verifiedHeadSha,
+    workflowRuns: evidence.workflowRuns.map((run) => ({
+      id: run.id,
+      name: run.name,
+      headSha: run.headSha,
+      status: run.status,
+      conclusion: run.conclusion,
+      url: run.url,
+    })),
+  }, task.requiredCapabilities);
+  return {
+    ...report,
+    source: evidence.source,
+    repositoryFullName: evidence.repositoryFullName,
+    requestedHeadSha: evidence.requestedHeadSha,
+    verifiedHeadSha: evidence.verifiedHeadSha,
+    inspectedAt: evidence.inspectedAt,
+    snapshotComplete: evidence.complete,
+    liveProviderFetchPerformed: true,
+    jobs: evidence.workflowRuns.map((run) => ({
+      runId: run.id,
+      workflow: run.name,
+      jobs: run.jobs,
+    })),
+    notes: [
+      ...report.notes,
+      'Workflow run and job metadata were fetched read-only from the owner-bound GitHub connection.',
+      'No raw workflow logs were downloaded; log signature analysis is not available in this adapter yet.',
+    ],
+  };
 };
 
 // These handlers consume only task-scoped, structured evidence. They do not
