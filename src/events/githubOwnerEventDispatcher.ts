@@ -65,3 +65,63 @@ export async function dispatchNextGitHubEventForAuthorizedOwners(
   }
   return results;
 }
+
+/** Minimal PostgreSQL NOTIFY/Event Streams wake boundary; notification data is ignored. */
+export interface GitHubOwnerEventWakeSource {
+  subscribe(onWake: () => void): () => void;
+}
+
+export interface GitHubOwnerEventWorkerOptions {
+  workerId: string;
+  onError?: (error: unknown) => void;
+}
+
+/**
+ * Runs owner-scoped dispatch only when the trusted wake source signals.
+ * No timer or polling fallback is installed. Each wake drains currently due
+ * work for authorized owners; notification payloads never select an owner.
+ */
+export function startGitHubOwnerEventWorker(
+  wakeSource: GitHubOwnerEventWakeSource,
+  inbox: Pick<IntelligenceEventInbox, 'processNextForOwner'>,
+  registry: EventHandlerRegistry,
+  listAuthorizedOwnerUserIds: AuthorizedGitHubOwnerLister,
+  options: GitHubOwnerEventWorkerOptions,
+): () => void {
+  const workerId = options.workerId.trim();
+  if (!workerId || workerId.length > 128) throw new RangeError('workerId must contain 1-128 characters.');
+  let stopped = false;
+  let running = false;
+  let wakePending = false;
+
+  const drain = async () => {
+    if (stopped || running) return;
+    running = true;
+    try {
+      do {
+        wakePending = false;
+        const results = await dispatchNextGitHubEventForAuthorizedOwners(
+          inbox, registry, listAuthorizedOwnerUserIds, workerId,
+        );
+        if (results.some((result) => result.status !== 'idle')) wakePending = true;
+      } while (!stopped && wakePending);
+    } catch (error) {
+      options.onError?.(error);
+    } finally {
+      running = false;
+      if (!stopped && wakePending) void drain();
+    }
+  };
+
+  const unsubscribe = wakeSource.subscribe(() => {
+    if (stopped) return;
+    wakePending = true;
+    if (!running) void drain();
+  });
+
+  return () => {
+    stopped = true;
+    wakePending = false;
+    unsubscribe();
+  };
+}
