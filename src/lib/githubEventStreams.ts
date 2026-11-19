@@ -1,4 +1,8 @@
 import { createRyanAiGitHubEventRouter } from "./githubEventRouter";
+import {
+  createPostgresRyanAiGitHubWorkerWakePublisher,
+  type RyanAiPostgresNotify,
+} from "./postgresGitHubWorkerWake";
 
 export type RyanAiGitHubEventType =
   | "pull_request"
@@ -188,5 +192,23 @@ export function createRyanAiGitHubEventWorkerWithRouter(
   return createRyanAiGitHubEventWorker(
     subscriptions,
     createRyanAiGitHubEventRouter(handleWake, idempotencyStore),
+  );
+}
+
+
+/**
+ * Production composition boundary for PostgreSQL-backed worker wake hints.
+ * A provider stream must still be supplied by an enabled GitHub Event Streams
+ * installation; this helper does not create a provider connection.
+ */
+export function createRyanAiGitHubEventWorkerWithPostgresWake(
+  subscriptions: readonly RyanAiGitHubEventSubscription[],
+  notify: RyanAiPostgresNotify,
+  idempotencyStore?: import("./githubEventRouter").RyanAiEventIdempotencyStore,
+): RyanAiGitHubEventWorker {
+  const publishWake = createPostgresRyanAiGitHubWorkerWakePublisher(notify);
+  return createRyanAiGitHubEventWorker(
+    subscriptions,
+    createRyanAiGitHubEventRouter(publishWake, idempotencyStore),
   );
 }
