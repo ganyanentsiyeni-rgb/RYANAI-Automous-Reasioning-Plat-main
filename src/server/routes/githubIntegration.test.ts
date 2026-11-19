@@ -527,6 +527,7 @@ describe('owner-bound exact-head GitHub workflow evidence', () => {
     expect(evidence.workflowRuns).toHaveLength(1);
     expect(evidence.workflowRuns[0].jobs[0]).toEqual({
       name: 'typecheck', status: 'completed', conclusion: 'success',
+      id: 0, name: 'typecheck', status: 'completed', conclusion: 'success',
     });
     expect(JSON.stringify(evidence)).not.toContain(rawAccessToken);
     expect(fetch).toHaveBeenCalledTimes(5);
@@ -598,6 +599,31 @@ describe('bounded GitHub workflow evidence pagination', () => {
 
 
 describe('capability-gated GitHub Actions job log retrieval', () => {
+
+  it('enforces the archive byte limit while streaming when Content-Length is absent', async () => {
+    const app = await createApp();
+    store.connection.findUnique.mockResolvedValue(storedConnection());
+    const headSha = 'e'.repeat(40);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(mockResponse({ id: 123456, login: 'synthetic-owner' }))
+      .mockResolvedValueOnce(mockResponse({ id: 1361308785, full_name: GITHUB_APP_REPOSITORY, permissions: { pull: true } }))
+      .mockResolvedValueOnce(mockResponse({ sha: headSha }))
+      .mockResolvedValueOnce(mockResponse({ total_count: 1, workflow_runs: [{
+        id: 94, name: 'build', head_sha: headSha, status: 'completed', conclusion: 'failure',
+      }] }))
+      .mockResolvedValueOnce(mockResponse({ total_count: 1, jobs: [{
+        id: 504, name: 'build', status: 'completed', conclusion: 'failure',
+      }] }))
+      .mockResolvedValueOnce(new Response(null, {
+        status: 302, headers: { location: 'https://productionresultssa1.blob.core.windows.net/logs/signed.zip?sig=synthetic' },
+      }))
+      .mockResolvedValueOnce(new Response(new Uint8Array(2 * 1024 * 1024 + 1), { status: 200 }));
+    const evidence = await inspectConnectedGitHubWorkflowEvidence(app, userId, headSha, { includeJobLogs: true });
+    expect(evidence.jobLogStatus).toBe('partial');
+    expect(evidence.jobLogExcerpts).toEqual([]);
+    expect(fetch).toHaveBeenCalledTimes(7);
+  });
+
   it('does not request job logs unless explicitly enabled', async () => {
     const app = await createApp();
     store.connection.findUnique.mockResolvedValue(storedConnection());

@@ -87,6 +87,7 @@ export async function enqueueRyanAiGitHubOwnerBoundEvent(
     },
   };
 
+  return inbox.enqueue(envelope);
   // enqueue resolves only after the durable inbox write has committed. Send
   // the lossy wake hint afterwards; a failed notify is safe to retry because
   // the provider event and inbox idempotency key are stable.

@@ -33,15 +33,15 @@ const runCiDiagnosticsTask = createRyanAICiDiagnosticsTaskHandler(
     headSha,
     options,
   ),
+  (ownerUserId, headSha, options) =>
+    inspectConnectedGitHubWorkflowEvidence({ prisma }, ownerUserId, headSha, options),
 );
 
-// Handlers are registered only for the selected specialist profile. Both
-// adapters are read-only and require their declared capability at admission.
 const unregisterHandlers = profileId === 'repository-auditor'
   ? [
       registerStudioTaskHandler('repository-audit', runRepositoryInventoryTask),
       registerStudioTaskHandler('inventory', runRepositoryInventoryTask),
-    ]
+  ]
   : profileId === 'ci-diagnostics'
     ? [
         registerStudioTaskHandler('ci-failure', runCiDiagnosticsTask),
@@ -67,10 +67,15 @@ const runtime = createRyanAIStudioWorkerRuntime({
   leaseSeconds: Number(process.env.RYANAI_STUDIO_WORKER_LEASE_SECONDS ?? 90),
 });
 
+let shuttingDown = false;
 const shutdown = async () => {
-  await runtime.stop();
-  for (const unregister of unregisterHandlers) unregister();
-  process.exit(0);
+  if (shuttingDown) return;
+  shuttingDown = true;
+  try {
+    await runtime.stop();
+  } finally {
+    for (const unregister of unregisterHandlers) unregister();
+  }
 };
 
 process.once('SIGTERM', () => { void shutdown(); });
