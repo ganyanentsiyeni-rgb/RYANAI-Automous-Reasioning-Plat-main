@@ -100,7 +100,7 @@ describe('Studio worker queue lifecycle', () => {
 
   it('retries handler failures with an execution-failed event', async () => {
     const handler = vi.fn().mockRejectedValue(new Error('temporary handler fault'));
-    const unregister = registerStudioTaskHandler('studio.test', handler);
+    const unregister = registerStudioTaskHandler('ci-failure', handler);
     try {
       const result = await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
       expect(result).toMatchObject({ state: 'failed', taskId: 'task-1', error: 'temporary handler fault' });
@@ -120,7 +120,7 @@ describe('Studio worker queue lifecycle', () => {
       expect(await heartbeat()).toBe(true);
       return { result: 'ok' };
     });
-    const unregister = registerStudioTaskHandler('studio.test', handler);
+    const unregister = registerStudioTaskHandler('ci-failure', handler);
     try {
       const result = await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
       expect(result).toMatchObject({ state: 'completed', taskId: 'task-1' });
@@ -138,9 +138,9 @@ describe('Studio worker queue lifecycle', () => {
   it('does not report completion after the worker loses its lease', async () => {
     mocks.taskUpdateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ count: 0 });
     const handler = vi.fn().mockResolvedValue({ result: 'late' });
-    const unregister = registerStudioTaskHandler('studio.test', handler);
+    const unregister = registerStudioTaskHandler('ci-failure', handler);
     try {
-      const result = await runStudioWorkerOnce('worker-1', async () => ({ allowed: true }));
+      const result = await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
       expect(result).toMatchObject({
         state: 'failed',
         taskId: 'task-1',
