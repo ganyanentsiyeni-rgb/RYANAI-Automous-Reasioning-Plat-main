@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assertPAExecutionHandlersAvailable, buildAgentRunExecutionPrompt, buildPARepositoryInspectionContext, parseAgentRunExecutionChange, parsePAExecutionScope, planQueuedAgentRun } from './agentRunExecution.js';
+import { assertPAExecutionHandlersAvailable, buildAgentRunExecutionPrompt, buildPARepositoryInspectionContext, buildSharedReasoningObjective, parseAgentRunExecutionChange, parsePAExecutionScope, planQueuedAgentRun } from './agentRunExecution.js';
 
 describe('durable agent-run execution planning', () => {
   it('defaults missing, malformed and unknown persisted scope to full reconciliation', () => {
@@ -124,5 +124,23 @@ describe('trusted PA repository inspection context', () => {
     expect(prompt).toContain(maliciousObjective);
     expect(context).toContain(snapshot.repositoryFullName);
     expect(context).not.toContain(maliciousObjective);
+  });
+});
+
+
+describe('shared reasoning objective composition', () => {
+  it('delivers the verified repository snapshot alongside planning and memory to every brain input', () => {
+    const knowledge = 'MEMORY CONTEXT';
+    const planned = 'USER OBJECTIVE';
+    const verified = 'VERIFIED PA REPOSITORY INSPECTION: commitSha=0123456789abcdef0123456789abcdef01234567';
+    const shared = buildSharedReasoningObjective(knowledge, planned, verified);
+    expect(shared).toContain(knowledge);
+    expect(shared).toContain(planned);
+    expect(shared).toContain(verified);
+    expect(shared.split(verified).length - 1).toBe(1);
+  });
+
+  it('omits unavailable optional context without changing the planned objective', () => {
+    expect(buildSharedReasoningObjective(null, 'USER OBJECTIVE', null)).toBe('USER OBJECTIVE');
   });
 });
