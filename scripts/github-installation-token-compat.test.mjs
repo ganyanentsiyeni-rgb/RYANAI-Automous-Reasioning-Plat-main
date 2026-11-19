@@ -5,9 +5,9 @@ describe('GitHub installation token compatibility audit', () => {
   it('allows opaque token forwarding and text storage', () => {
     expect(findCompatibilityRisks([
       'const token = response.token;',
-      'headers.Authorization = `Bearer ${token}`;',
+      'headers.Authorization = "Bearer " + token;',
       'encrypted_access_token TEXT NOT NULL',
-    ].join('\\n'))).toEqual([]);
+    ].join('\n'))).toEqual([]);
   });
 
   it('detects legacy 40-character ghs token regexes', () => {

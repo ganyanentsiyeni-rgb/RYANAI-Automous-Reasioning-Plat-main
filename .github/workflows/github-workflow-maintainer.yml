@@ -54,8 +54,8 @@ jobs:
             npm run workflow:agent:fix
           else
             npm run workflow:agent
+          fi
       - name: Audit GitHub installation-token compatibility
         run: npm run github:tokens:validate
       - name: Test GitHub installation-token compatibility guard
         run: npm run test:github-token-compat
-          fi
