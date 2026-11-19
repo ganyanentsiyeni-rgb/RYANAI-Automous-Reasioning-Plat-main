@@ -164,7 +164,8 @@
     "db:status": "prisma migrate status --schema=prisma/schema.prisma",
     "aerial:smoke": "node scripts/aerial-ai-ran-smoke.mjs",
     "aerial:dev:bridge": "python3 aerial-bridge/server.py",
-    "db:migrate:render-staging": "node scripts/migrate-render-staging.mjs"
+    "db:migrate:render-staging": "node scripts/migrate-render-staging.mjs",
+    "test:render-staging-migration": "node --test scripts/migrate-render-staging.test.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1169.0",
