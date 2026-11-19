@@ -3,7 +3,7 @@ import {
   getStudioWorkerHandlerReadiness,
   registerStudioTaskHandler,
 } from '../src/server/engineering/studioNativeCore.js';
-import { analyzeRyanAICiEvidence } from '../src/server/engineering/ryanaiCiDiagnostics.js';
+import { analyzeRyanAICiEvidence, createRyanAICiProviderBlockedReport } from '../src/server/engineering/ryanaiCiDiagnostics.js';
 import { generateRepositoryInventory } from './repository-inventory.mjs';
 import { prisma } from '../src/lib/prisma.js';
 import { inspectConnectedGitHubWorkflowEvidence } from '../src/server/routes/githubIntegration.js';
@@ -36,43 +36,51 @@ const runCiDiagnosticsTask = async ({ task }: {
     ? task.input as Record<string, unknown>
     : {};
   const requestedHeadSha = typeof input.headSha === 'string' ? input.headSha : '';
-  const evidence = await inspectConnectedGitHubWorkflowEvidence(
-    { prisma },
-    task.ownerUserId,
-    requestedHeadSha,
-  );
-  const report = analyzeRyanAICiEvidence({
-    headSha: evidence.verifiedHeadSha,
-    workflowRuns: evidence.workflowRuns.map((run) => ({
-      id: run.id,
-      name: run.name,
-      headSha: run.headSha,
-      status: run.status,
-      conclusion: run.conclusion,
-      url: run.url,
-    })),
-  }, task.requiredCapabilities);
 
-  return {
-    ...report,
-    source: evidence.source,
-    repositoryFullName: evidence.repositoryFullName,
-    requestedHeadSha: evidence.requestedHeadSha,
-    verifiedHeadSha: evidence.verifiedHeadSha,
-    inspectedAt: evidence.inspectedAt,
-    snapshotComplete: evidence.complete,
-    liveProviderFetchPerformed: true,
-    jobs: evidence.workflowRuns.map((run) => ({
-      runId: run.id,
-      workflow: run.name,
-      jobs: run.jobs,
-    })),
-    notes: [
-      ...report.notes,
-      'Workflow run and job metadata were fetched read-only from the owner-bound GitHub connection.',
-      'No raw workflow logs were downloaded; log signature analysis is not available in this adapter yet.',
-    ],
-  };
+  try {
+    const evidence = await inspectConnectedGitHubWorkflowEvidence(
+      { prisma },
+      task.ownerUserId,
+      requestedHeadSha,
+    );
+    const report = analyzeRyanAICiEvidence({
+      headSha: evidence.verifiedHeadSha,
+      workflowRuns: evidence.workflowRuns.map((run) => ({
+        id: run.id,
+        name: run.name,
+        headSha: run.headSha,
+        status: run.status,
+        conclusion: run.conclusion,
+        url: run.url,
+      })),
+    }, task.requiredCapabilities);
+
+    return {
+      ...report,
+      source: evidence.source,
+      repositoryFullName: evidence.repositoryFullName,
+      requestedHeadSha: evidence.requestedHeadSha,
+      verifiedHeadSha: evidence.verifiedHeadSha,
+      inspectedAt: evidence.inspectedAt,
+      snapshotComplete: evidence.complete,
+      liveProviderFetchPerformed: true,
+      jobs: evidence.workflowRuns.map((run) => ({
+        runId: run.id,
+        workflow: run.name,
+        jobs: run.jobs,
+      })),
+      notes: [
+        ...report.notes,
+        'Workflow run and job metadata were fetched read-only from the owner-bound GitHub connection.',
+        'No raw workflow logs were downloaded; log signature analysis is not available in this adapter yet.',
+      ],
+    };
+  } catch (error) {
+    return createRyanAICiProviderBlockedReport(
+      /^[a-f0-9]{40}$/i.test(requestedHeadSha) ? requestedHeadSha.toLowerCase() : null,
+      error,
+    );
+  }
 };
 
 // Handlers are registered only for the selected specialist profile. Both
