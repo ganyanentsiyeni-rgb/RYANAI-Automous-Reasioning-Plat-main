@@ -15,7 +15,7 @@ import { publishAgentTaskNotification } from './queueNotifications.js';
 import { agentRunLeaseFilter, startAgentRunLeaseHeartbeat } from './agentRunLease.js';
 import { summarizeProviderError } from './providerErrors.js';
 import { assertBrainProbeResponse, BRAIN_PROBE_CHALLENGE, BRAIN_PROBE_ORDER } from './brainProbe.js';
-import { assertPAExecutionHandlersAvailable, buildAgentRunExecutionPrompt, buildPARepositoryInspectionContext, planQueuedAgentRun } from './agentRunExecution.js';
+import { assertPAExecutionHandlersAvailable, buildAgentRunExecutionPrompt, buildPARepositoryInspectionContext, buildSharedReasoningObjective, planQueuedAgentRun } from './agentRunExecution.js';
 import { inspectConnectedGitHubRepository } from '../server/routes/githubIntegration.js';
 import { evaluateGenXSecurityEvent } from '../security/genxPolicy.js';
 import type { PACapabilityReceipt } from './paCapabilityCompletion.js';
@@ -365,11 +365,11 @@ async function processAgentRun(
           : ''),
       executionPlan,
     );
-    const sharedObjective = [
+    const sharedObjective = buildSharedReasoningObjective(
       knowledge,
       plannedObjective,
       verifiedCapabilityContext,
-    ].filter((part): part is string => Boolean(part)).join('\n\n');
+    );
     activeRegion = 'reasoning';
     await recordRegion('reasoning', 'started', { brains: ['primary', 'secondary', 'logic'] });
     const reasoningPlan = await executeThreeBrainPlan(sharedObjective, (brain, prompt, signal) => testBrainInvoker
