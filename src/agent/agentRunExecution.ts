@@ -73,3 +73,12 @@ export function parsePAExecutionScope(value: unknown): PAExecutionScope | null {
   }
   return { delegationId: candidate.paDelegationId, capabilities: candidate.capabilities as PADelegationCapability[] };
 }
+
+/** Refuse to report delegated work as complete until every approved capability has a real worker handler. */
+export function assertPAExecutionHandlersAvailable(scope: PAExecutionScope, implementedCapabilities: readonly PADelegationCapability[] = []): void {
+  const implemented = new Set(implementedCapabilities);
+  const missing = scope.capabilities.filter((capability) => !implemented.has(capability));
+  if (missing.length > 0) {
+    throw new Error('PA capability handlers are not implemented: ' + missing.join(', ') + '. Reasoning-only output cannot complete a delegated execution.');
+  }
+}
