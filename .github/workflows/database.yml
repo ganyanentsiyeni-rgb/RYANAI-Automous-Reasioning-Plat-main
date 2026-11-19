@@ -66,6 +66,41 @@ jobs:
       - name: Test read-only migration audit contracts
         run: npm run test:migration:audit
 
+      - name: Verify memory uniqueness migration rejects duplicate owner/key pairs
+        env:
+          PGPASSWORD: ci_password
+        run: |
+          set -euo pipefail
+          test_db=ryanai_memory_unique_preflight
+          docker run --rm --network host -e PGPASSWORD \
+            postgres:16-alpine createdb -h 127.0.0.1 -U ryanai "$test_db"
+          cleanup() {
+            docker run --rm --network host -e PGPASSWORD \
+              postgres:16-alpine dropdb -h 127.0.0.1 -U ryanai --if-exists "$test_db"
+          }
+          trap cleanup EXIT
+          docker run --rm --network host -e PGPASSWORD \
+            postgres:16-alpine psql -h 127.0.0.1 -U ryanai -d "$test_db" \
+              -v ON_ERROR_STOP=1 -c \
+              "CREATE TABLE public.memory_entries (user_id uuid NOT NULL, key text NOT NULL);
+               INSERT INTO public.memory_entries (user_id, key) VALUES
+                 ('00000000-0000-0000-0000-000000000001', 'duplicate'),
+                 ('00000000-0000-0000-0000-000000000001', 'duplicate');"
+          if docker run --rm --network host -e PGPASSWORD \
+            -v "$GITHUB_WORKSPACE/supabase/migrations/20261119160000_memory_entries_user_key_unique.sql:/tmp/migration.sql:ro" \
+            postgres:16-alpine psql -h 127.0.0.1 -U ryanai -d "$test_db" \
+              -v ON_ERROR_STOP=1 -f /tmp/migration.sql > /tmp/memory-unique-preflight.log 2>&1; then
+            cat /tmp/memory-unique-preflight.log
+            echo "::error::The memory uniqueness migration accepted duplicate owner/key pairs."
+            exit 1
+          fi
+          grep -F "Duplicate (user_id, key) pairs" /tmp/memory-unique-preflight.log
+          index_absent="$(docker run --rm --network host -e PGPASSWORD \
+            postgres:16-alpine psql -h 127.0.0.1 -U ryanai -d "$test_db" -Atc \
+            "SELECT to_regclass('public.memory_entries_user_key_idx') IS NULL")"
+          test "$index_absent" = "t"
+
+
       - name: Create disposable audiobook database
         env:
           PGPASSWORD: ci_password
@@ -488,6 +523,9 @@ jobs:
           }
           NODE
 
+      - name: Assert Supabase-owned shared schema, Auth relationships, and required indexes
+        run: node scripts/assert-supabase-schema-contract.mjs
+
       - name: Exclude Supabase-owned Auth foreign keys from the Prisma-only drift comparison
         # Supabase Auth owns auth.users and these cross-schema relationships.
         # Assert the phone-link relationship is present, then remove every
@@ -558,6 +596,23 @@ jobs:
                 fk.source_schema, fk.source_table, fk.constraint_name);
             END LOOP;
           END $block$;
+          SQL
+
+      - name: Exclude Supabase-owned tables from the Prisma-only drift comparison
+        # The Supabase-owned objects were asserted immediately above. Remove
+        # only those separate-ownership tables from this disposable CI stack;
+        # do not weaken the Prisma comparison or alter any hosted database.
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DROP TABLE
+            public.phonelink_device_exchanges,
+            public.phonelink_events,
+            public.phonelink_pairings,
+            public.phonelink_devices,
+            public.community_feedback_submissions,
+            public.community_beta_interest,
+            public.ryanai_attachment_scans,
+            public.ryanai_attachment_upload_events;
           SQL
 
       - name: Compare the migrated Supabase and Prisma database with the Prisma data model
