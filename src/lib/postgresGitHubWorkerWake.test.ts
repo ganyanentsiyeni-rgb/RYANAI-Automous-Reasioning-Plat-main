@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { createRyanAiGitHubEventWorkerWithPostgresWake } from "./githubEventStreams";
+import {
+  createRyanAiGitHubEventWorkerWithPostgresWake,
+  type RyanAiGitHubEvent,
+  type RyanAiGitHubEventStream,
+} from "./githubEventStreams";
 import {
   RYANAI_GITHUB_WORKER_WAKE_CHANNELS,
   createPostgresRyanAiGitHubWorkerWakePublisher,
@@ -17,7 +21,7 @@ const signal = {
 
 describe("PostgreSQL GitHub worker wake transport", () => {
   it("publishes a compact envelope to the target-specific channel", async () => {
-    const notify = vi.fn(async () => undefined);
+    const notify = vi.fn(async (_channel: string, _payload: string) => undefined);
     const publish = createPostgresRyanAiGitHubWorkerWakePublisher(notify);
 
     await publish(signal);
@@ -79,18 +83,14 @@ describe("PostgreSQL GitHub worker wake transport", () => {
 
 describe("GitHub Event Streams PostgreSQL wake composition", () => {
   it("routes a delivered check-suite event to the PostgreSQL CI wake channel", async () => {
-    let deliver!: (event: {
-      id: string;
-      type: "check_suite";
-      repository: string;
-      occurredAt: string;
-      payload: unknown;
-    }) => Promise<void>;
-    const subscribe = vi.fn(async (_subscription: unknown, callback: typeof deliver) => {
-      deliver = callback;
-      return async () => undefined;
-    });
-    const notify = vi.fn(async () => undefined);
+    let deliver!: (event: RyanAiGitHubEvent) => Promise<void> | void;
+    const stream: RyanAiGitHubEventStream = {
+      subscribe: async (_subscription, onEvent) => {
+        deliver = onEvent;
+        return async () => undefined;
+      },
+    };
+    const notify = vi.fn(async (_channel: string, _payload: string) => undefined);
     const worker = createRyanAiGitHubEventWorkerWithPostgresWake(
       [{
         subscriptionId: "ci-events",
@@ -99,7 +99,7 @@ describe("GitHub Event Streams PostgreSQL wake composition", () => {
       }],
       notify,
     );
-    const stop = await worker.start({ subscribe });
+    const stop = await worker.start(stream);
 
     await deliver({
       id: "evt-stream-ci",
