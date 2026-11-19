@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   bindRyanAiGitHubEventToOwner,
   createRyanAiGitHubOwnerBinding,
+  resolveRyanAiGitHubOwnerBinding,
 } from "./githubEventOwnerBinding";
 
 const connection = {
@@ -76,4 +77,40 @@ describe("owner-bound GitHub event identity", () => {
       ...event, payload: { action: "opened" },
     })).toThrow(/missing its repository identity/);
   });
+
+  it("resolves the stored connection using only the authenticated RyanAI user ID", async () => {
+    const lookups: string[] = [];
+    const binding = await resolveRyanAiGitHubOwnerBinding("ryanai-user-1", async (userId) => {
+      lookups.push(userId);
+      return connection;
+    });
+    expect(lookups).toEqual(["ryanai-user-1"]);
+    expect(binding).toMatchObject({
+      ownerUserId: "ryanai-user-1",
+      githubUserId: "123456",
+      repositoryId: "1361308785",
+    });
+  });
+
+  it("returns null when the authenticated owner has no GitHub connection", async () => {
+    const binding = await resolveRyanAiGitHubOwnerBinding("ryanai-user-1", async () => null);
+    expect(binding).toBeNull();
+  });
+
+  it("rejects a lookup result belonging to a different RyanAI owner", async () => {
+    await expect(resolveRyanAiGitHubOwnerBinding("ryanai-user-1", async () => ({
+      ...connection,
+      userId: "another-user",
+    }))).rejects.toThrow(/does not belong/);
+  });
+
+  it("does not query storage when the authenticated owner ID is missing", async () => {
+    let queried = false;
+    await expect(resolveRyanAiGitHubOwnerBinding("", async () => {
+      queried = true;
+      return connection;
+    })).rejects.toThrow(/owner user ID/);
+    expect(queried).toBe(false);
+  });
+
 });
