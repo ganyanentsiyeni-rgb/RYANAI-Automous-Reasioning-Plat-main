@@ -12,6 +12,13 @@ export interface StudioProjectReceipt {
   readonly queue: string;
 }
 
+export interface StudioExecutionAdapter {
+  readonly id: string;
+  readonly displayName: string;
+  readonly independent: boolean;
+  submit(request: StudioProjectRequest): Promise<StudioProjectReceipt>;
+}
+
 const nativeStudioAdapter: StudioExecutionAdapter = Object.freeze({
   id: 'ryanai-native-studio-worker',
   displayName: 'RyanAI-native Studio task queue',
@@ -36,13 +43,6 @@ const nativeStudioAdapter: StudioExecutionAdapter = Object.freeze({
     };
   },
 });
-
-export interface StudioExecutionAdapter {
-  readonly id: string;
-  readonly displayName: string;
-  readonly independent: boolean;
-  submit(request: StudioProjectRequest): Promise<StudioProjectReceipt>;
-}
 
 let activeAdapter: StudioExecutionAdapter = nativeStudioAdapter;
 
