@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { agentRunLeaseFilter, startAgentRunLeaseHeartbeat } from './agentRunLease.js';
+import { agentRunLeaseFilter, assertAgentRunLeaseActive, startAgentRunLeaseHeartbeat } from './agentRunLease.js';
 
 afterEach(() => vi.useRealTimers());
 
