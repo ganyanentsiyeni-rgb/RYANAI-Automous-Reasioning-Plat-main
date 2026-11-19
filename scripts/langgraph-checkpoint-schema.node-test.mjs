@@ -21,6 +21,7 @@ test('fresh stacks apply the historical schema then the guarded six-column forwa
 });
 
 
+
 const prismaRoot = resolve(root, 'prisma');
 const prismaCheckpointMigrationPath = resolve(
   prismaRoot,
@@ -30,11 +31,11 @@ const prismaSchemaPath = resolve(prismaRoot, 'schema.prisma');
 
 test('Prisma fresh installs have exactly one six-column checkpoint_writes primary key', async () => {
   const schema = await readFile(prismaSchemaPath, 'utf8');
-  const model = schema.match(/model LangGraphCheckpointWrite \\{[\\s\\S]*?\\n\\}/)?.[0] ?? '';
-  const primaryKeys = [...model.matchAll(/^\\s*@@id\\((.*?)\\)\\s*$/gm)].map((match) => match[1]);
+  const model = schema.match(/model LangGraphCheckpointWrite \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const primaryKeys = [...model.matchAll(/^\s*@@id\((.*?)\)\s*$/gm)].map((match) => match[1]);
   assert.equal(primaryKeys.length, 1, 'LangGraphCheckpointWrite must declare exactly one primary key');
   assert.equal(
-    primaryKeys[0].replace(/\\s+/g, ''),
+    primaryKeys[0].replace(/\s+/g, ''),
     '[threadId,checkpointNs,checkpointId,taskId,idx,channel]',
     'Prisma primary key must include channel in the six-column order'
   );
@@ -47,11 +48,11 @@ test('Prisma migration safely upgrades the historical five-column checkpoint key
   );
   const forward = await readFile(prismaCheckpointMigrationPath, 'utf8');
 
-  assert.match(historical, /PRIMARY KEY\\s*\\(\\s*"thread_id",\\s*"checkpoint_ns",\\s*"checkpoint_id",\\s*"task_id",\\s*"idx"\\s*\\)/i);
-  assert.match(forward, /expected_legacy_columns[\\s\\S]*?expected_columns/i);
+  assert.match(historical, /PRIMARY KEY\s*\(\s*"thread_id",\s*"checkpoint_ns",\s*"checkpoint_id",\s*"task_id",\s*"idx"\s*\)/i);
+  assert.match(forward, /expected_legacy_columns[\s\S]*?expected_columns/i);
   assert.match(forward, /current_pk_columns = expected_columns/i);
   assert.match(forward, /current_pk_columns IS DISTINCT FROM expected_legacy_columns/i);
-  assert.match(forward, /GROUP BY thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel[\\s\\S]*?HAVING count\\(\\*\\) > 1/i);
-  assert.match(forward, /ADD CONSTRAINT checkpoint_writes_pkey\\s+PRIMARY KEY\\s*\\(thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel\\)/i);
+  assert.match(forward, /GROUP BY thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel[\s\S]*?HAVING count\(\*\) > 1/i);
+  assert.match(forward, /ADD CONSTRAINT checkpoint_writes_pkey\s+PRIMARY KEY\s*\(thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel\)/i);
   assert.doesNotMatch(forward, /DROP TABLE|TRUNCATE|DELETE FROM/i);
 });
