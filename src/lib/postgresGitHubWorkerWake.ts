@@ -17,18 +17,28 @@ export interface RyanAiPostgresNotify {
   (channel: string, payload: string): Promise<void>;
 }
 
+export interface RyanAiGitHubWakePersistence {
+  /** Persist the complete event in an idempotent durable inbox before notifying. */
+  (signal: RyanAiWorkerWakeSignal): Promise<void>;
+}
+
 /**
- * PostgreSQL NOTIFY publisher for independently deployed GitHub workers.
- * Notifications are wake hints, not durable storage: handlers must load
- * authoritative work by eventId from a durable inbox/queue and recover
- * pending work on startup. This module does not connect to a database.
+ * Durable-inbox + PostgreSQL NOTIFY publisher for independently deployed
+ * GitHub workers. The full event must be committed by persistWake before the
+ * wake hint is sent. NOTIFY is not durable; consumers recover pending inbox
+ * rows on startup. This module does not open database connections.
  */
 export function createPostgresRyanAiGitHubWorkerWakePublisher(
+  persistWake: RyanAiGitHubWakePersistence,
   notify: RyanAiPostgresNotify,
 ): RyanAiWorkerWakeHandler {
   return async (signal: RyanAiWorkerWakeSignal) => {
     const channel = RYANAI_GITHUB_WORKER_WAKE_CHANNELS[signal.target];
     if (!channel) throw new Error("Unsupported RyanAI GitHub worker wake target.");
+
+    // Commit the full event to a durable inbox before sending the lossy wake hint.
+    // persistWake must be idempotent by eventId and return only after commit.
+    await persistWake(signal);
 
     // Keep NOTIFY payload comfortably below PostgreSQL's 8 KB limit.
     // The full provider payload belongs in durable storage, not NOTIFY.
