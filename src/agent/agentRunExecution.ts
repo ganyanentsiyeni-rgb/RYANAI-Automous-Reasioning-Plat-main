@@ -53,3 +53,23 @@ export function buildAgentRunExecutionPrompt(objective: string, plan: ExecutionP
     objective,
   ].join('\n');
 }
+
+import { PA_DELEGATION_CAPABILITIES, type PADelegationCapability } from './paJarvisHandshake.js';
+
+export interface PAExecutionScope { delegationId: string; capabilities: PADelegationCapability[]; }
+/** Parse PA delegation metadata as untrusted persisted data; partial or widened scopes fail closed. */
+export function parsePAExecutionScope(value: unknown): PAExecutionScope | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  const hasDelegationId = Object.prototype.hasOwnProperty.call(candidate, 'paDelegationId');
+  const hasCapabilities = Object.prototype.hasOwnProperty.call(candidate, 'capabilities');
+  if (!hasDelegationId && !hasCapabilities) return null;
+  if (typeof candidate.paDelegationId !== 'string' || !/^[0-9a-f-]{36}$/i.test(candidate.paDelegationId) ||
+      !Array.isArray(candidate.capabilities) || candidate.capabilities.length < 1 ||
+      candidate.capabilities.length > PA_DELEGATION_CAPABILITIES.length ||
+      candidate.capabilities.some((item) => typeof item !== 'string' || !PA_DELEGATION_CAPABILITIES.includes(item as PADelegationCapability)) ||
+      new Set(candidate.capabilities).size !== candidate.capabilities.length) {
+    throw new Error('PA execution scope is malformed or outside the capability allowlist.');
+  }
+  return { delegationId: candidate.paDelegationId, capabilities: candidate.capabilities as PADelegationCapability[] };
+}

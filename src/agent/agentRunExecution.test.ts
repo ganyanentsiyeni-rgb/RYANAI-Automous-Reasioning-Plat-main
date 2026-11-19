@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildAgentRunExecutionPrompt, parseAgentRunExecutionChange, planQueuedAgentRun } from './agentRunExecution.js';
+import { buildAgentRunExecutionPrompt, parseAgentRunExecutionChange, parsePAExecutionScope, planQueuedAgentRun } from './agentRunExecution.js';
 
 describe('durable agent-run execution planning', () => {
   it('defaults missing, malformed and unknown persisted scope to full reconciliation', () => {
@@ -55,5 +55,16 @@ describe('durable agent-run execution planning', () => {
     expect(parsed.eventKnown).toBe(false);
     expect(parsed.snapshotFresh).toBe(false);
     expect(planQueuedAgentRun(parsed).kind).toBe('full');
+  });
+});
+
+
+describe('PA execution scope validation', () => {
+  it('accepts only a complete allowlisted delegation scope', () => {
+    expect(parsePAExecutionScope({ paDelegationId: '123e4567-e89b-42d3-a456-426614174000', capabilities: ['tests.run'] })).toEqual({ delegationId: '123e4567-e89b-42d3-a456-426614174000', capabilities: ['tests.run'] });
+    expect(parsePAExecutionScope({ unrelated: true })).toBeNull();
+  });
+  it('fails closed on partial, duplicate, malformed, or widened scopes', () => {
+    for (const value of [{ paDelegationId: '123e4567-e89b-42d3-a456-426614174000' }, { capabilities: ['tests.run'] }, { paDelegationId: 'bad', capabilities: ['tests.run'] }, { paDelegationId: '123e4567-e89b-42d3-a456-426614174000', capabilities: ['tests.run', 'tests.run'] }, { paDelegationId: '123e4567-e89b-42d3-a456-426614174000', capabilities: ['credential.export'] }]) expect(() => parsePAExecutionScope(value)).toThrow();
   });
 });
