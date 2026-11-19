@@ -4,7 +4,6 @@
  * locks and leases. Execution is fail-closed until a registered worker and
  * RyanAI-native task admission is enforced before registered handlers run.
  */
-import { randomUUID } from 'node:crypto';
 import { Prisma, type StudioTask } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { RYANAI_WORKER_ROSTER } from '../../agent/workerRegistry.js';
@@ -140,7 +139,7 @@ WITH candidate AS (
   FOR UPDATE SKIP LOCKED LIMIT 1
 )
 UPDATE studio_tasks AS task
-SET status = 'running', lease_owner = $2, lease_token = $5::uuid,
+SET status = 'running', lease_owner = $2,
     lease_expires_at = NOW() + ($3 * INTERVAL '1 second'),
     heartbeat_at = NOW(), started_at = COALESCE(task.started_at, NOW()),
     attempts = task.attempts + 1, updated_at = NOW()
@@ -152,8 +151,7 @@ export async function claimStudioTask(workerId: string, supportedTaskTypes: read
   if (!workerId.trim() || supportedTaskTypes.length === 0) return null;
   const safeLease = Math.max(15, Math.min(leaseSeconds, 600));
   return prisma.$transaction(async (tx) => {
-    const claimToken = randomUUID();
-    const claimed = await tx.$queryRawUnsafe<StudioTask[]>(CLAIM_STUDIO_TASK_SQL, [...supportedTaskTypes], workerId, safeLease, workerProfileId ?? null, claimToken);
+    const claimed = await tx.$queryRawUnsafe<StudioTask[]>(CLAIM_STUDIO_TASK_SQL, [...supportedTaskTypes], workerId, safeLease, workerProfileId ?? null);
     if (claimed[0]) await tx.studioEvent.create({ data: {
       projectId: claimed[0].projectId, taskId: claimed[0].id, ownerUserId: claimed[0].ownerUserId,
       actorId: workerId, eventType: 'task.leased', payload: { attempt: claimed[0].attempts, leaseSeconds: safeLease },
@@ -166,6 +164,10 @@ export async function heartbeatStudioTask(taskId: string, workerId: string, clai
   const safeLease = Math.max(15, Math.min(leaseSeconds, 600));
   const result = await prisma.studioTask.updateMany({
     where: { id: taskId, status: 'running', leaseOwner: workerId, leaseToken: claimToken, leaseExpiresAt: { gt: new Date() } },
+export async function heartbeatStudioTask(taskId: string, workerId: string, attempt: number, leaseSeconds = 90) {
+  const safeLease = Math.max(15, Math.min(leaseSeconds, 600));
+  const result = await prisma.studioTask.updateMany({
+    where: { id: taskId, status: 'running', leaseOwner: workerId, attempts: attempt, leaseExpiresAt: { gt: new Date() } },
     data: { heartbeatAt: new Date(), leaseExpiresAt: new Date(Date.now() + safeLease * 1000) },
   });
   return result.count === 1;
@@ -185,6 +187,8 @@ export async function recoverExpiredStudioLeases() {
       const updated = await tx.studioTask.updateMany({
         where: { id: task.id, status: 'running', leaseToken: task.leaseToken, attempts: task.attempts, leaseExpiresAt: { lte: now } },
         data: { status: exhausted ? 'failed' : 'queued', leaseOwner: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null,
+        where: { id: task.id, status: 'running', leaseOwner: task.leaseOwner, attempts: task.attempts, leaseExpiresAt: { lte: now } },
+        data: { status: exhausted ? 'failed' : 'queued', leaseOwner: null, leaseExpiresAt: null, heartbeatAt: null,
           availableAt: exhausted ? now : new Date(Date.now() + Math.min(300000, 1000 * 2 ** task.attempts)),
           completedAt: exhausted ? now : null },
       });
@@ -201,7 +205,7 @@ export async function recoverExpiredStudioLeases() {
   });
 }
 
-export interface StudioWorkerContext { workerId: string; claimToken: string; task: StudioTask; heartbeat: () => Promise<boolean>; }
+export interface StudioWorkerContext { workerId: string; task: StudioTask; heartbeat: () => Promise<boolean>; }
 export type StudioTaskHandler = (context: StudioWorkerContext) => Promise<unknown>;
 const taskHandlers = new Map<string, StudioTaskHandler>();
 export function registerStudioTaskHandler(taskType: string, handler: StudioTaskHandler) {
@@ -247,6 +251,8 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId = wo
     await prisma.studioTask.updateMany({
       where: { id: task.id, status: 'running', leaseOwner: workerId, leaseToken: claimToken, leaseExpiresAt: { gt: new Date() } },
       data: { status: 'queued', leaseOwner: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null },
+      where: { id: task.id, status: 'running', leaseOwner: workerId, attempts: task.attempts, leaseExpiresAt: { gt: new Date() } },
+      data: { status: 'queued', leaseOwner: null, leaseExpiresAt: null, heartbeatAt: null },
     });
     return { state: 'unhandled' as const, taskId: task.id };
   }
@@ -255,6 +261,8 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId = wo
     await prisma.$transaction(async (tx) => {
       const blocked = await tx.studioTask.updateMany({ where: { id: task.id, status: 'running', leaseOwner: workerId, leaseToken: claimToken, leaseExpiresAt: { gt: new Date() } },
         data: { status: 'blocked', leaseOwner: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null, approvalStatus: 'blocked' } });
+      const blocked = await tx.studioTask.updateMany({ where: { id: task.id, status: 'running', leaseOwner: workerId, attempts: task.attempts, leaseExpiresAt: { gt: new Date() } },
+        data: { status: 'blocked', leaseOwner: null, leaseExpiresAt: null, heartbeatAt: null, approvalStatus: 'blocked' } });
       if (blocked.count === 1) await tx.studioEvent.create({ data: { projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
         actorId: workerId, eventType: 'task.policy_blocked', payload: { decision: decision.decision ?? 'DENY_OR_REQUIRE_APPROVAL', ruleId: decision.ruleId ?? 'unknown', reason: decision.reason ?? 'RyanAI platform policy denied task admission.' } } });
     });
@@ -270,6 +278,10 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId = wo
     await prisma.$transaction(async (tx) => {
       const completed = await tx.studioTask.updateMany({ where: { id: task.id, status: 'running', leaseOwner: workerId, leaseToken: claimToken, leaseExpiresAt: { gt: new Date() } },
         data: { status: 'completed', output: output as Prisma.InputJsonValue, completedAt: new Date(), leaseOwner: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null } });
+    const output = await handler({ workerId, task, heartbeat: () => heartbeatStudioTask(task.id, workerId, task.attempts) });
+    await prisma.$transaction(async (tx) => {
+      const completed = await tx.studioTask.updateMany({ where: { id: task.id, status: 'running', leaseOwner: workerId, attempts: task.attempts, leaseExpiresAt: { gt: new Date() } },
+        data: { status: 'completed', output: output as Prisma.InputJsonValue, completedAt: new Date(), leaseOwner: null, leaseExpiresAt: null, heartbeatAt: null } });
       if (completed.count !== 1) throw new Error('Studio worker lease expired before completion could be committed.');
       await tx.studioEvent.create({ data: { projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
         actorId: workerId, eventType: 'task.completed', payload: { attempt: task.attempts } } });
@@ -281,6 +293,8 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId = wo
       const exhausted = task.attempts >= task.maxAttempts;
       const released = await tx.studioTask.updateMany({ where: { id: task.id, status: 'running', leaseOwner: workerId, leaseToken: claimToken, leaseExpiresAt: { gt: new Date() } },
         data: { status: exhausted ? 'failed' : 'queued', leaseOwner: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null,
+      const released = await tx.studioTask.updateMany({ where: { id: task.id, status: 'running', leaseOwner: workerId, attempts: task.attempts, leaseExpiresAt: { gt: new Date() } },
+        data: { status: exhausted ? 'failed' : 'queued', leaseOwner: null, leaseExpiresAt: null, heartbeatAt: null,
           availableAt: new Date(Date.now() + Math.min(300000, 1000 * 2 ** task.attempts)) } });
       if (released.count === 1) await tx.studioEvent.create({ data: { projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
         actorId: workerId, eventType: 'task.execution_failed', payload: { attempt: task.attempts, error: message.slice(0, 1000) } } });

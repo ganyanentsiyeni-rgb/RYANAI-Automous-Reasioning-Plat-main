@@ -208,7 +208,6 @@ export class IntelligenceEventInbox {
         ? { leaseExpiresAt: candidate.leaseExpiresAt }
         : { availableAt: { lte: now } };
       const claimed = await tx.intelligenceEventInbox.updateMany({
-        where: { ...ownerScope, id: candidate.id, status: candidate.status, ...leaseCondition },
         where: { ...ownerScope, id: candidate.id, status: candidate.status, attempts: candidate.attempts, ...leaseCondition },
         data: {
           status: 'processing',
@@ -364,7 +363,6 @@ export class IntelligenceEventInbox {
     }
     let leaseLost = false;
     const heartbeat = setInterval(() => {
-      void this.renewLease(claimed.id, workerId)
       void this.renewLease(claimed.id, workerId, claimed.attempts)
         .then((renewed) => { if (!renewed) leaseLost = true; })
         .catch(() => { leaseLost = true; });
@@ -373,11 +371,6 @@ export class IntelligenceEventInbox {
     try {
       await handler(toEnvelope(claimed));
       if (leaseLost) throw new EventLeaseLostError();
-      await this.acknowledge(claimed.id, workerId, new Date());
-      return { status: 'processed' as const, eventId: claimed.eventId };
-    } catch (error) {
-      if (leaseLost) throw new EventLeaseLostError();
-      const outcome = await this.fail(claimed.id, workerId, error, new Date());
       await this.acknowledge(claimed.id, workerId, claimed.attempts, new Date());
       return { status: 'processed' as const, eventId: claimed.eventId };
     } catch (error) {
