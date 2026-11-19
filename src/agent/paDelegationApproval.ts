@@ -9,3 +9,10 @@ export function resolvePAApprovalTransition(
   if (updatedCount === 0 && latestApprovalStatus === 'approved') return 'already_approved';
   return 'conflict';
 }
+
+export type PARejectionTransition = 'rejected' | 'conflict';
+
+/** A rejection succeeds only when its conditional pending-to-cancelled write wins. */
+export function resolvePARejectionTransition(updatedCount: number): PARejectionTransition {
+  return updatedCount === 1 ? 'rejected' : 'conflict';
+}
