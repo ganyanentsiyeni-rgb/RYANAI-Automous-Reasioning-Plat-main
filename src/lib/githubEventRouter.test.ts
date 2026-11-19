@@ -71,7 +71,7 @@ describe("createRyanAiGitHubEventRouter", () => {
     expect(review).not.toHaveBeenCalled();
   });
 
-  it("does nothing when a target has no registered worker", async () => {
+  it("fails closed when a target has no registered worker so delivery can retry", async () => {
     const dispatcher = createRyanAiWorkerWakeDispatcher({});
 
     await expect(
@@ -83,7 +83,7 @@ describe("createRyanAiGitHubEventRouter", () => {
         occurredAt: "2026-11-19T00:00:00.000Z",
         payload: {},
       }),
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow("No RyanAI GitHub worker registered for target: repository");
   });
 
   it("supports an injected idempotency store", async () => {
