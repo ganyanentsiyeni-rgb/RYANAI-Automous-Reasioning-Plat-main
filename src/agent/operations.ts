@@ -365,9 +365,11 @@ async function processAgentRun(
           : ''),
       executionPlan,
     );
-    const sharedObjective = knowledge
-      ? knowledge + '\n\n' + plannedObjective
-      : plannedObjective;
+    const sharedObjective = [
+      knowledge,
+      plannedObjective,
+      verifiedCapabilityContext,
+    ].filter((part): part is string => Boolean(part)).join('\n\n');
     activeRegion = 'reasoning';
     await recordRegion('reasoning', 'started', { brains: ['primary', 'secondary', 'logic'] });
     const reasoningPlan = await executeThreeBrainPlan(sharedObjective, (brain, prompt, signal) => testBrainInvoker
