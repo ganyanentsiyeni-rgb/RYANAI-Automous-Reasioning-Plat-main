@@ -11,7 +11,6 @@ import { RYANAI_WORKER_ROSTER } from '../../agent/workerRegistry.js';
 import { pluginRegistry } from '../plugins/pluginCatalog.js';
 import { describeCapabilityState } from '../plugins/capabilityState.js';
 import { getStudioExecutionDescriptor, submitStudioProject } from '../engineering/studioExecution.js';
-import { createStudioProject, getStudioDeliveryReadiness, getStudioNativeRuntimeDescriptor, listStudioProjects, listStudioWorkerHealth } from '../engineering/studioNativeCore.js';
 import { cancelStudioTask, createStudioProject, getStudioDeliveryReadiness, getStudioNativeRuntimeDescriptor, listStudioProjects, listStudioWorkerHealth } from '../engineering/studioNativeCore.js';
 import { resolveProviderCapabilityState } from '../plugins/providerCapabilityState.js';
 import { approveStudioTask } from '../engineering/studioApprovals.js';
