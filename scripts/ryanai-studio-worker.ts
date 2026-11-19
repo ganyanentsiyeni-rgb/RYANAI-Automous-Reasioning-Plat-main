@@ -3,14 +3,15 @@ import {
   getStudioWorkerHandlerReadiness,
   registerStudioTaskHandler,
 } from '../src/server/engineering/studioNativeCore.js';
+import { analyzeRyanAICiEvidence } from '../src/server/engineering/ryanaiCiDiagnostics.js';
 import { generateRepositoryInventory } from './repository-inventory.mjs';
 
 const profileId = process.env.RYANAI_STUDIO_WORKER_PROFILE_ID?.trim() || 'coordinator';
 const workerId = process.env.RYANAI_STUDIO_WORKER_ID?.trim();
 
-// Require the declared read capability even though this adapter is read-only.
-// Admission also verifies that the assigned profile owns this capability.
-const runRepositoryInventoryTask = async ({ task }: { task: { id: string; objective: string; requiredCapabilities: string[] } }) => {
+const runRepositoryInventoryTask = async ({ task }: {
+  task: { id: string; objective: string; requiredCapabilities: string[] };
+}) => {
   if (!task.requiredCapabilities.includes('read-repository')) {
     throw new Error('Repository inventory requires the explicit read-repository capability.');
   }
@@ -23,18 +24,33 @@ const runRepositoryInventoryTask = async ({ task }: { task: { id: string; object
   };
 };
 
-// The Repository Auditor uses the existing static inventory. It never executes
-// discovered scripts, reads environment values, or treats inventory as test evidence.
-const unregisterRepositoryHandlers = profileId === 'repository-auditor'
+const runCiDiagnosticsTask = async ({ task }: {
+  task: { input: unknown; requiredCapabilities: string[] };
+}) => {
+  if (!task.requiredCapabilities.includes('read-workflow-runs')) {
+    throw new Error('CI diagnostics requires the explicit read-workflow-runs capability.');
+  }
+  return analyzeRyanAICiEvidence(task.input, task.requiredCapabilities);
+};
+
+// These handlers consume only task-scoped, structured evidence. They do not
+// fetch GitHub data, execute workflow commands, or expose raw job-log excerpts.
+const unregisterHandlers = profileId === 'repository-auditor'
   ? [
       registerStudioTaskHandler('repository-audit', runRepositoryInventoryTask),
       registerStudioTaskHandler('inventory', runRepositoryInventoryTask),
     ]
-  : [];
+  : profileId === 'ci-diagnostics'
+    ? [
+        registerStudioTaskHandler('ci-failure', runCiDiagnosticsTask),
+        registerStudioTaskHandler('test-failure', runCiDiagnosticsTask),
+        registerStudioTaskHandler('build-failure', runCiDiagnosticsTask),
+      ]
+    : [];
 
 const handlerReadiness = getStudioWorkerHandlerReadiness(profileId);
 if (!handlerReadiness.ready) {
-  for (const unregister of unregisterRepositoryHandlers) unregister();
+  for (const unregister of unregisterHandlers) unregister();
   throw new Error(
     `RyanAI Studio worker ${profileId} cannot start: ${handlerReadiness.reason} Supported task types: ${handlerReadiness.supportedTaskTypes.join(', ')}.`,
   );
@@ -51,7 +67,7 @@ const runtime = createRyanAIStudioWorkerRuntime({
 
 const shutdown = async () => {
   await runtime.stop();
-  for (const unregister of unregisterRepositoryHandlers) unregister();
+  for (const unregister of unregisterHandlers) unregister();
   process.exit(0);
 };
 
