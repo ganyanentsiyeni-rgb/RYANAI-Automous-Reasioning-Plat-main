@@ -301,20 +301,25 @@ export async function startRyanAiGitHubInboxWorker(
   if (!allowedTargets.has(target)) throw new Error("Unsupported GitHub worker target.");
 
   let stopped = false;
+  let drainRequested = false;
   let drainPromise: Promise<void> | null = null;
   const drain = (): Promise<void> => {
     if (stopped) return Promise.resolve();
+    drainRequested = true;
     if (drainPromise) return drainPromise;
     drainPromise = (async () => {
-      await consumer.recoverExpired(target);
-      while (!stopped) {
-        const result = await processNextRyanAiGitHubInboxEvent(
-          consumer,
-          target,
-          workerId,
-          handlers,
-        );
-        if (result.status === "empty") break;
+      while (!stopped && drainRequested) {
+        drainRequested = false;
+        await consumer.recoverExpired(target);
+        while (!stopped) {
+          const result = await processNextRyanAiGitHubInboxEvent(
+            consumer,
+            target,
+            workerId,
+            handlers,
+          );
+          if (result.status === "empty") break;
+        }
       }
     })().finally(() => {
       drainPromise = null;
