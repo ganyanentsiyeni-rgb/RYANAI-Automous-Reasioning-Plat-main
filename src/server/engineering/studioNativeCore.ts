@@ -429,25 +429,71 @@ export async function executeStudioToolCapability(request: StudioToolExecutionRe
 }
 
 export async function createStudioArtifact(input: {
-  projectId: string; taskId?: string; ownerUserId: string; title: string; kind: string;
-  storageProvider: string; storageKey: string; mimeType?: string; byteSize?: bigint; sha256?: string;
+  projectId: string;
+  taskId?: string;
+  ownerUserId: string;
+  title: string;
+  kind: string;
+  storageProvider: string;
+  storageKey: string;
+  mimeType?: string;
+  byteSize?: bigint;
+  sha256?: string;
   provenance?: Prisma.InputJsonValue;
+  lease?: { workerId: string; claimToken: string };
 }) {
-  const project = await prisma.studioProject.findFirst({ where: { id: input.projectId, ownerUserId: input.ownerUserId }, select: { id: true } });
-  if (!project) throw new Error('Studio project not found for this owner.');
-  if (input.taskId) {
-    const task = await prisma.studioTask.findFirst({ where: { id: input.taskId, projectId: input.projectId, ownerUserId: input.ownerUserId }, select: { id: true } });
-    if (!task) throw new Error('Studio task not found for this owner and project.');
-  }
   return prisma.$transaction(async (tx) => {
+    const project = await tx.studioProject.findFirst({
+      where: { id: input.projectId, ownerUserId: input.ownerUserId },
+      select: { id: true },
+    });
+    if (!project) throw new Error('Studio project not found for this owner.');
+
+    if (input.taskId) {
+      if (!input.lease?.workerId || !input.lease.claimToken) {
+        throw new Error('Task-bound artifact registration requires the active worker lease.');
+      }
+      const activeLease = await lockActiveStudioTaskLease(
+        tx,
+        input.taskId,
+        input.lease.workerId,
+        input.lease.claimToken,
+      );
+      if (!activeLease) throw new Error('Studio task lease is no longer active; artifact registration was rejected.');
+      const task = await tx.studioTask.findFirst({
+        where: {
+          id: input.taskId,
+          projectId: input.projectId,
+          ownerUserId: input.ownerUserId,
+          status: 'running',
+          leaseOwner: input.lease.workerId,
+          leaseToken: input.lease.claimToken,
+          leaseExpiresAt: { gt: new Date() },
+        },
+        select: { id: true },
+      });
+      if (!task) throw new Error('Studio task lease does not match this owner and project.');
+    }
+
     const artifact = await tx.studioArtifact.create({ data: {
-      projectId: input.projectId, taskId: input.taskId, ownerUserId: input.ownerUserId,
-      title: input.title, kind: input.kind, storageProvider: input.storageProvider, storageKey: input.storageKey,
-      mimeType: input.mimeType, byteSize: input.byteSize, sha256: input.sha256, provenance: input.provenance ?? {},
+      projectId: input.projectId,
+      taskId: input.taskId,
+      ownerUserId: input.ownerUserId,
+      title: input.title,
+      kind: input.kind,
+      storageProvider: input.storageProvider,
+      storageKey: input.storageKey,
+      mimeType: input.mimeType,
+      byteSize: input.byteSize,
+      sha256: input.sha256,
+      provenance: input.provenance ?? {},
     } });
     await tx.studioEvent.create({ data: {
-      projectId: input.projectId, taskId: input.taskId, ownerUserId: input.ownerUserId,
-      eventType: 'artifact.registered', payload: { artifactId: artifact.id, kind: artifact.kind, sha256: artifact.sha256 },
+      projectId: input.projectId,
+      taskId: input.taskId,
+      ownerUserId: input.ownerUserId,
+      eventType: 'artifact.registered',
+      payload: { artifactId: artifact.id, kind: artifact.kind, sha256: artifact.sha256 },
     } });
     return artifact;
   });
