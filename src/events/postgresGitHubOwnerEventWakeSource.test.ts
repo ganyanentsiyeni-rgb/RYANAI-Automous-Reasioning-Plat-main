@@ -46,6 +46,7 @@ describe('createPostgresGitHubOwnerEventWakeSource', () => {
   });
 
   it('reports listener setup failures without activating a worker', async () => {
+  it('reports listener setup and cleanup failures without activating a worker', async () => {
     const setupError = new Error('LISTEN unavailable');
     const onError = vi.fn();
     const listen = vi.fn().mockRejectedValue(setupError);

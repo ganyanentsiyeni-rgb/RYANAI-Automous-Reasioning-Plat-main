@@ -1,4 +1,5 @@
 import type { RyanAiPostgresWakeListener } from '../lib/postgresGitHubWorkerWake.js';
+import type { GitHubOwnerEventWakeSource } from './githubOwnerEventDispatcher.js';
 
 /**
  * Dedicated PostgreSQL LISTEN channel for the owner-scoped intelligence inbox.
@@ -17,6 +18,12 @@ export type GitHubOwnerWakeErrorHandler = (error: unknown) => void;
  * Adapts the existing dedicated-connection PostgreSQL listener contract to a
  * synchronous subscribe/unsubscribe lifecycle. The listener owns its
  * connection; this adapter only owns the LISTEN subscription.
+export type GitHubOwnerWakeErrorHandler = (error: unknown) => void;
+
+/**
+ * Adapts the existing dedicated-connection PostgreSQL listener contract to the
+ * owner worker's synchronous subscribe/unsubscribe lifecycle. The listener
+ * owns its connection; this adapter only owns the LISTEN subscription.
  */
 export function createPostgresGitHubOwnerEventWakeSource(
   listener: RyanAiPostgresWakeListener,

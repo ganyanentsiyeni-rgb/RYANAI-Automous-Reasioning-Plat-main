@@ -539,3 +539,40 @@ describe('owner-bound exact-head GitHub workflow evidence', () => {
     expect(fetch).toHaveBeenCalledTimes(3);
   });
 });
+
+
+describe('bounded GitHub workflow evidence pagination', () => {
+  it('fetches a second page when GitHub reports more than 50 workflow runs', async () => {
+    const app = await createApp();
+    store.connection.findUnique.mockResolvedValue(storedConnection());
+    const headSha = 'd'.repeat(40);
+    const firstPage = Array.from({ length: 50 }, (_, index) => ({
+      id: index + 1, name: 'other workflow', head_sha: 'e'.repeat(40),
+      status: 'completed', conclusion: 'success',
+    }));
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(mockResponse({ id: 123456, login: 'synthetic-owner' }))
+      .mockResolvedValueOnce(mockResponse({
+        id: 1361308785, full_name: GITHUB_APP_REPOSITORY, permissions: { pull: true },
+      }))
+      .mockResolvedValueOnce(mockResponse({ sha: headSha }))
+      .mockResolvedValueOnce(mockResponse({ total_count: 51, workflow_runs: firstPage }))
+      .mockResolvedValueOnce(mockResponse({
+        total_count: 51,
+        workflow_runs: [{
+          id: 991, name: 'exact-head workflow', head_sha: headSha,
+          status: 'completed', conclusion: 'success',
+        }],
+      }))
+      .mockResolvedValueOnce(mockResponse({
+        total_count: 1, jobs: [{ name: 'typecheck', status: 'completed', conclusion: 'success' }],
+      }));
+
+    const evidence = await inspectConnectedGitHubWorkflowEvidence(app, userId, headSha);
+    expect(evidence.workflowRuns).toHaveLength(1);
+    expect(evidence.workflowRuns[0].headSha).toBe(headSha);
+    expect(evidence.complete).toBe(true);
+    const urls = vi.mocked(fetch).mock.calls.map(([url]) => String(url));
+    expect(urls.some((url) => url.includes('/actions/runs?') && url.includes('page=2'))).toBe(true);
+  });
+});
