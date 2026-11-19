@@ -34,10 +34,12 @@ export function createRyanAiWorkerWakeDispatcher(
 }
 
 export interface RyanAiEventIdempotencyStore {
-  /** Atomically reserves an unseen event ID; false means it was already claimed. */
+  /** Atomically reserves an unseen or expired event ID; false means active/completed. */
   claim(eventId: string): Promise<boolean> | boolean;
   has(eventId: string): Promise<boolean> | boolean;
+  /** Marks a successfully handled event as completed. */
   remember(eventId: string): Promise<void> | void;
+  /** Releases a failed processing reservation so delivery can retry. */
   forget(eventId: string): Promise<void> | void;
 }
 
@@ -101,8 +103,6 @@ export function createRyanAiGitHubEventRouter(
   const processEvent = async (event: RyanAiGitHubEvent): Promise<void> => {
     const target = targetByEventType[event.type];
     if (!target) return;
-
-    // claim() must be atomic for durable multi-instance stores.
     if (!(await idempotencyStore.claim(event.id))) return;
 
     try {
@@ -125,14 +125,15 @@ export function createRyanAiGitHubEventRouter(
       }
       throw error;
     }
+
+    // Completion is separate from handler execution. If this write fails, the
+    // durable processing lease expires and delivery can retry (at-least-once).
+    await idempotencyStore.remember(event.id);
   };
 
   return (event) => {
-    // Coalesce concurrent redeliveries before the durable idempotency check
-    // completes; otherwise two deliveries can both observe an unseen ID.
     const existing = inFlight.get(event.id);
     if (existing) return existing;
-
     const processing = processEvent(event).finally(() => {
       if (inFlight.get(event.id) === processing) inFlight.delete(event.id);
     });
