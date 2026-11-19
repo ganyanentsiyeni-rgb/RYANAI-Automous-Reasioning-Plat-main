@@ -544,7 +544,6 @@ export async function inspectConnectedGitHubWorkflowEvidence(
     source: 'github-oauth-read-only',
     inspectedAt: new Date().toISOString(),
     workflowRuns,
-    complete: rawRuns.length < 50 && exactRuns.length === rawRuns.length,
     jobLogExcerpts,
     jobLogStatus,
     complete: runsComplete && jobsComplete && exactRuns.length === rawRuns.length,
