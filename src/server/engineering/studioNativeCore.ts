@@ -181,10 +181,10 @@ export async function cancelStudioTask(taskId: string, ownerUserId: string, reas
 
 export async function isStudioTaskCancellationRequested(taskId: string, workerId: string): Promise<boolean> {
   const task = await prisma.studioTask.findFirst({
-    where: { id: taskId, leaseOwner: workerId },
-    select: { status: true },
+    where: { id: taskId },
+    select: { status: true, leaseOwner: true },
   });
-  return task?.status === 'cancelled';
+  return task?.status === 'cancelled' || (task?.status === 'running' && task.leaseOwner !== workerId);
 }
 
 export async function heartbeatStudioTask(taskId: string, workerId: string, leaseSeconds = 90) {
