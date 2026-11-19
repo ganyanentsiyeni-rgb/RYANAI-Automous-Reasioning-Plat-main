@@ -127,7 +127,7 @@ export async function persistAgentRunCompletion(
           traceId: delegation.traceId,
           attempt: run.attempts,
           status: 'completed',
-          result: { synthesis: plan.synthesis, degraded: plan.degraded, verification: plan.verification ?? { verified: false, reason: 'Verification evidence was not supplied.' }, capabilityReceipts: plan.capabilityReceipts ?? [], repositoryInspection },
+          result: buildPAExecutionReceiptResult(plan, repositoryInspection),
           error: null,
         },
       });
