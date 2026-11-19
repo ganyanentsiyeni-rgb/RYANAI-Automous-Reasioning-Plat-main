@@ -3,14 +3,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     studioProject: { findFirst: vi.fn() },
-    studioTask: { updateMany: vi.fn() },
+    studioTask: { findMany: vi.fn(), updateMany: vi.fn() },
+    studioEvent: { create: vi.fn() },
     $transaction: vi.fn(),
   },
 }));
 
 vi.mock('../../lib/prisma.js', () => ({ prisma: prismaMock }));
 
-import { createStudioArtifact, heartbeatStudioTask } from './studioNativeCore.js';
+import { createStudioArtifact, heartbeatStudioTask, recoverExpiredStudioLeases } from './studioNativeCore.js';
 
 describe('Studio worker lease fencing', () => {
   beforeEach(() => {
@@ -31,6 +32,39 @@ describe('Studio worker lease fencing', () => {
         leaseToken: '11111111-1111-4111-8111-111111111111',
         leaseExpiresAt: expect.objectContaining({ gt: expect.any(Date) }),
       }),
+    }));
+  });
+
+  it('records recovery only for the process that wins the conditional lease update', async () => {
+    const tx = {
+      studioTask: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 'task-1', projectId: 'project-1', ownerUserId: 'owner-1', attempts: 1, maxAttempts: 3 },
+          { id: 'task-2', projectId: 'project-1', ownerUserId: 'owner-1', attempts: 2, maxAttempts: 3 },
+        ]),
+        updateMany: vi.fn()
+          .mockResolvedValueOnce({ count: 1 })
+          .mockResolvedValueOnce({ count: 0 }),
+      },
+      studioEvent: { create: vi.fn().mockResolvedValue({}) },
+    };
+    prismaMock.$transaction.mockImplementation(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx));
+
+    const result = await recoverExpiredStudioLeases();
+
+    expect(result).toEqual({ inspected: 2, recovered: 1, failed: 0 });
+    expect(tx.studioTask.updateMany).toHaveBeenCalledTimes(2);
+    expect(tx.studioTask.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: 'task-1',
+        status: 'running',
+        leaseExpiresAt: expect.objectContaining({ lte: expect.any(Date) }),
+      }),
+      data: expect.objectContaining({ status: 'queued', leaseOwner: null, leaseToken: null }),
+    }));
+    expect(tx.studioEvent.create).toHaveBeenCalledOnce();
+    expect(tx.studioEvent.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ taskId: 'task-1', eventType: 'task.lease_recovered' }),
     }));
   });
 
