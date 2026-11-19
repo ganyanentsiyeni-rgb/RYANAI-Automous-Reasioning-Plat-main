@@ -170,4 +170,24 @@ describe("createRyanAiGitHubEventRouter", () => {
       .rejects.toThrow("idempotency record could not be cleared");
   });
 
+  it("rejects invalid in-memory idempotency capacities", () => {
+    expect(() => createInMemoryRyanAiEventIdempotencyStore(0))
+      .toThrow("between 1 and 1000000");
+    expect(() => createInMemoryRyanAiEventIdempotencyStore(1.5))
+      .toThrow("between 1 and 1000000");
+    expect(() => createInMemoryRyanAiEventIdempotencyStore(1_000_001))
+      .toThrow("between 1 and 1000000");
+  });
+
+  it("evicts the oldest ID when the bounded in-memory store is full", async () => {
+    const store = createInMemoryRyanAiEventIdempotencyStore(2);
+    await store.remember("first");
+    await store.remember("second");
+    await store.remember("third");
+
+    expect(await store.has("first")).toBe(false);
+    expect(await store.has("second")).toBe(true);
+    expect(await store.has("third")).toBe(true);
+  });
+
 });
