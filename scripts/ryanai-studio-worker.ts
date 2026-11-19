@@ -8,24 +8,27 @@ import { generateRepositoryInventory } from './repository-inventory.mjs';
 const profileId = process.env.RYANAI_STUDIO_WORKER_PROFILE_ID?.trim() || 'coordinator';
 const workerId = process.env.RYANAI_STUDIO_WORKER_ID?.trim();
 
+// Require the declared read capability even though this adapter is read-only.
+// Admission also verifies that the assigned profile owns this capability.
+const runRepositoryInventoryTask = async ({ task }: { task: { id: string; objective: string; requiredCapabilities: string[] } }) => {
+  if (!task.requiredCapabilities.includes('read-repository')) {
+    throw new Error('Repository inventory requires the explicit read-repository capability.');
+  }
+  return {
+    kind: 'repository.inventory',
+    schemaVersion: 1,
+    taskId: task.id,
+    objective: task.objective,
+    inventory: await generateRepositoryInventory(),
+  };
+};
+
 // The Repository Auditor uses the existing static inventory. It never executes
 // discovered scripts, reads environment values, or treats inventory as test evidence.
 const unregisterRepositoryHandlers = profileId === 'repository-auditor'
   ? [
-      registerStudioTaskHandler('repository-audit', async ({ task }) => ({
-        kind: 'repository.inventory',
-        schemaVersion: 1,
-        taskId: task.id,
-        objective: task.objective,
-        inventory: await generateRepositoryInventory(),
-      })),
-      registerStudioTaskHandler('inventory', async ({ task }) => ({
-        kind: 'repository.inventory',
-        schemaVersion: 1,
-        taskId: task.id,
-        objective: task.objective,
-        inventory: await generateRepositoryInventory(),
-      })),
+      registerStudioTaskHandler('repository-audit', runRepositoryInventoryTask),
+      registerStudioTaskHandler('inventory', runRepositoryInventoryTask),
     ]
   : [];
 
