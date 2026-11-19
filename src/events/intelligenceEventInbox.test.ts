@@ -221,6 +221,37 @@ describe('IntelligenceEventInbox', () => {
     expect(attemptDelegate.updateMany).not.toHaveBeenCalled();
   });
 
+  it('rolls back acknowledgement when exactly one started audit row cannot be closed', async () => {
+    inboxDelegate.updateMany.mockResolvedValue({ count: 1 });
+    attemptDelegate.updateMany.mockResolvedValue({ count: 0 });
+    await expect(inbox.acknowledge('row-1', 'worker-a', 1))
+      .rejects.toThrow('Expected exactly one started attempt audit record to transition; updated 0.');
+    expect(attemptDelegate.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects failure transitions when the started attempt audit row is missing', async () => {
+    inboxDelegate.findFirst.mockResolvedValue({
+      id: 'row-1', attempts: 1, maxAttempts: 5, leaseOwner: 'worker-a',
+      leaseExpiresAt: new Date(Date.now() + 60_000),
+    });
+    inboxDelegate.updateMany.mockResolvedValue({ count: 1 });
+    attemptDelegate.updateMany.mockResolvedValue({ count: 0 });
+    await expect(inbox.fail('row-1', 'worker-a', 1, new Error('synthetic')))
+      .rejects.toThrow('Expected exactly one started attempt audit record to transition; updated 0.');
+  });
+
+  it('rejects expiry recovery when the started attempt audit row is missing', async () => {
+    inboxDelegate.findMany.mockResolvedValue([{
+      id: 'row-1', attempts: 1, maxAttempts: 5, leaseOwner: 'worker-a',
+      leaseExpiresAt: new Date(Date.now() - 60_000),
+    }]);
+    inboxDelegate.updateMany.mockResolvedValue({ count: 1 });
+    attemptDelegate.updateMany.mockResolvedValue({ count: 0 });
+    await expect(inbox.recoverExpiredLeases()).rejects.toThrow(
+      'Expected exactly one started attempt audit record to transition; updated 0.',
+    );
+  });
+
   it('backs off failures and records retry audit evidence', async () => {
     inboxDelegate.findFirst.mockResolvedValue({
       id: 'row-1', attempts: 2, maxAttempts: 5, leaseOwner: 'worker-a', leaseExpiresAt: new Date('2026-11-18T12:01:00Z'),
