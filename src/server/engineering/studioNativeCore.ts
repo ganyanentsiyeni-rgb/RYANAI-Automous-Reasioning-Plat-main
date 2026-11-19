@@ -281,7 +281,11 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId = wo
     const output = await handler({
       workerId,
       task,
-      heartbeat: () => heartbeatStudioTask(task.id, workerId),
+      heartbeat: async () => {
+        const renewed = await heartbeatStudioTask(task.id, workerId);
+        if (!renewed) throw new StudioTaskCancelledError();
+        return true;
+      },
       isCancelled,
       throwIfCancelled,
     });
