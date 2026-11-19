@@ -34,6 +34,11 @@ function validateBudget(budget: MissionBudget): string[] {
 function assertAcyclicTasks(tasks: readonly MissionTaskDefinition[]): void {
   const ids = new Set(tasks.map((task) => task.id));
   if (ids.size !== tasks.length || tasks.some((task) => !task.id.trim())) throw new Error('Mission task IDs must be unique and non-empty.');
+  for (const task of tasks) {
+    if (!task.taskType.trim() || !Object.hasOwn(COMPLEXITY_WEIGHT, task.complexity) || !Array.isArray(task.dependsOn)) {
+      throw new Error('Mission task definition is invalid: ' + task.id);
+    }
+  }
   const visiting = new Set<string>(); const visited = new Set<string>();
   const visit = (id: string) => {
     if (visiting.has(id)) throw new Error('Mission task dependency graph contains a cycle.');
@@ -74,35 +79,40 @@ export function planMissionSwarm(input: MissionPlanningInput): MissionSwarmPlan 
   const allowed = new Set(input.availableAgentIds ?? RYANAI_MODULE_AGENT_ROSTER.map((agent) => agent.id));
   const agents = RYANAI_MODULE_AGENT_ROSTER.filter((agent) => allowed.has(agent.id));
   const ready = input.tasks.filter((task) => !completed.has(task.id) && task.dependsOn.every((id) => completed.has(id)));
+  const ownedReady = ready.filter((task) => agents.some((agent) => agent.taskTypes.includes(task.taskType)));
+  const unassignedTaskIds = ready.filter((task) => !agents.some((agent) => agent.taskTypes.includes(task.taskType))).map((task) => task.id);
   const evaluator = { id: 'mission-evaluator' as const, independent: true as const, mayApproveExecution: false as const };
   if (remaining.modelCalls <= 0 || remaining.tokens <= 0 || remaining.runtimeMs <= 0 || remaining.infrastructureCostUsd <= 0) {
-    return { state: 'budget_exhausted', recommendedConcurrency: 0, readyTaskIds: [], assignments: [], evaluator,
+    return { state: 'budget_exhausted', recommendedConcurrency: 0, readyTaskIds: [], unassignedTaskIds, assignments: [], evaluator,
       budgetRemaining: remaining, reasons: ['Mission budget is exhausted; no additional worker may be dispatched.'] };
   }
   if (!ready.length) return { state: input.tasks.length ? 'waiting_for_dependencies' : 'ready',
-    recommendedConcurrency: 0, readyTaskIds: [], assignments: [], evaluator, budgetRemaining: remaining,
+    recommendedConcurrency: 0, readyTaskIds: [], unassignedTaskIds: [], assignments: [], evaluator, budgetRemaining: remaining,
     reasons: ['No task is currently dependency-ready.'] };
-  const slotLimit = Math.min(input.budget.maxConcurrentWorkers,
-    input.availableExecutionSlots ?? input.budget.maxConcurrentWorkers, remaining.modelCalls, agents.length);
+  const slots = input.availableExecutionSlots ?? input.budget.maxConcurrentWorkers;
+  if (!Number.isFinite(slots) || slots < 0) throw new Error('Available execution slots must be a finite non-negative number.');
+  const slotLimit = Math.min(input.budget.maxConcurrentWorkers, slots, remaining.modelCalls, agents.length);
   if (slotLimit <= 0 || agents.length === 0) return { state: 'no_workers_available',
-    recommendedConcurrency: 0, readyTaskIds: ready.map((task) => task.id), assignments: [], evaluator,
+    recommendedConcurrency: 0, readyTaskIds: ready.map((task) => task.id), unassignedTaskIds: ready.map((task) => task.id), assignments: [], evaluator,
     budgetRemaining: remaining, reasons: ['No eligible module agent or execution slot is available.'] };
-  const weight = ready.reduce((sum, task) => sum + COMPLEXITY_WEIGHT[task.complexity], 0);
-  const concurrency = Math.min(ready.length, slotLimit, Math.max(1, Math.ceil(Math.sqrt(weight))));
+  const weight = ownedReady.reduce((sum, task) => sum + COMPLEXITY_WEIGHT[task.complexity], 0);
+  const concurrency = Math.min(ownedReady.length, slotLimit, Math.max(1, Math.ceil(Math.sqrt(weight))));
   const used = new Set<string>(); const specialistIds = input.availableSpecialistIds ?? [];
   const assignments: MissionWorkerAssignment[] = [];
-  for (const task of ready) {
+  for (const task of ownedReady) {
     if (assignments.length >= concurrency) break;
-    const agent = agents.find((candidate) => !used.has(candidate.id) && candidate.taskTypes.includes(task.taskType))
-      ?? agents.find((candidate) => !used.has(candidate.id));
+    const agent = agents.find((candidate) => !used.has(candidate.id) && candidate.taskTypes.includes(task.taskType));
     if (!agent) break;
     used.add(agent.id);
     assignments.push({ taskId: task.id, accountableAgentId: agent.id, accountableAgentName: agent.name,
       specialistWorkerId: specialistIds.length ? specialistIds[assignments.length % specialistIds.length] : null });
   }
-  return { state: 'ready', recommendedConcurrency: assignments.length, readyTaskIds: ready.map((task) => task.id),
-    assignments, evaluator, budgetRemaining: remaining,
-    reasons: ['Concurrency is bounded by dependency-ready work, complexity, available execution slots, eligible module agents and remaining model-call budget.'] };
+  return { state: assignments.length ? 'ready' : 'no_workers_available', recommendedConcurrency: assignments.length,
+    readyTaskIds: ready.map((task) => task.id), unassignedTaskIds, assignments, evaluator, budgetRemaining: remaining,
+    reasons: [
+      'Concurrency is bounded by dependency-ready work, complexity, available execution slots, eligible module agents and remaining model-call budget.',
+      ...(unassignedTaskIds.length ? ['Unknown or unavailable task owners are left unassigned; no fallback owner is guessed.'] : []),
+    ] };
 }
 export function evaluateMissionResult(input: {
   acceptanceCriteria: string[]; evidence: Array<{ criterion: string; verified: boolean; reference?: string }>;
