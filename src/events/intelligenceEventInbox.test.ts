@@ -27,7 +27,7 @@ function makeDb() {
     updateMany: vi.fn(),
     count: vi.fn(),
   };
-  const attemptDelegate = { create: vi.fn(), updateMany: vi.fn() };
+  const attemptDelegate = { create: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) };
   const tx = { intelligenceEventInbox: inboxDelegate, intelligenceEventAttempt: attemptDelegate };
   const db = {
     ...tx,
