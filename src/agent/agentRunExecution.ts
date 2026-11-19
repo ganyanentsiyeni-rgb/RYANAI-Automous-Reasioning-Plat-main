@@ -1,3 +1,5 @@
+import { PA_DELEGATION_CAPABILITIES, type PADelegationCapability } from './paJarvisHandshake.js';
+
 import { planExecution, type ExecutionChange, type ExecutionPlan } from './executionPlanner.js';
 
 /**
@@ -53,8 +55,6 @@ export function buildAgentRunExecutionPrompt(objective: string, plan: ExecutionP
     objective,
   ].join('\n');
 }
-
-import { PA_DELEGATION_CAPABILITIES, type PADelegationCapability } from './paJarvisHandshake.js';
 
 export interface PAExecutionScope { delegationId: string; capabilities: PADelegationCapability[]; }
 /** Parse PA delegation metadata as untrusted persisted data; partial or widened scopes fail closed. */
