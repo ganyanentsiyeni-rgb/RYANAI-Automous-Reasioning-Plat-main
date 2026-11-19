@@ -7,7 +7,7 @@ if (process.env.RYANAI_DISPOSABLE_DB !== '1' || !process.env.DATABASE_URL) {
   throw new Error('Refusing to run unless RYANAI_DISPOSABLE_DB=1 and DATABASE_URL are set by the disposable PostgreSQL harness.');
 }
 const databaseUrl = new URL(process.env.DATABASE_URL);
-const databaseName = decodeURIComponent(databaseUrl.pathname.replace(/^\\//, ''));
+const databaseName = decodeURIComponent(databaseUrl.pathname.slice(1));
 if (!['127.0.0.1', 'localhost', '::1'].includes(databaseUrl.hostname)
   || !databaseName.includes('disposable')) {
   throw new Error('Refusing to run: DATABASE_URL must target a loopback host and a database name containing "disposable".');
