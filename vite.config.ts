@@ -106,6 +106,8 @@ export default defineConfig(({ mode }) => {
         'scripts/redis-probe.test.mjs',
         // Migration-readiness tests use node:test and run via `npm run test:migration:audit`.
         'scripts/audit-prisma-migration-readiness.test.mjs',
+        // This staging migration test uses node:test and runs via `npm run test:render-staging-migration`.
+        'scripts/migrate-render-staging.test.mjs',
       ],
       env: {
         RYAN_PATCH_VERIFIER_IMAGE:
