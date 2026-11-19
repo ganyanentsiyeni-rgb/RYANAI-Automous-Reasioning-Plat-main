@@ -4,9 +4,11 @@ import {
   type RyanAiGitHubEvent,
   type RyanAiGitHubEventStream,
 } from "./githubEventStreams";
+import type { RyanAiPostgresQuery } from "./postgresGitHubEventIdempotencyStore";
 import {
   RYANAI_GITHUB_WORKER_WAKE_CHANNELS,
   createPostgresRyanAiGitHubWorkerWakePublisher,
+  createPostgresRyanAiGitHubWakePersistence,
   subscribeRyanAiGitHubWorkerWake,
 } from "./postgresGitHubWorkerWake";
 
@@ -123,5 +125,52 @@ describe("GitHub Event Streams PostgreSQL wake composition", () => {
       eventType: "check_suite",
     });
     await stop();
+  });
+});
+
+
+describe("PostgreSQL GitHub durable inbox persistence", () => {
+  it("stores the full event idempotently in the existing intelligence inbox", async () => {
+    const calls: Array<{ sql: string; parameters?: readonly unknown[] }> = [];
+    const query: RyanAiPostgresQuery = async <Row = Record<string, unknown>>(
+      sql: string,
+      parameters?: readonly unknown[],
+    ) => {
+      calls.push({ sql, parameters });
+      return { rows: [] as Row[] };
+    };
+    const persist = createPostgresRyanAiGitHubWakePersistence(query);
+
+    await persist({
+      eventId: "gh-event-9001",
+      target: "ci",
+      eventType: "check_suite",
+      repository: signal.repository,
+      occurredAt: signal.occurredAt,
+      payload: { conclusion: "success", details: { run: 42 } },
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].sql).toContain("public.intelligence_event_inbox");
+    expect(calls[0].sql).toContain("ON CONFLICT (source_provider, idempotency_key) DO NOTHING");
+    expect(calls[0].parameters?.[4]).toBe("gh-event-9001");
+    expect(JSON.parse(String(calls[0].parameters?.[5]))).toMatchObject({
+      id: "gh-event-9001",
+      target: "ci",
+      payload: { conclusion: "success", details: { run: 42 } },
+    });
+    expect(String(calls[0].parameters?.[0])).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+  });
+
+  it("rejects empty or oversized provider event identifiers", async () => {
+    const query: RyanAiPostgresQuery = async <Row = Record<string, unknown>>() => ({
+      rows: [] as Row[],
+    });
+    const persist = createPostgresRyanAiGitHubWakePersistence(query);
+
+    await expect(persist({ ...signal, eventId: " " })).rejects.toThrow("1 to 200");
+    await expect(persist({ ...signal, eventId: "x".repeat(201) })).rejects.toThrow("1 to 200");
   });
 });
