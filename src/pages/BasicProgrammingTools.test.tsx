@@ -82,7 +82,30 @@ describe('Basic Programming Tools project containers', () => {
     expect(container.textContent).not.toContain('Pending coding task');
   });
 
-  it('creates a durable coding container with a queued planning task', async () => {
+  it('creates a separate research container with a research planning task', async () => {
+    api.authenticatedFetch.mockImplementation(async (_url: string, options?: RequestInit) => ({
+      ok: true,
+      json: async () => options?.method === 'POST' ? { project: { id: 'research-project' } } : { projects: [] },
+    }));
+    await mount();
+    await click('Research');
+    const fields = container.querySelectorAll('input, textarea');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(fields[0], 'Worker lifecycle research');
+      fields[0].dispatchEvent(new Event('input', { bubbles: true }));
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(fields[1], 'Compare lease recovery guarantees');
+      fields[1].dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await click('Create container');
+    await vi.waitFor(() => expect(api.authenticatedFetch).toHaveBeenCalledWith('/api/engineering/studio/native/projects', expect.objectContaining({
+      method: 'POST',
+      body: expect.stringContaining('"projectType":"research"'),
+    })));
+    const request = api.authenticatedFetch.mock.calls.find((call: unknown[]) => (call[1] as RequestInit | undefined)?.method === 'POST');
+    expect(JSON.parse((request?.[1] as RequestInit).body as string).initialTasks[0].taskType).toBe('studio.plan');
+  });
+
+  it('submits a coding container and queued planning task to the Studio API', async () => {
     api.authenticatedFetch.mockImplementation(async (_url: string, options?: RequestInit) => ({
       ok: true,
       json: async () => options?.method === 'POST' ? { project: { id: 'new-project' } } : { projects: [] },
