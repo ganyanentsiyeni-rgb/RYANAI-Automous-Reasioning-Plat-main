@@ -329,11 +329,18 @@ function registerCoreRoutes() {
       accessPreference?: string;
       betaInterest?: string;
       feedback?: string;
+      privacyConsent?: boolean;
     };
   }>('/api/community-feedback', {
     config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
   }, async (request, reply) => {
     const body = request.body ?? {};
+    if (body.privacyConsent !== true) {
+      return reply.code(400).send({
+        success: false,
+        error: 'Privacy acknowledgement is required before submitting survey feedback.',
+      });
+    }
     const required = [
       body.role, body.aiExperience, body.discovery, body.currentUse,
       body.usefulness, body.topPriority, body.biggestBarrier,
@@ -344,6 +351,8 @@ function registerCoreRoutes() {
     }
 
     const answers = {
+      privacyConsent: true,
+      privacyConsentAt: new Date().toISOString(),
       role: body.role!.trim().slice(0, 100),
       aiExperience: body.aiExperience!.trim().slice(0, 100),
       discovery: body.discovery!.trim().slice(0, 100),

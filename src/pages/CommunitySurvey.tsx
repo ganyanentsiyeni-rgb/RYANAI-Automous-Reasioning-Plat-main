@@ -77,7 +77,7 @@ export default function CommunitySurveyPage() {
       const response = await fetch('/api/community-feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(answers),
+        body: JSON.stringify({ ...answers, privacyConsent }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || 'We could not submit your feedback. Please try again.');
