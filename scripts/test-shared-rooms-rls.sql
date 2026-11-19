@@ -28,6 +28,18 @@ VALUES ('30000000-0000-4000-8000-000000000001',
         '20000000-0000-4000-8000-000000000001',
         '10000000-0000-4000-8000-000000000001', 'creator message', now());
 
+-- A user cannot create a room claiming another user's identity.
+DO $
+BEGIN
+  BEGIN
+    INSERT INTO public.rooms (id, name, created_by, created_at)
+    VALUES ('20000000-0000-4000-8000-000000000009', 'spoofed room',
+            '10000000-0000-4000-8000-000000000002', now());
+    RAISE EXCEPTION 'authenticated user unexpectedly created room for another user';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+END $;
+
 -- Member can read room and messages, but cannot add another member.
 SELECT set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000002', true);
 SELECT set_config('request.jwt.claims',
@@ -42,6 +54,24 @@ BEGIN
       WHERE id = '30000000-0000-4000-8000-000000000001') <> 1 THEN
     RAISE EXCEPTION 'room member cannot read room messages';
   END IF;
+  IF (SELECT count(*) FROM public.room_members
+      WHERE room_id = '20000000-0000-4000-8000-000000000001') <> 2 THEN
+    RAISE EXCEPTION 'room member cannot read the complete room roster';
+  END IF;
+  BEGIN
+    UPDATE public.rooms SET name = 'member changed name'
+    WHERE id = '20000000-0000-4000-8000-000000000001';
+    RAISE EXCEPTION 'member unexpectedly updated room';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  BEGIN
+    INSERT INTO public.room_messages (id, room_id, sender_id, body, created_at)
+    VALUES ('30000000-0000-4000-8000-000000000003',
+            '20000000-0000-4000-8000-000000000001',
+            '10000000-0000-4000-8000-000000000001', 'forged sender', now());
+    RAISE EXCEPTION 'member unexpectedly posted with forged sender_id';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
   BEGIN
     INSERT INTO public.room_members (room_id, user_id, joined_at)
     VALUES ('20000000-0000-4000-8000-000000000001',
@@ -86,6 +116,18 @@ BEGIN
     SET created_by = '10000000-0000-4000-8000-000000000002'
     WHERE id = '20000000-0000-4000-8000-000000000001';
     RAISE EXCEPTION 'room ownership unexpectedly changed';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  BEGIN
+    UPDATE public.rooms SET id = '20000000-0000-4000-8000-000000000008'
+    WHERE id = '20000000-0000-4000-8000-000000000001';
+    RAISE EXCEPTION 'room id unexpectedly changed';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+  BEGIN
+    UPDATE public.rooms SET created_at = created_at + interval '1 second'
+    WHERE id = '20000000-0000-4000-8000-000000000001';
+    RAISE EXCEPTION 'room creation time unexpectedly changed';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
 END $$;
