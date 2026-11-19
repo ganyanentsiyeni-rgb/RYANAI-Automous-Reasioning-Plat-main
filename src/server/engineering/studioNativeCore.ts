@@ -352,15 +352,29 @@ export async function executeStudioToolCapability(request: StudioToolExecutionRe
 export async function createStudioArtifact(input: {
   projectId: string; taskId?: string; ownerUserId: string; title: string; kind: string;
   storageProvider: string; storageKey: string; mimeType?: string; byteSize?: bigint; sha256?: string;
-  provenance?: Prisma.InputJsonValue;
+  provenance?: Prisma.InputJsonValue; leaseFence?: { workerId: string; claimToken: string };
 }) {
   const project = await prisma.studioProject.findFirst({ where: { id: input.projectId, ownerUserId: input.ownerUserId }, select: { id: true } });
   if (!project) throw new Error('Studio project not found for this owner.');
-  if (input.taskId) {
-    const task = await prisma.studioTask.findFirst({ where: { id: input.taskId, projectId: input.projectId, ownerUserId: input.ownerUserId }, select: { id: true } });
-    if (!task) throw new Error('Studio task not found for this owner and project.');
-  }
+  if (input.leaseFence && !input.taskId) throw new Error('A fenced artifact must be associated with its Studio task.');
   return prisma.$transaction(async (tx) => {
+    if (input.taskId && input.leaseFence) {
+      // Lock and validate the current lease in the same transaction as artifact registration.
+      // Recovery/reclaim cannot replace this attempt until the artifact metadata is committed.
+      const owned = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM public.studio_tasks
+        WHERE id = ${input.taskId} AND project_id = ${input.projectId}
+          AND owner_user_id = ${input.ownerUserId} AND status = 'running'
+          AND lease_owner = ${input.leaseFence.workerId}
+          AND lease_token = ${input.leaseFence.claimToken}::uuid
+          AND lease_expires_at > NOW()
+        FOR UPDATE
+      `;
+      if (owned.length !== 1) throw new Error('Studio worker lease expired before artifact registration.');
+    } else if (input.taskId) {
+      const task = await tx.studioTask.findFirst({ where: { id: input.taskId, projectId: input.projectId, ownerUserId: input.ownerUserId }, select: { id: true } });
+      if (!task) throw new Error('Studio task not found for this owner and project.');
+    }
     const artifact = await tx.studioArtifact.create({ data: {
       projectId: input.projectId, taskId: input.taskId, ownerUserId: input.ownerUserId,
       title: input.title, kind: input.kind, storageProvider: input.storageProvider, storageKey: input.storageKey,
