@@ -129,7 +129,9 @@ describe('owner-bound read-only repository inspection', () => {
   it('rejects a GitHub identity mismatch before reading repository state', async () => {
     const app = await createApp();
     store.connection.findUnique.mockResolvedValue(storedConnection());
-    vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ id: 999999, login: 'different-owner' }));
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(mockResponse({ id: 999999, login: 'different-owner' }))
+      .mockResolvedValueOnce(mockResponse({ full_name: GITHUB_APP_REPOSITORY, default_branch: 'main', permissions: { pull: true } }));
     await expect(inspectConnectedGitHubRepository(app, userId)).rejects.toThrow('github_owner_or_repository_verification_failed');
     expect(fetch).toHaveBeenCalledTimes(2);
   });
