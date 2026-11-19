@@ -148,7 +148,7 @@ describe('Studio worker queue lifecycle', () => {
       const result = await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
       expect(result).toMatchObject({ state: 'completed', taskId: 'task-1' });
       expect(mocks.directTaskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
-        where: expect.objectContaining({ id: 'task-1', status: 'running', leaseOwner: 'worker-1' }),
+        where: expect.objectContaining({ id: 'task-1', status: 'running', leaseOwner: 'worker-1', attempts: 1 }),
       }));
       expect(mocks.taskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
         data: expect.objectContaining({ status: 'completed', output: { result: 'ok' } }),
@@ -345,4 +345,30 @@ describe('Studio worker queue lifecycle', () => {
       data: expect.objectContaining({ eventType: 'task.lease_recovered', taskId: 'task-a' }),
     }));
   });
+  it('fences heartbeat renewal by attempt even when the same worker ID is reused', async () => {
+    const { heartbeatStudioTask } = await import('./studioNativeCore.js');
+    await heartbeatStudioTask('task-1', 'worker-1', 1);
+    expect(mocks.directTaskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'task-1', leaseOwner: 'worker-1', attempts: 1 }),
+    }));
+  });
+
+  it('fences completion and retry release by the claimed attempt number', async () => {
+    const handler = vi.fn().mockResolvedValue({ result: 'attempt-one' });
+    const unregister = registerStudioTaskHandler('ci-failure', handler);
+    try {
+      await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
+      const writes = mocks.taskUpdateMany.mock.calls.map(([arg]) => arg);
+      expect(writes.some((arg) => arg.where?.attempts === 1 && arg.data?.status === 'completed')).toBe(true);
+    } finally { unregister(); }
+  });
+
+  it('includes the observed attempt and lease owner in recovery compare-and-set', async () => {
+    mocks.taskFindMany.mockResolvedValue([{ id: 'task-a', projectId: 'project-1', ownerUserId: 'owner-1', leaseOwner: 'worker-old', attempts: 2, maxAttempts: 3 }]);
+    await recoverExpiredStudioLeases();
+    expect(mocks.taskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'task-a', status: 'running', leaseOwner: 'worker-old', attempts: 2 }),
+    }));
+  });
+
 });
