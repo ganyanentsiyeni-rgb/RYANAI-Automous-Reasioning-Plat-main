@@ -128,6 +128,65 @@ export async function claimStudioTask(workerId: string, supportedTaskTypes: read
   });
 }
 
+export function isStudioTaskCancellableStatus(status: string): boolean {
+  return status === 'queued' || status === 'running';
+}
+
+export class StudioTaskCancelledError extends Error {
+  constructor() {
+    super('Studio task cancellation was requested by its owner.');
+    this.name = 'StudioTaskCancelledError';
+  }
+}
+
+/** Owner-scoped cancellation; the conditional update prevents racing completion or another cancel. */
+export async function cancelStudioTask(taskId: string, ownerUserId: string, reason?: string) {
+  return prisma.$transaction(async (tx) => {
+    const task = await tx.studioTask.findFirst({
+      where: { id: taskId, ownerUserId },
+      select: { id: true, projectId: true, status: true },
+    });
+    if (!task) throw new Error('Studio task not found for this owner.');
+    if (task.status === 'cancelled') return { cancelled: true, alreadyCancelled: true, status: 'cancelled' };
+    if (!isStudioTaskCancellableStatus(task.status)) {
+      return { cancelled: false, alreadyCancelled: false, status: task.status };
+    }
+
+    const now = new Date();
+    const updated = await tx.studioTask.updateMany({
+      where: { id: task.id, ownerUserId, status: task.status },
+      data: {
+        status: 'cancelled',
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        heartbeatAt: null,
+        completedAt: now,
+      },
+    });
+    if (updated.count !== 1) return { cancelled: false, alreadyCancelled: false, status: 'changed' };
+
+    await tx.studioEvent.create({
+      data: {
+        projectId: task.projectId,
+        taskId: task.id,
+        ownerUserId,
+        actorId: ownerUserId,
+        eventType: 'task.cancelled',
+        payload: { previousStatus: task.status, reason: reason?.trim().slice(0, 500) || 'Cancelled by owner.' },
+      },
+    });
+    return { cancelled: true, alreadyCancelled: false, status: 'cancelled' };
+  });
+}
+
+export async function isStudioTaskCancellationRequested(taskId: string, workerId: string): Promise<boolean> {
+  const task = await prisma.studioTask.findFirst({
+    where: { id: taskId, leaseOwner: workerId },
+    select: { status: true },
+  });
+  return task?.status === 'cancelled';
+}
+
 export async function heartbeatStudioTask(taskId: string, workerId: string, leaseSeconds = 90) {
   const safeLease = Math.max(15, Math.min(leaseSeconds, 600));
   const result = await prisma.studioTask.updateMany({
@@ -169,7 +228,13 @@ export async function recoverExpiredStudioLeases() {
   });
 }
 
-export interface StudioWorkerContext { workerId: string; task: StudioTask; heartbeat: () => Promise<boolean>; }
+export interface StudioWorkerContext {
+  workerId: string;
+  task: StudioTask;
+  heartbeat: () => Promise<boolean>;
+  isCancelled: () => Promise<boolean>;
+  throwIfCancelled: () => Promise<void>;
+}
 export type StudioTaskHandler = (context: StudioWorkerContext) => Promise<unknown>;
 const taskHandlers = new Map<string, StudioTaskHandler>();
 export function registerStudioTaskHandler(taskType: string, handler: StudioTaskHandler) {
@@ -209,7 +274,17 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId = wo
     },
   } });
   try {
-    const output = await handler({ workerId, task, heartbeat: () => heartbeatStudioTask(task.id, workerId) });
+    const isCancelled = () => isStudioTaskCancellationRequested(task.id, workerId);
+    const throwIfCancelled = async () => {
+      if (await isCancelled()) throw new StudioTaskCancelledError();
+    };
+    const output = await handler({
+      workerId,
+      task,
+      heartbeat: () => heartbeatStudioTask(task.id, workerId),
+      isCancelled,
+      throwIfCancelled,
+    });
     await prisma.$transaction(async (tx) => {
       const completed = await tx.studioTask.updateMany({ where: { id: task.id, status: 'running', leaseOwner: workerId, leaseExpiresAt: { gt: new Date() } },
         data: { status: 'completed', output: output as Prisma.InputJsonValue, completedAt: new Date(), leaseOwner: null, leaseExpiresAt: null, heartbeatAt: null } });
@@ -219,6 +294,16 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId = wo
     });
     return { state: 'completed' as const, taskId: task.id };
   } catch (error) {
+    if (error instanceof StudioTaskCancelledError) {
+      return { state: 'cancelled' as const, taskId: task.id };
+    }
+    const currentTask = await prisma.studioTask.findFirst({
+      where: { id: task.id },
+      select: { status: true },
+    });
+    if (currentTask?.status === 'cancelled') {
+      return { state: 'cancelled' as const, taskId: task.id };
+    }
     const message = error instanceof Error ? error.message : 'Studio worker failed.';
     await prisma.$transaction(async (tx) => {
       const exhausted = task.attempts >= task.maxAttempts;
