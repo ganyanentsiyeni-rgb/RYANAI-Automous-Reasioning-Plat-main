@@ -28,7 +28,9 @@ export function createRyanAiWorkerWakeDispatcher(
 ): RyanAiWorkerWakeHandler {
   return async (signal) => {
     const handler = handlers[signal.target];
-    if (!handler) return;
+    if (!handler) {
+      throw new Error(`No RyanAI GitHub worker registered for target: ${signal.target}`);
+    }
     await handler(signal);
   };
 }
