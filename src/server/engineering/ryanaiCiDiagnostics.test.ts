@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeRyanAICiEvidence } from './ryanaiCiDiagnostics.js';
+import { analyzeRyanAICiEvidence, createRyanAICiProviderBlockedReport } from './ryanaiCiDiagnostics.js';
 
 describe('RyanAI CI evidence diagnostics', () => {
   it('keeps queued, skipped, cancelled and missing distinct from passed', () => {
@@ -53,5 +53,30 @@ describe('RyanAI CI evidence diagnostics', () => {
 
   it('rejects non-object task evidence', () => {
     expect(() => analyzeRyanAICiEvidence(null)).toThrow('structured workflow evidence');
+  });
+});
+
+
+describe('RyanAI CI provider-blocked evidence', () => {
+  it('records missing owner authorization as blocked, never passed', () => {
+    const report = createRyanAICiProviderBlockedReport(
+      'f'.repeat(40),
+      new Error('github_owner_reauthorization_required'),
+    );
+    expect(report.summary).toBe('provider_blocked');
+    expect(report.evidenceTrust).toBe('provider_blocked');
+    expect(report.counts).toMatchObject({ providerBlocked: 1, passed: 0, failed: 0 });
+    expect(report.providerBlock).toEqual({
+      reasonCode: 'github_owner_reauthorization_required',
+    });
+  });
+
+  it('does not expose arbitrary provider exception text', () => {
+    const report = createRyanAICiProviderBlockedReport(
+      null,
+      new Error('Authorization: Bearer secret-value'),
+    );
+    expect(report.providerBlock.reasonCode).toBe('github_provider_request_failed');
+    expect(JSON.stringify(report)).not.toContain('secret-value');
   });
 });
