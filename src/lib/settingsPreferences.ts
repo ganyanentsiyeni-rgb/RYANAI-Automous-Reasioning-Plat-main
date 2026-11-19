@@ -8,9 +8,9 @@ export const DASHBOARD_UI_OPTIONS = [
  { id:'trading',label:'Trading Terminal',description:'Show the trading workspace.' },
  { id:'cockpit',label:'Command Cockpit',description:'Show model and platform health views.' },
  { id:'studio',label:'RyanAI Studio',description:'Show the development studio.' },
+ { id:'programming',label:'Basic Programming Tools',description:'Show code editors, version control, testing tools and project planning.' },
  { id:'comms',label:'RyanAI Communications',description:'Show owner-authorised communications.',access:'owner' },
  { id:'workspace',label:'Reasoning Workspace',description:'Show chat, memory and workspace tools.' },
- { id:'calculator',label:'Calculator',description:'Enable or disable the calculator UI.' },
  { id:'audiobook',label:'Audiobook Studio',description:'Enable or disable the audiobook workspace.' },
  { id:'music',label:'RyanAI Music',description:'Show the standalone music library, VLC handoff and saved playlists.' },
  { id:'phonelink',label:'RyanAI PhoneLink',description:'Pair trusted phones and manage mobile connection permissions.' },
@@ -74,7 +74,7 @@ export const DEFAULT_PHONELINK_SETTINGS: PhoneLinkSettings = {
 export function normalizePhoneLinkSettings(value: unknown): PhoneLinkSettings {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return { ...DEFAULT_PHONELINK_SETTINGS };
   const input = value as Record<string, unknown>;
-  const validTime = (candidate: unknown, fallback: string) => typeof candidate === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(candidate) ? candidate : fallback;
+  const validTime = (candidate: unknown, fallback: string) => typeof candidate === 'string' && /^([01]\\d|2[0-3]):[0-5]\\d$/.test(candidate) ? candidate : fallback;
   return {
     autoReconnect: typeof input.autoReconnect === 'boolean' ? input.autoReconnect : DEFAULT_PHONELINK_SETTINGS.autoReconnect,
     wifiOnlyTransfers: typeof input.wifiOnlyTransfers === 'boolean' ? input.wifiOnlyTransfers : DEFAULT_PHONELINK_SETTINGS.wifiOnlyTransfers,

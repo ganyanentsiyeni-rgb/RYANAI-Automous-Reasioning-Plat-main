@@ -210,7 +210,7 @@ export default function ProfileSettings({
     }
   }
 
-  const dashboardOptions = DASHBOARD_UI_OPTIONS.filter(({ id }) => !['calculator', 'audiobook', 'inferenceConsole'].includes(id));
+  const dashboardOptions = DASHBOARD_UI_OPTIONS.filter(({ id }) => !['audiobook', 'inferenceConsole'].includes(id));
   return <section className="mx-auto max-w-6xl space-y-6 px-5 py-8 text-slate-100 sm:px-10" aria-labelledby="profile-settings-title">
     <header><p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">RyanAI / Account</p><h1 id="profile-settings-title" className="mt-2 text-3xl font-bold text-white">Settings</h1><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">Manage dashboard visibility, your RyanAI profile, module preferences, GitHub authorization and inference defaults. Privileged access remains server-enforced.</p></header>
     {error && <p role="alert" className="rounded-xl border border-rose-400/20 bg-rose-400/5 p-3 text-sm text-rose-200">{error}</p>}
