@@ -1,3 +1,5 @@
+import { createRyanAiGitHubEventRouter } from "./githubEventRouter";
+
 export type RyanAiGitHubEventType =
   | "pull_request"
   | "pull_request_review"
@@ -12,16 +14,6 @@ export interface RyanAiGitHubEvent<TPayload = unknown> {
   repository: string;
   occurredAt: string;
   payload: TPayload;
-}
-
-export function createRyanAiGitHubEventWorkerWithRouter(
-  subscriptions: readonly RyanAiGitHubEventSubscription[],
-  handleWake: import("./githubEventRouter").RyanAiWorkerWakeHandler,
-): RyanAiGitHubEventWorker {
-  return createRyanAiGitHubEventWorker(
-    subscriptions,
-    createRyanAiGitHubEventRouter(handleWake),
-  );
 }
 
 export interface RyanAiGitHubEventSubscription {
@@ -45,8 +37,6 @@ export interface RyanAiGitHubEventStream {
  * Until GitHub Event Streams access is enabled for the installation, this
  * interface remains an integration boundary rather than a fake live stream.
  */
-import { createRyanAiGitHubEventRouter } from "./githubEventRouter";
-
 export interface RyanAiGitHubEventWorker {
   start(stream: RyanAiGitHubEventStream): Promise<() => Promise<void>>;
 }
@@ -68,4 +58,14 @@ export function createRyanAiGitHubEventWorker(
       };
     },
   };
+}
+
+export function createRyanAiGitHubEventWorkerWithRouter(
+  subscriptions: readonly RyanAiGitHubEventSubscription[],
+  handleWake: import("./githubEventRouter").RyanAiWorkerWakeHandler,
+): RyanAiGitHubEventWorker {
+  return createRyanAiGitHubEventWorker(
+    subscriptions,
+    createRyanAiGitHubEventRouter(handleWake),
+  );
 }
