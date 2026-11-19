@@ -8,6 +8,16 @@ import type { GitHubOwnerEventWakeSource } from './githubOwnerEventDispatcher.js
  */
 export const RYANAI_GITHUB_OWNER_EVENT_WAKE_CHANNEL = 'ryanai_github_owner_events';
 
+export interface GitHubOwnerEventWakeSource {
+  subscribe(onWake: () => void): () => void;
+}
+
+export type GitHubOwnerWakeErrorHandler = (error: unknown) => void;
+
+/**
+ * Adapts the existing dedicated-connection PostgreSQL listener contract to a
+ * synchronous subscribe/unsubscribe lifecycle. The listener owns its
+ * connection; this adapter only owns the LISTEN subscription.
 export type GitHubOwnerWakeErrorHandler = (error: unknown) => void;
 
 /**
