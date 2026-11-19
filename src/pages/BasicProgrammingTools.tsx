@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Code2, GitBranch, FlaskConical, FolderKanban, Network, MessagesSquare, ExternalLink, Copy, Check, RefreshCw, Plus, Search } from 'lucide-react';
 import { authenticatedFetch } from '@/lib/authenticatedFetch';
 
@@ -82,7 +82,7 @@ export default function BasicProgrammingToolsPage() {
     const query = search.trim().toLowerCase();
     return typeMatches && (!query || (project.title + ' ' + project.objective + ' ' + project.id).toLowerCase().includes(query));
   });
-  async function createContainer(event: React.FormEvent<HTMLFormElement>) {
+  async function createContainer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!title.trim() || objective.trim().length < 5 || saving) return;
     setSaving(true); setError(''); setNotice('');
