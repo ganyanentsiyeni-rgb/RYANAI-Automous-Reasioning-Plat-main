@@ -11,6 +11,14 @@ on:
         options: [audit, fix]
   schedule:
     - cron: '17 3 * * 1'
+  pull_request:
+    paths:
+      - '.github/**'
+      - 'scripts/github-workflow-agent.mjs'
+      - 'scripts/validate-github-workflows.mjs'
+      - 'scripts/validate-github-installation-token-compat.mjs'
+      - 'scripts/github-installation-token-compat.test.mjs'
+      - 'package.json'
   push:
     branches: [main, master]
     paths:
