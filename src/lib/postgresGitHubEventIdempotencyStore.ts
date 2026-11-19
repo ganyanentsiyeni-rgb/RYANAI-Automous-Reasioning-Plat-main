@@ -43,8 +43,8 @@ export function createPostgresRyanAiEventIdempotencyStore(
            SET status = 'processing',
                lease_expires_at = EXCLUDED.lease_expires_at,
                completed_at = NULL
-         WHERE public.github_event_idempotency.status <> 'completed'
-           AND public.github_event_idempotency.lease_expires_at <= NOW()
+         WHERE github_event_idempotency.status <> 'completed'
+           AND github_event_idempotency.lease_expires_at <= NOW()
          RETURNING event_id`,
         [eventId, leaseMs],
       );
