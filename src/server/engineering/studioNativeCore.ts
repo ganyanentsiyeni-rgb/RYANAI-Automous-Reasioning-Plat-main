@@ -8,6 +8,7 @@ import { Prisma, type StudioTask } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { RYANAI_WORKER_ROSTER } from '../../agent/workerRegistry.js';
 import { findModuleAgentForTask } from '../../agent/moduleAgentRegistry.js';
+import { evaluateRyanAIStudioTaskAdmission } from './ryanaiStudioTaskAdmission.js';
 
 export type StudioProjectType = 'engineering' | 'research' | 'design' | 'data' | 'automation';
 export interface CreateStudioProjectInput {
@@ -178,7 +179,7 @@ export function registerStudioTaskHandler(taskType: string, handler: StudioTaskH
 
 export async function runStudioWorkerOnce(
   workerId: string,
-  authorize: (task: StudioTask) => Promise<{ allowed: boolean; reason?: string; decision?: string; ruleId?: string; approvalReference?: string }>,
+  authorize: (task: StudioTask) => Promise<{ allowed: boolean; reason?: string; decision?: string; ruleId?: string; approvalReference?: string }> = async (task) => evaluateRyanAIStudioTaskAdmission(task),
 ) {
   const task = await claimStudioTask(workerId, [...taskHandlers.keys()]);
   if (!task) return { state: 'idle' as const };
@@ -194,7 +195,7 @@ export async function runStudioWorkerOnce(
   try {
     decision = await authorize(task);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Gen-X authorization check failed.';
+    const message = error instanceof Error ? error.message : 'RyanAI task admission check failed.';
     await prisma.$transaction(async (tx) => {
       const exhausted = task.attempts >= task.maxAttempts;
       const released = await tx.studioTask.updateMany({
@@ -216,7 +217,7 @@ export async function runStudioWorkerOnce(
       const blocked = await tx.studioTask.updateMany({ where: { id: task.id, status: 'running', leaseOwner: workerId, leaseExpiresAt: { gt: new Date() } },
         data: { status: 'blocked', leaseOwner: null, leaseExpiresAt: null, heartbeatAt: null, approvalStatus: 'blocked' } });
       if (blocked.count === 1) await tx.studioEvent.create({ data: { projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
-        actorId: workerId, eventType: 'task.policy_blocked', payload: { decision: decision.decision ?? 'DENY_OR_REQUIRE_APPROVAL', ruleId: decision.ruleId ?? 'unknown', reason: decision.reason ?? 'Gen-X policy denied execution.' } } });
+        actorId: workerId, eventType: 'task.policy_blocked', payload: { decision: decision.decision ?? 'DENY_OR_REQUIRE_APPROVAL', ruleId: decision.ruleId ?? 'unknown', reason: decision.reason ?? 'RyanAI platform policy denied task admission.' } } });
     });
     return { state: 'blocked' as const, taskId: task.id };
   }
@@ -280,8 +281,8 @@ export async function executeStudioToolCapability(request: StudioToolExecutionRe
   }
   const decision = await request.authorize(request);
   if (!decision.allowed) {
-    await request.audit({ actorId: request.actorId, requestId: request.requestId, capabilityId: request.capabilityId, outcome: 'blocked', reason: decision.reason ?? 'Gen-X policy denied the request.' });
-    throw new Error(decision.reason ?? 'Gen-X policy denied the request.');
+    await request.audit({ actorId: request.actorId, requestId: request.requestId, capabilityId: request.capabilityId, outcome: 'blocked', reason: decision.reason ?? 'RyanAI platform policy denied the request.' });
+    throw new Error(decision.reason ?? 'RyanAI platform policy denied the request.');
   }
   const result = await request.execute(request);
   await request.audit({ actorId: request.actorId, requestId: request.requestId, capabilityId: request.capabilityId, outcome: 'completed' });
@@ -340,7 +341,7 @@ export function getStudioNativeRuntimeDescriptor() {
     workerHealth: 'unknown',
     workerHealthReason: 'The API process cannot observe worker-local handler registration or liveness. A shared worker heartbeat is not yet persisted.',
     pluginGateway: 'fail_closed_policy_and_approval_contract',
-    authorizationAuthority: 'Gen-X',
+    authorizationAuthority: 'RyanAI platform policy',
     productionExecutionEnabled: false,
   } as const;
 }
