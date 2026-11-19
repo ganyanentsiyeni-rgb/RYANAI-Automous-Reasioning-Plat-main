@@ -121,24 +121,24 @@ export async function persistAgentRunCompletion(
   if (paDelegationId) {
     const delegation = requirePADelegationForCompletion(await tx.paDelegation.findUnique({ where: { id: paDelegationId }, select: { id: true, traceId: true } }));
     await tx.paDelegation.update({ where: { id: delegation.id }, data: { status: 'completed' } });
-      await tx.paExecutionReceipt.upsert({
-        where: { delegationId: delegation.id },
-        create: {
-          delegationId: delegation.id,
-          agentRunId: run.id,
-          traceId: delegation.traceId,
-          attempt: run.attempts,
-          status: 'completed',
-          result: buildPAExecutionReceiptResult(plan, repositoryInspection),
-        },
-        update: {
-          agentRunId: run.id,
-          traceId: delegation.traceId,
-          attempt: run.attempts,
-          status: 'completed',
-          result: buildPAExecutionReceiptResult(plan, repositoryInspection),
-          error: null,
-        },
+    await tx.paExecutionReceipt.upsert({
+      where: { delegationId: delegation.id },
+      create: {
+        delegationId: delegation.id,
+        agentRunId: run.id,
+        traceId: delegation.traceId,
+        attempt: run.attempts,
+        status: 'completed',
+        result: buildPAExecutionReceiptResult(plan, repositoryInspection),
+      },
+      update: {
+        agentRunId: run.id,
+        traceId: delegation.traceId,
+        attempt: run.attempts,
+        status: 'completed',
+        result: buildPAExecutionReceiptResult(plan, repositoryInspection),
+        error: null,
+      },
       });
   }
   await appendRunEvidence(tx, {
