@@ -12,7 +12,7 @@ import { pluginRegistry } from '../plugins/pluginCatalog.js';
 import { describeCapabilityState } from '../plugins/capabilityState.js';
 import { getAgentTaskWorkerStatus } from '../../agent/operations.js';
 import { getStudioExecutionDescriptor, submitStudioProject } from '../engineering/studioExecution.js';
-import { cancelStudioTask, classifyStudioWorkerLiveness, createStudioProject, getStudioDeliveryReadiness, getStudioNativeRuntimeDescriptor, listStudioProjects, listStudioWorkerHealth } from '../engineering/studioNativeCore.js';
+import { cancelStudioTask, createStudioProject, getStudioDeliveryReadiness, getStudioNativeRuntimeDescriptor, listStudioProjects, listStudioWorkerHealth } from '../engineering/studioNativeCore.js';
 import { resolveProviderCapabilityState } from '../plugins/providerCapabilityState.js';
 import { approveStudioTask } from '../engineering/studioApprovals.js';
 import { createStudioArtifactDownloadUrl } from '../engineering/studioArtifactStorage.js';
