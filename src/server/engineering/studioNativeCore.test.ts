@@ -19,6 +19,21 @@ describe('RyanAI Studio Native Core contracts', () => {
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'blocked' }));
   });
 
+  it('executes a registered write capability only after RyanAI verifies approval', async () => {
+    const execute = vi.fn().mockResolvedValue({ saved: true });
+    const audit = vi.fn().mockResolvedValue(undefined);
+    const verifyApproval = vi.fn().mockResolvedValue(true);
+    const result = await executeStudioToolCapability({
+      actorId: 'owner-1', connectionRef: 'opaque-connection-ref', requestId: 'req-write',
+      capabilityId: 'write-communications-report', approval: { reference: 'approval-verified-1' },
+      input: {}, manifest: { capabilities: [{ id: 'write-communications-report', risk: 'read', requiresHumanApproval: false }] },
+      resolveConnection: async () => true, verifyApproval, execute, audit,
+    });
+    expect(result).toEqual({ saved: true });
+    expect(verifyApproval).toHaveBeenCalledOnce();
+    expect(execute).toHaveBeenCalledOnce();
+  });
+
   it('denies capabilities not declared by the RyanAI workforce registry', async () => {
     const execute = vi.fn();
     const audit = vi.fn().mockResolvedValue(undefined);
