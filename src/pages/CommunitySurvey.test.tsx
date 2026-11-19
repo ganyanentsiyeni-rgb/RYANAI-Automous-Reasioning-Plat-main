@@ -57,6 +57,8 @@ describe('Community survey', () => {
     for (const select of form!.querySelectorAll('select')) {
       await setValue(select, select.options[1]?.value ?? 'Other');
     }
+    const consent = form!.querySelector('input[type="checkbox"][required]') as HTMLInputElement;
+    await act(async () => { consent.click(); });
     const priority = form!.querySelector('textarea[required]');
     expect(priority).not.toBeNull();
     await setValue(priority!, 'Reliable and private AI workflows.');
@@ -89,6 +91,8 @@ describe('Community survey', () => {
       await setValue(select, select.options[1]?.value ?? 'Other');
     }
     await setValue(form.querySelector('textarea[required]')!, 'A useful test response.');
+    const consent = form.querySelector('input[type="checkbox"][required]') as HTMLInputElement;
+    await act(async () => { consent.click(); });
     await act(async () => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
     expect(container.textContent).toContain('final mailbox delivery is not confirmed');
   });
