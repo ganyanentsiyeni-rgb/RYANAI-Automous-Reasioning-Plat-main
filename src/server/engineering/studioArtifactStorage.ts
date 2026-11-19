@@ -54,6 +54,12 @@ export async function storeStudioArtifact(input: {
   return { storageKey, sha256, byteSize: input.bytes.byteLength, mimeType: input.mimeType };
 }
 
+export async function removeStoredStudioArtifact(storageKey: string) {
+  if (!storageKey || storageKey.startsWith('/') || storageKey.includes('..')) throw new Error('Invalid Studio artifact storage key.');
+  const { error } = await storage().storage.from(STUDIO_ARTIFACT_BUCKET).remove([storageKey]);
+  if (error) throw new Error('Studio artifact cleanup failed: ' + error.message);
+}
+
 /** Creates a short-lived URL only after the caller has verified owner-scoped metadata. */
 export async function createStudioArtifactDownloadUrl(storageKey: string, expiresInSeconds = 120) {
   if (!storageKey || storageKey.startsWith('/') || storageKey.includes('..')) throw new Error('Invalid Studio artifact storage key.');
