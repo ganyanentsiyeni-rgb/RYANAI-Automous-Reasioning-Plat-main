@@ -211,6 +211,31 @@ export function registerStudioTaskHandler(taskType: string, handler: StudioTaskH
   return () => { if (taskHandlers.get(taskType) === handler) taskHandlers.delete(taskType); };
 }
 
+/** Reports whether this worker profile has at least one real task handler registered in this process. */
+export function getStudioWorkerHandlerReadiness(workerProfileId: string) {
+  const profile = RYANAI_WORKER_ROSTER.find((worker) => worker.id === workerProfileId);
+  if (!profile) return {
+    workerProfileId,
+    ready: false,
+    supportedTaskTypes: [],
+    registeredTaskTypes: [],
+    missingTaskTypes: [],
+    reason: 'Worker profile is not registered in the RyanAI workforce.',
+  };
+  const registeredTaskTypes = profile.taskTypes.filter((taskType) => taskHandlers.has(taskType));
+  const missingTaskTypes = profile.taskTypes.filter((taskType) => !taskHandlers.has(taskType));
+  return {
+    workerProfileId,
+    ready: registeredTaskTypes.length > 0,
+    supportedTaskTypes: [...profile.taskTypes],
+    registeredTaskTypes,
+    missingTaskTypes,
+    reason: registeredTaskTypes.length
+      ? null
+      : 'No native Studio task handler is registered for this worker profile in this process.',
+  };
+}
+
 export async function runStudioWorkerOnce(workerId: string, workerProfileId = workerId, leaseSeconds = 90) {
   const task = await claimStudioTask(workerId, [...taskHandlers.keys()], leaseSeconds, workerProfileId);
   if (!task) return { state: 'idle' as const };
