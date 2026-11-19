@@ -401,8 +401,9 @@ export async function inspectConnectedGitHubWorkflowEvidence(
     typeof run.head_sha === 'string' &&
     run.head_sha.toLowerCase() === requestedHeadSha.toLowerCase(),
   );
-  let jobsComplete = true;
-  const workflowRuns = await Promise.all(exactRuns.map(async (run) => {
+  let jobsComplete = exactRuns.length <= 50;
+  const workflowRuns: ConnectedGitHubWorkflowEvidence['workflowRuns'] = [];
+  for (const run of exactRuns.slice(0, 50)) {
     const rawJobs: Array<{ name?: string; status?: string; conclusion?: string | null }> = [];
     let runJobsComplete = false;
     for (let page = 1; page <= 3; page += 1) {
@@ -423,7 +424,7 @@ export async function inspectConnectedGitHubWorkflowEvidence(
       }
     }
     if (!runJobsComplete) jobsComplete = false;
-    return {
+    workflowRuns.push({
       id: run.id!,
       name: typeof run.name === 'string' ? run.name : 'Unnamed workflow',
       headSha: run.head_sha!,
@@ -435,8 +436,8 @@ export async function inspectConnectedGitHubWorkflowEvidence(
         status: typeof job.status === 'string' ? job.status : 'unknown',
         conclusion: typeof job.conclusion === 'string' ? job.conclusion : null,
       })),
-    };
-  }));
+    });
+  }
 
   return {
     repositoryFullName: GITHUB_APP_REPOSITORY,
