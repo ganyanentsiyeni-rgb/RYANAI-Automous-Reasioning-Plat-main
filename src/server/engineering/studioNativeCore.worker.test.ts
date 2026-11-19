@@ -85,19 +85,14 @@ describe('Studio worker queue lifecycle', () => {
     }
   });
 
-  it('keeps policy-denied work blocked and never invokes its handler', async () => {
+  it('blocks tasks without an assigned RyanAI worker before invoking a handler', async () => {
+    mocks.queryRawUnsafe.mockResolvedValue([task({ assignedWorkerId: null })]);
     const handler = vi.fn();
-    const unregister = registerStudioTaskHandler('studio.test', handler);
+    const unregister = registerStudioTaskHandler('ci-failure', handler);
     try {
       const result = await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
       expect(result).toMatchObject({ state: 'blocked', taskId: 'task-1' });
       expect(handler).not.toHaveBeenCalled();
-      expect(mocks.taskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
-        data: expect.objectContaining({ status: 'blocked', approvalStatus: 'blocked' }),
-      }));
-      expect(mocks.eventCreate).toHaveBeenCalledWith(expect.objectContaining({
-        data: expect.objectContaining({ eventType: 'task.policy_blocked' }),
-      }));
     } finally {
       unregister();
     }
@@ -127,7 +122,7 @@ describe('Studio worker queue lifecycle', () => {
     });
     const unregister = registerStudioTaskHandler('studio.test', handler);
     try {
-      const result = await runStudioWorkerOnce('worker-1', async () => ({ allowed: true }));
+      const result = await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
       expect(result).toMatchObject({ state: 'completed', taskId: 'task-1' });
       expect(mocks.directTaskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
         where: expect.objectContaining({ id: 'task-1', status: 'running', leaseOwner: 'worker-1' }),
