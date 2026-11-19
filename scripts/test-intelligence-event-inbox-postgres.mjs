@@ -65,6 +65,27 @@ try {
   assert.equal(recoveryAudit[0].status, 'lease_expired');
   console.log('PASS: concurrent lease recovery has one compare-and-set winner');
 
+  const reclaimedWithSameWorker = await inbox.claimNext('expired-worker', new Date(now.getTime() + 10), ['integration.lifecycle.test']);
+  assert.ok(reclaimedWithSameWorker, 'the expired lease should be claimable again');
+  assert.equal(reclaimedWithSameWorker.id, expired.id);
+  assert.equal(reclaimedWithSameWorker.attempts, 2);
+  await assert.rejects(
+    inbox.acknowledge(expired.id, 'expired-worker', 1, new Date(now.getTime() + 20)),
+    (error) => error instanceof EventLeaseLostError,
+    'the previous attempt must be fenced even when the worker ID is reused',
+  );
+  await inbox.acknowledge(expired.id, 'expired-worker', 2, new Date(now.getTime() + 20));
+  const sameWorkerAudit = await db.intelligenceEventAttempt.findMany({
+    where: { eventInboxId: expired.id },
+    orderBy: { attempt: 'asc' },
+  });
+  assert.deepEqual(sameWorkerAudit.map((row) => [row.attempt, row.workerId, row.status]), [
+    [1, 'expired-worker', 'lease_expired'],
+    [2, 'expired-worker', 'succeeded'],
+  ]);
+  console.log('PASS: expired lease reclaimed by same worker ID; stale attempt fenced by attempt number');
+
+
   const missingAudit = await enqueue('missing-audit-rollback');
   await db.intelligenceEventInbox.update({
     where: { id: missingAudit.id },
@@ -120,6 +141,26 @@ try {
   assert.equal(staleUnchanged.leaseOwner, 'current-worker');
   assert.equal(staleUnchanged.status, 'processing');
   console.log('PASS: stale worker cannot acknowledge a newer attempt');
+
+  const githubOwner = randomUUID();
+  const githubId = randomUUID();
+  const githubEvent = await inbox.enqueue({
+    eventId: githubId,
+    eventType: 'github.pull_request',
+    schemaVersion: 1,
+    occurredAt: now.toISOString(),
+    source: { provider: 'github', service: 'event-streams' },
+    idempotencyKey: 'github-owner:' + githubId,
+    classification: 'internal',
+    payload: { owner: { userId: githubOwner } },
+  });
+  ids.push(githubEvent.event.id);
+  assert.equal(await inbox.claimNext('generic-worker', now, ['github.pull_request']), null,
+    'generic workers must not claim GitHub Event Streams events');
+  const ownerClaim = await inbox.claimNextForOwner('github-owner-worker', githubOwner, now, ['github.pull_request']);
+  assert.equal(ownerClaim?.id, githubEvent.event.id,
+    'the authenticated owner-scoped path must claim its own GitHub event');
+  console.log('PASS: PostgreSQL GitHub event lane requires authenticated owner-scoped claim');
 
   const duplicate = await enqueue('duplicate-audit');
   await db.intelligenceEventAttempt.create({
