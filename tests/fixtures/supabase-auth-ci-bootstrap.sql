@@ -23,3 +23,14 @@ CREATE TABLE IF NOT EXISTS auth.users (
   created_at timestamptz,
   updated_at timestamptz
 );
+
+
+-- Supabase's auth.uid() reads the request subject from the JWT claim setting.
+-- This minimal helper exists only in the disposable Prisma migration fixture.
+CREATE OR REPLACE FUNCTION auth.uid()
+RETURNS uuid
+LANGUAGE sql
+STABLE
+AS $function$
+  SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
+$function$;
