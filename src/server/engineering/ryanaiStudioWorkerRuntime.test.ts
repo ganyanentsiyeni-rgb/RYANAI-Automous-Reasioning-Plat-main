@@ -26,6 +26,7 @@ describe('RyanAI native Studio worker runtime', () => {
     }
   });
 
+
   it('rejects an unregistered worker profile', () => {
     expect(() => createRyanAIStudioWorkerRuntime({
       workerProfileId: 'not-registered',
