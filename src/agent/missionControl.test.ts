@@ -37,6 +37,14 @@ describe('mission swarm planning', () => {
     ] });
     expect(plan.readyTaskIds).toEqual(['parent']); expect(plan.assignments.map((item) => item.taskId)).toEqual(['parent']);
   });
+  it('does not guess an owner for an unknown task type', () => {
+    const plan = planMissionSwarm({ budget, tasks: [
+      { id: 'unknown', taskType: 'unregistered-task', complexity: 'medium', dependsOn: [] },
+    ] });
+    expect(plan.state).toBe('no_workers_available');
+    expect(plan.assignments).toEqual([]);
+    expect(plan.unassignedTaskIds).toEqual(['unknown']);
+  });
   it('stops dispatch when model-call budget is exhausted', () => {
     const plan = planMissionSwarm({ budget, usage: { modelCalls: 20, tokens: 100, runtimeMs: 100, infrastructureCostUsd: 0.1 },
       tasks: [{ id: 'a', taskType: 'ci-diagnostics', complexity: 'high', dependsOn: [] }] });
