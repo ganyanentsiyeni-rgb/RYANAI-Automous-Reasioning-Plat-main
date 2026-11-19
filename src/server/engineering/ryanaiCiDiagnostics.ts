@@ -1,6 +1,6 @@
 export type RyanAICiEvidenceState =
   | 'passed' | 'failed' | 'queued' | 'running' | 'cancelled'
-  | 'skipped' | 'neutral' | 'missing' | 'unknown';
+  | 'skipped' | 'neutral' | 'missing' | 'unknown' | 'provider-blocked';
 
 export interface RyanAICiWorkflowEvidence {
   id: string | number | null;
@@ -74,6 +74,7 @@ export function analyzeRyanAICiEvidence(input: unknown, requiredCapabilities: re
     neutral: workflowRuns.filter((run) => run.status === 'neutral').length,
     missing: workflowRuns.filter((run) => run.status === 'missing').length,
     unknown: workflowRuns.filter((run) => run.status === 'unknown').length,
+    providerBlocked: workflowRuns.filter((run) => run.status === 'provider-blocked').length,
   };
 
   const rawLogs = Array.isArray(payload.jobLogs) ? payload.jobLogs : [];
@@ -123,6 +124,38 @@ export function analyzeRyanAICiEvidence(input: unknown, requiredCapabilities: re
       'Queued, pending, running, skipped, cancelled, missing and unknown states are not passes.',
       'This worker analyzes the task-supplied snapshot; it does not fetch GitHub data or verify snapshot provenance.',
       'Job log excerpts are never returned; only bounded signature metadata is emitted.',
+    ],
+  };
+}
+
+
+/** A provider/authentication failure is evidence of a blocked inspection, never a passing check. */
+export function createRyanAICiProviderBlockedReport(headSha: string | null, error: unknown) {
+  const message = error instanceof Error ? error.message : '';
+  const reasonCode = /^github_[a-z0-9_]{1,96}$/.test(message)
+    ? message
+    : 'github_provider_request_failed';
+  return {
+    kind: 'ci.diagnostics',
+    schemaVersion: 1,
+    source: 'github-oauth-read-only',
+    evidenceTrust: 'provider_blocked',
+    liveProviderFetchPerformed: false,
+    headSha,
+    workflowRuns: [],
+    counts: {
+      passed: 0, failed: 0, queued: 0, running: 0, cancelled: 0,
+      skipped: 0, neutral: 0, missing: 0, unknown: 0, providerBlocked: 1,
+    },
+    jobLogEvidence: {
+      authorized: false, suppliedCount: 0, analyzedCount: 0,
+      findings: [], rawLogTextReturned: false,
+    },
+    summary: 'provider_blocked',
+    providerBlock: { reasonCode },
+    notes: [
+      'GitHub evidence could not be verified; no workflow check is treated as passed.',
+      'Reconnect or repair the existing owner-bound GitHub integration if the reason indicates missing or expired authorization.',
     ],
   };
 }
