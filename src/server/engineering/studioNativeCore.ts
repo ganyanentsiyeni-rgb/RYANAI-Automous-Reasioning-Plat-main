@@ -381,8 +381,9 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId = wo
     return { state: 'completed' as const, taskId: task.id };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Studio worker failed.';
-    await prisma.$transaction(async (tx) => {
+    const released = await prisma.$transaction(async (tx) => {
       const exhausted = task.attempts >= task.maxAttempts;
+      const update = await tx.studioTask.updateMany({ where: { id: task.id, status: 'running', leaseOwner: workerId, leaseToken: task.leaseToken, leaseExpiresAt: { gt: new Date() } },
       const released = await tx.studioTask.updateMany({
         where: { id: task.id, status: 'running', leaseOwner: workerId, leaseToken: claimToken, leaseExpiresAt: { gt: new Date() } },
         data: {
@@ -405,9 +406,11 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId = wo
       const released = await tx.studioTask.updateMany({ where: { id: task.id, status: 'running', leaseOwner: workerId, leaseToken: task.leaseToken, leaseExpiresAt: { gt: new Date() } },
         data: { status: exhausted ? 'failed' : 'queued', leaseOwner: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null,
           availableAt: new Date(Date.now() + Math.min(300000, 1000 * 2 ** task.attempts)) } });
-      if (released.count === 1) await tx.studioEvent.create({ data: { projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
+      if (update.count === 1) await tx.studioEvent.create({ data: { projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
         actorId: workerId, eventType: 'task.execution_failed', payload: { attempt: task.attempts, error: message.slice(0, 1000) } } });
+      return update.count === 1;
     });
+    if (!released) return { state: 'lease_lost' as const, taskId: task.id };
     return { state: 'failed' as const, taskId: task.id, error: message };
   }
 }
