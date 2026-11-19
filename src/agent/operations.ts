@@ -10,9 +10,9 @@ import { resolveSelectedReasoningModel } from './modelSelection.js';
 import { buildBrainKnowledgeContext } from './knowledgeAgent.js';
 import { parsePAExecutionScope } from './agentRunExecution.js';
 import { getAgentRunRetryDelayMs, invokeWithCancellationRetry, shouldRetryAgentRun } from './agentRunRetry.js';
-import { persistAgentRunCompletion } from './agentRunPersistence.js';
+import { persistAgentRunCompletion, requirePADelegationRecord } from './agentRunPersistence.js';
 import { publishAgentTaskNotification } from './queueNotifications.js';
-import { agentRunLeaseFilter, startAgentRunLeaseHeartbeat } from './agentRunLease.js';
+import { agentRunLeaseFilter, assertAgentRunLeaseActive, startAgentRunLeaseHeartbeat } from './agentRunLease.js';
 import { summarizeProviderError } from './providerErrors.js';
 import { assertBrainProbeResponse, BRAIN_PROBE_CHALLENGE, BRAIN_PROBE_ORDER } from './brainProbe.js';
 import { assertPAExecutionHandlersAvailable, buildAgentRunExecutionPrompt, buildPARepositoryInspectionContext, buildSharedReasoningObjective, planQueuedAgentRun } from './agentRunExecution.js';
@@ -267,8 +267,15 @@ async function processAgentRun(
         cancellation.abort(error instanceof Error ? error : new Error(String(error)));
       }
     },
+    5_000,
   );
   try {
+    const assertExecutionLeaseActive = () => assertAgentRunLeaseActive(
+    { id: run.id, workerId: run.worker_id, attempts: run.attempts },
+    async (where) => Boolean(await prisma.agentRun.findFirst({ where, select: { id: true } })),
+    cancellation.signal,
+  );
+    await assertExecutionLeaseActive();
     await recordRunEvidence({ runId: run.id, eventType: run.attempts > 1 ? 'execution.recovered' : 'execution.started', payload: { workerId: run.worker_id, attempt: run.attempts, approvalStatus: run.approval_status, planHash: run.approved_plan_hash, baseCommitSha: run.approved_commit_sha, proposedDiffHash: run.approved_diff_hash } });
     activeRegion = 'execution';
     await recordRegion('execution', 'started', { attempt: run.attempts });
@@ -307,7 +314,9 @@ async function processAgentRun(
         if (inspectionPolicy.decision !== 'ALLOW') {
           throw new Error('Gen-X denied repository.inspect at the worker execution boundary.');
         }
+        await assertExecutionLeaseActive();
         const snapshot = await inspectConnectedGitHubRepository({ prisma }, run.user_id);
+        await assertExecutionLeaseActive();
         verifiedCapabilityContext = buildPARepositoryInspectionContext(snapshot);
         const evidence = await recordRunEvidence({
           runId: run.id,
@@ -378,6 +387,7 @@ async function processAgentRun(
     );
     activeRegion = 'reasoning';
     await recordRegion('reasoning', 'started', { brains: ['primary', 'secondary', 'logic'] });
+    await assertExecutionLeaseActive();
     const reasoningPlan = await executeThreeBrainPlan(sharedObjective, (brain, prompt, signal) => testBrainInvoker
       ? testBrainInvoker(brain, prompt, signal)
       : invokeWithRecovery(brain, prompt, signal, run, brain === 'logic' ? run.requested_model ?? undefined : undefined), cancellation.signal);
@@ -393,6 +403,7 @@ async function processAgentRun(
     await recordRegion('verification', 'completed', { verified: plan.verification?.verified === true, reason: plan.verification?.reason ?? null });
     activeRegion = null;
 
+    await assertExecutionLeaseActive();
     const rows = await prisma.agentHandoff.findMany({
       where: { runId: run.id },
       orderBy: { startedAt: 'asc' },
@@ -410,63 +421,86 @@ async function processAgentRun(
     const current = await prisma.agentRun.findUnique({ where: { id: run.id }, select: { cancelRequestedAt: true } });
     const cancelled = Boolean(current?.cancelRequestedAt);
     const retry = !cancelled && shouldRetryAgentRun(run.attempts, run.max_attempts);
+    let terminalCancelled = cancelled;
+    let terminalRetry = retry;
+    let transitioned = false;
     await prisma.$transaction(async (tx) => {
-      const ownership = await tx.agentRun.updateMany({
-        where: agentRunLeaseFilter({ id: run.id, workerId: run.worker_id, attempts: run.attempts }),
+      const lease = agentRunLeaseFilter({ id: run.id, workerId: run.worker_id, attempts: run.attempts });
+      // Compare-and-set against the cancellation flag. If cancellation races this
+      // update, the retry/failure write cannot overwrite the cancellation request.
+      let ownership = await tx.agentRun.updateMany({
+        where: { ...lease, cancelRequestedAt: null },
         data: {
-          status: cancelled ? 'cancelled' : retry ? 'queued' : 'failed',
+          status: retry ? 'queued' : 'failed',
           error: message,
-          completedAt: cancelled || !retry ? new Date() : null,
+          completedAt: retry ? null : new Date(),
           nextAttemptAt: retry ? nextAttemptAt : undefined,
           lockedAt: null,
           workerId: null,
         },
       });
-      if (ownership.count !== 1) return;
+      if (ownership.count !== 1) {
+        // The first CAS may have lost specifically because cancellation arrived
+        // after the earlier read. Finalize cancellation only if this worker still
+        // owns the same running attempt and the durable cancellation flag is set.
+        ownership = await tx.agentRun.updateMany({
+          where: { ...lease, cancelRequestedAt: { not: null } },
+          data: {
+            status: 'cancelled',
+            error: message,
+            completedAt: new Date(),
+            lockedAt: null,
+            workerId: null,
+          },
+        });
+        if (ownership.count !== 1) return;
+        terminalCancelled = true;
+        terminalRetry = false;
+      }
+      transitioned = true;
       await tx.agentHandoff.updateMany({
         where: { runId: run.id, status: { in: ['pending', 'running', 'failed'] } },
-        data: retry
+        data: terminalRetry
           ? { status: 'pending', error: null, completedAt: null }
-          : { status: cancelled ? 'cancelled' : 'failed', error: message, completedAt: new Date() },
+          : { status: terminalCancelled ? 'cancelled' : 'failed', error: message, completedAt: new Date() },
       });
       await appendRunEvidence(tx, {
         runId: run.id,
-        eventType: cancelled ? 'execution.cancelled' : retry ? 'execution.retry_scheduled' : 'execution.failed',
-        payload: { attempt: run.attempts, message, nextAttemptAt: retry ? nextAttemptAt.toISOString() : null },
+        eventType: terminalCancelled ? 'execution.cancelled' : terminalRetry ? 'execution.retry_scheduled' : 'execution.failed',
+        payload: { attempt: run.attempts, message, nextAttemptAt: terminalRetry ? nextAttemptAt.toISOString() : null },
       });
-      if (!retry) {
+      if (!terminalRetry) {
         const scope = run.execution_scope && typeof run.execution_scope === 'object' ? run.execution_scope as Record<string, unknown> : {};
         const paDelegationId = typeof scope.paDelegationId === 'string' ? scope.paDelegationId : null;
         if (paDelegationId) {
-          const delegation = await tx.paDelegation.findUnique({ where: { id: paDelegationId }, select: { id: true, traceId: true } });
-          if (delegation) {
-            await tx.paDelegation.update({
-              where: { id: delegation.id },
-              data: { status: cancelled ? 'cancelled' : 'failed' },
-            });
-            await tx.paExecutionReceipt.upsert({
-              where: { delegationId: delegation.id },
-              create: {
-                delegationId: delegation.id,
-                agentRunId: run.id,
-                traceId: delegation.traceId,
-                attempt: run.attempts,
-                status: cancelled ? 'cancelled' : 'failed',
-                error: message,
-              },
-              update: {
-                agentRunId: run.id,
-                traceId: delegation.traceId,
-                attempt: run.attempts,
-                status: cancelled ? 'cancelled' : 'failed',
-                error: message,
-              },
-            });
-          }
+          const delegation = requirePADelegationRecord(await tx.paDelegation.findUnique({ where: { id: paDelegationId }, select: { id: true, traceId: true } }));
+          await tx.paDelegation.update({
+            where: { id: delegation.id },
+            data: { status: terminalCancelled ? 'cancelled' : 'failed' },
+          });
+          await tx.paExecutionReceipt.upsert({
+            where: { delegationId: delegation.id },
+            create: {
+              delegationId: delegation.id,
+              agentRunId: run.id,
+              traceId: delegation.traceId,
+              attempt: run.attempts,
+              status: terminalCancelled ? 'cancelled' : 'failed',
+              error: message,
+            },
+            update: {
+              agentRunId: run.id,
+              traceId: delegation.traceId,
+              attempt: run.attempts,
+              status: terminalCancelled ? 'cancelled' : 'failed',
+              error: message,
+            },
+          });
         }
       }
     });
-    console.error('[agent-worker] Run ' + run.id + (cancelled ? ' cancelled' : retry ? ' scheduled for retry' : ' failed permanently') + ': ' + message);
+    if (transitioned) console.error('[agent-worker] Run ' + run.id + (terminalCancelled ? ' cancelled' : terminalRetry ? ' scheduled for retry' : ' failed permanently') + ': ' + message);
+    else console.warn('[agent-worker] Failure transition skipped because this worker no longer owns the active attempt for run ' + run.id);
   } finally {
     const elapsedMs = Math.max(1, Date.now() - runStartedAt);
     const cpu = process.cpuUsage(cpuStartedAt);

@@ -209,6 +209,7 @@ export class IntelligenceEventInbox {
         : { availableAt: { lte: now } };
       const claimed = await tx.intelligenceEventInbox.updateMany({
         where: { ...ownerScope, id: candidate.id, status: candidate.status, ...leaseCondition },
+        where: { ...ownerScope, id: candidate.id, status: candidate.status, attempts: candidate.attempts, ...leaseCondition },
         data: {
           status: 'processing',
           attempts: { increment: 1 },
@@ -225,39 +226,39 @@ export class IntelligenceEventInbox {
     });
   }
 
-  async renewLease(eventId: string, workerId: string, now = new Date()): Promise<boolean> {
+  async renewLease(eventId: string, workerId: string, attempt: number, now = new Date()): Promise<boolean> {
     const result = await this.db.intelligenceEventInbox.updateMany({
-      where: { id: eventId, status: 'processing', leaseOwner: workerId, leaseExpiresAt: { gt: now } },
+      where: { id: eventId, status: 'processing', leaseOwner: workerId, attempts: attempt, leaseExpiresAt: { gt: now } },
       data: { leaseExpiresAt: new Date(now.getTime() + this.leaseMs) },
     });
     return result.count === 1;
   }
 
-  async acknowledge(eventId: string, workerId: string, now = new Date()): Promise<void> {
+  async acknowledge(eventId: string, workerId: string, attempt: number, now = new Date()): Promise<void> {
     await this.db.$transaction(async (tx) => {
       const result = await tx.intelligenceEventInbox.updateMany({
-        where: { id: eventId, status: 'processing', leaseOwner: workerId, leaseExpiresAt: { gt: now } },
+        where: { id: eventId, status: 'processing', leaseOwner: workerId, attempts: attempt, leaseExpiresAt: { gt: now } },
         data: { status: 'processed', processedAt: now, leaseOwner: null, leaseExpiresAt: null, lastError: null },
       });
       if (result.count !== 1) throw new EventLeaseLostError();
       await tx.intelligenceEventAttempt.updateMany({
-        where: { eventInboxId: eventId, workerId, status: 'started' },
+        where: { eventInboxId: eventId, attempt, workerId, status: 'started' },
         data: { status: 'succeeded', finishedAt: now },
       });
     });
   }
 
-  async fail(eventId: string, workerId: string, error: unknown, now = new Date()) {
+  async fail(eventId: string, workerId: string, attempt: number, error: unknown, now = new Date()) {
     return this.db.$transaction(async (tx) => {
       const current = await tx.intelligenceEventInbox.findFirst({
-        where: { id: eventId, status: 'processing', leaseOwner: workerId, leaseExpiresAt: { gt: now } },
+        where: { id: eventId, status: 'processing', leaseOwner: workerId, attempts: attempt, leaseExpiresAt: { gt: now } },
       });
       if (!current) throw new EventLeaseLostError();
       const deadLetter = current.attempts >= current.maxAttempts;
       const delay = Math.min(this.baseRetryMs * (2 ** Math.max(0, current.attempts - 1)), this.maxRetryMs);
       const retryAt = deadLetter ? null : new Date(now.getTime() + delay);
       const result = await tx.intelligenceEventInbox.updateMany({
-        where: { id: current.id, status: 'processing', leaseOwner: workerId, leaseExpiresAt: current.leaseExpiresAt },
+        where: { id: current.id, status: 'processing', leaseOwner: workerId, attempts: attempt, leaseExpiresAt: { equals: current.leaseExpiresAt, gt: now } },
         data: {
           status: deadLetter ? 'dead_letter' : 'retry',
           ...(retryAt ? { availableAt: retryAt } : {}),
@@ -268,7 +269,7 @@ export class IntelligenceEventInbox {
       });
       if (result.count !== 1) throw new EventLeaseLostError();
       await tx.intelligenceEventAttempt.updateMany({
-        where: { eventInboxId: eventId, workerId, status: 'started' },
+        where: { eventInboxId: eventId, attempt, workerId, status: 'started' },
         data: { status: deadLetter ? 'dead_letter' : 'retry', error: errorMessage(error), finishedAt: now },
       });
       return { status: deadLetter ? 'dead_letter' as const : 'retry' as const, retryAt };
@@ -287,7 +288,7 @@ export class IntelligenceEventInbox {
       const deadLetter = event.attempts >= event.maxAttempts;
       const result = await this.db.$transaction(async (tx) => {
         const moved = await tx.intelligenceEventInbox.updateMany({
-          where: { id: event.id, status: 'processing', leaseExpiresAt: event.leaseExpiresAt },
+          where: { id: event.id, status: 'processing', attempts: event.attempts, leaseOwner: event.leaseOwner, leaseExpiresAt: event.leaseExpiresAt },
           data: {
             status: deadLetter ? 'dead_letter' : 'retry',
             availableAt: now,
@@ -298,7 +299,7 @@ export class IntelligenceEventInbox {
         });
         if (moved.count === 1) {
           await tx.intelligenceEventAttempt.updateMany({
-            where: { eventInboxId: event.id, status: 'started' },
+            where: { eventInboxId: event.id, attempt: event.attempts, workerId: event.leaseOwner ?? undefined, status: 'started' },
             data: { status: 'lease_expired', error: 'Worker lease expired before acknowledgement.', finishedAt: now },
           });
         }
@@ -352,6 +353,7 @@ export class IntelligenceEventInbox {
       const outcome = await this.fail(
         claimed.id,
         workerId,
+        claimed.attempts,
         new Error('Claimed GitHub event owner does not match authenticated worker context.'),
         new Date(),
       );
@@ -360,6 +362,7 @@ export class IntelligenceEventInbox {
     let leaseLost = false;
     const heartbeat = setInterval(() => {
       void this.renewLease(claimed.id, workerId)
+      void this.renewLease(claimed.id, workerId, claimed.attempts)
         .then((renewed) => { if (!renewed) leaseLost = true; })
         .catch(() => { leaseLost = true; });
     }, Math.max(50, Math.floor(this.leaseMs / 3)));
@@ -372,6 +375,11 @@ export class IntelligenceEventInbox {
     } catch (error) {
       if (leaseLost) throw new EventLeaseLostError();
       const outcome = await this.fail(claimed.id, workerId, error, new Date());
+      await this.acknowledge(claimed.id, workerId, claimed.attempts, new Date());
+      return { status: 'processed' as const, eventId: claimed.eventId };
+    } catch (error) {
+      if (leaseLost) throw new EventLeaseLostError();
+      const outcome = await this.fail(claimed.id, workerId, claimed.attempts, error, new Date());
       return { ...outcome, eventId: claimed.eventId };
     } finally {
       clearInterval(heartbeat);
@@ -385,7 +393,7 @@ export class IntelligenceEventInbox {
     // Keep long-running handlers from losing their lease while work is in flight.
     let leaseLost = false;
     const heartbeat = setInterval(() => {
-      void this.renewLease(claimed.id, workerId)
+      void this.renewLease(claimed.id, workerId, claimed.attempts)
         .then((renewed) => { if (!renewed) leaseLost = true; })
         .catch(() => { leaseLost = true; });
     }, Math.max(50, Math.floor(this.leaseMs / 3)));
@@ -394,11 +402,11 @@ export class IntelligenceEventInbox {
     try {
       await handler(toEnvelope(claimed));
       if (leaseLost) throw new EventLeaseLostError();
-      await this.acknowledge(claimed.id, workerId, new Date());
+      await this.acknowledge(claimed.id, workerId, claimed.attempts, new Date());
       return { status: 'processed' as const, eventId: claimed.eventId };
     } catch (error) {
       if (leaseLost) throw new EventLeaseLostError();
-      const outcome = await this.fail(claimed.id, workerId, error, new Date());
+      const outcome = await this.fail(claimed.id, workerId, claimed.attempts, error, new Date());
       return { ...outcome, eventId: claimed.eventId };
     } finally {
       clearInterval(heartbeat);

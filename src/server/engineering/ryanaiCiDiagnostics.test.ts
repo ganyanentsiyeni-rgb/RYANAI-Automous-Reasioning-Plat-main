@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeRyanAICiEvidence } from './ryanaiCiDiagnostics.js';
+import { analyzeRyanAICiEvidence, createRyanAICiProviderBlockedReport, createRyanAIVerifiedCiReport } from './ryanaiCiDiagnostics.js';
 
 describe('RyanAI CI evidence diagnostics', () => {
   it('keeps queued, skipped, cancelled and missing distinct from passed', () => {
@@ -53,5 +54,67 @@ describe('RyanAI CI evidence diagnostics', () => {
 
   it('rejects non-object task evidence', () => {
     expect(() => analyzeRyanAICiEvidence(null)).toThrow('structured workflow evidence');
+  });
+});
+
+
+describe('RyanAI CI provider-blocked evidence', () => {
+  it('records missing owner authorization as blocked, never passed', () => {
+    const report = createRyanAICiProviderBlockedReport(
+      'f'.repeat(40),
+      new Error('github_owner_reauthorization_required'),
+    );
+    expect(report.summary).toBe('provider_blocked');
+    expect(report.evidenceTrust).toBe('provider_blocked');
+    expect(report.counts).toMatchObject({ providerBlocked: 1, passed: 0, failed: 0 });
+    expect(report.providerBlock).toEqual({
+      reasonCode: 'github_owner_reauthorization_required',
+    });
+  });
+
+  it('does not expose arbitrary provider exception text', () => {
+    const report = createRyanAICiProviderBlockedReport(
+      null,
+      new Error('Authorization: Bearer secret-value'),
+    );
+    expect(report.providerBlock.reasonCode).toBe('github_provider_request_failed');
+    expect(JSON.stringify(report)).not.toContain('secret-value');
+  });
+});
+
+
+describe('verified GitHub CI report composition', () => {
+  it('replaces snapshot-only trust claims with exact-head provider provenance', () => {
+    const analysis = analyzeRyanAICiEvidence({
+      headSha: 'a'.repeat(40),
+      workflowRuns: [{ id: 1, name: 'build', status: 'completed', conclusion: 'success' }],
+      jobLogs: [{ runId: 1, jobName: 'typecheck', excerpt: 'error TS2322: hidden raw detail' }],
+    }, ['read-job-logs']);
+    const report = createRyanAIVerifiedCiReport(analysis, {
+      source: 'github-oauth-read-only',
+      repositoryFullName: 'owner/repository',
+      requestedHeadSha: 'a'.repeat(40),
+      verifiedHeadSha: 'a'.repeat(40),
+      inspectedAt: '2026-11-19T00:00:00.000Z',
+      complete: false,
+      jobLogStatus: 'partial',
+      workflowRuns: [{
+        id: 1, name: 'build',
+        jobs: [{ id: 2, name: 'typecheck', status: 'completed', conclusion: 'failure' }],
+      }],
+    });
+    expect(report).toMatchObject({
+      source: 'github-oauth-read-only',
+      evidenceTrust: 'github_verified_exact_sha',
+      requestedHeadSha: 'a'.repeat(40),
+      verifiedHeadSha: 'a'.repeat(40),
+      snapshotComplete: false,
+      jobLogRetrievalStatus: 'partial',
+      liveProviderFetchPerformed: true,
+      jobs: [{ runId: 1, workflow: 'build', jobs: [{ id: 2 }] }],
+    });
+    expect(report.notes.join(' ')).not.toContain('task-supplied snapshot');
+    expect(report.notes.join(' ')).toContain('metadata is partial');
+    expect(JSON.stringify(report)).not.toContain('hidden raw detail');
   });
 });

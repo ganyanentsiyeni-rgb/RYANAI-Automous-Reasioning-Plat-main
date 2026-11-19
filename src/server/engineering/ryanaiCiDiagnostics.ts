@@ -1,6 +1,7 @@
 export type RyanAICiEvidenceState =
   | 'passed' | 'failed' | 'queued' | 'running' | 'cancelled'
   | 'skipped' | 'neutral' | 'missing' | 'unknown';
+  | 'skipped' | 'neutral' | 'missing' | 'unknown' | 'provider-blocked';
 
 export interface RyanAICiWorkflowEvidence {
   id: string | number | null;
@@ -74,6 +75,7 @@ export function analyzeRyanAICiEvidence(input: unknown, requiredCapabilities: re
     neutral: workflowRuns.filter((run) => run.status === 'neutral').length,
     missing: workflowRuns.filter((run) => run.status === 'missing').length,
     unknown: workflowRuns.filter((run) => run.status === 'unknown').length,
+    providerBlocked: workflowRuns.filter((run) => run.status === 'provider-blocked').length,
   };
 
   const rawLogs = Array.isArray(payload.jobLogs) ? payload.jobLogs : [];
@@ -126,3 +128,85 @@ export function analyzeRyanAICiEvidence(input: unknown, requiredCapabilities: re
     ],
   };
 }
+
+
+/** A provider/authentication failure is evidence of a blocked inspection, never a passing check. */
+export function createRyanAICiProviderBlockedReport(headSha: string | null, error: unknown) {
+  const message = error instanceof Error ? error.message : '';
+  const reasonCode = /^github_[a-z0-9_]{1,96}$/.test(message)
+    ? message
+    : 'github_provider_request_failed';
+  return {
+    kind: 'ci.diagnostics',
+    schemaVersion: 1,
+    source: 'github-oauth-read-only',
+    evidenceTrust: 'provider_blocked',
+    headSha,
+    workflowRuns: [],
+    counts: {
+      passed: 0, failed: 0, queued: 0, running: 0, cancelled: 0,
+      skipped: 0, neutral: 0, missing: 0, unknown: 0, providerBlocked: 1,
+    },
+    jobLogEvidence: {
+      authorized: false, suppliedCount: 0, analyzedCount: 0,
+      findings: [], rawLogTextReturned: false,
+    },
+    summary: 'provider_blocked',
+    providerBlock: { reasonCode },
+    notes: [
+      'GitHub evidence could not be verified; no workflow check is treated as passed.',
+      'Reconnect or repair the existing owner-bound GitHub integration if the reason indicates missing or expired authorization.',
+    ],
+  };
+}
+
+/** Attach independently verified GitHub provenance to the pure CI analysis result. */
+export function createRyanAIVerifiedCiReport(
+  report: ReturnType<typeof analyzeRyanAICiEvidence>,
+  evidence: {
+    source: 'github-oauth-read-only';
+    repositoryFullName: string;
+    requestedHeadSha: string;
+    verifiedHeadSha: string;
+    inspectedAt: string;
+    complete: boolean;
+    jobLogStatus: 'not_requested' | 'complete' | 'partial' | 'unavailable';
+    workflowRuns: Array<{
+      id: number;
+      name: string;
+      jobs: Array<{ id: number; name: string; status: string; conclusion: string | null }>;
+    }>;
+  },
+) {
+  return {
+    ...report,
+    source: evidence.source,
+    evidenceTrust: 'github_verified_exact_sha' as const,
+    repositoryFullName: evidence.repositoryFullName,
+    requestedHeadSha: evidence.requestedHeadSha,
+    verifiedHeadSha: evidence.verifiedHeadSha,
+    inspectedAt: evidence.inspectedAt,
+    snapshotComplete: evidence.complete,
+    jobLogRetrievalStatus: evidence.jobLogStatus,
+    liveProviderFetchPerformed: true,
+    jobs: evidence.workflowRuns.map((run) => ({
+      runId: run.id,
+      workflow: run.name,
+      jobs: run.jobs,
+    })),
+    notes: [
+      ...report.notes.filter((note) =>
+        note !== 'This worker analyzes the task-supplied snapshot; it does not fetch GitHub data or verify snapshot provenance.',
+      ),
+      'The requested commit SHA was verified against GitHub before its workflow evidence was retrieved.',
+      'Workflow run and job metadata were fetched read-only from the owner-bound GitHub connection.',
+      evidence.complete
+        ? 'Workflow and job metadata pagination completed within the configured bounds.'
+        : 'Workflow or job metadata is partial because the configured pagination bounds were reached or exact-head filtering removed unexpected records.',
+      evidence.jobLogStatus === 'not_requested'
+        ? 'Job logs were not requested; the read-job-logs capability was not present.'
+        : 'Job-log retrieval status: ' + evidence.jobLogStatus + '. Raw log text is never included in this report.',
+    ],
+  };
+}
+

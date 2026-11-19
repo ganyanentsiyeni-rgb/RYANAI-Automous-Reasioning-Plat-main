@@ -90,7 +90,7 @@ describe('IntelligenceEventInbox', () => {
     const candidate = { id: 'row-1', status: 'pending', attempts: 0, leaseExpiresAt: null };
     inboxDelegate.findFirst.mockResolvedValue(candidate);
     inboxDelegate.updateMany.mockResolvedValue({ count: 1 });
-    inboxDelegate.findUnique.mockResolvedValue({ ...candidate, status: 'processing', leaseOwner: 'worker-a' });
+    inboxDelegate.findUnique.mockResolvedValue({ ...candidate, status: 'processing', attempts: 1, leaseOwner: 'worker-a' });
     const claimed = await inbox.claimNext('worker-a', new Date('2026-11-18T12:00:00Z'));
     expect(claimed).toMatchObject({ status: 'processing', leaseOwner: 'worker-a' });
     expect(inboxDelegate.updateMany).toHaveBeenCalledWith(expect.objectContaining({
@@ -141,6 +141,7 @@ describe('IntelligenceEventInbox', () => {
     });
     inboxDelegate.updateMany.mockResolvedValue({ count: 1 });
     await inbox.fail('row-owner', 'worker-a', new Error('temporary'), new Date('2026-11-18T12:00:00Z'));
+    await inbox.fail('row-owner', 'worker-a', 1, new Error('temporary'), new Date('2026-11-18T12:00:00Z'));
     const update = inboxDelegate.updateMany.mock.calls[0][0] as { data: Record<string, unknown> };
     expect(update.data).not.toHaveProperty('payload');
     expect(update.data.status).toBe('retry');
@@ -163,19 +164,56 @@ describe('IntelligenceEventInbox', () => {
   it('renews a live worker lease only for its current owner', async () => {
     const now = new Date('2026-11-18T12:00:00Z');
     inboxDelegate.updateMany.mockResolvedValue({ count: 1 });
-    await expect(inbox.renewLease('row-1', 'worker-a', now)).resolves.toBe(true);
+    await expect(inbox.renewLease('row-1', 'worker-a', 1, now)).resolves.toBe(true);
     expect(inboxDelegate.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
-        id: 'row-1', status: 'processing', leaseOwner: 'worker-a',
+        id: 'row-1', status: 'processing', leaseOwner: 'worker-a', attempts: 1,
         leaseExpiresAt: { gt: now },
       }),
       data: { leaseExpiresAt: new Date(now.getTime() + 500) },
     }));
   });
 
+  it('fences a reclaimed attempt from a stale worker with the same worker id', async () => {
+    const now = new Date('2026-11-18T12:00:00Z');
+    inboxDelegate.updateMany.mockResolvedValue({ count: 0 });
+    await expect(inbox.renewLease('row-1', 'worker-a', 1, now)).resolves.toBe(false);
+    expect(inboxDelegate.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'row-1', leaseOwner: 'worker-a', attempts: 1 }),
+    }));
+
+    inboxDelegate.updateMany.mockClear();
+    await expect(inbox.acknowledge('row-1', 'worker-a', 1, now)).rejects.toBeInstanceOf(EventLeaseLostError);
+    expect(inboxDelegate.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'row-1', leaseOwner: 'worker-a', attempts: 1 }),
+    }));
+    expect(attemptDelegate.updateMany).not.toHaveBeenCalled();
+
+    inboxDelegate.findFirst.mockResolvedValue(null);
+    await expect(inbox.fail('row-1', 'worker-a', 1, new Error('late failure'), now))
+      .rejects.toBeInstanceOf(EventLeaseLostError);
+    expect(attemptDelegate.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('does not recover or close an attempt after its lease was renewed or reclaimed', async () => {
+    inboxDelegate.findMany.mockResolvedValue([{
+      id: 'row-1', attempts: 1, maxAttempts: 5, leaseOwner: 'worker-a',
+      leaseExpiresAt: new Date('2026-11-18T11:59:00Z'),
+    }]);
+    inboxDelegate.updateMany.mockResolvedValue({ count: 0 });
+    await expect(inbox.recoverExpiredLeases(new Date('2026-11-18T12:00:00Z'))).resolves.toBe(0);
+    expect(inboxDelegate.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: 'row-1', status: 'processing', attempts: 1, leaseOwner: 'worker-a',
+        leaseExpiresAt: new Date('2026-11-18T11:59:00Z'),
+      }),
+    }));
+    expect(attemptDelegate.updateMany).not.toHaveBeenCalled();
+  });
+
   it('acknowledges only a live lease owned by the worker', async () => {
     inboxDelegate.updateMany.mockResolvedValue({ count: 0 });
-    await expect(inbox.acknowledge('row-1', 'wrong-worker')).rejects.toBeInstanceOf(EventLeaseLostError);
+    await expect(inbox.acknowledge('row-1', 'wrong-worker', 1)).rejects.toBeInstanceOf(EventLeaseLostError);
     expect(attemptDelegate.updateMany).not.toHaveBeenCalled();
   });
 
@@ -184,7 +222,7 @@ describe('IntelligenceEventInbox', () => {
       id: 'row-1', attempts: 2, maxAttempts: 5, leaseExpiresAt: new Date('2026-11-18T12:01:00Z'),
     });
     inboxDelegate.updateMany.mockResolvedValue({ count: 1 });
-    const result = await inbox.fail('row-1', 'worker-a', new Error('temporary failure'), new Date('2026-11-18T12:00:00Z'));
+    const result = await inbox.fail('row-1', 'worker-a', 2, new Error('temporary failure'), new Date('2026-11-18T12:00:00Z'));
     expect(result.status).toBe('retry');
     expect(inboxDelegate.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ status: 'retry', lastError: 'temporary failure' }),
@@ -199,7 +237,7 @@ describe('IntelligenceEventInbox', () => {
       id: 'row-1', attempts: 5, maxAttempts: 5, leaseExpiresAt: new Date('2026-11-18T12:01:00Z'),
     });
     inboxDelegate.updateMany.mockResolvedValue({ count: 1 });
-    const result = await inbox.fail('row-1', 'worker-a', 'permanent failure', new Date('2026-11-18T12:00:00Z'));
+    const result = await inbox.fail('row-1', 'worker-a', 5, 'permanent failure', new Date('2026-11-18T12:00:00Z'));
     expect(result.status).toBe('dead_letter');
     expect(attemptDelegate.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ status: 'dead_letter' }),
@@ -208,8 +246,8 @@ describe('IntelligenceEventInbox', () => {
 
   it('recovers expired leases and closes their attempt records', async () => {
     inboxDelegate.findMany.mockResolvedValue([
-      { id: 'row-1', attempts: 1, maxAttempts: 5, leaseExpiresAt: new Date('2026-11-18T11:59:00Z') },
-      { id: 'row-2', attempts: 5, maxAttempts: 5, leaseExpiresAt: new Date('2026-11-18T11:58:00Z') },
+      { id: 'row-1', attempts: 1, maxAttempts: 5, leaseOwner: 'worker-a', leaseExpiresAt: new Date('2026-11-18T11:59:00Z') },
+      { id: 'row-2', attempts: 5, maxAttempts: 5, leaseOwner: 'worker-b', leaseExpiresAt: new Date('2026-11-18T11:58:00Z') },
     ]);
     inboxDelegate.updateMany.mockResolvedValue({ count: 1 });
     const recovered = await inbox.recoverExpiredLeases(new Date('2026-11-18T12:00:00Z'));
@@ -267,7 +305,7 @@ describe('IntelligenceEventInbox', () => {
     inboxDelegate.findFirst
       .mockResolvedValueOnce(candidate)
       .mockResolvedValueOnce({
-        id: 'row-failure', attempts: 1, maxAttempts: 5,
+        id: 'row-failure', attempts: 1, maxAttempts: 5, leaseOwner: 'worker-a',
         leaseExpiresAt: new Date(Date.now() + 60_000),
       });
     inboxDelegate.updateMany.mockResolvedValue({ count: 1 });

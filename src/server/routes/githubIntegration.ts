@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync, FastifyInstance } from 'fastify';
+import { extractRyanAIGitHubJobLogExcerpts } from '../engineering/ryanaiGitHubJobLogs.js';
 import { mapPullRequestReviewProvenance, type GraphQLPullRequestReviewPayload } from '../githubReviewProvenance.js';
 import { requireUser } from './auth.js';
 import {
@@ -97,6 +98,34 @@ async function refreshGitHubToken(config: GitHubAppConfig, refreshToken: string)
     throw new GitHubOAuthError('github_token_refresh_failed');
   }
   return payload as GitHubTokenResponse;
+}
+
+async function readBoundedGitHubArchive(response: Response, maxBytes: number): Promise<Uint8Array> {
+  const reader = response.body?.getReader();
+  if (!reader) throw new GitHubOAuthError('github_job_log_archive_empty');
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const item = await reader.read();
+      if (item.done) break;
+      total += item.value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new GitHubOAuthError('github_job_log_archive_size_invalid');
+      }
+      chunks.push(item.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return result;
 }
 
 async function githubApi<T>(path: string, accessToken: string): Promise<T> {
@@ -320,6 +349,10 @@ export interface ConnectedGitHubWorkflowEvidence {
     url: string | null;
     jobs: Array<{ name: string; status: string; conclusion: string | null }>;
   }>;
+    jobs: Array<{ id: number; name: string; status: string; conclusion: string | null }>;
+  }>;
+  jobLogExcerpts: Array<{ runId: number; jobName: string; excerpt: string; lineCount: number }>;
+  jobLogStatus: 'not_requested' | 'complete' | 'partial' | 'unavailable';
   complete: boolean;
 }
 
@@ -327,11 +360,13 @@ export interface ConnectedGitHubWorkflowEvidence {
  * Fetch workflow-run and job metadata for one exact commit from the repository
  * already bound to the user's encrypted GitHub OAuth connection. GET only.
  * No log archives, workflow dispatches, token refreshes, or credential writes.
+ * Log archives are fetched only when explicitly requested by the caller.
  */
 export async function inspectConnectedGitHubWorkflowEvidence(
   fastify: Pick<FastifyInstance, 'prisma'>,
   userId: string,
   requestedHeadSha: string,
+  options: { includeJobLogs?: boolean } = {},
 ): Promise<ConnectedGitHubWorkflowEvidence> {
   if (!/^[a-f0-9]{40}$/i.test(requestedHeadSha)) {
     throw new GitHubOAuthError('github_workflow_head_sha_invalid');
@@ -383,6 +418,31 @@ export async function inspectConnectedGitHubWorkflowEvidence(
     accessToken,
   );
   const rawRuns = Array.isArray(runPayload.workflow_runs) ? runPayload.workflow_runs : [];
+  const rawRuns: Array<{
+    id?: number; name?: string; head_sha?: string; status?: string;
+    conclusion?: string | null; html_url?: string;
+  }> = [];
+  let runsComplete = false;
+  for (let page = 1; page <= 3; page += 1) {
+    const runPayload = await githubApi<{
+      total_count?: number;
+      workflow_runs?: Array<{
+        id?: number; name?: string; head_sha?: string; status?: string;
+        conclusion?: string | null; html_url?: string;
+      }>;
+    }>(
+      'repos/' + GITHUB_APP_REPOSITORY + '/actions/runs?head_sha=' +
+        encodeURIComponent(requestedHeadSha) + '&per_page=50&page=' + page,
+      accessToken,
+    );
+    const pageRuns = Array.isArray(runPayload.workflow_runs) ? runPayload.workflow_runs : [];
+    rawRuns.push(...pageRuns);
+    const totalCount = typeof runPayload.total_count === 'number' ? runPayload.total_count : null;
+    if (pageRuns.length < 50 || (totalCount !== null && rawRuns.length >= totalCount)) {
+      runsComplete = true;
+      break;
+    }
+  }
   const exactRuns = rawRuns.filter((run) =>
     typeof run.id === 'number' &&
     typeof run.head_sha === 'string' &&
@@ -404,6 +464,30 @@ export async function inspectConnectedGitHubWorkflowEvidence(
         conclusion: typeof job.conclusion === 'string' ? job.conclusion : null,
       }));
     return {
+  let jobsComplete = exactRuns.length <= 50;
+  const workflowRuns: ConnectedGitHubWorkflowEvidence['workflowRuns'] = [];
+  for (const run of exactRuns.slice(0, 50)) {
+    const rawJobs: Array<{ id?: number; name?: string; status?: string; conclusion?: string | null }> = [];
+    let runJobsComplete = false;
+    for (let page = 1; page <= 3; page += 1) {
+      const jobsPayload = await githubApi<{
+        total_count?: number;
+        jobs?: Array<{ id?: number; name?: string; status?: string; conclusion?: string | null }>;
+      }>(
+        'repos/' + GITHUB_APP_REPOSITORY + '/actions/runs/' +
+          encodeURIComponent(String(run.id)) + '/jobs?per_page=100&page=' + page,
+        accessToken,
+      );
+      const pageJobs = Array.isArray(jobsPayload.jobs) ? jobsPayload.jobs : [];
+      rawJobs.push(...pageJobs);
+      const totalCount = typeof jobsPayload.total_count === 'number' ? jobsPayload.total_count : null;
+      if (pageJobs.length < 100 || (totalCount !== null && rawJobs.length >= totalCount)) {
+        runJobsComplete = true;
+        break;
+      }
+    }
+    if (!runJobsComplete) jobsComplete = false;
+    workflowRuns.push({
       id: run.id!,
       name: typeof run.name === 'string' ? run.name : 'Unnamed workflow',
       headSha: run.head_sha!,
@@ -413,6 +497,75 @@ export async function inspectConnectedGitHubWorkflowEvidence(
       jobs,
     };
   }));
+      jobs: rawJobs.slice(0, 300).map((job) => ({
+        id: typeof job.id === 'number' ? job.id : 0,
+        name: typeof job.name === 'string' ? job.name : 'Unnamed job',
+        status: typeof job.status === 'string' ? job.status : 'unknown',
+        conclusion: typeof job.conclusion === 'string' ? job.conclusion : null,
+      })),
+    });
+  }
+
+  const jobLogExcerpts: Array<{ runId: number; jobName: string; excerpt: string; lineCount: number }> = [];
+  let jobLogStatus: ConnectedGitHubWorkflowEvidence['jobLogStatus'] = options.includeJobLogs ? 'complete' : 'not_requested';
+  if (options.includeJobLogs) {
+    let attempted = 0;
+    for (const run of workflowRuns) {
+      for (const job of run.jobs) {
+        if (attempted >= 20) { jobLogStatus = 'partial'; break; }
+        if (job.status !== 'completed' || job.conclusion !== 'failure' || job.id <= 0) continue;
+        attempted += 1;
+        try {
+          const logResponse = await fetch(
+            'https://api.github.com/repos/' + GITHUB_APP_REPOSITORY + '/actions/jobs/' + job.id + '/logs',
+            {
+              headers: {
+                Accept: 'application/vnd.github+json',
+                Authorization: 'Bearer ' + accessToken,
+                'X-GitHub-Api-Version': GITHUB_API_VERSION,
+              },
+              redirect: 'manual',
+              signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+            },
+          );
+          if (![301, 302, 303, 307, 308].includes(logResponse.status)) {
+            jobLogStatus = 'partial';
+            continue;
+          }
+          const location = logResponse.headers.get('location');
+          if (!location) { jobLogStatus = 'partial'; continue; }
+          let archiveUrl: URL;
+          try { archiveUrl = new URL(location); } catch { jobLogStatus = 'partial'; continue; }
+          if (archiveUrl.protocol !== 'https:' ||
+              !/^productionresultssa[0-9]+\.blob\.core\.windows\.net$/i.test(archiveUrl.hostname) ||
+              archiveUrl.username || archiveUrl.password) {
+            jobLogStatus = 'partial';
+            continue;
+          }
+          const archiveResponse = await fetch(archiveUrl, {
+            method: 'GET',
+            redirect: 'manual',
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          });
+          if (!archiveResponse.ok || archiveResponse.status >= 300) {
+            jobLogStatus = 'partial';
+            continue;
+          }
+          const declaredLength = Number(archiveResponse.headers.get('content-length') ?? 0);
+          if (declaredLength > 2 * 1024 * 1024) { jobLogStatus = 'partial'; continue; }
+          const archive = await readBoundedGitHubArchive(archiveResponse, 2 * 1024 * 1024);
+          const excerpts = extractRyanAIGitHubJobLogExcerpts(archive);
+          for (const excerpt of excerpts) {
+            jobLogExcerpts.push({ runId: run.id, ...excerpt });
+          }
+        } catch {
+          jobLogStatus = 'partial';
+        }
+      }
+      if (attempted >= 20) break;
+    }
+    if (jobLogStatus === 'complete' && attempted === 0) jobLogStatus = 'complete';
+  }
 
   return {
     repositoryFullName: GITHUB_APP_REPOSITORY,
@@ -422,6 +575,9 @@ export async function inspectConnectedGitHubWorkflowEvidence(
     inspectedAt: new Date().toISOString(),
     workflowRuns,
     complete: rawRuns.length < 50 && exactRuns.length === rawRuns.length,
+    jobLogExcerpts,
+    jobLogStatus,
+    complete: runsComplete && jobsComplete && exactRuns.length === rawRuns.length,
   };
 }
 

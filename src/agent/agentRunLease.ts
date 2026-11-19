@@ -46,3 +46,18 @@ export function startAgentRunLeaseHeartbeat(
     clearInterval(timer);
   };
 }
+
+/** Re-read the durable lease before a side-effect boundary; cancellation and stale ownership both fail closed. */
+export async function assertAgentRunLeaseActive(
+  lease: AgentRunLease,
+  isActive: (where: ReturnType<typeof agentRunLeaseFilter> & { cancelRequestedAt: null }) => Promise<boolean>,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (signal?.aborted) {
+    throw signal.reason instanceof Error ? signal.reason : new Error('Agent run cancelled or worker lease lost.');
+  }
+  const active = await isActive({ ...agentRunLeaseFilter(lease), cancelRequestedAt: null });
+  if (!active || signal?.aborted) {
+    throw signal?.reason instanceof Error ? signal.reason : new Error('Agent run cancelled or worker lease ownership was lost.');
+  }
+}

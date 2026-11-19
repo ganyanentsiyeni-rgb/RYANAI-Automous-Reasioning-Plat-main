@@ -9,6 +9,11 @@ import { prisma } from '../src/lib/prisma.js';
 import { inspectConnectedGitHubWorkflowEvidence } from '../src/server/routes/githubIntegration.js';
 import { generateRepositoryInventory } from './repository-inventory.mjs';
 
+import { createRyanAICiDiagnosticsTaskHandler } from '../src/server/engineering/ryanaiCiDiagnosticsTask.js';
+import { generateRepositoryInventory } from './repository-inventory.mjs';
+import { prisma } from '../src/lib/prisma.js';
+import { inspectConnectedGitHubWorkflowEvidence } from '../src/server/routes/githubIntegration.js';
+
 const profileId = process.env.RYANAI_STUDIO_WORKER_PROFILE_ID?.trim() || 'coordinator';
 const workerId = process.env.RYANAI_STUDIO_WORKER_ID?.trim();
 
@@ -84,6 +89,13 @@ const unregisterHandlers = profileId === 'repository-auditor'
 // The Repository Auditor uses the existing static inventory. It never executes
 // discovered scripts, reads environment values, or treats inventory as test evidence.
 const unregisterRepositoryHandlers = profileId === 'repository-auditor'
+const runCiDiagnosticsTask = createRyanAICiDiagnosticsTaskHandler(
+  (ownerUserId, headSha, options) => inspectConnectedGitHubWorkflowEvidence({ prisma }, ownerUserId, headSha, options),
+);
+
+// Handlers are registered only for the selected specialist profile. Both
+// adapters are read-only and require their declared capability at admission.
+const unregisterHandlers = profileId === 'repository-auditor'
   ? [
       registerStudioTaskHandler('repository-audit', runRepositoryInventoryTask),
       registerStudioTaskHandler('inventory', runRepositoryInventoryTask),
@@ -104,6 +116,10 @@ if (!handlerReadiness.ready) {
 const handlerReadiness = getStudioWorkerHandlerReadiness(profileId);
 if (!handlerReadiness.ready) {
   for (const unregister of unregisterRepositoryHandlers) unregister();
+
+const handlerReadiness = getStudioWorkerHandlerReadiness(profileId);
+if (!handlerReadiness.ready) {
+  for (const unregister of unregisterHandlers) unregister();
   throw new Error(
     `RyanAI Studio worker ${profileId} cannot start: ${handlerReadiness.reason} Supported task types: ${handlerReadiness.supportedTaskTypes.join(', ')}.`,
   );
