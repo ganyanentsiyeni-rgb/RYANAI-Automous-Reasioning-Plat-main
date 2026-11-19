@@ -267,6 +267,7 @@ async function processAgentRun(
         cancellation.abort(error instanceof Error ? error : new Error(String(error)));
       }
     },
+    5_000,
   );
   try {
     await recordRunEvidence({ runId: run.id, eventType: run.attempts > 1 ? 'execution.recovered' : 'execution.started', payload: { workerId: run.worker_id, attempt: run.attempts, approvalStatus: run.approval_status, planHash: run.approved_plan_hash, baseCommitSha: run.approved_commit_sha, proposedDiffHash: run.approved_diff_hash } });
