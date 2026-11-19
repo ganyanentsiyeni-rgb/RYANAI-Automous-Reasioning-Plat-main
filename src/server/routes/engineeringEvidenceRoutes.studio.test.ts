@@ -55,20 +55,9 @@ describe('RyanAI Studio overview API', () => {
     }]);
     mocks.createStudioProject.mockResolvedValue({ project: { id: 'native-project-1', title: 'Build Studio', status: 'planned' }, tasks: [{ id: 'native-task-1', taskType: 'engineering' }] });
     mocks.listStudioProjects.mockResolvedValue([{ id: 'native-project-1', ownerUserId: 'owner-1', tasks: [{ id: 'native-task-1', status: 'queued' }], artifacts: [] }]);
-    mocks.listStudioWorkerHealth.mockResolvedValue({ state: 'unknown', source: 'studio_worker_heartbeats', staleAfterMs: 30000, workers: [], note: 'Persisted Studio worker heartbeat health.' });
     mocks.getStudioDeliveryReadiness.mockResolvedValue({ projectId: 'native-project-1', state: 'in_progress', humanReviewRequired: true });
     mocks.cancelStudioTask.mockResolvedValue({ cancelled: true, alreadyCancelled: false, status: 'cancelled' });
     mocks.listStudioWorkerHealth.mockResolvedValue({ state: 'unknown', source: 'studio_worker_heartbeats', observedAt: new Date().toISOString(), staleAfterMs: 30000, workers: [], note: 'Persisted heartbeat evidence only.' });
-    mocks.workerStatus.mockReturnValue({
-      state: 'running',
-      queueClaimState: 'ready',
-      lastClaimAttemptAt: new Date().toISOString(),
-      lastSuccessfulClaimAt: new Date().toISOString(),
-      lastClaimErrorCode: null,
-      lastClaimedTask: { runId: 'run-claimed', trigger: 'notification', claimedAt: new Date().toISOString() },
-      lastProcessedTask: { runId: 'run-processed', trigger: 'notification', startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), status: 'completed' },
-      listener: { state: 'listening', connected: true, subscribed: true, lastConnectedAt: new Date(), lastErrorCode: null },
-    });
     app = Fastify();
     app.decorateRequest('authUser', null);
     await app.register(engineeringEvidenceRoutes);
