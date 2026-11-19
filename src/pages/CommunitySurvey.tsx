@@ -43,6 +43,7 @@ export default function CommunitySurveyPage() {
     betaInterest: '',
     feedback: '',
   });
+  const [privacyConsent, setPrivacyConsent] = useState(false);
   const [status, setStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [error, setError] = useState('');
   const [betaName, setBetaName] = useState('');
@@ -53,8 +54,9 @@ export default function CommunitySurveyPage() {
   const [notificationStatus, setNotificationStatus] = useState<'accepted' | 'not_configured' | 'failed' | 'unknown'>('unknown');
 
   const requiredProgressKeys = ['role', 'aiExperience', 'discovery', 'currentUse', 'usefulness', 'topPriority', 'biggestBarrier', 'trustPriority', 'accessPreference', 'betaInterest'] as const;
-  const completedRequiredAnswers = requiredProgressKeys.filter((key) => answers[key].trim().length > 0).length;
-  const progressPercent = Math.round((completedRequiredAnswers / requiredProgressKeys.length) * 100);
+  const completedRequiredAnswers = requiredProgressKeys.filter((key) => answers[key].trim().length > 0).length + (privacyConsent ? 1 : 0);
+  const totalRequiredAnswers = requiredProgressKeys.length + 1;
+  const progressPercent = Math.round((completedRequiredAnswers / totalRequiredAnswers) * 100);
 
   const update = (key: string, value: string | boolean | string[]) => setAnswers((current) => ({ ...current, [key]: value }));
   const toggle = (key: 'features' | 'useCases', value: string) => {
@@ -64,6 +66,11 @@ export default function CommunitySurveyPage() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!privacyConsent) {
+      setStatus('error');
+      setError('Please review the privacy notice and confirm consent before submitting.');
+      return;
+    }
     setStatus('sending');
     setError('');
     try {
@@ -159,8 +166,8 @@ export default function CommunitySurveyPage() {
         </header>
 
         <div className="mt-6 rounded-2xl border border-cyan-200/15 bg-slate-900/70 p-4" aria-label="Survey completion progress">
-          <div className="flex items-center justify-between gap-3 text-xs"><span className="font-semibold text-slate-200">Your progress</span><span className="tabular-nums text-cyan-200">{completedRequiredAnswers} of {requiredProgressKeys.length} required answers · {progressPercent}%</span></div>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10" role="progressbar" aria-label="Required survey answers completed" aria-valuemin={0} aria-valuemax={requiredProgressKeys.length} aria-valuenow={completedRequiredAnswers}><div className="h-full rounded-full bg-cyan-300 transition-[width]" style={{ width: progressPercent + '%' }} /></div>
+          <div className="flex items-center justify-between gap-3 text-xs"><span className="font-semibold text-slate-200">Your progress</span><span className="tabular-nums text-cyan-200">{completedRequiredAnswers} of {totalRequiredAnswers} required answers · {progressPercent}%</span></div>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10" role="progressbar" aria-label="Required survey answers completed" aria-valuemin={0} aria-valuemax={totalRequiredAnswers} aria-valuenow={completedRequiredAnswers}><div className="h-full rounded-full bg-cyan-300 transition-[width]" style={{ width: progressPercent + '%' }} /></div>
           <p className="mt-2 text-xs text-slate-500">You can review your answers before submitting. Written feedback is optional.</p>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-3 text-sm"><a href="#/help" className="font-semibold text-cyan-200 underline-offset-4 hover:underline">Visit the RyanAI Help Centre and FAQ</a></div>
@@ -237,6 +244,10 @@ export default function CommunitySurveyPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200">04 / Anonymous submission</p>
             <h2 className="mt-2 text-xl font-bold text-white">Your feedback stays separate</h2>
             <p className="mt-2 text-sm leading-6 text-slate-400">This survey does not ask for your name, email address or RyanAI account identity. If you want to volunteer for Beta testing, a separate optional registration form will appear after you submit.</p>
+            <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-cyan-200/15 bg-cyan-200/[0.04] p-4 text-sm leading-6 text-slate-200">
+              <input type="checkbox" className="mt-1 accent-cyan-300" checked={privacyConsent} onChange={(event) => setPrivacyConsent(event.target.checked)} required aria-describedby="survey-consent-description" />
+              <span id="survey-consent-description">I have read the <a href="/privacy/" target="_blank" rel="noreferrer" className="font-semibold text-cyan-200 underline">Privacy Policy</a> and understand how my survey feedback is intended to be used. I agree to submit these answers. This consent does not sign me up for Beta contact or marketing.</span>
+            </label>
           </section>
 
           {status === 'error' && <p role="alert" className="rounded-xl border border-rose-300/20 bg-rose-300/10 p-4 text-sm text-rose-200">{error}</p>}
