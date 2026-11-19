@@ -83,6 +83,33 @@ export async function createStudioProject(input: CreateStudioProjectInput) {
   });
 }
 
+export async function listStudioWorkerHealth() {
+  const heartbeats = await prisma.studioWorkerHeartbeat.findMany({
+    orderBy: { lastSeenAt: 'desc' },
+    take: 100,
+    select: { workerId: true, status: true, startedAt: true, lastSeenAt: true, stoppedAt: true, metadata: true },
+  });
+  const now = Date.now();
+  const workers = heartbeats.map((worker) => {
+    const stale = worker.status !== 'stopped' && now - worker.lastSeenAt.getTime() > 30_000;
+    return {
+      ...worker,
+      liveness: worker.status === 'stopped' ? 'stopped' : stale ? 'stale' : worker.status,
+    };
+  });
+  const hasIssue = workers.some((worker) => worker.liveness === 'degraded' || worker.liveness === 'stale');
+  const hasHealthy = workers.some((worker) => worker.liveness === 'healthy');
+  const hasStarting = workers.some((worker) => worker.liveness === 'starting');
+  const state = hasIssue ? 'degraded' : hasHealthy ? 'running' : hasStarting ? 'starting' : workers.length ? 'stopped' : 'unknown';
+  return {
+    state,
+    source: 'studio_worker_heartbeats',
+    staleAfterMs: 30_000,
+    workers,
+    note: 'This reports persisted Studio worker heartbeats, not deployment or provider readiness.',
+  };
+}
+
 export async function listStudioProjects(ownerUserId: string) {
   return prisma.studioProject.findMany({
     where: { ownerUserId }, orderBy: { updatedAt: 'desc' }, take: 50,
