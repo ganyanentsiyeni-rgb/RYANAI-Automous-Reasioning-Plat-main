@@ -102,4 +102,36 @@ describe("RyanAI GitHub Event Streams worker", () => {
     }));
   });
 
+  it("cleans up earlier subscriptions when a later subscription fails", async () => {
+    const stopFirst = vi.fn(async () => undefined);
+    const subscribe = vi.fn()
+      .mockResolvedValueOnce(stopFirst)
+      .mockRejectedValueOnce(new Error("provider subscription failed"));
+    const worker = createRyanAiGitHubEventWorker(
+      [
+        { subscriptionId: "one", repository: "owner/repo", eventTypes: ["push"] },
+        { subscriptionId: "two", repository: "owner/repo", eventTypes: ["check_run"] },
+      ],
+      async () => undefined,
+    );
+
+    await expect(worker.start({ subscribe })).rejects.toThrow("provider subscription failed");
+    expect(stopFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it("makes shutdown idempotent", async () => {
+    const stop = vi.fn(async () => undefined);
+    const worker = createRyanAiGitHubEventWorker(
+      [{ subscriptionId: "one", repository: "owner/repo", eventTypes: ["push"] }],
+      async () => undefined,
+    );
+    const shutdown = await worker.start({
+      subscribe: async () => stop,
+    });
+
+    await shutdown();
+    await shutdown();
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
 });
