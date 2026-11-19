@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   bindRyanAiGitHubEventToOwner,
   createRyanAiGitHubOwnerBinding,
+  resolveRyanAiGitHubOwnerBinding,
 } from "./githubEventOwnerBinding";
 
 const connection = {
