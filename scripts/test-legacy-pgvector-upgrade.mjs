@@ -58,17 +58,45 @@ try {
     );
     console.log(`Prepared disposable legacy pgvector schema (${legacySessionColumn} session column) and preservation fixtures.`);
   } else {
-    const [extension, cache, memory, indexes] = await Promise.all([
+    const [extension, cache, memory, indexes, checkpointSchemaResult] = await Promise.all([
       pool.query("SELECT 1 FROM pg_extension WHERE extname = 'vector'"),
       pool.query("SELECT response FROM public.reasoning_cache WHERE prompt = $1", ['legacy-upgrade-fixture']),
       pool.query("SELECT content FROM public.agent_memory WHERE session_id = $1", ['legacy-upgrade-fixture']),
       pool.query("SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND indexname IN ('idx_reasoning_embedding', 'idx_agent_session')"),
+      pool.query(`
+        SELECT
+          to_regclass('public.checkpoint_writes')::text AS table_name,
+          (
+            SELECT array_agg(a.attname::text ORDER BY key_column.ordinality)
+            FROM pg_constraint c
+            CROSS JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS key_column(attnum, ordinality)
+            JOIN pg_attribute a
+              ON a.attrelid = c.conrelid
+             AND a.attnum = key_column.attnum
+            WHERE c.conrelid = to_regclass('public.checkpoint_writes')
+              AND c.contype = 'p'
+          ) AS primary_key_columns,
+          (
+            SELECT is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'checkpoint_writes'
+              AND column_name = 'channel'
+          ) AS channel_nullable
+      `),
     ]);
     assert.equal(extension.rowCount, 1, 'pgvector extension missing after migration');
     assert.equal(cache.rows[0]?.response, 'preserve-reasoning-cache-row', 'Legacy reasoning_cache data was not preserved');
     assert.equal(memory.rows[0]?.content, 'preserve-agent-memory-row', 'Legacy agent_memory data was not preserved');
     assert.deepEqual(new Set(indexes.rows.map((row) => row.indexname)), new Set(['idx_reasoning_embedding', 'idx_agent_session']));
-    console.log('Verified legacy pgvector extension, both tables, both indexes, and preserved fixture rows.');
+    const checkpointSchema = checkpointSchemaResult.rows[0];
+    const expectedCheckpointPrimaryKey = ['thread_id', 'checkpoint_ns', 'checkpoint_id', 'task_id', 'idx', 'channel'];
+    assert.ok(checkpointSchema.table_name, 'public.checkpoint_writes is missing after Prisma migrations');
+    assert.deepEqual(checkpointSchema.primary_key_columns, expectedCheckpointPrimaryKey,
+      'checkpoint_writes primary key does not match the six-column LangGraph contract');
+    assert.equal(checkpointSchema.channel_nullable, 'NO',
+      'checkpoint_writes.channel must be NOT NULL for the six-column primary key');
+    console.log('Verified legacy pgvector preservation and the exact six-column checkpoint_writes primary key.');
   }
 } finally {
   await pool.end();
