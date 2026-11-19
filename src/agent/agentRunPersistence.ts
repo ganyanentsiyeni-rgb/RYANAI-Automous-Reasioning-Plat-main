@@ -3,6 +3,7 @@ import type { ExecutionPlan } from './executionPlanner.js';
 import { appendRunEvidence } from './engineeringEvidence.js';
 import type { Prisma } from '@prisma/client';
 import type { BrainOutput } from './operationsCore.js';
+import { assertPACompletionCapabilityReceipts, type PACapabilityReceipt } from './paCapabilityCompletion.js';
 
 interface PersistableAgentRun {
   id: string;
@@ -25,9 +26,11 @@ export async function persistAgentRunCompletion(
   tx: Prisma.TransactionClient,
   run: PersistableAgentRun,
   handoffs: PersistableHandoff[],
-  plan: { outputs: BrainOutput[]; synthesis: string; degraded: boolean; verification?: { verified: boolean; reason: string | null } },
+  plan: { outputs: BrainOutput[]; synthesis: string; degraded: boolean; verification?: { verified: boolean; reason: string | null }; capabilityReceipts?: PACapabilityReceipt[] },
   executionPlan: ExecutionPlan,
 ): Promise<void> {
+  // A PA delegation is complete only when every approved capability has a passed, evidence-backed handler receipt.
+  assertPACompletionCapabilityReceipts(run.execution_scope, plan.capabilityReceipts ?? []);
   const outputByBrain = new Map(plan.outputs.map((item) => [item.brain, item]));
   for (const row of handoffs) {
     const output = row.toAgent === 'primary'
