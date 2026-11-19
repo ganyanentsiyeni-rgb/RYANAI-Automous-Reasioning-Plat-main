@@ -64,6 +64,7 @@ export function createRyanAIStudioWorkerRuntime(
   let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
   const inFlight = new Set<Promise<void>>();
   let startupPromise: Promise<void> | null = null;
+  let heartbeatWrite: Promise<void> = Promise.resolve();
 
   const track = (operation: Promise<void>) => {
     inFlight.add(operation);
@@ -108,9 +109,15 @@ export function createRyanAIStudioWorkerRuntime(
   });
 
   const persistHeartbeat = async (nextStatus: RyanAIStudioWorkerStatus) => {
-    await heartbeat(workerId, nextStatus, metadata());
-    lastHeartbeatAt = new Date().toISOString();
-    status = nextStatus;
+    // Serialize status writes so a slower healthy heartbeat cannot overwrite
+    // a newer degraded/stopped transition in the shared durable record.
+    const write = heartbeatWrite.then(async () => {
+      await heartbeat(workerId, nextStatus, metadata());
+      lastHeartbeatAt = new Date().toISOString();
+      status = nextStatus;
+    });
+    heartbeatWrite = write.catch(() => undefined);
+    await write;
   };
 
   const poll = async () => {
@@ -119,7 +126,6 @@ export function createRyanAIStudioWorkerRuntime(
       const result = await executeOnce(workerId, profile.id, leaseSeconds);
       lastExecutionAt = new Date().toISOString();
       lastExecutionState = result.state;
-      lastError = result.error ?? null;
       lastError = null;
       if (status !== 'healthy') await persistHeartbeat('healthy');
     } catch (error) {
