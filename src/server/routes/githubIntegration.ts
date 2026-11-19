@@ -305,6 +305,126 @@ export async function inspectConnectedGitHubRepository(
   };
 }
 
+export interface ConnectedGitHubWorkflowEvidence {
+  repositoryFullName: string;
+  requestedHeadSha: string;
+  verifiedHeadSha: string;
+  source: 'github-oauth-read-only';
+  inspectedAt: string;
+  workflowRuns: Array<{
+    id: number;
+    name: string;
+    headSha: string;
+    status: string;
+    conclusion: string | null;
+    url: string | null;
+    jobs: Array<{ name: string; status: string; conclusion: string | null }>;
+  }>;
+  complete: boolean;
+}
+
+/**
+ * Fetch workflow-run and job metadata for one exact commit from the repository
+ * already bound to the user's encrypted GitHub OAuth connection. GET only.
+ * No log archives, workflow dispatches, token refreshes, or credential writes.
+ */
+export async function inspectConnectedGitHubWorkflowEvidence(
+  fastify: Pick<FastifyInstance, 'prisma'>,
+  userId: string,
+  requestedHeadSha: string,
+): Promise<ConnectedGitHubWorkflowEvidence> {
+  if (!/^[a-f0-9]{40}$/i.test(requestedHeadSha)) {
+    throw new GitHubOAuthError('github_workflow_head_sha_invalid');
+  }
+  const config = readGitHubAppConfig();
+  if (!config) throw new GitHubOAuthError('github_app_not_configured');
+  const connection = await fastify.prisma.gitHubAppConnection.findUnique({ where: { userId } });
+  if (!connection || connection.repositoryFullName !== GITHUB_APP_REPOSITORY) {
+    throw new GitHubOAuthError('github_owner_connection_missing_or_wrong_repository');
+  }
+  if (connection.accessTokenExpiresAt &&
+      connection.accessTokenExpiresAt.getTime() <= Date.now() + REFRESH_SKEW_MS) {
+    throw new GitHubOAuthError('github_owner_reauthorization_required');
+  }
+  let accessToken: string;
+  try {
+    accessToken = decryptGitHubSecret(connection.encryptedAccessToken, config.encryptionKey);
+  } catch {
+    throw new GitHubOAuthError('github_owner_reauthorization_required');
+  }
+
+  const [account, repository, commit] = await Promise.all([
+    githubApi<GitHubUser>('user', accessToken),
+    githubApi<GitHubRepository>('repos/' + GITHUB_APP_REPOSITORY, accessToken),
+    githubApi<{ sha?: string }>(
+      'repos/' + GITHUB_APP_REPOSITORY + '/commits/' + encodeURIComponent(requestedHeadSha),
+      accessToken,
+    ),
+  ]);
+  if (
+    String(account.id ?? '') !== connection.githubUserId ||
+    String(repository.id ?? '') !== connection.repositoryId ||
+    repository.full_name !== GITHUB_APP_REPOSITORY ||
+    repository.permissions?.pull !== true
+  ) throw new GitHubOAuthError('github_owner_or_repository_verification_failed');
+  if (typeof commit.sha !== 'string' || commit.sha.toLowerCase() !== requestedHeadSha.toLowerCase()) {
+    throw new GitHubOAuthError('github_workflow_commit_sha_mismatch');
+  }
+
+  const runPayload = await githubApi<{
+    total_count?: number;
+    workflow_runs?: Array<{
+      id?: number; name?: string; head_sha?: string; status?: string;
+      conclusion?: string | null; html_url?: string;
+    }>;
+  }>(
+    'repos/' + GITHUB_APP_REPOSITORY + '/actions/runs?head_sha=' +
+      encodeURIComponent(requestedHeadSha) + '&per_page=50',
+    accessToken,
+  );
+  const rawRuns = Array.isArray(runPayload.workflow_runs) ? runPayload.workflow_runs : [];
+  const exactRuns = rawRuns.filter((run) =>
+    typeof run.id === 'number' &&
+    typeof run.head_sha === 'string' &&
+    run.head_sha.toLowerCase() === requestedHeadSha.toLowerCase(),
+  );
+  const workflowRuns = await Promise.all(exactRuns.map(async (run) => {
+    const jobsPayload = await githubApi<{
+      total_count?: number;
+      jobs?: Array<{ name?: string; status?: string; conclusion?: string | null }>;
+    }>(
+      'repos/' + GITHUB_APP_REPOSITORY + '/actions/runs/' +
+        encodeURIComponent(String(run.id)) + '/jobs?per_page=100',
+      accessToken,
+    );
+    const jobs = (Array.isArray(jobsPayload.jobs) ? jobsPayload.jobs : []).slice(0, 100)
+      .map((job) => ({
+        name: typeof job.name === 'string' ? job.name : 'Unnamed job',
+        status: typeof job.status === 'string' ? job.status : 'unknown',
+        conclusion: typeof job.conclusion === 'string' ? job.conclusion : null,
+      }));
+    return {
+      id: run.id!,
+      name: typeof run.name === 'string' ? run.name : 'Unnamed workflow',
+      headSha: run.head_sha!,
+      status: typeof run.status === 'string' ? run.status : 'unknown',
+      conclusion: typeof run.conclusion === 'string' ? run.conclusion : null,
+      url: typeof run.html_url === 'string' ? run.html_url : null,
+      jobs,
+    };
+  }));
+
+  return {
+    repositoryFullName: GITHUB_APP_REPOSITORY,
+    requestedHeadSha: requestedHeadSha.toLowerCase(),
+    verifiedHeadSha: commit.sha.toLowerCase(),
+    source: 'github-oauth-read-only',
+    inspectedAt: new Date().toISOString(),
+    workflowRuns,
+    complete: rawRuns.length < 50 && exactRuns.length === rawRuns.length,
+  };
+}
+
 export const githubIntegrationRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/api/github/status', { preHandler: requireUser }, async (request, reply) => {
     const userId = request.authUser?.id;
