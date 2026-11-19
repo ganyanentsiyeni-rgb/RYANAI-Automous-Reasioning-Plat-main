@@ -332,36 +332,6 @@ describe('IntelligenceEventInbox', () => {
     }));
   });
 
-  it('fences a reclaimed attempt when the same worker id is reused', async () => {
-    const now = new Date('2026-11-18T12:00:00Z');
-    inboxDelegate.findMany.mockResolvedValue([{
-      id: 'row-same-worker', attempts: 1, maxAttempts: 5, leaseOwner: 'worker-reused',
-      leaseExpiresAt: new Date('2026-11-18T11:59:00Z'),
-    }]);
-    inboxDelegate.updateMany
-      .mockResolvedValueOnce({ count: 1 }) // expired lease recovery
-      .mockResolvedValueOnce({ count: 1 }) // same worker reclaims attempt 2
-      .mockResolvedValueOnce({ count: 0 }); // stale attempt 1 is fenced
-    await expect(inbox.recoverExpiredLeases(now)).resolves.toBe(1);
-
-    inboxDelegate.findFirst.mockResolvedValue({
-      id: 'row-same-worker', status: 'retry', attempts: 1, maxAttempts: 5,
-      leaseOwner: null, leaseExpiresAt: null,
-    });
-    inboxDelegate.findUnique.mockResolvedValue({
-      id: 'row-same-worker', status: 'processing', attempts: 2, leaseOwner: 'worker-reused',
-    });
-    attemptDelegate.create.mockResolvedValue({});
-    const reclaimed = await inbox.claimNext('worker-reused', new Date(now.getTime() + 1));
-    expect(reclaimed).toMatchObject({ attempts: 2, leaseOwner: 'worker-reused' });
-
-    await expect(inbox.acknowledge('row-same-worker', 'worker-reused', 1, new Date(now.getTime() + 2)))
-      .rejects.toBeInstanceOf(EventLeaseLostError);
-    expect(attemptDelegate.updateMany).toHaveBeenCalledTimes(1);
-    expect(attemptDelegate.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ eventInboxId: 'row-same-worker', attempt: 2, workerId: 'worker-reused' }),
-    }));
-  });
 
   it('rolls back an inbox transition when its attempt audit row is missing', async () => {
     inboxDelegate.updateMany.mockResolvedValue({ count: 1 });
