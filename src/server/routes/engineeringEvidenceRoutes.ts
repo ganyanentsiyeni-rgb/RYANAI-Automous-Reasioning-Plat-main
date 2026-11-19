@@ -75,7 +75,7 @@ export const engineeringEvidenceRoutes: FastifyPluginAsync = async (fastify) => 
 
 
 
-  // Studio-native project lifecycle; separate from legacy AgentRun/Jarvis intake.
+  // Studio-native project lifecycle; owned by the RyanAI task kernel.
   fastify.get('/api/engineering/studio/native/projects', async (request) => ({
     projects: await listStudioProjects(request.authUser!.id),
     runtime: getStudioNativeRuntimeDescriptor(),
