@@ -83,20 +83,21 @@ export async function createStudioProject(input: CreateStudioProjectInput) {
   });
 }
 
+export function classifyStudioWorkerLiveness(status: string, lastSeenAt: Date, now = Date.now()): string {
+  if (status === 'stopped') return 'stopped';
+  return now - lastSeenAt.getTime() > 30_000 ? 'stale' : status;
+}
+
 export async function listStudioWorkerHealth() {
   const heartbeats = await prisma.studioWorkerHeartbeat.findMany({
     orderBy: { lastSeenAt: 'desc' },
     take: 100,
     select: { workerId: true, status: true, startedAt: true, lastSeenAt: true, stoppedAt: true, metadata: true },
   });
-  const now = Date.now();
-  const workers = heartbeats.map((worker) => {
-    const stale = worker.status !== 'stopped' && now - worker.lastSeenAt.getTime() > 30_000;
-    return {
-      ...worker,
-      liveness: worker.status === 'stopped' ? 'stopped' : stale ? 'stale' : worker.status,
-    };
-  });
+  const workers = heartbeats.map((worker) => ({
+    ...worker,
+    liveness: classifyStudioWorkerLiveness(worker.status, worker.lastSeenAt),
+  }));
   const hasIssue = workers.some((worker) => worker.liveness === 'degraded' || worker.liveness === 'stale');
   const hasHealthy = workers.some((worker) => worker.liveness === 'healthy');
   const hasStarting = workers.some((worker) => worker.liveness === 'starting');
