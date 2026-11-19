@@ -3,7 +3,7 @@ import {
   getStudioWorkerHandlerReadiness,
   registerStudioTaskHandler,
 } from '../src/server/engineering/studioNativeCore.js';
-import { analyzeRyanAICiEvidence, createRyanAICiProviderBlockedReport } from '../src/server/engineering/ryanaiCiDiagnostics.js';
+import { createRyanAICiDiagnosticsTaskHandler } from '../src/server/engineering/ryanaiCiDiagnosticsWorker.js';
 import { generateRepositoryInventory } from './repository-inventory.mjs';
 import { prisma } from '../src/lib/prisma.js';
 import { inspectConnectedGitHubWorkflowEvidence } from '../src/server/routes/githubIntegration.js';
@@ -26,66 +26,14 @@ const runRepositoryInventoryTask = async ({ task }: {
   };
 };
 
-const runCiDiagnosticsTask = async ({ task }: {
-  task: { input: unknown; requiredCapabilities: string[]; ownerUserId: string };
-}) => {
-  if (!task.requiredCapabilities.includes('read-workflow-runs')) {
-    throw new Error('CI diagnostics requires the explicit read-workflow-runs capability.');
-  }
-  const input = task.input !== null && typeof task.input === 'object' && !Array.isArray(task.input)
-    ? task.input as Record<string, unknown>
-    : {};
-  const requestedHeadSha = typeof input.headSha === 'string' ? input.headSha : '';
-
-  try {
-    const evidence = await inspectConnectedGitHubWorkflowEvidence(
-      { prisma },
-      task.ownerUserId,
-      requestedHeadSha,
-      { includeJobLogs: task.requiredCapabilities.includes('read-job-logs') },
-    );
-    const report = analyzeRyanAICiEvidence({
-      headSha: evidence.verifiedHeadSha,
-      workflowRuns: evidence.workflowRuns.map((run) => ({
-        id: run.id,
-        name: run.name,
-        headSha: run.headSha,
-        status: run.status,
-        conclusion: run.conclusion,
-        url: run.url,
-      })),
-      jobLogs: evidence.jobLogExcerpts,
-    }, task.requiredCapabilities);
-
-    return {
-      ...report,
-      source: evidence.source,
-      repositoryFullName: evidence.repositoryFullName,
-      requestedHeadSha: evidence.requestedHeadSha,
-      verifiedHeadSha: evidence.verifiedHeadSha,
-      inspectedAt: evidence.inspectedAt,
-      snapshotComplete: evidence.complete,
-      liveProviderFetchPerformed: true,
-      jobs: evidence.workflowRuns.map((run) => ({
-        runId: run.id,
-        workflow: run.name,
-        jobs: run.jobs,
-      })),
-      notes: [
-        ...report.notes,
-        'Workflow run and job metadata were fetched read-only from the owner-bound GitHub connection.',
-        evidence.jobLogStatus === 'not_requested'
-          ? 'Job logs were not requested; the read-job-logs capability was not present.'
-          : 'Job-log retrieval status: ' + evidence.jobLogStatus + '. Raw log text is never included in this report.',
-      ],
-    };
-  } catch (error) {
-    return createRyanAICiProviderBlockedReport(
-      /^[a-f0-9]{40}$/i.test(requestedHeadSha) ? requestedHeadSha.toLowerCase() : null,
-      error,
-    );
-  }
-};
+const runCiDiagnosticsTask = createRyanAICiDiagnosticsTaskHandler(
+  (ownerUserId, headSha, options) => inspectConnectedGitHubWorkflowEvidence(
+    { prisma },
+    ownerUserId,
+    headSha,
+    options,
+  ),
+);
 
 // Handlers are registered only for the selected specialist profile. Both
 // adapters are read-only and require their declared capability at admission.

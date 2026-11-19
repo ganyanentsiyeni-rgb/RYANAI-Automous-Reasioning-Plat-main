@@ -19,6 +19,7 @@ vi.mock('../../lib/prisma.js', () => ({
 }));
 
 import { recoverExpiredStudioLeases, registerStudioTaskHandler, runStudioWorkerOnce } from './studioNativeCore.js';
+import { createRyanAICiDiagnosticsTaskHandler } from './ryanaiCiDiagnosticsWorker.js';
 
 const task = (overrides: Record<string, unknown> = {}) => ({
   id: 'task-1',
@@ -171,6 +172,118 @@ describe('Studio worker queue lifecycle', () => {
       expect(mocks.eventCreate).not.toHaveBeenCalledWith(expect.objectContaining({
         data: expect.objectContaining({ eventType: 'task.completed' }),
       }));
+    } finally {
+      unregister();
+    }
+  });
+
+
+
+  it('executes owner-bound exact-SHA CI diagnostics and persists sanitized report output end to end', async () => {
+    const headSha = 'a'.repeat(40);
+    const inspect = vi.fn().mockResolvedValue({
+      repositoryFullName: 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main',
+      requestedHeadSha: headSha,
+      verifiedHeadSha: headSha,
+      source: 'github-oauth-read-only',
+      inspectedAt: '2026-11-19T18:00:00.000Z',
+      workflowRuns: [{
+        id: 77, name: 'CI', headSha, status: 'completed', conclusion: 'failure',
+        url: 'https://github.com/example/repo/actions/runs/77',
+        jobs: [{ id: 700, name: 'typecheck', status: 'completed', conclusion: 'failure' }],
+      }],
+      jobLogExcerpts: [{
+        runId: 77, jobName: 'typecheck', excerpt: 'error TS2322: synthetic private source',
+        lineCount: 1,
+      }],
+      jobLogStatus: 'complete',
+      complete: true,
+    });
+    mocks.queryRawUnsafe.mockResolvedValue([task({
+      input: { headSha },
+      requiredCapabilities: ['read-workflow-runs', 'read-job-logs'],
+    })]);
+    const handler = createRyanAICiDiagnosticsTaskHandler(inspect);
+    const unregister = registerStudioTaskHandler('ci-failure', handler);
+    try {
+      const result = await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
+      expect(result).toMatchObject({ state: 'completed', taskId: 'task-1' });
+      expect(inspect).toHaveBeenCalledWith('owner-1', headSha, { includeJobLogs: true });
+      const completion = mocks.taskUpdateMany.mock.calls.find(([args]) => args.data?.status === 'completed');
+      expect(completion?.[0].data.output).toMatchObject({
+        kind: 'ci.diagnostics',
+        source: 'github-oauth-read-only',
+        evidenceTrust: 'github_verified_exact_sha',
+        requestedHeadSha: headSha,
+        verifiedHeadSha: headSha,
+        jobLogRetrievalStatus: 'complete',
+        liveProviderFetchPerformed: true,
+        jobLogEvidence: { authorized: true, analyzedCount: 1, rawLogTextReturned: false },
+      });
+      expect(JSON.stringify(completion?.[0].data.output)).not.toContain('synthetic private source');
+      expect(mocks.eventCreate).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ eventType: 'task.completed', taskId: 'task-1' }),
+      }));
+    } finally {
+      unregister();
+    }
+  });
+
+  it('does not request or analyze job logs when read-job-logs is absent', async () => {
+    const headSha = 'b'.repeat(40);
+    const inspect = vi.fn().mockResolvedValue({
+      repositoryFullName: 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main',
+      requestedHeadSha: headSha,
+      verifiedHeadSha: headSha,
+      source: 'github-oauth-read-only',
+      inspectedAt: '2026-11-19T18:00:00.000Z',
+      workflowRuns: [],
+      jobLogExcerpts: [{ runId: 1, jobName: 'build', excerpt: 'FAIL synthetic secret', lineCount: 1 }],
+      jobLogStatus: 'not_requested',
+      complete: true,
+    });
+    mocks.queryRawUnsafe.mockResolvedValue([task({
+      input: { headSha },
+      requiredCapabilities: ['read-workflow-runs'],
+    })]);
+    const unregister = registerStudioTaskHandler('ci-failure', createRyanAICiDiagnosticsTaskHandler(inspect));
+    try {
+      await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
+      expect(inspect).toHaveBeenCalledWith('owner-1', headSha, { includeJobLogs: false });
+      const completion = mocks.taskUpdateMany.mock.calls.find(([args]) => args.data?.status === 'completed');
+      expect(completion?.[0].data.output.jobLogEvidence).toMatchObject({
+        authorized: false, analyzedCount: 0, rawLogTextReturned: false,
+      });
+      expect(JSON.stringify(completion?.[0].data.output)).not.toContain('synthetic secret');
+    } finally {
+      unregister();
+    }
+  });
+
+  it('persists provider-blocked output when the provider verifies a different commit SHA', async () => {
+    const requestedHeadSha = 'c'.repeat(40);
+    const inspect = vi.fn().mockResolvedValue({
+      repositoryFullName: 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main',
+      requestedHeadSha,
+      verifiedHeadSha: 'd'.repeat(40),
+      source: 'github-oauth-read-only',
+      inspectedAt: '2026-11-19T18:00:00.000Z',
+      workflowRuns: [],
+      jobLogExcerpts: [],
+      jobLogStatus: 'not_requested',
+      complete: true,
+    });
+    mocks.queryRawUnsafe.mockResolvedValue([task({ input: { headSha: requestedHeadSha } })]);
+    const unregister = registerStudioTaskHandler('ci-failure', createRyanAICiDiagnosticsTaskHandler(inspect));
+    try {
+      await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
+      const completion = mocks.taskUpdateMany.mock.calls.find(([args]) => args.data?.status === 'completed');
+      expect(completion?.[0].data.output).toMatchObject({
+        evidenceTrust: 'provider_blocked',
+        summary: 'provider_blocked',
+        counts: { passed: 0, providerBlocked: 1 },
+      });
+      expect(completion?.[0].data.output).not.toHaveProperty('verifiedHeadSha');
     } finally {
       unregister();
     }
