@@ -33,6 +33,10 @@ test('community survey exposes exactly one anonymous feedback handler', () => {
   );
 
   assert.doesNotMatch(feedbackRoute, /contactName|contactEmail|followUpConsent/);
+  assert.match(feedbackRoute, /privacyConsent\?: boolean/);
+  assert.match(feedbackRoute, /body\.privacyConsent !== true/);
+  assert.match(feedbackRoute, /privacyConsent: true/);
+  assert.match(feedbackRoute, /privacyConsentAt: new Date\(\)\.toISOString\(\)/);
 
   const persistIndex = feedbackRoute.indexOf('community_feedback_submissions');
   const notifyIndex = feedbackRoute.indexOf('transporter.sendMail');
