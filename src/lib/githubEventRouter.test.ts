@@ -73,18 +73,18 @@ describe("createRyanAiGitHubEventRouter", () => {
     expect(wake).toHaveBeenCalledTimes(2);
   });
 
-  it("ignores unsupported event types without crashing", async () => {
+  it("ignores unknown event types without crashing", async () => {
     const wake = vi.fn();
     const route = createRyanAiGitHubEventRouter(wake);
 
     await route({
-      ...event("evt-unknown", "push"),
-      type: "push",
-    });
+      id: "evt-unknown",
+      type: "unknown",
+      repository: "ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main",
+      occurredAt: "2026-11-19T15:00:00.000Z",
+      payload: {},
+    } as never);
 
-    expect(wake).toHaveBeenCalledWith(expect.objectContaining({
-      eventId: "evt-unknown",
-      target: "repository",
-    }));
+    expect(wake).not.toHaveBeenCalled();
   });
 });
