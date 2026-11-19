@@ -2,6 +2,7 @@ import { createRyanAiGitHubEventRouter } from "./githubEventRouter";
 import {
   createPostgresRyanAiGitHubWorkerWakePublisher,
   type RyanAiPostgresNotify,
+  type RyanAiGitHubWakePersistence,
 } from "./postgresGitHubWorkerWake";
 
 export type RyanAiGitHubEventType =
@@ -203,10 +204,11 @@ export function createRyanAiGitHubEventWorkerWithRouter(
  */
 export function createRyanAiGitHubEventWorkerWithPostgresWake(
   subscriptions: readonly RyanAiGitHubEventSubscription[],
+  persistWake: RyanAiGitHubWakePersistence,
   notify: RyanAiPostgresNotify,
   idempotencyStore?: import("./githubEventRouter").RyanAiEventIdempotencyStore,
 ): RyanAiGitHubEventWorker {
-  const publishWake = createPostgresRyanAiGitHubWorkerWakePublisher(notify);
+  const publishWake = createPostgresRyanAiGitHubWorkerWakePublisher(persistWake, notify);
   return createRyanAiGitHubEventWorker(
     subscriptions,
     createRyanAiGitHubEventRouter(publishWake, idempotencyStore),
