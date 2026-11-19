@@ -10,8 +10,8 @@ import { RYANAI_MODULE_AGENT_ROSTER } from '../../agent/moduleAgentRegistry.js';
 import { RYANAI_WORKER_ROSTER } from '../../agent/workerRegistry.js';
 import { pluginRegistry } from '../plugins/pluginCatalog.js';
 import { describeCapabilityState } from '../plugins/capabilityState.js';
-import { getAgentTaskWorkerStatus } from '../../agent/operations.js';
 import { getStudioExecutionDescriptor, submitStudioProject } from '../engineering/studioExecution.js';
+import { createStudioProject, getStudioDeliveryReadiness, getStudioNativeRuntimeDescriptor, listStudioProjects, listStudioWorkerHealth } from '../engineering/studioNativeCore.js';
 import { cancelStudioTask, createStudioProject, getStudioDeliveryReadiness, getStudioNativeRuntimeDescriptor, listStudioProjects, listStudioWorkerHealth } from '../engineering/studioNativeCore.js';
 import { resolveProviderCapabilityState } from '../plugins/providerCapabilityState.js';
 import { approveStudioTask } from '../engineering/studioApprovals.js';
@@ -76,6 +76,7 @@ export const engineeringEvidenceRoutes: FastifyPluginAsync = async (fastify) => 
 
 
 
+  // Studio-native project lifecycle; owned by the RyanAI task kernel.
   // Studio-native project lifecycle; separate from legacy AgentRun/Jarvis intake.
   fastify.get('/api/engineering/studio/native/workers', async (_request, reply) => {
     try {
@@ -136,21 +137,6 @@ export const engineeringEvidenceRoutes: FastifyPluginAsync = async (fastify) => 
     } catch (error) {
       request.log.warn({ err: error }, 'Studio-native project creation was rejected');
       return reply.code(400).send({ error: error instanceof Error ? error.message : 'Studio project could not be created.' });
-    }
-  });
-
-  fastify.post<{ Params: { taskId: string }; Body: { reason?: string } }>('/api/engineering/studio/native/tasks/:taskId/cancel', {
-    schema: {
-      params: { type: 'object', required: ['taskId'], additionalProperties: false, properties: { taskId: { type: 'string', minLength: 1, maxLength: 64 } } },
-      body: { type: 'object', additionalProperties: false, properties: { reason: { type: 'string', maxLength: 500 } } },
-    },
-  }, async (request, reply) => {
-    try {
-      const result = await cancelStudioTask(request.params.taskId, request.authUser!.id, request.body?.reason);
-      return reply.code(200).send({ success: true, ...result });
-    } catch (error) {
-      request.log.warn({ err: error }, 'Studio task cancellation was rejected');
-      return reply.code(404).send({ error: error instanceof Error ? error.message : 'Studio task was not found for this owner.' });
     }
   });
 
@@ -237,7 +223,7 @@ export const engineeringEvidenceRoutes: FastifyPluginAsync = async (fastify) => 
    */
   fastify.get('/api/engineering/studio/overview', async (request) => {
     const ownerUserId = request.authUser!.id;
-    const [connections, tasks, jobs] = await Promise.all([
+    const [connections, codingTasks, projects, runtime] = await Promise.all([
       prisma.pluginProviderConnection.findMany({
         where: { ownerUserId },
         orderBy: { updatedAt: 'desc' },
@@ -258,16 +244,8 @@ export const engineeringEvidenceRoutes: FastifyPluginAsync = async (fastify) => 
           result: true, leaseExpiresAt: true,
         },
       }),
-      prisma.agentRun.findMany({
-        where: { userId: ownerUserId },
-        orderBy: { createdAt: 'desc' },
-        take: 30,
-        select: {
-          id: true, objective: true, queueType: true, status: true, approvalStatus: true,
-          createdAt: true, completedAt: true, error: true, result: true,
-          handoffs: { select: { id: true, fromAgent: true, toAgent: true, status: true, completedAt: true, error: true } },
-        },
-      }),
+      listStudioProjects(ownerUserId),
+      listStudioWorkerHealth(),
     ]);
 
     const connectionByProvider = new Map(connections.map((connection) => [connection.providerId, connection]));
@@ -313,38 +291,20 @@ export const engineeringEvidenceRoutes: FastifyPluginAsync = async (fastify) => 
     return {
       generatedAt: new Date().toISOString(),
       execution: getStudioExecutionDescriptor(),
-      runtime: (() => {
-        const worker = getAgentTaskWorkerStatus();
-        return {
-          state: worker.state,
-          queueClaimState: worker.queueClaimState,
-          lastClaimAttemptAt: worker.lastClaimAttemptAt,
-          lastSuccessfulClaimAt: worker.lastSuccessfulClaimAt,
-          lastClaimErrorCode: worker.lastClaimErrorCode,
-          lastClaimedTask: worker.lastClaimedTask,
-          lastProcessedTask: worker.lastProcessedTask,
-          listener: worker.listener ? {
-            state: worker.listener.state,
-            connected: worker.listener.connected,
-            subscribed: worker.listener.subscribed,
-            lastConnectedAt: worker.listener.lastConnectedAt,
-            lastErrorCode: worker.listener.lastErrorCode,
-          } : null,
-        };
-      })(),
+      runtime,
       workforce: {
         moduleAgents: RYANAI_MODULE_AGENT_ROSTER,
         sharedWorkers: RYANAI_WORKER_ROSTER,
-        dispatchAuthority: 'Jarvis',
-        authorizationAuthority: 'Gen-X',
+        dispatchAuthority: 'RyanAI native Studio worker runtime',
+        authorizationAuthority: 'RyanAI platform policy',
         note: 'Registries describe capabilities and ownership; they do not prove that a worker is running or currently available.',
       },
       integrations: {
         providers,
         note: 'A provider is usable only when its owner connection is active and a matching server-side adapter is registered. Catalogue entries and saved preferences do not grant execution.',
       },
-      projects: jobs,
-      codingTasks: tasks,
+      projects,
+      codingTasks,
     };
   });
 
