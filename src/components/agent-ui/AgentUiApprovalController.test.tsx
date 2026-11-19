@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { AgentUiApprovalController } from "./AgentUiApprovalController";
 
 describe("AgentUiApprovalController", () => {
@@ -13,38 +13,30 @@ describe("AgentUiApprovalController", () => {
     container?.remove();
   });
 
-  it("renders the approval surface and resolves approval", async () => {
+  it("renders an app-owned approval surface for a confirmed UI action", async () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
 
-    let agent: ReturnType<typeof import("@/lib/agentUiBridge").createRyanAiAgentUiBridge> | undefined;
+    let actPromise: Promise<unknown> | undefined;
 
     await act(async () => {
       root.render(
         <AgentUiApprovalController>
-          {(nextAgent) => {
-            agent = nextAgent;
+          {(agent) => {
+            actPromise = agent.act({
+              steps: [
+                {
+                  ref: "missing",
+                  action: "click",
+                  confirm: "Run the requested UI action?",
+                },
+              ],
+            });
             return <button type="button">Agent host</button>;
           }}
         </AgentUiApprovalController>,
       );
-    });
-
-    expect(agent).toBeDefined();
-
-    const resultPromise = agent!.act({
-      steps: [
-        {
-          ref: "missing",
-          action: "click",
-          confirm: "Run the requested UI action?",
-        },
-      ],
-    });
-
-    await act(async () => {
-      await Promise.resolve();
     });
 
     const dialog = container.querySelector('[role="dialog"]');
@@ -58,20 +50,9 @@ describe("AgentUiApprovalController", () => {
 
     await act(async () => {
       approve?.click();
+      await actPromise;
     });
 
-    await resultPromise;
-    expect(dialog?.textContent).toContain("Run the requested UI action?");
-  });
-
-  it("fails closed when the approval signal is aborted", async () => {
-    const controller = new AbortController();
-    const approval = vi.fn(async ({ signal }: { signal: AbortSignal }) => {
-      if (signal.aborted) return false;
-      return new Promise<boolean>((resolve) => signal.addEventListener("abort", () => resolve(false), { once: true }));
-    });
-
-    controller.abort();
-    expect(await approval({ signal: controller.signal })).toBe(false);
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
   });
 });
