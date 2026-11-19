@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { executeStudioToolCapability, getStudioNativeRuntimeDescriptor, isStudioTaskCancellableStatus, recommendStudioWorker, StudioTaskCancelledError } from './studioNativeCore.js';
+import { classifyStudioWorkerLiveness, executeStudioToolCapability, getStudioNativeRuntimeDescriptor, isStudioTaskCancellableStatus, recommendStudioWorker, StudioTaskCancelledError } from './studioNativeCore.js';
 
 describe('RyanAI Studio Native Core contracts', () => {
   it('allows owner cancellation only for queued or running tasks', () => {
@@ -8,6 +8,16 @@ describe('RyanAI Studio Native Core contracts', () => {
     for (const status of ['completed', 'failed', 'blocked', 'cancelled', 'draft']) {
       expect(isStudioTaskCancellableStatus(status)).toBe(false);
     }
+  });
+
+  it('classifies persisted worker heartbeat freshness without overstating process health', () => {
+    const now = Date.now();
+    expect(classifyStudioWorkerLiveness('healthy', new Date(now - 5_000), now)).toBe('healthy');
+    expect(classifyStudioWorkerLiveness('healthy', new Date(now - 30_001), now)).toBe('stale');
+    expect(classifyStudioWorkerLiveness('degraded', new Date(now - 5_000), now)).toBe('degraded');
+    expect(classifyStudioWorkerLiveness('starting', new Date(now - 5_000), now)).toBe('starting');
+    expect(classifyStudioWorkerLiveness('stopped', new Date(now - 300_000), now)).toBe('stopped');
+    expect(classifyStudioWorkerLiveness('unexpected', new Date(now), now)).toBe('unknown');
   });
 
   it('uses a distinct cooperative cancellation error for worker handlers', () => {

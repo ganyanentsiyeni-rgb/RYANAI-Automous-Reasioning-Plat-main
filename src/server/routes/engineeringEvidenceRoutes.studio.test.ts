@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   listStudioProjects: vi.fn(),
   getStudioDeliveryReadiness: vi.fn(),
   cancelStudioTask: vi.fn(),
+  listStudioWorkerHealth: vi.fn(),
 }));
 
 vi.mock('../../lib/prisma.js', () => ({
@@ -29,7 +30,8 @@ vi.mock('../engineering/studioNativeCore.js', () => ({
   listStudioProjects: mocks.listStudioProjects,
   getStudioDeliveryReadiness: mocks.getStudioDeliveryReadiness,
   cancelStudioTask: mocks.cancelStudioTask,
-  getStudioNativeRuntimeDescriptor: () => ({ projectLifecycle: 'studio_native', scheduler: 'database_leased_task_graph', workerRuntime: 'not_configured', authorizationAuthority: 'Gen-X', productionExecutionEnabled: false }),
+  listStudioWorkerHealth: mocks.listStudioWorkerHealth,
+  getStudioNativeRuntimeDescriptor: () => ({ projectLifecycle: 'studio_native', scheduler: 'database_leased_task_graph', workerRuntime: 'separate_process', authorizationAuthority: 'RyanAI platform policy', productionExecutionEnabled: false }),
 }));
 vi.mock('./auth.js', () => ({
   requireUser: async (request: { headers: Record<string, string | undefined>; authUser?: unknown }, reply: { code: (status: number) => { send: (body: unknown) => unknown } }) => {
@@ -62,6 +64,7 @@ describe('RyanAI Studio overview API', () => {
     mocks.listStudioProjects.mockResolvedValue([{ id: 'native-project-1', ownerUserId: 'owner-1' }]);
     mocks.getStudioDeliveryReadiness.mockResolvedValue({ projectId: 'native-project-1', state: 'in_progress', humanReviewRequired: true });
     mocks.cancelStudioTask.mockResolvedValue({ cancelled: true, alreadyCancelled: false, status: 'cancelled' });
+    mocks.listStudioWorkerHealth.mockResolvedValue({ state: 'unknown', source: 'studio_worker_heartbeats', observedAt: new Date().toISOString(), staleAfterMs: 30000, workers: [], note: 'Persisted heartbeat evidence only.' });
     mocks.workerStatus.mockReturnValue({
       state: 'running',
       queueClaimState: 'ready',
@@ -95,6 +98,28 @@ describe('RyanAI Studio overview API', () => {
     expect(mocks.createStudioProject).toHaveBeenCalledWith(expect.objectContaining({ ownerUserId: 'owner-native', title: 'Build Studio' }));
     expect(mocks.dispatchAutonomousTask).not.toHaveBeenCalled();
     expect(response.json().runtime).toMatchObject({ projectLifecycle: 'studio_native', productionExecutionEnabled: false });
+  });
+
+  it('returns persisted Studio worker heartbeat health to an authenticated owner', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/engineering/studio/native/workers',
+      headers: { 'x-test-user': 'owner-native' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      state: 'unknown',
+      source: 'studio_worker_heartbeats',
+      staleAfterMs: 30000,
+      workers: [],
+    });
+    expect(mocks.listStudioWorkerHealth).toHaveBeenCalledOnce();
+  });
+
+  it('does not expose Studio worker health without authentication', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/engineering/studio/native/workers' });
+    expect(response.statusCode).toBe(401);
+    expect(mocks.listStudioWorkerHealth).not.toHaveBeenCalled();
   });
 
   it('lists only native Studio projects through the authenticated owner context', async () => {
