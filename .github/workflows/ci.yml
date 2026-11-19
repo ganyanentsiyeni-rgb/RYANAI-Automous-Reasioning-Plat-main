@@ -65,6 +65,8 @@ jobs:
           src/App.test.tsx
       - name: Run plugin integrations centre regression tests
         run: npx vitest run src/components/PluginIntegrationsSettings.test.tsx
+      - name: Run Basic Programming Tools container regression tests
+        run: npx vitest run src/pages/BasicProgrammingTools.test.tsx
       - name: Run intelligence-event inbox lifecycle unit tests
         run: npx vitest run src/events/intelligenceEventInbox.test.ts
       - name: Typecheck API independently of application lint
