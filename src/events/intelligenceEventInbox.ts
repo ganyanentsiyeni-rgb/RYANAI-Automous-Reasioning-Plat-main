@@ -27,6 +27,17 @@ export class EventLeaseLostError extends Error {
   }
 }
 
+export class EventAttemptAuditError extends Error {
+  constructor(message = 'The active event attempt audit record was missing or already transitioned.') {
+    super(message);
+    this.name = 'EventAttemptAuditError';
+  }
+}
+
+function requireSingleAttemptTransition(result: { count: number }): void {
+  if (result.count !== 1) throw new EventAttemptAuditError();
+}
+
 export interface EventInboxOptions {
   maxAttempts?: number;
   leaseMs?: number;
@@ -248,6 +259,11 @@ export class IntelligenceEventInbox {
         data: { status: 'processed', processedAt: now, leaseOwner: null, leaseExpiresAt: null, lastError: null },
       });
       if (result.count !== 1) throw new EventLeaseLostError();
+      const audit = await tx.intelligenceEventAttempt.updateMany({
+        where: { eventInboxId: eventId, attempt, workerId, status: 'started' },
+        data: { status: 'succeeded', finishedAt: now },
+      });
+      requireSingleAttemptTransition(audit);
       const audited = await tx.intelligenceEventAttempt.updateMany({
         where: { eventInboxId: eventId, attempt, workerId, status: 'started' },
         data: { status: 'succeeded', finishedAt: now },
@@ -277,6 +293,11 @@ export class IntelligenceEventInbox {
         },
       });
       if (result.count !== 1) throw new EventLeaseLostError();
+      const audit = await tx.intelligenceEventAttempt.updateMany({
+        where: { eventInboxId: eventId, attempt, workerId, status: 'started' },
+        data: { status: deadLetter ? 'dead_letter' : 'retry', error: errorMessage(error), finishedAt: now },
+      });
+      requireSingleAttemptTransition(audit);
       const audited = await tx.intelligenceEventAttempt.updateMany({
         where: { eventInboxId: eventId, attempt, workerId, status: 'started' },
         data: { status: deadLetter ? 'dead_letter' : 'retry', error: errorMessage(error), finishedAt: now },
@@ -308,6 +329,11 @@ export class IntelligenceEventInbox {
           },
         });
         if (moved.count === 1) {
+          const audit = await tx.intelligenceEventAttempt.updateMany({
+            where: { eventInboxId: event.id, attempt: event.attempts, workerId: event.leaseOwner ?? undefined, status: 'started' },
+            data: { status: 'lease_expired', error: 'Worker lease expired before acknowledgement.', finishedAt: now },
+          });
+          requireSingleAttemptTransition(audit);
           const audited = await tx.intelligenceEventAttempt.updateMany({
             where: { eventInboxId: event.id, attempt: event.attempts, workerId: event.leaseOwner ?? undefined, status: 'started' },
             data: { status: 'lease_expired', error: 'Worker lease expired before acknowledgement.', finishedAt: now },

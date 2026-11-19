@@ -248,6 +248,9 @@ jobs:
 
       - name: Verify Studio worker queue lifecycle against disposable PostgreSQL
         run: node --import tsx/esm scripts/test-studio-worker-queue.integration.mjs
+      - name: Verify durable intelligence event inbox claims, lease fencing and attempt audit against disposable PostgreSQL
+        run: node scripts/test-intelligence-event-inbox.integration.mjs
+
       - name: Verify durable agent queue claims and lease recovery against disposable PostgreSQL
         run: node --import tsx/esm scripts/test-agent-queue.mjs
       - name: Verify intelligence-event inbox concurrency and audit atomicity against disposable PostgreSQL
