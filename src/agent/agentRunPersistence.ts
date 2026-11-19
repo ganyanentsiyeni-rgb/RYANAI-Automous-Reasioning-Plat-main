@@ -120,8 +120,7 @@ export async function persistAgentRunCompletion(
   const paDelegationId = typeof scope.paDelegationId === 'string' ? scope.paDelegationId : null;
   if (paDelegationId) {
     const delegation = requirePADelegationForCompletion(await tx.paDelegation.findUnique({ where: { id: paDelegationId }, select: { id: true, traceId: true } }));
-    {
-      await tx.paDelegation.update({ where: { id: delegation.id }, data: { status: 'completed' } });
+    await tx.paDelegation.update({ where: { id: delegation.id }, data: { status: 'completed' } });
       await tx.paExecutionReceipt.upsert({
         where: { delegationId: delegation.id },
         create: {
@@ -141,7 +140,6 @@ export async function persistAgentRunCompletion(
           error: null,
         },
       });
-    }
   }
   await appendRunEvidence(tx, {
     runId: run.id,
