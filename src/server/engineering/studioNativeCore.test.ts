@@ -50,7 +50,7 @@ describe('RyanAI Studio Native Core contracts', () => {
     const audit = vi.fn().mockResolvedValue(undefined);
     const result = await executeStudioToolCapability({
       actorId: 'owner-1', connectionRef: 'opaque-connection-ref', requestId: 'req-3',
-      capabilityId: 'read-workflow-runs', input: {}, manifest: { capabilities: [{ id: 'files.read', risk: 'read', requiresHumanApproval: false }] },
+      capabilityId: 'read-workflow-runs', input: {}, manifest: { capabilities: [{ id: 'read-workflow-runs', risk: 'write', requiresHumanApproval: true }] },
       resolveConnection: async () => true, verifyApproval: async () => true,
       execute, audit,
     });
@@ -61,7 +61,7 @@ describe('RyanAI Studio Native Core contracts', () => {
 });
 
 describe('Studio worker runtime reporting', () => {
-  it('reports separate-process worker health as unknown until a shared heartbeat exists', () => {
+  it('reports persisted heartbeat capability separately from unverified production worker health', () => {
     expect(getStudioNativeRuntimeDescriptor()).toMatchObject({
       workerRuntime: 'separate_process',
       workerHealth: 'unknown',
