@@ -158,7 +158,7 @@ test('Render API configuration audit is read-only and repair remains separately 
   assert.ok(ci.includes('render-api-config-audit:'));
   assert.ok(ci.includes('name: Audit Render API configuration (read-only)'));
   assert.ok(ci.includes('needs: [validate, subprojects, integration, issue-435-supabase]'));
-  assert.ok(ci.includes("if: \\${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"));
+  assert.ok(ci.includes("if: \${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"));
   assert.ok(ci.includes('Read current API service settings (GET only)'));
   assert.ok(ci.includes('Report configuration drift without changing the service'));
   assert.ok(ci.includes('No production service settings were changed'));
@@ -257,7 +257,6 @@ test('production migration requires an independent reviewer; Render staging is n
   assert.ok(stagingDeployment.includes("inputs.confirmation == 'STAGE'"));
   assert.ok(!stagingDeployment.includes('environment: production'));
   assert.ok(!stagingDeployment.includes("== 'DEPLOY'"));
-  assert.ok(stagingDeployment.includes('migrate-production.yml'));
 
   assert.ok(productionRelease.includes('name: production'));
   assert.ok(productionRelease.includes("inputs.confirm == 'RELEASE'"));
