@@ -19,3 +19,18 @@ test('fresh stacks apply the historical schema then the guarded six-column forwa
   assert.match(forward, /ADD CONSTRAINT checkpoint_writes_pkey\s+PRIMARY KEY\s*\(thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel\)/i);
   assert.doesNotMatch(forward, /DROP TABLE|TRUNCATE|DELETE FROM/i);
 });
+
+test('Prisma checkpoint_writes model declares exactly one six-column primary key', async () => {
+  const schema = await readFile(resolve(root, 'prisma/schema.prisma'), 'utf8');
+  const model = schema.match(/model LangGraphCheckpointWrite\s*\{([\s\S]*?)^\}/m);
+  assert.ok(model, 'LangGraphCheckpointWrite Prisma model must exist');
+
+  const primaryKeys = [...model[1].matchAll(/^\s*@@id\((\[[^\n]*\])\)\s*$/gm)]
+    .map((match) => match[1]);
+
+  assert.deepEqual(
+    primaryKeys,
+    ['[threadId, checkpointNs, checkpointId, taskId, idx, channel]'],
+    'The Prisma model must declare exactly the installed six-column checkpoint_writes primary key'
+  );
+});
