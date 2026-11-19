@@ -9,6 +9,7 @@ import { prisma } from '../../lib/prisma.js';
 import { RYANAI_WORKER_ROSTER } from '../../agent/workerRegistry.js';
 import { findModuleAgentForTask } from '../../agent/moduleAgentRegistry.js';
 import { evaluateRyanAIStudioTaskAdmission } from './ryanaiStudioTaskAdmission.js';
+import { evaluateRyanAIToolCapabilityPolicy } from './ryanaiToolCapabilityPolicy.js';
 
 export type StudioProjectType = 'engineering' | 'research' | 'design' | 'data' | 'automation';
 export interface CreateStudioProjectInput {
@@ -237,7 +238,6 @@ export interface StudioToolExecutionRequest {
   approval?: { reference: string };
   resolveConnection: (actorId: string, connectionRef: string) => Promise<boolean>;
   verifyApproval: (approval: { reference: string }, actorId: string, capabilityId: string) => Promise<boolean>;
-  authorize: (request: StudioToolExecutionRequest) => Promise<{ allowed: boolean; reason?: string }>;
   execute: (request: StudioToolExecutionRequest) => Promise<unknown>;
   audit: (event: { actorId: string; requestId: string; capabilityId: string; outcome: string; reason?: string }) => Promise<void>;
 }
@@ -256,10 +256,17 @@ export async function executeStudioToolCapability(request: StudioToolExecutionRe
     await request.audit({ actorId: request.actorId, requestId: request.requestId, capabilityId: request.capabilityId, outcome: 'blocked', reason: 'Matching human approval is required.' });
     throw new Error('Matching human approval is required for this capability.');
   }
-  const decision = await request.authorize(request);
+  const decision = evaluateRyanAIToolCapabilityPolicy({
+    actorId: request.actorId,
+    capabilityId: request.capabilityId,
+    risk: capability.risk,
+    requiresHumanApproval: capability.requiresHumanApproval,
+    approvalReference: request.approval?.reference,
+    approved: Boolean(request.approval?.reference),
+  });
   if (!decision.allowed) {
-    await request.audit({ actorId: request.actorId, requestId: request.requestId, capabilityId: request.capabilityId, outcome: 'blocked', reason: decision.reason ?? 'RyanAI platform policy denied the request.' });
-    throw new Error(decision.reason ?? 'RyanAI platform policy denied the request.');
+    await request.audit({ actorId: request.actorId, requestId: request.requestId, capabilityId: request.capabilityId, outcome: 'blocked', reason: decision.reason });
+    throw new Error(decision.reason);
   }
   const result = await request.execute(request);
   await request.audit({ actorId: request.actorId, requestId: request.requestId, capabilityId: request.capabilityId, outcome: 'completed' });

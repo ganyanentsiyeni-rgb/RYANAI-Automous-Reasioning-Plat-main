@@ -8,43 +8,39 @@ describe('RyanAI Studio Native Core contracts', () => {
   });
 
   it('blocks write capabilities without matching human approval', async () => {
-    const authorize = vi.fn().mockResolvedValue({ allowed: true });
     const execute = vi.fn();
     const audit = vi.fn().mockResolvedValue(undefined);
     await expect(executeStudioToolCapability({
       actorId: 'owner-1', connectionRef: 'opaque-connection-ref', requestId: 'req-1',
       capabilityId: 'messages.send', input: {}, manifest: { capabilities: [{ id: 'messages.send', risk: 'outbound', requiresHumanApproval: true }] },
-      resolveConnection: async () => true, verifyApproval: async () => false, authorize, execute, audit,
+      resolveConnection: async () => true, verifyApproval: async () => false, execute, audit,
     })).rejects.toThrow('Matching human approval is required');
-    expect(authorize).not.toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'blocked' }));
   });
 
-  it('defers provider capability authorization and fails closed on denial', async () => {
+  it('denies capabilities not declared by the RyanAI workforce registry', async () => {
     const execute = vi.fn();
     const audit = vi.fn().mockResolvedValue(undefined);
     await expect(executeStudioToolCapability({
       actorId: 'owner-1', connectionRef: 'opaque-connection-ref', requestId: 'req-2',
       capabilityId: 'files.read', input: {}, manifest: { capabilities: [{ id: 'files.read', risk: 'read', requiresHumanApproval: false }] },
       resolveConnection: async () => true, verifyApproval: async () => false,
-      authorize: async () => ({ allowed: false, reason: 'Policy denied.' }), execute, audit,
-    })).rejects.toThrow('Policy denied.');
+      execute, audit,
+    })).rejects.toThrow('Capability is not declared by the RyanAI workforce registry.');
     expect(execute).not.toHaveBeenCalled();
-    expect(audit).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'blocked', reason: 'Policy denied.' }));
+    expect(audit).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'blocked' }));
   });
 
   it('blocks a provider call when the owner connection cannot be resolved', async () => {
-    const authorize = vi.fn();
     const execute = vi.fn();
     const audit = vi.fn().mockResolvedValue(undefined);
     await expect(executeStudioToolCapability({
       actorId: 'owner-1', connectionRef: 'unowned-ref', requestId: 'req-connection',
-      capabilityId: 'files.read', input: {}, manifest: { capabilities: [{ id: 'files.read', risk: 'read', requiresHumanApproval: false }] },
+      capabilityId: 'read-workflow-runs', input: {}, manifest: { capabilities: [{ id: 'files.read', risk: 'read', requiresHumanApproval: false }] },
       resolveConnection: async () => false, verifyApproval: async () => false,
-      authorize, execute, audit,
+      execute, audit,
     })).rejects.toThrow('Owner-scoped provider connection could not be resolved');
-    expect(authorize).not.toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'blocked' }));
   });
@@ -54,9 +50,9 @@ describe('RyanAI Studio Native Core contracts', () => {
     const audit = vi.fn().mockResolvedValue(undefined);
     const result = await executeStudioToolCapability({
       actorId: 'owner-1', connectionRef: 'opaque-connection-ref', requestId: 'req-3',
-      capabilityId: 'files.read', input: {}, manifest: { capabilities: [{ id: 'files.read', risk: 'read', requiresHumanApproval: false }] },
+      capabilityId: 'read-workflow-runs', input: {}, manifest: { capabilities: [{ id: 'files.read', risk: 'read', requiresHumanApproval: false }] },
       resolveConnection: async () => true, verifyApproval: async () => true,
-      authorize: async () => ({ allowed: true }), execute, audit,
+      execute, audit,
     });
     expect(result).toEqual({ items: 2 });
     expect(execute).toHaveBeenCalledOnce();
