@@ -14,7 +14,9 @@
     "check": "node --check index.js && node --check stdio.js && node --check http.js && node --check provider-router.js && node --check health-url.js && node --check delegation.js && node --test dockerfile.node.js health-url.node.js tool-registry.node.js provider-router.node.js delegation.node.js && node check-dependency-policy.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.32.2"
+    "@hono/node-server": "^2.1.9",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "hono": "^4.13.19"
   },
   "overrides": {
     "body-parser": "2.4.0",

@@ -151,6 +151,16 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
     setNotice('');
     try {
       let currentIds = attachmentIds;
+
+      if (
+        (selectedFiles.length > 0 || currentIds.length > 0) &&
+        !attachmentsEnabled
+      ) {
+        throw new Error(
+          'Private attachments are unavailable until storage and malware scanning are configured.'
+        );
+      }
+
       if (selectedFiles.length) {
         if (channel === 'voice') throw new Error('Voice calls cannot include file attachments.');
         if (selectedFiles.length > 8 || selectedFiles.reduce((sum, file) => sum + file.size, 0) > 40 * 1024 * 1024) {
