@@ -132,10 +132,12 @@ export function createRyanAiGitHubEventWorker(
           return Promise.reject(error);
         }
         const delivery = deliveryTail.then(() => handleEvent(event));
-        deliveryTail = delivery.then(() => undefined, () => undefined);
-        return delivery.finally(() => {
+        // Include capacity release in the drain barrier so shutdown cannot
+        // resolve while an accepted delivery is still finalizing.
+        deliveryTail = delivery.finally(() => {
           pendingEvents -= 1;
-        });
+        }).then(() => undefined, () => undefined);
+        return delivery;
       };
       try {
         for (const subscription of subscriptions) {
@@ -148,8 +150,13 @@ export function createRyanAiGitHubEventWorker(
         const cleanupErrors = cleanup
           .filter((result): result is PromiseRejectedResult => result.status === "rejected")
           .map((result) => result.reason);
-        if (cleanupErrors.length > 0 && error instanceof Error) {
-          throw new AggregateError([error, ...cleanupErrors], "GitHub event subscription startup failed and cleanup was incomplete.");
+        if (cleanupErrors.length > 0) {
+          // Rejections may be arbitrary values, not only Error instances.
+          // Preserve the original failure and every cleanup failure.
+          throw new AggregateError(
+            [error, ...cleanupErrors],
+            "GitHub event subscription startup failed and cleanup was incomplete.",
+          );
         }
         throw error;
       }
