@@ -279,7 +279,8 @@ async function processAgentRun(
       select: { id: true, status: true, requestedCapabilities: true },
     });
     // Detect both tampered PA scope metadata and orphaned delegation records.
-    const capabilityReceipts: PACapabilityReceipt[] = [];\n    let verifiedCapabilityContext: string | null = null;
+    const capabilityReceipts: PACapabilityReceipt[] = [];
+    let verifiedCapabilityContext: string | null = null;
     if (paScope || delegation) {
       if (!paScope || !delegation || run.approval_status !== 'approved' || delegation.status !== 'approved' ||
           delegation.id !== paScope.delegationId) {
@@ -306,7 +307,8 @@ async function processAgentRun(
         if (inspectionPolicy.decision !== 'ALLOW') {
           throw new Error('Gen-X denied repository.inspect at the worker execution boundary.');
         }
-        const snapshot = await inspectConnectedGitHubRepository({ prisma }, run.user_id);\n        verifiedCapabilityContext = buildPARepositoryInspectionContext(snapshot);
+        const snapshot = await inspectConnectedGitHubRepository({ prisma }, run.user_id);
+        verifiedCapabilityContext = buildPARepositoryInspectionContext(snapshot);
         const evidence = await recordRunEvidence({
           runId: run.id,
           eventType: 'pa.capability.executed',
