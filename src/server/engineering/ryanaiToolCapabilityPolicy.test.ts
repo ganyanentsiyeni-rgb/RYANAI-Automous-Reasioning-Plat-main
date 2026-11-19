@@ -2,36 +2,31 @@ import { describe, expect, it } from 'vitest';
 import { evaluateRyanAIToolCapabilityPolicy } from './ryanaiToolCapabilityPolicy.js';
 
 describe('RyanAI native tool capability policy', () => {
-  it('denies unknown capabilities', () => {
+  it('denies unknown capabilities regardless of caller-supplied manifest metadata', () => {
     expect(evaluateRyanAIToolCapabilityPolicy({
-      actorId: 'owner-1', capabilityId: 'shell', risk: 'read',
-      requiresHumanApproval: false, approved: false,
-    }).allowed).toBe(false);
+      actorId: 'owner-1', capabilityId: 'shell', approvalVerified: true, approvalReference: 'approval-1',
+    })).toMatchObject({ allowed: false, ruleId: 'RYANAI-CAP-002' });
   });
 
-  it('allows declared read capabilities without approval', () => {
+  it('allows registered read capabilities without approval', () => {
     expect(evaluateRyanAIToolCapabilityPolicy({
-      actorId: 'owner-1', capabilityId: 'read-task', risk: 'read',
-      requiresHumanApproval: false, approved: false,
-    })).toMatchObject({ allowed: true, ruleId: 'RYANAI-CAP-ALLOW-001' });
+      actorId: 'owner-1', capabilityId: 'read-workflow-runs', approvalVerified: false,
+    })).toMatchObject({ allowed: true, risk: 'read', requiresHumanApproval: false });
   });
 
-  it('requires approval for write capabilities', () => {
+  it('derives write risk from the registry and requires verified approval', () => {
     expect(evaluateRyanAIToolCapabilityPolicy({
-      actorId: 'owner-1', capabilityId: 'record-progress', risk: 'write',
-      requiresHumanApproval: false, approved: false,
-    })).toMatchObject({ allowed: false, ruleId: 'RYANAI-CAP-003' });
+      actorId: 'owner-1', capabilityId: 'write-audit-report', approvalVerified: false,
+    })).toMatchObject({ allowed: false, ruleId: 'RYANAI-CAP-003', risk: 'write' });
 
     expect(evaluateRyanAIToolCapabilityPolicy({
-      actorId: 'owner-1', capabilityId: 'record-progress', risk: 'write',
-      requiresHumanApproval: false, approved: true, approvalReference: 'approval-1',
-    }).allowed).toBe(true);
+      actorId: 'owner-1', capabilityId: 'write-audit-report', approvalVerified: true, approvalReference: 'approval-1',
+    })).toMatchObject({ allowed: true, risk: 'write', requiresHumanApproval: true });
   });
 
-  it('never permits destructive capability execution', () => {
+  it('treats provider probes as outbound and requires verified approval', () => {
     expect(evaluateRyanAIToolCapabilityPolicy({
-      actorId: 'owner-1', capabilityId: 'record-progress', risk: 'destructive',
-      requiresHumanApproval: true, approved: true, approvalReference: 'approval-1',
-    })).toMatchObject({ allowed: false, ruleId: 'RYANAI-CAP-004' });
+      actorId: 'owner-1', capabilityId: 'run-approved-provider-probe', approvalVerified: false,
+    })).toMatchObject({ allowed: false, ruleId: 'RYANAI-CAP-003', risk: 'outbound' });
   });
 });
