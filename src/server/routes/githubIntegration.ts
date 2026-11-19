@@ -257,8 +257,18 @@ export async function inspectConnectedGitHubRepository(
   if (!connection || connection.repositoryFullName !== GITHUB_APP_REPOSITORY) {
     throw new GitHubOAuthError('github_owner_connection_missing_or_wrong_repository');
   }
-  const accessToken = await getUsableAccessToken(fastify, config, connection as StoredConnection);
-  if (!accessToken) throw new GitHubOAuthError('github_owner_reauthorization_required');
+  // Worker inspection must not rotate or persist OAuth credentials. If the access token
+  // is expired or inside the refresh window, fail closed and require the owner to reconnect.
+  if (connection.accessTokenExpiresAt &&
+      connection.accessTokenExpiresAt.getTime() <= Date.now() + REFRESH_SKEW_MS) {
+    throw new GitHubOAuthError('github_owner_reauthorization_required');
+  }
+  let accessToken: string;
+  try {
+    accessToken = decryptGitHubSecret(connection.encryptedAccessToken, config.encryptionKey);
+  } catch {
+    throw new GitHubOAuthError('github_owner_reauthorization_required');
+  }
 
   const [account, repository] = await Promise.all([
     githubApi<GitHubUser>('user', accessToken),
