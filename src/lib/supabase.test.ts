@@ -38,7 +38,7 @@ describe('optional browser Supabase client', () => {
     expect(createClient).not.toHaveBeenCalled();
   });
 
-  it('creates one client with the publishable key, trimming whitespace', async () => {
+  it('creates one client with the publishable key, trimming whitespace, and explicit PKCE session lifecycle options', async () => {
     vi.stubEnv('VITE_SUPABASE_URL', ' https://example.supabase.co ');
     vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', ' sb_publishable_test ');
     vi.stubEnv('VITE_SUPABASE_ANON_KEY', 'legacy-public-key');
@@ -47,6 +47,14 @@ describe('optional browser Supabase client', () => {
     expect(createClient).toHaveBeenCalledExactlyOnceWith(
       'https://example.supabase.co',
       'sb_publishable_test',
+      {
+        auth: {
+          flowType: 'pkce',
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+        },
+      },
     );
   });
 
@@ -61,6 +69,14 @@ describe('optional browser Supabase client', () => {
       expect(createClient).toHaveBeenCalledExactlyOnceWith(
         'https://example.supabase.co',
         'legacy-public-key',
+        {
+          auth: {
+            flowType: 'pkce',
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true,
+          },
+        },
       );
     },
   );
