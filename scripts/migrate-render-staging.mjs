@@ -22,6 +22,16 @@ const REQUIRED = [
   'checkpoint_writes',
 ];
 
+export function createPoolOptions(connectionString) {
+  return {
+    connectionString,
+    max: 1,
+    connectionTimeoutMillis: 10000,
+    // Require encrypted transport and verify the server certificate using Node's trusted CAs.
+    ssl: { rejectUnauthorized: true },
+  };
+}
+
 export function validateTarget(rawUrl) {
   if (!rawUrl) throw new Error('DATABASE_URL is required; refusing to run.');
   const url = new URL(rawUrl);
@@ -51,7 +61,7 @@ async function main() {
   const sqlPath = resolve('prisma/migrations', MIGRATION, 'migration.sql');
   const migrationSql = await readFile(sqlPath, 'utf8');
   const checksum = createHash('sha256').update(migrationSql).digest('hex');
-  const pool = new Pool({ connectionString: databaseUrl, max: 1, connectionTimeoutMillis: 10000 });
+  const pool = new Pool(createPoolOptions(databaseUrl));
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
