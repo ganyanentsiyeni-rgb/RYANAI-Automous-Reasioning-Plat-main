@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildAgentRunExecutionPrompt, parseAgentRunExecutionChange, parsePAExecutionScope, planQueuedAgentRun } from './agentRunExecution.js';
+import { assertPAExecutionHandlersAvailable, buildAgentRunExecutionPrompt, parseAgentRunExecutionChange, parsePAExecutionScope, planQueuedAgentRun } from './agentRunExecution.js';
 
 describe('durable agent-run execution planning', () => {
   it('defaults missing, malformed and unknown persisted scope to full reconciliation', () => {
@@ -66,5 +66,22 @@ describe('PA execution scope validation', () => {
   });
   it('fails closed on partial, duplicate, malformed, or widened scopes', () => {
     for (const value of [{ paDelegationId: '123e4567-e89b-42d3-a456-426614174000' }, { capabilities: ['tests.run'] }, { paDelegationId: 'bad', capabilities: ['tests.run'] }, { paDelegationId: '123e4567-e89b-42d3-a456-426614174000', capabilities: ['tests.run', 'tests.run'] }, { paDelegationId: '123e4567-e89b-42d3-a456-426614174000', capabilities: ['credential.export'] }]) expect(() => parsePAExecutionScope(value)).toThrow();
+  });
+});
+
+
+describe('PA capability handler availability', () => {
+  const scope = { delegationId: '123e4567-e89b-42d3-a456-426614174000', capabilities: ['tests.run', 'evidence.record'] as const };
+
+  it('fails closed when approved capabilities have no registered worker handlers', () => {
+    expect(() => assertPAExecutionHandlersAvailable(scope)).toThrow(/Reasoning-only output cannot complete/);
+  });
+
+  it('identifies every capability without a registered handler', () => {
+    expect(() => assertPAExecutionHandlersAvailable(scope, ['tests.run'])).toThrow(/evidence.record/);
+  });
+
+  it('allows a scope only when every capability has a registered handler', () => {
+    expect(() => assertPAExecutionHandlersAvailable(scope, ['tests.run', 'evidence.record'])).not.toThrow();
   });
 });
