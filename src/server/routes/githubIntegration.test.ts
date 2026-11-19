@@ -126,6 +126,21 @@ describe('owner-bound read-only repository inspection', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it('rejects a repository recreated under the same name with a different immutable ID', async () => {
+    const app = await createApp();
+    store.connection.findUnique.mockResolvedValue(storedConnection());
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(mockResponse({ id: 123456, login: 'synthetic-owner' }))
+      .mockResolvedValueOnce(mockResponse({
+        id: 999999999,
+        full_name: GITHUB_APP_REPOSITORY,
+        default_branch: 'main',
+        permissions: { pull: true },
+      }));
+    await expect(inspectConnectedGitHubRepository(app, userId)).rejects.toThrow('github_owner_or_repository_verification_failed');
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it('requires owner reauthorization instead of refreshing or rotating an expired token', async () => {
     const app = await createApp();
     store.connection.findUnique.mockResolvedValue(storedConnection({
