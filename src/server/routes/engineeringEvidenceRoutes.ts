@@ -12,7 +12,7 @@ import { pluginRegistry } from '../plugins/pluginCatalog.js';
 import { describeCapabilityState } from '../plugins/capabilityState.js';
 import { getAgentTaskWorkerStatus } from '../../agent/operations.js';
 import { getStudioExecutionDescriptor, submitStudioProject } from '../engineering/studioExecution.js';
-import { cancelStudioTask, createStudioProject, getStudioDeliveryReadiness, getStudioNativeRuntimeDescriptor, listStudioProjects } from '../engineering/studioNativeCore.js';
+import { cancelStudioTask, classifyStudioWorkerLiveness, createStudioProject, getStudioDeliveryReadiness, getStudioNativeRuntimeDescriptor, listStudioProjects, listStudioWorkerHealth } from '../engineering/studioNativeCore.js';
 import { resolveProviderCapabilityState } from '../plugins/providerCapabilityState.js';
 import { approveStudioTask } from '../engineering/studioApprovals.js';
 import { createStudioArtifactDownloadUrl } from '../engineering/studioArtifactStorage.js';
@@ -77,6 +77,15 @@ export const engineeringEvidenceRoutes: FastifyPluginAsync = async (fastify) => 
 
 
   // Studio-native project lifecycle; separate from legacy AgentRun/Jarvis intake.
+  fastify.get('/api/engineering/studio/native/workers', async (_request, reply) => {
+    try {
+      return reply.send(await listStudioWorkerHealth());
+    } catch (error) {
+      fastify.log.error({ err: error }, 'Studio worker heartbeat query failed');
+      return reply.code(503).send({ state: 'unavailable', source: 'studio_worker_heartbeats', error: 'Worker heartbeat health is unavailable.' });
+    }
+  });
+
   fastify.get('/api/engineering/studio/native/projects', async (request) => ({
     projects: await listStudioProjects(request.authUser!.id),
     runtime: getStudioNativeRuntimeDescriptor(),
