@@ -149,35 +149,30 @@ test('provider verification supports one brain or all three isolated brains in p
 });
 
 
-test('Render API repair runs inside core CI, waits for security, and never deploys', async () => {
+test('Render API configuration audit is read-only and repair remains separately guarded', async () => {
   const { readFile } = await import('node:fs/promises');
   const ci = await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
-  const fallback = await readFile(new URL('../.github/workflows/guarded-render-api-source-repair.yml', import.meta.url), 'utf8');
+  const repair = await readFile(new URL('../.github/workflows/guarded-render-api-source-repair.yml', import.meta.url), 'utf8');
   const blueprint = await readFile(new URL('../render.yaml', import.meta.url), 'utf8');
-  assert.ok(ci.includes('render-api-config-repair:'));
+
+  assert.ok(ci.includes('render-api-config-audit:'));
+  assert.ok(ci.includes('name: Audit Render API configuration (read-only)'));
   assert.ok(ci.includes('needs: [validate, subprojects, integration, issue-435-supabase]'));
-  assert.ok(ci.includes("if: \${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"));
-  assert.ok(ci.includes('Test agent API contracts'));
-  assert.ok(ci.includes('Dependency audit'));
-  assert.ok(ci.includes('Trivy filesystem scan'));
-  assert.ok(ci.includes('Analyze (javascript-typescript)'));
-  assert.ok(ci.includes('Analyze (python)'));
-  assert.ok(ci.includes('TruffleHog secret audit'));
-  assert.ok(ci.includes('Codacy Security Scan'));
-  assert.ok(ci.includes('npm run validate'));
-  assert.ok(!ci.includes('Validate configuration files'));
-  assert.ok(ci.includes('srv-dbk4giu7bikc7394a4r0'));
-  assert.ok(ci.includes('"dockerfilePath":"./Dockerfile.api"'));
-  assert.ok(ci.includes('"dockerCommand":""'));
-  assert.ok(ci.includes('"autoDeployTrigger":"off"'));
-  assert.ok(ci.includes('"healthCheckPath":"/health"'));
-  assert.ok(ci.includes('Read current API service settings'));
-  assert.ok(ci.includes('Read back and verify repaired API settings'));
+  assert.ok(ci.includes("if: \\${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"));
+  assert.ok(ci.includes('Read current API service settings (GET only)'));
+  assert.ok(ci.includes('Report configuration drift without changing the service'));
+  assert.ok(ci.includes('No production service settings were changed'));
+  assert.ok(!ci.includes('render-api-config-repair:'));
   assert.ok(!ci.includes('/deploys'));
-  assert.ok(fallback.includes('workflow_dispatch:'));
-  assert.ok(fallback.includes("inputs.confirmation == 'REPAIR-ONLY'"));
-  assert.ok(!fallback.includes('workflow_run:'));
-  assert.ok(!fallback.includes('/deploys'));
+  assert.ok(!ci.includes('--request PATCH'));
+
+  assert.ok(repair.includes('workflow_dispatch:'));
+  assert.ok(repair.includes("inputs.confirmation == 'REPAIR-ONLY'"));
+  assert.ok(repair.includes('environment: production'));
+  assert.ok(repair.includes('--request PATCH'));
+  assert.ok(!repair.includes('workflow_run:'));
+  assert.ok(!repair.includes('/deploys'));
+
   assert.ok(blueprint.includes('services:'));
   assert.ok(!blueprint.includes('projects:'));
   assert.ok(blueprint.includes('name: ryanai-api'));
@@ -205,7 +200,6 @@ test('Render API repair runs inside core CI, waits for security, and never deplo
   assert.ok(!blueprint.includes('prisma migrate deploy'));
   assert.ok(!blueprint.includes('aws-1-eu-west-1.pooler.supabase.com'));
 });
-
 
 test('Render staging is blocked until a separate isolated staging service is configured', () => {
   const missing = auditDeploymentTargets({ RENDER_STAGING_DEPLOY_ENABLED: 'true' }).find((target) => target.name === 'Render');
@@ -243,27 +237,32 @@ test('boolean false secret-presence indicators are treated as missing', () => {
 
 
 
-test('production migration and Render deployment require independent environment reviewers', async () => {
+test('production migration requires an independent reviewer; Render staging is not production', async () => {
   const { readFile } = await import('node:fs/promises');
   const migration = await readFile(new URL('../.github/workflows/migrate-production.yml', import.meta.url), 'utf8');
-  const deployment = await readFile(new URL('../.github/workflows/deploy-render.yml', import.meta.url), 'utf8');
-  for (const [workflow, environment] of [
-    [migration, 'production-migrations'],
-    [deployment, 'production'],
-  ]) {
-    assert.ok(workflow.includes('deployments: read'));
-    assert.ok(workflow.includes('repos/${GITHUB_REPOSITORY}/environments/' + environment));
-    assert.ok(workflow.includes('.type == "required_reviewers"'));
-    assert.ok(workflow.includes('.prevent_self_review == true'));
-    assert.ok(workflow.includes('((.reviewers // []) | length > 0)'));
-    assert.ok(workflow.includes('No production') || workflow.includes('No Render API deployment'));
-  }
+  const stagingDeployment = await readFile(new URL('../.github/workflows/deploy-render.yml', import.meta.url), 'utf8');
+  const productionRelease = await readFile(new URL('../.github/workflows/production-release.yml', import.meta.url), 'utf8');
+
+  assert.ok(migration.includes('deployments: read'));
+  assert.ok(migration.includes('repos/${GITHUB_REPOSITORY}/environments/production-migrations'));
+  assert.ok(migration.includes('.type == "required_reviewers"'));
+  assert.ok(migration.includes('.prevent_self_review == true'));
+  assert.ok(migration.includes('((.reviewers // []) | length > 0)'));
   assert.ok(migration.includes('inputs.confirmation'));
   assert.ok(migration.includes('== "APPLY"'));
-  assert.ok(deployment.includes('inputs.confirmation'));
-  assert.ok(deployment.includes("== 'DEPLOY'"));
-  assert.ok(deployment.includes('migrate-production.yml'));
   assert.ok(migration.includes('PRODUCTION_DATABASE_URL'));
+
+  assert.ok(stagingDeployment.includes('name: Deploy API to Render staging'));
+  assert.ok(stagingDeployment.includes('environment: staging'));
+  assert.ok(stagingDeployment.includes("inputs.confirmation == 'STAGE'"));
+  assert.ok(!stagingDeployment.includes('environment: production'));
+  assert.ok(!stagingDeployment.includes("== 'DEPLOY'"));
+  assert.ok(stagingDeployment.includes('migrate-production.yml'));
+
+  assert.ok(productionRelease.includes('name: production'));
+  assert.ok(productionRelease.includes("inputs.confirm == 'RELEASE'"));
+  assert.ok(productionRelease.includes("inputs.production_migration_approval == 'APPROVE_PRODUCTION_MIGRATIONS'"));
+
   const migrationRunner = await readFile(new URL('../src/db/migrate.ts', import.meta.url), 'utf8');
   assert.ok(migrationRunner.includes("searchParams.get('sslmode') !== 'verify-full'"));
   assert.ok(migrationRunner.includes("searchParams.get('sslaccept') !== 'strict'"));
