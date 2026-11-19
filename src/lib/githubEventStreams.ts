@@ -45,6 +45,48 @@ export interface RyanAiGitHubEventStream {
   ): Promise<() => Promise<void>>;
 }
 
+const supportedEventTypes = new Set<RyanAiGitHubEventType>([
+  "pull_request",
+  "pull_request_review",
+  "pull_request_review_thread",
+  "check_suite",
+  "check_run",
+  "push",
+]);
+
+export function validateRyanAiGitHubEventSubscriptions(
+  subscriptions: readonly RyanAiGitHubEventSubscription[],
+): void {
+  const subscriptionIds = new Set<string>();
+  for (const subscription of subscriptions) {
+    if (!subscription.subscriptionId.trim()) {
+      throw new Error("GitHub event subscription ID is required.");
+    }
+    if (subscriptionIds.has(subscription.subscriptionId)) {
+      throw new Error(`Duplicate GitHub event subscription ID: ${subscription.subscriptionId}`);
+    }
+    subscriptionIds.add(subscription.subscriptionId);
+
+    const repository = subscription.repository.trim();
+    if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) {
+      throw new Error("GitHub event subscription repository must use owner/repository format.");
+    }
+    if (subscription.eventTypes.length === 0) {
+      throw new Error("GitHub event subscription must include at least one event type.");
+    }
+    const seenTypes = new Set<RyanAiGitHubEventType>();
+    for (const eventType of subscription.eventTypes) {
+      if (!supportedEventTypes.has(eventType)) {
+        throw new Error(`Unsupported GitHub event type: ${String(eventType)}`);
+      }
+      if (seenTypes.has(eventType)) {
+        throw new Error(`Duplicate GitHub event type: ${eventType}`);
+      }
+      seenTypes.add(eventType);
+    }
+  }
+}
+
 /**
  * RyanAI's worker-facing contract for GitHub Event Streams.
  *
@@ -61,6 +103,7 @@ export function createRyanAiGitHubEventWorker(
   subscriptions: readonly RyanAiGitHubEventSubscription[],
   handleEvent: (event: RyanAiGitHubEvent) => Promise<void> | void,
 ): RyanAiGitHubEventWorker {
+  validateRyanAiGitHubEventSubscriptions(subscriptions);
   return {
     async start(stream) {
       const stops: Array<() => Promise<void>> = [];
