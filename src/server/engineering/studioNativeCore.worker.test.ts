@@ -33,6 +33,7 @@ const task = (overrides: Record<string, unknown> = {}) => ({
   status: 'running',
   attempts: 1,
   maxAttempts: 3,
+  leaseToken: 'lease-token-1',
   ...overrides,
 });
 
@@ -51,6 +52,24 @@ describe('Studio worker queue lifecycle', () => {
     mocks.taskUpdateMany.mockResolvedValue({ count: 1 });
     mocks.directTaskUpdateMany.mockResolvedValue({ count: 1 });
     mocks.eventCreate.mockResolvedValue({});
+  });
+
+  it('does not append authorization evidence after the claimed lease has already been lost', async () => {
+    mocks.queryRawUnsafe
+      .mockResolvedValueOnce([task()])
+      .mockResolvedValueOnce([]);
+    const handler = vi.fn().mockResolvedValue({ ok: true });
+    const unregister = registerStudioTaskHandler('ci-failure', handler);
+    try {
+      const result = await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
+      expect(result).toMatchObject({ state: 'lease_lost', taskId: 'task-1' });
+      expect(handler).not.toHaveBeenCalled();
+      expect(mocks.eventCreate).not.toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ eventType: 'task.policy_authorized' }),
+      }));
+    } finally {
+      unregister();
+    }
   });
 
   it('blocks a task whose requested capabilities exceed its assigned RyanAI worker', async () => {
@@ -148,7 +167,7 @@ describe('Studio worker queue lifecycle', () => {
       const result = await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
       expect(result).toMatchObject({ state: 'completed', taskId: 'task-1' });
       expect(mocks.directTaskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
-        where: expect.objectContaining({ id: 'task-1', status: 'running', leaseOwner: 'worker-1', attempts: 1 }),
+        where: expect.objectContaining({ id: 'task-1', status: 'running', leaseOwner: 'worker-1', leaseToken: 'lease-token-1' }),
       }));
       expect(mocks.taskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
         data: expect.objectContaining({ status: 'completed', output: { result: 'ok' } }),
@@ -330,8 +349,8 @@ describe('Studio worker queue lifecycle', () => {
 
   it('records lease recovery only for rows this process successfully transitions', async () => {
     mocks.taskFindMany.mockResolvedValue([
-      { id: 'task-a', projectId: 'project-1', ownerUserId: 'owner-1', attempts: 1, maxAttempts: 3 },
-      { id: 'task-b', projectId: 'project-1', ownerUserId: 'owner-1', attempts: 3, maxAttempts: 3 },
+      { id: 'task-a', projectId: 'project-1', ownerUserId: 'owner-1', leaseToken: 'lease-a', attempts: 1, maxAttempts: 3 },
+      { id: 'task-b', projectId: 'project-1', ownerUserId: 'owner-1', leaseToken: 'lease-b', attempts: 3, maxAttempts: 3 },
     ]);
     mocks.taskUpdateMany
       .mockResolvedValueOnce({ count: 1 })
@@ -347,9 +366,9 @@ describe('Studio worker queue lifecycle', () => {
   });
   it('fences heartbeat renewal by attempt even when the same worker ID is reused', async () => {
     const { heartbeatStudioTask } = await import('./studioNativeCore.js');
-    await heartbeatStudioTask('task-1', 'worker-1', 1);
+    await heartbeatStudioTask('task-1', 'worker-1', 'lease-token-1');
     expect(mocks.directTaskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ id: 'task-1', leaseOwner: 'worker-1', attempts: 1 }),
+      where: expect.objectContaining({ id: 'task-1', leaseOwner: 'worker-1', leaseToken: 'lease-token-1' }),
     }));
   });
 
@@ -359,15 +378,15 @@ describe('Studio worker queue lifecycle', () => {
     try {
       await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
       const writes = mocks.taskUpdateMany.mock.calls.map(([arg]) => arg);
-      expect(writes.some((arg) => arg.where?.attempts === 1 && arg.data?.status === 'completed')).toBe(true);
+      expect(writes.some((arg) => arg.where?.leaseToken === 'lease-token-1' && arg.data?.status === 'completed')).toBe(true);
     } finally { unregister(); }
   });
 
   it('includes the observed attempt and lease owner in recovery compare-and-set', async () => {
-    mocks.taskFindMany.mockResolvedValue([{ id: 'task-a', projectId: 'project-1', ownerUserId: 'owner-1', leaseOwner: 'worker-old', attempts: 2, maxAttempts: 3 }]);
+    mocks.taskFindMany.mockResolvedValue([{ id: 'task-a', projectId: 'project-1', ownerUserId: 'owner-1', leaseToken: 'expired-token', attempts: 2, maxAttempts: 3 }]);
     await recoverExpiredStudioLeases();
     expect(mocks.taskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ id: 'task-a', status: 'running', leaseOwner: 'worker-old', attempts: 2 }),
+      where: expect.objectContaining({ id: 'task-a', status: 'running', leaseToken: 'expired-token', attempts: 2 }),
     }));
   });
 
@@ -377,26 +396,30 @@ describe('Studio worker queue lifecycle', () => {
     let markFirstAttemptStarted!: () => void;
     const firstAttemptStarted = new Promise<void>((resolve) => { markFirstAttemptStarted = resolve; });
     const firstAttemptResult = new Promise((resolve) => { finishFirstAttempt = resolve; });
-    mocks.queryRawUnsafe
-      .mockResolvedValueOnce([task({ attempts: 1 })])
-      .mockResolvedValueOnce([task({ attempts: 2 })]);
+    const claims = [
+      task({ attempts: 1, leaseToken: 'old-lease-token' }),
+      task({ attempts: 2, leaseToken: 'new-lease-token' }),
+    ];
+    mocks.queryRawUnsafe.mockImplementation(async (sql: string) => {
+      if (sql.startsWith('SELECT id FROM studio_tasks')) return [{ id: 'task-1' }];
+      return [claims.shift()];
+    });
     mocks.taskFindMany.mockResolvedValue([{
       id: 'task-1',
       projectId: 'project-1',
       ownerUserId: 'owner-1',
       leaseOwner: 'worker-1',
+      leaseToken: 'old-lease-token',
       attempts: 1,
       maxAttempts: 3,
     }]);
-    mocks.taskUpdateMany.mockImplementation(async (args: { where?: { attempts?: number }; data?: { status?: string } }) => {
-      if (args.where?.attempts === 1 && args.data?.status === 'queued') return { count: 1 };
-      if (args.where?.attempts === 2 && args.data?.status === 'completed') return { count: 1 };
-      if (args.where?.attempts === 1 && args.data?.status === 'completed') return { count: 0 };
+    mocks.taskUpdateMany.mockImplementation(async (args: { where?: { leaseToken?: string }; data?: { status?: string } }) => {
+      if (args.where?.leaseToken === 'old-lease-token' && args.data?.status === 'queued') return { count: 1 };
+      if (args.where?.leaseToken === 'new-lease-token' && args.data?.status === 'completed') return { count: 1 };
+      if (args.where?.leaseToken === 'old-lease-token' && args.data?.status === 'completed') return { count: 0 };
       return { count: 0 };
     });
-    mocks.directTaskUpdateMany.mockImplementation(async (args: { where?: { attempts?: number } }) => ({
-      count: args.where?.attempts === 2 ? 1 : 0,
-    }));
+
 
     const handler = vi.fn(async ({ task: claimedTask }: { task: ReturnType<typeof task> }) => {
       if (claimedTask.attempts === 1) {
@@ -425,7 +448,7 @@ describe('Studio worker queue lifecycle', () => {
       });
 
       expect(mocks.taskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
-        where: expect.objectContaining({ id: 'task-1', attempts: 1, status: 'running' }),
+        where: expect.objectContaining({ id: 'task-1', leaseToken: 'old-lease-token', status: 'running' }),
         data: expect.objectContaining({ status: 'completed', output: { result: 'stale-attempt-output', attempt: 1 } }),
       }));
       expect(mocks.eventCreate).toHaveBeenCalledWith(expect.objectContaining({

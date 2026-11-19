@@ -27,7 +27,7 @@ function makeDb() {
     updateMany: vi.fn(),
     count: vi.fn(),
   };
-  const attemptDelegate = { create: vi.fn(), updateMany: vi.fn() };
+  const attemptDelegate = { create: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) };
   const tx = { intelligenceEventInbox: inboxDelegate, intelligenceEventAttempt: attemptDelegate };
   const db = {
     ...tx,
@@ -260,6 +260,35 @@ describe('IntelligenceEventInbox', () => {
       data: expect.objectContaining({ status: 'dead_letter' }),
     }));
     expect(attemptDelegate.updateMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects acknowledgement when its started audit row is missing', async () => {
+    inboxDelegate.updateMany.mockResolvedValue({ count: 1 });
+    attemptDelegate.updateMany.mockResolvedValue({ count: 0 });
+    await expect(inbox.acknowledge('row-1', 'worker-a', 1))
+      .rejects.toThrow('Expected exactly one started attempt audit record to transition; updated 0.');
+  });
+
+  it('rejects failure when its started audit row is missing', async () => {
+    inboxDelegate.findFirst.mockResolvedValue({
+      id: 'row-1', attempts: 1, maxAttempts: 5, leaseOwner: 'worker-a',
+      leaseExpiresAt: new Date(Date.now() + 60_000),
+    });
+    inboxDelegate.updateMany.mockResolvedValue({ count: 1 });
+    attemptDelegate.updateMany.mockResolvedValue({ count: 0 });
+    await expect(inbox.fail('row-1', 'worker-a', 1, new Error('synthetic')))
+      .rejects.toThrow('Expected exactly one started attempt audit record to transition; updated 0.');
+  });
+
+  it('rejects expiry recovery when its started audit row is missing', async () => {
+    inboxDelegate.findMany.mockResolvedValue([{
+      id: 'row-1', attempts: 1, maxAttempts: 5, leaseOwner: 'worker-a',
+      leaseExpiresAt: new Date(Date.now() - 60_000),
+    }]);
+    inboxDelegate.updateMany.mockResolvedValue({ count: 1 });
+    attemptDelegate.updateMany.mockResolvedValue({ count: 0 });
+    await expect(inbox.recoverExpiredLeases())
+      .rejects.toThrow('Expected exactly one started attempt audit record to transition; updated 0.');
   });
 
   it('requeues dead letters without changing event identity', async () => {
