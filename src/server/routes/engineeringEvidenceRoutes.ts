@@ -12,7 +12,7 @@ import { pluginRegistry } from '../plugins/pluginCatalog.js';
 import { describeCapabilityState } from '../plugins/capabilityState.js';
 import { getAgentTaskWorkerStatus } from '../../agent/operations.js';
 import { getStudioExecutionDescriptor, submitStudioProject } from '../engineering/studioExecution.js';
-import { createStudioProject, getStudioDeliveryReadiness, getStudioNativeRuntimeDescriptor, listStudioProjects } from '../engineering/studioNativeCore.js';
+import { cancelStudioTask, createStudioProject, getStudioDeliveryReadiness, getStudioNativeRuntimeDescriptor, listStudioProjects } from '../engineering/studioNativeCore.js';
 import { resolveProviderCapabilityState } from '../plugins/providerCapabilityState.js';
 import { approveStudioTask } from '../engineering/studioApprovals.js';
 import { createStudioArtifactDownloadUrl } from '../engineering/studioArtifactStorage.js';
@@ -127,6 +127,22 @@ export const engineeringEvidenceRoutes: FastifyPluginAsync = async (fastify) => 
     } catch (error) {
       request.log.warn({ err: error }, 'Studio-native project creation was rejected');
       return reply.code(400).send({ error: error instanceof Error ? error.message : 'Studio project could not be created.' });
+    }
+  });
+
+  fastify.post<{ Params: { taskId: string }; Body: { reason?: string } }>('/api/engineering/studio/native/tasks/:taskId/cancel', {
+    schema: {
+      params: { type: 'object', required: ['taskId'], additionalProperties: false, properties: { taskId: { type: 'string', minLength: 1, maxLength: 64 } } },
+      body: { type: 'object', additionalProperties: false, properties: { reason: { type: 'string', maxLength: 500 } } },
+    },
+  }, async (request, reply) => {
+    try {
+      const result = await cancelStudioTask(request.params.taskId, request.authUser!.id, request.body?.reason);
+      if (!result.cancelled && result.status === 'not_found') return reply.code(404).send({ error: 'Studio task not found.' });
+      return reply.code(200).send({ success: true, ...result });
+    } catch (error) {
+      request.log.warn({ err: error }, 'Studio task cancellation was rejected');
+      return reply.code(404).send({ error: error instanceof Error ? error.message : 'Studio task was not found for this owner.' });
     }
   });
 
