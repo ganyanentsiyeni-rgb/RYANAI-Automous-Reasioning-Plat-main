@@ -598,6 +598,7 @@ describe('bounded GitHub workflow evidence pagination', () => {
 
 
 describe('capability-gated GitHub Actions job log retrieval', () => {
+
   it('enforces the archive byte limit while streaming when Content-Length is absent', async () => {
     const app = await createApp();
     store.connection.findUnique.mockResolvedValue(storedConnection());
