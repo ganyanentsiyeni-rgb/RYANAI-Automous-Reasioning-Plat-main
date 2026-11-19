@@ -62,6 +62,26 @@ describe('Basic Programming Tools project containers', () => {
     expect(container.textContent).not.toContain('Coding work');
   });
 
+  it('filters pending and completed containers by lifecycle status', async () => {
+    api.authenticatedFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ projects: [
+        { id: 'pending-1', title: 'Pending coding task', objective: 'Build feature', projectType: 'engineering', status: 'queued', createdAt: '2026-11-19T00:00:00Z', tasks: [] },
+        { id: 'done-1', title: 'Completed coding task', objective: 'Ship tests', projectType: 'engineering', status: 'completed', createdAt: '2026-11-18T00:00:00Z', tasks: [] },
+      ] }),
+    });
+    await mount();
+    expect(container.textContent).toContain('Pending coding task');
+    expect(container.textContent).toContain('Completed coding task');
+    const filter = container.querySelector('[aria-label="Filter project status"]') as HTMLSelectElement;
+    await act(async () => {
+      filter.value = 'completed';
+      filter.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(container.textContent).toContain('Completed coding task');
+    expect(container.textContent).not.toContain('Pending coding task');
+  });
+
   it('creates a durable coding container with a queued planning task', async () => {
     api.authenticatedFetch.mockImplementation(async (_url: string, options?: RequestInit) => ({
       ok: true,
