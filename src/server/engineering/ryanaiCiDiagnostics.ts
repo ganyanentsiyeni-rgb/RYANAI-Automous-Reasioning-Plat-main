@@ -140,7 +140,6 @@ export function createRyanAICiProviderBlockedReport(headSha: string | null, erro
     schemaVersion: 1,
     source: 'github-oauth-read-only',
     evidenceTrust: 'provider_blocked',
-    liveProviderFetchPerformed: false,
     headSha,
     workflowRuns: [],
     counts: {
