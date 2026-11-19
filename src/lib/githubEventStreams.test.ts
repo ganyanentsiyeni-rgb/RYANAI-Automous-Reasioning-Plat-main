@@ -1,7 +1,35 @@
+
+describe("validateRyanAiGitHubEventSubscriptions", () => {
+  const valid = {
+    subscriptionId: "ci-events",
+    repository: "ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main",
+    eventTypes: ["check_suite", "check_run"] as const,
+  };
+
+  it("accepts valid, unique subscription definitions", () => {
+    expect(() => validateRyanAiGitHubEventSubscriptions([valid])).not.toThrow();
+  });
+
+  it("rejects duplicate subscription IDs", () => {
+    expect(() => validateRyanAiGitHubEventSubscriptions([valid, valid]))
+      .toThrow("Duplicate GitHub event subscription ID");
+  });
+
+  it("rejects malformed repositories and empty event lists", () => {
+    expect(() => validateRyanAiGitHubEventSubscriptions([
+      { ...valid, repository: "not-a-repository" },
+    ])).toThrow("owner/repository");
+    expect(() => validateRyanAiGitHubEventSubscriptions([
+      { ...valid, eventTypes: [] },
+    ])).toThrow("at least one event type");
+  });
+});
+
 import { describe, expect, it, vi } from "vitest";
 import {
   createRyanAiGitHubEventWorker,
   normalizeRyanAiGitHubEvent,
+  validateRyanAiGitHubEventSubscriptions,
   createRyanAiGitHubEventWorkerWithRouter,
   type RyanAiGitHubEventStream,
   type RyanAiGitHubEventSubscription,
