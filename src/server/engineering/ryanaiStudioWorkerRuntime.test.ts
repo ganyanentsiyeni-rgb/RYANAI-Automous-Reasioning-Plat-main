@@ -5,6 +5,7 @@ import { getStudioWorkerHandlerReadiness, registerStudioTaskHandler } from './st
 describe('RyanAI native Studio worker runtime', () => {
   it('reports profiles without registered native handlers as not ready', () => {
     const readiness = getStudioWorkerHandlerReadiness('repository-auditor');
+    expect(getStudioWorkerHandlerReadiness('coordinator').ready).toBe(false);
     expect(readiness).toMatchObject({
       workerProfileId: 'repository-auditor',
       ready: false,
