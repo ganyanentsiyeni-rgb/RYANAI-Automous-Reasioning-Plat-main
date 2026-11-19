@@ -173,7 +173,7 @@ async function claimOAuthState(fastify: FastifyInstance, state: string) {
 }
 
 async function getUsableAccessToken(
-  fastify: FastifyInstance,
+  fastify: Pick<FastifyInstance, 'prisma'>,
   config: GitHubAppConfig,
   connection: StoredConnection,
 ): Promise<string | null> {
