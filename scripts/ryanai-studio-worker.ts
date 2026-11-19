@@ -60,6 +60,7 @@ const runCiDiagnosticsTask = async ({ task }: {
     return {
       ...report,
       source: evidence.source,
+      evidenceTrust: 'github_verified_exact_sha',
       repositoryFullName: evidence.repositoryFullName,
       requestedHeadSha: evidence.requestedHeadSha,
       verifiedHeadSha: evidence.verifiedHeadSha,
@@ -73,8 +74,14 @@ const runCiDiagnosticsTask = async ({ task }: {
         jobs: run.jobs,
       })),
       notes: [
-        ...report.notes,
+        ...report.notes.filter((note) =>
+          note !== 'This worker analyzes the task-supplied snapshot; it does not fetch GitHub data or verify snapshot provenance.',
+        ),
+        'The requested commit SHA was verified against GitHub before its workflow evidence was retrieved.',
         'Workflow run and job metadata were fetched read-only from the owner-bound GitHub connection.',
+        evidence.complete
+          ? 'Workflow and job metadata pagination completed within the configured bounds.'
+          : 'Workflow or job metadata is partial because the configured pagination bounds were reached or exact-head filtering removed unexpected records.',
         evidence.jobLogStatus === 'not_requested'
           ? 'Job logs were not requested; the read-job-logs capability was not present.'
           : 'Job-log retrieval status: ' + evidence.jobLogStatus + '. Raw log text is never included in this report.',
