@@ -187,22 +187,14 @@ export function createPostgresRyanAiGitHubInboxConsumer(
       }
       const result = await query<{ id: string }>(
         `WITH expired AS (
-           UPDATE public.intelligence_event_inbox
-           SET status = CASE WHEN attempts >= max_attempts THEN 'dead_letter' ELSE 'retry' END,
-               available_at = CASE
-                 WHEN attempts >= max_attempts THEN available_at
-                 ELSE NOW() + ($2 * INTERVAL '1 millisecond')
-               END,
-               lease_owner = NULL,
-               lease_expires_at = NULL,
-               last_error = COALESCE(last_error, 'Worker lease expired before completion.'),
-               updated_at = NOW()
+           SELECT id, attempts, lease_owner
+           FROM public.intelligence_event_inbox
            WHERE status = 'processing'
              AND lease_expires_at <= NOW()
              AND source_provider = 'github'
              AND source_service = 'event-streams'
              AND ($1::text IS NULL OR payload->>'target' = $1)
-           RETURNING id, attempts, lease_owner, status
+           FOR UPDATE SKIP LOCKED
          ), attempt_done AS (
            UPDATE public.intelligence_event_attempts AS attempt
            SET status = 'lease_expired',
@@ -214,12 +206,27 @@ export function createPostgresRyanAiGitHubInboxConsumer(
              AND attempt.worker_id = expired.lease_owner
              AND attempt.status = 'started'
            RETURNING attempt.event_inbox_id
+         ), released AS (
+           UPDATE public.intelligence_event_inbox AS inbox
+           SET status = CASE WHEN inbox.attempts >= inbox.max_attempts THEN 'dead_letter' ELSE 'retry' END,
+               available_at = CASE
+                 WHEN inbox.attempts >= inbox.max_attempts THEN inbox.available_at
+                 ELSE NOW() + ($2 * INTERVAL '1 millisecond')
+               END,
+               lease_owner = NULL,
+               lease_expires_at = NULL,
+               last_error = COALESCE(inbox.last_error, 'Worker lease expired before completion.'),
+               updated_at = NOW()
+           FROM expired
+           WHERE inbox.id = expired.id
+           RETURNING inbox.id
          )
-         SELECT expired.id FROM expired`,
+         SELECT released.id FROM released
+         LEFT JOIN attempt_done ON attempt_done.event_inbox_id = released.id`,
         [target ?? null, retryBaseMs],
       );
       return result.rows.length;
-    },
+    }
   };
 }
 
