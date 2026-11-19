@@ -174,7 +174,9 @@ if (!commsPage.includes('Private Comms attachments')
   || !commsPage.includes("item.status !== 'clean'")
   || !commsPage.includes("attachment.status === 'clean'")
   || !commsPage.includes('status?.channels?.attachments === true')
-  || !commsPage.includes('!attachmentsEnabled')) {
+  // File selection stays enabled while the gate is off (#276). The gate is still
+  // reported to users through the status label, so require that instead.
+  || !commsPage.includes("attachmentsEnabled ? 'Scan-gated'")) {
   fail('Comms must retain private attachment upload, scan-gated dispatch, clean-only downloads, and the server-reported attachment feature gate');
 }
 const audiobookPage = readText('src/pages/AudiobookStudio.tsx');

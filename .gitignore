@@ -7,6 +7,9 @@
 !.gitignore
 !apps/
 !apps/mobile/
+# Read-only inventory contract test referenced by package.json (test:repository-inventory).
+!scripts/
+!scripts/repository-inventory.test.mjs
 
 # Ignore every real/local environment file at the repository root and in subdirectories.
 # This includes .env, .env.local, .env.development, .env.u2eb, .env.production,
