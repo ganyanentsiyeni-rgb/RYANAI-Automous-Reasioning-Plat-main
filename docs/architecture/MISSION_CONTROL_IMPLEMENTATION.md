@@ -55,4 +55,4 @@ No agent may grant permissions, approve its own work, access secrets, merge, dep
 
 ## Validation
 
-The accompanying Vitest suite covers the twelve identities, safe action declarations, accountable routing, dependency handling, concurrency sizing, budget preflight and independent evidence verification. It does not prove provider-gateway budget enforcement, sandbox isolation or hosted worker availability.
+The accompanying Vitest suite covers the twelve identities, safe action declarations, Studio task ownership mapping, dependency handling, concurrency sizing, budget preflight and independent evidence verification. It does not prove provider-gateway budget enforcement, sandbox isolation or hosted worker availability.
