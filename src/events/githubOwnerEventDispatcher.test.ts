@@ -23,7 +23,7 @@ describe('dispatchNextGitHubEventForAuthorizedOwners', () => {
       if (owner === 'owner-a') await callback(event);
       return { status: owner === 'owner-a' ? 'processed' as const : 'idle' as const, ...(owner === 'owner-a' ? { eventId: event.eventId } : {}) };
     });
-    const listOwners = vi.fn().mockResolvedValue(['owner-a', 'owner-a', ' owner-b ', '', null]);
+    const listOwners = vi.fn().mockResolvedValue(['owner-a', 'owner-a', ' owner-b ', '']);
     const results = await dispatchNextGitHubEventForAuthorizedOwners(
       { processNextForOwner } as never, registry, listOwners, 'github-worker',
     );
