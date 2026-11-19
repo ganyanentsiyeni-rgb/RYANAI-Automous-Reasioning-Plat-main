@@ -78,6 +78,12 @@ export default function BasicProgrammingToolsPage() {
   }, []);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- load authenticated, owner-scoped project containers on mount
   useEffect(() => { void loadProjects(); }, [loadProjects]);
+  useEffect(() => {
+    const hasActiveProjects = projects.some(project => ['queued', 'running', 'in_progress'].includes(project.status.toLowerCase()));
+    if (!hasActiveProjects) return;
+    const timer = window.setInterval(() => { void loadProjects(); }, 10_000);
+    return () => window.clearInterval(timer);
+  }, [projects, loadProjects]);
   const visibleProjects = projects.filter(project => {
     const typeMatches = tab === 'research' ? project.projectType === 'research' : project.projectType !== 'research';
     const query = search.trim().toLowerCase();
@@ -105,7 +111,7 @@ export default function BasicProgrammingToolsPage() {
       });
       const payload = await response.json() as { project?: { id: string }; error?: string };
       if (!response.ok) throw new Error(payload.error || 'Container could not be created.');
-      setNotice((tab === 'research' ? 'Research' : 'Project') + ' container ' + (payload.project?.id ?? 'created') + ' was saved to RyanAI Studio. Its planning task is queued for governed processing.');
+      setNotice((tab === 'research' ? 'Research' : 'Project') + ' container ' + (payload.project?.id ?? 'created') + ' was saved to RyanAI Studio. Its planning task is queued in Studio. Worker execution remains disabled until a governed native worker is configured.');
       setTitle(''); setObjective('');
       await loadProjects();
     } catch (cause) {
@@ -129,7 +135,7 @@ export default function BasicProgrammingToolsPage() {
 
     <section aria-label="Project containers" className="rounded-2xl border border-cyan-300/15 bg-slate-900/60 p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h2 className="text-lg font-semibold text-white">Project containers</h2><p className="mt-1 text-xs text-slate-400">Separate workspaces for active, pending and completed work. Records are persisted through the authenticated Studio API.</p></div>
+        <div><h2 className="text-lg font-semibold text-white">Project containers</h2><p className="mt-1 text-xs text-slate-400">Separate workspaces for active, pending and completed work. Records are persisted through the authenticated Studio API; active containers refresh automatically.</p></div>
         <button type="button" onClick={() => void loadProjects()} disabled={loading} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-200 disabled:opacity-50"><RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />Refresh</button>
       </div>
       <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="Project and research containers">
