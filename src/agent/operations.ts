@@ -269,7 +269,7 @@ async function processAgentRun(
     },
   );
   try {
-  const assertExecutionLeaseActive = () => assertAgentRunLeaseActive(
+    const assertExecutionLeaseActive = () => assertAgentRunLeaseActive(
     { id: run.id, workerId: run.worker_id, attempts: run.attempts },
     async (where) => Boolean(await prisma.agentRun.findFirst({ where, select: { id: true } })),
     cancellation.signal,
