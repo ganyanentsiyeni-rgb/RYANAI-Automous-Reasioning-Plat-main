@@ -1,4 +1,4 @@
-name: Supabase Migration Replay
+name: Supabase Migration Replay and Shared Rooms Authorization
 
 on:
   push:
@@ -6,11 +6,13 @@ on:
     paths:
       - "supabase/**"
       - ".github/workflows/supabase-migrations.yml"
+      - "scripts/test-shared-rooms-rls.sql"
   pull_request:
     branches: [main, master]
     paths:
       - "supabase/**"
       - ".github/workflows/supabase-migrations.yml"
+      - "scripts/test-shared-rooms-rls.sql"
   workflow_dispatch:
 
 permissions:
@@ -22,9 +24,9 @@ concurrency:
 
 jobs:
   clean-migration-replay:
-    name: Replay Supabase migrations on a clean local stack
+    name: Replay migrations and test Shared Rooms JWT authorization
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -43,7 +45,15 @@ jobs:
       - name: Lint the resulting local database
         run: supabase db lint --fail-on error
 
-      - name: Stop disposable local Supabase stack
+      - name: Exercise Shared Rooms policies with authenticated JWT subjects
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval "$(supabase status -o env)"
+          test -n "${DB_URL:-}"
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -f scripts/test-shared-rooms-rls.sql
+
+      - name: Stop disposable Supabase stack
         if: always()
         run: supabase stop
         continue-on-error: true
