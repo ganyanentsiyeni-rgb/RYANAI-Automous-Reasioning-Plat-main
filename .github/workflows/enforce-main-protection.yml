@@ -89,6 +89,17 @@ jobs:
                   { context: "Require independent human approval" }
                 ]
               }},
+              # PUT replaces the full ruleset, so retain the existing deployment gates.
+              { type: "required_deployments", parameters: {
+                required_deployment_environments: [
+                  "staging",
+                  "ryanai-provider-verification",
+                  "production",
+                  "main - ryanai-web-u2eb",
+                  "main - ryanai-mcp-u2eb-u2eb",
+                  "main - ryanai-api-u2eb"
+                ]
+              }},
               { type: "required_linear_history" },
               { type: "non_fast_forward" },
               { type: "deletion" },
@@ -120,6 +131,19 @@ jobs:
             and ([.rules[].type] | index("non_fast_forward") != null)
             and ([.rules[].type] | index("deletion") != null)
             and ([.rules[].type] | index("required_linear_history") != null)
+            and ([.rules[].type] | index("required_deployments") != null)
+            and ([
+              .rules[]
+              | select(.type == "required_deployments")
+              | .parameters.required_deployment_environments
+            ] == [[
+              "staging",
+              "ryanai-provider-verification",
+              "production",
+              "main - ryanai-web-u2eb",
+              "main - ryanai-mcp-u2eb-u2eb",
+              "main - ryanai-api-u2eb"
+            ]])
             and ([.conditions.ref_name.include[]] | index("refs/heads/main") != null)
             and ([
               .rules[] | select(.type == "required_status_checks") | .parameters
@@ -155,4 +179,4 @@ jobs:
                 and .require_last_push_approval == true)
             ] | length == 1)
           ' ruleset-final.json
-          echo "Verified: main protection is active, requires review and CI, and has no bypass actors."
+          echo "Verified: main protection is active, requires review, CI, and existing deployment gates, and has no bypass actors."
