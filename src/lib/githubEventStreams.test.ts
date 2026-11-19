@@ -162,4 +162,50 @@ describe("RyanAI GitHub Event Streams worker", () => {
     expect(stop).toHaveBeenCalledTimes(1);
   });
 
+  it("bounds pending delivery and preserves back-pressure", async () => {
+    let releaseFirst!: () => void;
+    let receive!: (event: {
+      id: string;
+      type: "push";
+      repository: string;
+      occurredAt: string;
+      payload: unknown;
+    }) => Promise<void> | void;
+    const handled: string[] = [];
+    const worker = createRyanAiGitHubEventWorker(
+      [{ subscriptionId: "one", repository: "owner/repo", eventTypes: ["push"] }],
+      async (event) => {
+        if (event.id === "first") {
+          await new Promise<void>((resolve) => { releaseFirst = resolve; });
+        }
+        handled.push(event.id);
+      },
+      { maxPendingEvents: 1 },
+    );
+    await worker.start({
+      subscribe: async (_subscription, onEvent) => {
+        receive = onEvent as typeof receive;
+        return async () => undefined;
+      },
+    });
+
+    const first = receive({
+      id: "first", type: "push", repository: "owner/repo",
+      occurredAt: "2026-11-19T00:00:00Z", payload: {},
+    });
+    await Promise.resolve();
+    await expect(Promise.resolve(receive({
+      id: "second", type: "push", repository: "owner/repo",
+      occurredAt: "2026-11-19T00:00:01Z", payload: {},
+    }))).rejects.toThrow("at capacity");
+
+    releaseFirst();
+    await first;
+    await receive({
+      id: "second", type: "push", repository: "owner/repo",
+      occurredAt: "2026-11-19T00:00:01Z", payload: {},
+    });
+    expect(handled).toEqual(["first", "second"]);
+  });
+
 });
