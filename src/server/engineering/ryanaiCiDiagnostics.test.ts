@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeRyanAICiEvidence, createRyanAICiProviderBlockedReport } from './ryanaiCiDiagnostics.js';
+import { analyzeRyanAICiEvidence, createRyanAICiProviderBlockedReport, createRyanAIVerifiedCiReport } from './ryanaiCiDiagnostics.js';
 
 describe('RyanAI CI evidence diagnostics', () => {
   it('keeps queued, skipped, cancelled and missing distinct from passed', () => {
@@ -83,8 +83,7 @@ describe('RyanAI CI provider-blocked evidence', () => {
 
 
 describe('verified GitHub CI report composition', () => {
-  it('replaces snapshot-only trust claims with exact-head provider provenance', async () => {
-    const { createRyanAIVerifiedCiReport } = await import('./ryanaiCiDiagnostics.js');
+  it('replaces snapshot-only trust claims with exact-head provider provenance', () => {
     const analysis = analyzeRyanAICiEvidence({
       headSha: 'a'.repeat(40),
       workflowRuns: [{ id: 1, name: 'build', status: 'completed', conclusion: 'success' }],
