@@ -177,10 +177,7 @@ export function registerStudioTaskHandler(taskType: string, handler: StudioTaskH
   return () => { if (taskHandlers.get(taskType) === handler) taskHandlers.delete(taskType); };
 }
 
-export async function runStudioWorkerOnce(
-  workerId: string,
-  authorize: (task: StudioTask) => Promise<{ allowed: boolean; reason?: string; decision?: string; ruleId?: string; approvalReference?: string }> = async (task) => evaluateRyanAIStudioTaskAdmission(task),
-) {
+export async function runStudioWorkerOnce(workerId: string) {
   const task = await claimStudioTask(workerId, [...taskHandlers.keys()]);
   if (!task) return { state: 'idle' as const };
   const handler = taskHandlers.get(task.taskType);
@@ -191,27 +188,7 @@ export async function runStudioWorkerOnce(
     });
     return { state: 'unhandled' as const, taskId: task.id };
   }
-  let decision: Awaited<ReturnType<typeof authorize>>;
-  try {
-    decision = await authorize(task);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'RyanAI task admission check failed.';
-    await prisma.$transaction(async (tx) => {
-      const exhausted = task.attempts >= task.maxAttempts;
-      const released = await tx.studioTask.updateMany({
-        where: { id: task.id, status: 'running', leaseOwner: workerId, leaseExpiresAt: { gt: new Date() } },
-        data: { status: exhausted ? 'failed' : 'queued', leaseOwner: null, leaseExpiresAt: null, heartbeatAt: null,
-          availableAt: new Date(Date.now() + Math.min(300000, 1000 * 2 ** task.attempts)),
-          completedAt: exhausted ? new Date() : null },
-      });
-      if (released.count === 1) await tx.studioEvent.create({ data: {
-        projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId, actorId: workerId,
-        eventType: exhausted ? 'task.authorization_exhausted' : 'task.authorization_failed',
-        payload: { attempt: task.attempts, error: message.slice(0, 1000) },
-      } });
-    });
-    return { state: 'failed' as const, taskId: task.id, error: message };
-  }
+  const decision = evaluateRyanAIStudioTaskAdmission(task);
   if (!decision.allowed) {
     await prisma.$transaction(async (tx) => {
       const blocked = await tx.studioTask.updateMany({ where: { id: task.id, status: 'running', leaseOwner: workerId, leaseExpiresAt: { gt: new Date() } },
