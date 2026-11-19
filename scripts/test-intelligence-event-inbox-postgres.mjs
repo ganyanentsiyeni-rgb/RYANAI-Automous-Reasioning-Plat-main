@@ -71,6 +71,7 @@ try {
   assert.equal(recoveredRow.status, 'retry');
   assert.equal(recoveredAudit.length, 1);
   assert.equal(recoveredAudit[0].status, 'lease_expired');
+  await prisma.intelligenceEventInbox.update({ where: { id: recoverable.id }, data: { status: 'processed', processedAt: now } });
   console.log('PASS PostgreSQL competing recovery: one compare-and-set winner');
 
   // Recovery racing a new claim may serialize as recovery-then-claim or claim-first,
