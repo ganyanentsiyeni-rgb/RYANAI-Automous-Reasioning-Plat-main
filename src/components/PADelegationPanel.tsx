@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Activity, ArrowRightLeft, CheckCircle2, Clock3, LoaderCircle, RefreshCw, Send, ShieldCheck, XCircle } from 'lucide-react';
 import { authenticatedFetch } from '@/lib/authenticatedFetch';
 
@@ -59,6 +59,7 @@ export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilo
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const createRequestRef = useRef<{ fingerprint: string; delegationId: string } | null>(null);
   const canCreate = mode === 'copilot';
   const canApprove = mode === 'pa';
 
@@ -95,11 +96,16 @@ export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilo
     setNotice('');
     setError('');
     try {
+      const fingerprint = JSON.stringify({ objective: objective.trim(), capabilities: [...capabilities].sort() });
+      if (!createRequestRef.current || createRequestRef.current.fingerprint !== fingerprint) {
+        createRequestRef.current = { fingerprint, delegationId: crypto.randomUUID() };
+      }
       await api('/api/agent/ops/pa/delegations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ objective: objective.trim(), capabilities }),
+        body: JSON.stringify({ objective: objective.trim(), capabilities, delegationId: createRequestRef.current.delegationId }),
       });
+      createRequestRef.current = null;
       setObjective('');
       setNotice('Alex received the handoff. It is waiting for your approval before any reasoning work is queued.');
       await refresh();
