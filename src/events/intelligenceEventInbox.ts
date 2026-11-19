@@ -143,15 +143,56 @@ export class IntelligenceEventInbox {
     }
   }
 
-  /** Atomically claims the oldest due event; expired leases can be reclaimed. */
+  /**
+   * Generic workers are deliberately excluded from the GitHub Event Streams
+   * lane. GitHub events may only be claimed through claimNextForOwner().
+   */
   async claimNext(workerId: string, now = new Date(), eventTypes?: string[]) {
-    const owner = workerId.trim();
-    if (!owner || owner.length > 128) throw new RangeError('workerId must contain 1-128 characters.');
+    return this.claimNextInternal(workerId, now, eventTypes, null);
+  }
+
+  /**
+   * Claim a GitHub event only for the authenticated RyanAI owner supplied by
+   * trusted server context. The JSON owner filter is applied in the database
+   * query, before a lease can be acquired; event payload fields never select
+   * or override this identity.
+   */
+  async claimNextForOwner(
+    workerId: string,
+    authenticatedOwnerUserId: string,
+    now = new Date(),
+    eventTypes?: string[],
+  ) {
+    const ownerUserId = authenticatedOwnerUserId.trim();
+    if (!ownerUserId || ownerUserId.length > 128) {
+      throw new RangeError('authenticatedOwnerUserId must contain 1-128 characters.');
+    }
+    return this.claimNextInternal(workerId, now, eventTypes, ownerUserId);
+  }
+
+  private async claimNextInternal(
+    workerId: string,
+    now: Date,
+    eventTypes: string[] | undefined,
+    authenticatedOwnerUserId: string | null,
+  ) {
+    const worker = workerId.trim();
+    if (!worker || worker.length > 128) throw new RangeError('workerId must contain 1-128 characters.');
     const allowedTypes = eventTypes?.filter((value) => typeof value === 'string' && value.length > 0);
     if (eventTypes && (!allowedTypes || allowedTypes.length === 0)) return null;
+
+    const githubLane = { sourceProvider: 'github', sourceService: 'event-streams' };
+    const ownerScope = authenticatedOwnerUserId
+      ? {
+          ...githubLane,
+          payload: { path: ['owner', 'userId'], equals: authenticatedOwnerUserId },
+        }
+      : { NOT: githubLane };
+
     return this.db.$transaction(async (tx) => {
       const candidate = await tx.intelligenceEventInbox.findFirst({
         where: {
+          ...ownerScope,
           ...(allowedTypes ? { eventType: { in: allowedTypes } } : {}),
           OR: [
             { status: 'pending', availableAt: { lte: now } },
@@ -167,18 +208,18 @@ export class IntelligenceEventInbox {
         ? { leaseExpiresAt: candidate.leaseExpiresAt }
         : { availableAt: { lte: now } };
       const claimed = await tx.intelligenceEventInbox.updateMany({
-        where: { id: candidate.id, status: candidate.status, ...leaseCondition },
+        where: { ...ownerScope, id: candidate.id, status: candidate.status, ...leaseCondition },
         data: {
           status: 'processing',
           attempts: { increment: 1 },
-          leaseOwner: owner,
+          leaseOwner: worker,
           leaseExpiresAt: new Date(now.getTime() + this.leaseMs),
           lastError: null,
         },
       });
       if (claimed.count !== 1) return null;
       await tx.intelligenceEventAttempt.create({
-        data: { eventInboxId: candidate.id, attempt: candidate.attempts + 1, workerId: owner, status: 'started' },
+        data: { eventInboxId: candidate.id, attempt: candidate.attempts + 1, workerId: worker, status: 'started' },
       });
       return tx.intelligenceEventInbox.findUnique({ where: { id: candidate.id } });
     });
@@ -293,6 +334,48 @@ export class IntelligenceEventInbox {
       status, await this.db.intelligenceEventInbox.count({ where: { status } }),
     ] as const));
     return Object.fromEntries(counts) as Record<IntelligenceEventStatus, number>;
+  }
+
+  /** Owner-scoped GitHub processing; owner identity comes from authenticated server context. */
+  async processNextForOwner(
+    workerId: string,
+    authenticatedOwnerUserId: string,
+    handler: EventHandler,
+    now = new Date(),
+    eventTypes?: string[],
+  ) {
+    const claimed = await this.claimNextForOwner(workerId, authenticatedOwnerUserId, now, eventTypes);
+    if (!claimed) return { status: 'idle' as const };
+    const payload = claimed.payload as Record<string, unknown>;
+    const owner = payload.owner as Record<string, unknown> | undefined;
+    if (!owner || owner.userId !== authenticatedOwnerUserId) {
+      const outcome = await this.fail(
+        claimed.id,
+        workerId,
+        new Error('Claimed GitHub event owner does not match authenticated worker context.'),
+        new Date(),
+      );
+      return { ...outcome, eventId: claimed.eventId };
+    }
+    let leaseLost = false;
+    const heartbeat = setInterval(() => {
+      void this.renewLease(claimed.id, workerId)
+        .then((renewed) => { if (!renewed) leaseLost = true; })
+        .catch(() => { leaseLost = true; });
+    }, Math.max(50, Math.floor(this.leaseMs / 3)));
+    heartbeat.unref?.();
+    try {
+      await handler(toEnvelope(claimed));
+      if (leaseLost) throw new EventLeaseLostError();
+      await this.acknowledge(claimed.id, workerId, new Date());
+      return { status: 'processed' as const, eventId: claimed.eventId };
+    } catch (error) {
+      if (leaseLost) throw new EventLeaseLostError();
+      const outcome = await this.fail(claimed.id, workerId, error, new Date());
+      return { ...outcome, eventId: claimed.eventId };
+    } finally {
+      clearInterval(heartbeat);
+    }
   }
 
   /** Runs one event through a trusted handler. Handler failures are retried or dead-lettered. */
