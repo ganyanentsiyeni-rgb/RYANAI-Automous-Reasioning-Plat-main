@@ -63,9 +63,10 @@ export function createRyanAiGitHubEventWorker(
 export function createRyanAiGitHubEventWorkerWithRouter(
   subscriptions: readonly RyanAiGitHubEventSubscription[],
   handleWake: import("./githubEventRouter").RyanAiWorkerWakeHandler,
+  idempotencyStore?: import("./githubEventRouter").RyanAiEventIdempotencyStore,
 ): RyanAiGitHubEventWorker {
   return createRyanAiGitHubEventWorker(
     subscriptions,
-    createRyanAiGitHubEventRouter(handleWake),
+    createRyanAiGitHubEventRouter(handleWake, idempotencyStore),
   );
 }
