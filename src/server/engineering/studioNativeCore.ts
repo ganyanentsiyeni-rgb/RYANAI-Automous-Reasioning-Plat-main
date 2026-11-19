@@ -160,10 +160,10 @@ export async function claimStudioTask(workerId: string, supportedTaskTypes: read
   });
 }
 
-export async function heartbeatStudioTask(taskId: string, workerId: string, leaseSeconds = 90) {
+export async function heartbeatStudioTask(taskId: string, workerId: string, attempt: number, leaseSeconds = 90) {
   const safeLease = Math.max(15, Math.min(leaseSeconds, 600));
   const result = await prisma.studioTask.updateMany({
-    where: { id: taskId, status: 'running', leaseOwner: workerId, leaseExpiresAt: { gt: new Date() } },
+    where: { id: taskId, status: 'running', leaseOwner: workerId, attempts: attempt, leaseExpiresAt: { gt: new Date() } },
     data: { heartbeatAt: new Date(), leaseExpiresAt: new Date(Date.now() + safeLease * 1000) },
   });
   return result.count === 1;
@@ -174,14 +174,14 @@ export async function recoverExpiredStudioLeases() {
     const now = new Date();
     const expired = await tx.studioTask.findMany({
       where: { status: 'running', leaseExpiresAt: { lte: now } },
-      select: { id: true, projectId: true, ownerUserId: true, attempts: true, maxAttempts: true }, take: 250,
+      select: { id: true, projectId: true, ownerUserId: true, leaseOwner: true, attempts: true, maxAttempts: true }, take: 250,
     });
     let recovered = 0;
     let failed = 0;
     for (const task of expired) {
       const exhausted = task.attempts >= task.maxAttempts;
       const updated = await tx.studioTask.updateMany({
-        where: { id: task.id, status: 'running', leaseExpiresAt: { lte: now } },
+        where: { id: task.id, status: 'running', leaseOwner: task.leaseOwner, attempts: task.attempts, leaseExpiresAt: { lte: now } },
         data: { status: exhausted ? 'failed' : 'queued', leaseOwner: null, leaseExpiresAt: null, heartbeatAt: null,
           availableAt: exhausted ? now : new Date(Date.now() + Math.min(300000, 1000 * 2 ** task.attempts)),
           completedAt: exhausted ? now : null },
@@ -242,7 +242,7 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId = wo
   const handler = taskHandlers.get(task.taskType);
   if (!handler) {
     await prisma.studioTask.updateMany({
-      where: { id: task.id, status: 'running', leaseOwner: workerId, leaseExpiresAt: { gt: new Date() } },
+      where: { id: task.id, status: 'running', leaseOwner: workerId, attempts: task.attempts, leaseExpiresAt: { gt: new Date() } },
       data: { status: 'queued', leaseOwner: null, leaseExpiresAt: null, heartbeatAt: null },
     });
     return { state: 'unhandled' as const, taskId: task.id };
@@ -250,7 +250,7 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId = wo
   const decision = evaluateRyanAIStudioTaskAdmission(task);
   if (!decision.allowed) {
     await prisma.$transaction(async (tx) => {
-      const blocked = await tx.studioTask.updateMany({ where: { id: task.id, status: 'running', leaseOwner: workerId, leaseExpiresAt: { gt: new Date() } },
+      const blocked = await tx.studioTask.updateMany({ where: { id: task.id, status: 'running', leaseOwner: workerId, attempts: task.attempts, leaseExpiresAt: { gt: new Date() } },
         data: { status: 'blocked', leaseOwner: null, leaseExpiresAt: null, heartbeatAt: null, approvalStatus: 'blocked' } });
       if (blocked.count === 1) await tx.studioEvent.create({ data: { projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
         actorId: workerId, eventType: 'task.policy_blocked', payload: { decision: decision.decision ?? 'DENY_OR_REQUIRE_APPROVAL', ruleId: decision.ruleId ?? 'unknown', reason: decision.reason ?? 'RyanAI platform policy denied task admission.' } } });
@@ -266,9 +266,9 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId = wo
     },
   } });
   try {
-    const output = await handler({ workerId, task, heartbeat: () => heartbeatStudioTask(task.id, workerId) });
+    const output = await handler({ workerId, task, heartbeat: () => heartbeatStudioTask(task.id, workerId, task.attempts) });
     await prisma.$transaction(async (tx) => {
-      const completed = await tx.studioTask.updateMany({ where: { id: task.id, status: 'running', leaseOwner: workerId, leaseExpiresAt: { gt: new Date() } },
+      const completed = await tx.studioTask.updateMany({ where: { id: task.id, status: 'running', leaseOwner: workerId, attempts: task.attempts, leaseExpiresAt: { gt: new Date() } },
         data: { status: 'completed', output: output as Prisma.InputJsonValue, completedAt: new Date(), leaseOwner: null, leaseExpiresAt: null, heartbeatAt: null } });
       if (completed.count !== 1) throw new Error('Studio worker lease expired before completion could be committed.');
       await tx.studioEvent.create({ data: { projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
@@ -279,7 +279,7 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId = wo
     const message = error instanceof Error ? error.message : 'Studio worker failed.';
     await prisma.$transaction(async (tx) => {
       const exhausted = task.attempts >= task.maxAttempts;
-      const released = await tx.studioTask.updateMany({ where: { id: task.id, status: 'running', leaseOwner: workerId, leaseExpiresAt: { gt: new Date() } },
+      const released = await tx.studioTask.updateMany({ where: { id: task.id, status: 'running', leaseOwner: workerId, attempts: task.attempts, leaseExpiresAt: { gt: new Date() } },
         data: { status: exhausted ? 'failed' : 'queued', leaseOwner: null, leaseExpiresAt: null, heartbeatAt: null,
           availableAt: new Date(Date.now() + Math.min(300000, 1000 * 2 ** task.attempts)) } });
       if (released.count === 1) await tx.studioEvent.create({ data: { projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
