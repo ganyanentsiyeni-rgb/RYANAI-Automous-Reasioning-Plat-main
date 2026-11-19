@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import { executeStudioToolCapability, getStudioNativeRuntimeDescriptor, recommendStudioWorker } from './studioNativeCore.js';
+import { executeStudioToolCapability, getStudioNativeRuntimeDescriptor, classifyStudioWorkerLiveness, recommendStudioWorker } from './studioNativeCore.js';
 
 describe('RyanAI Studio Native Core contracts', () => {
+  it('marks persisted worker heartbeats stale after the freshness window', () => {
+    const now = Date.now();
+    expect(classifyStudioWorkerLiveness('healthy', new Date(now - 5_000), now)).toBe('healthy');
+    expect(classifyStudioWorkerLiveness('healthy', new Date(now - 31_000), now)).toBe('stale');
+    expect(classifyStudioWorkerLiveness('stopped', new Date(now - 300_000), now)).toBe('stopped');
+    expect(classifyStudioWorkerLiveness('degraded', new Date(now - 5_000), now)).toBe('degraded');
+  });
+
   it('recommends a specialist using declared task capabilities', () => {
     expect(recommendStudioWorker('ci-failure')?.id).toBe('ci-diagnostics');
     expect(recommendStudioWorker('unknown-task')).toBeNull();
