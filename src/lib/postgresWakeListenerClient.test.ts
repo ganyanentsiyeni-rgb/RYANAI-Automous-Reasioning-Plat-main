@@ -127,7 +127,7 @@ describe('concrete PostgreSQL wake listener client', () => {
       }),
       processNextForOwner: vi.fn(async (_worker: string, owner: string, handler: (event: typeof eventEnvelope) => Promise<void>) => {
         const stored = persisted.find((item) => (item as typeof eventEnvelope).payload.owner.userId === owner) as typeof eventEnvelope;
-        if (!stored) return { status: 'idle' as const };
+        if (!stored || registry.dispatch.mock.calls.length > 0) return { status: 'idle' as const };
         await handler(stored);
         return { status: 'processed' as const, eventId: stored.eventId };
       }),
