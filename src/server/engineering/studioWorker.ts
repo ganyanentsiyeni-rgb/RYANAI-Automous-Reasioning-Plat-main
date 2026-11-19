@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { prisma } from '../../lib/prisma.js';
 import { runStudioWorkerOnce, registerStudioTaskHandler, recoverExpiredStudioLeases, createStudioArtifact } from './studioNativeCore.js';
-import { storeStudioArtifact } from './studioArtifactStorage.js';
+import { removeStoredStudioArtifact, storeStudioArtifact } from './studioArtifactStorage.js';
 
 const workerId = 'studio-worker-' + (process.env.HOSTNAME || 'host').slice(0, 80) + '-' + randomUUID();
 const heartbeatIntervalMs = 10_000;
@@ -72,7 +72,7 @@ async function main() {
     return;
   }
 
-  const unregister = registerStudioTaskHandler('coordination', async ({ task }) => {
+  const unregister = registerStudioTaskHandler('coordination', async ({ task, claimToken }) => {
     const plan = {
       schemaVersion: 1,
       projectId: task.projectId,
@@ -98,19 +98,28 @@ async function main() {
       bytes,
       mimeType: 'application/json',
     });
-    const artifact = await createStudioArtifact({
-      projectId: task.projectId,
-      taskId: task.id,
-      ownerUserId: task.ownerUserId,
-      title: task.title + ' — execution plan',
-      kind: 'plan',
-      storageProvider: 'supabase-storage',
-      storageKey: stored.storageKey,
-      mimeType: stored.mimeType,
-      byteSize: BigInt(stored.byteSize),
-      sha256: stored.sha256,
-      provenance: { workerId, handler: 'coordination', schemaVersion: 1 },
-    });
+    let artifact;
+    try {
+      artifact = await createStudioArtifact({
+        projectId: task.projectId,
+        taskId: task.id,
+        ownerUserId: task.ownerUserId,
+        title: task.title + ' — execution plan',
+        kind: 'plan',
+        storageProvider: 'supabase-storage',
+        storageKey: stored.storageKey,
+        mimeType: stored.mimeType,
+        byteSize: BigInt(stored.byteSize),
+        sha256: stored.sha256,
+        provenance: { workerId, handler: 'coordination', schemaVersion: 1 },
+        leaseFence: { workerId, claimToken },
+      });
+    } catch (error) {
+      await removeStoredStudioArtifact(stored.storageKey).catch((cleanupError) => {
+        log('artifact-orphan-cleanup-failed', { taskId: task.id, error: cleanupError instanceof Error ? cleanupError.message : 'Unknown cleanup error' });
+      });
+      throw error;
+    }
     return { artifactId: artifact.id, sha256: stored.sha256, byteSize: stored.byteSize, state: 'plan_artifact_created' };
   });
 
