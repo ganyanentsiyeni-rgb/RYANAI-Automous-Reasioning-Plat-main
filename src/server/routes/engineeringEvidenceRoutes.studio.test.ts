@@ -5,8 +5,6 @@ const mocks = vi.hoisted(() => ({
   agentRunFindMany: vi.fn(),
   codingTaskFindMany: vi.fn(),
   providerConnectionFindMany: vi.fn(),
-  workerStatus: vi.fn(),
-  dispatchAutonomousTask: vi.fn(),
   createStudioProject: vi.fn(),
   listStudioProjects: vi.fn(),
   getStudioDeliveryReadiness: vi.fn(),
@@ -19,10 +17,6 @@ vi.mock('../../lib/prisma.js', () => ({
     codingTask: { findMany: mocks.codingTaskFindMany },
     pluginProviderConnection: { findMany: mocks.providerConnectionFindMany },
   },
-}));
-vi.mock('../../agent/operations.js', () => ({
-  getAgentTaskWorkerStatus: mocks.workerStatus,
-  dispatchAutonomousTask: mocks.dispatchAutonomousTask,
 }));
 vi.mock('../engineering/studioNativeCore.js', () => ({
   createStudioProject: mocks.createStudioProject,
@@ -57,21 +51,10 @@ describe('RyanAI Studio overview API', () => {
       connectedAt: new Date(), revokedAt: null, updatedAt: new Date(),
       accessTokenExpiresAt: new Date(Date.now() + 60_000), encryptedRefreshToken: 'encrypted-refresh-token',
     }]);
-    mocks.dispatchAutonomousTask.mockResolvedValue({ id: 'studio-project-1', status: 'queued' });
     mocks.createStudioProject.mockResolvedValue({ project: { id: 'native-project-1', title: 'Build Studio', status: 'planned' }, tasks: [{ id: 'native-task-1', taskType: 'engineering' }] });
     mocks.listStudioProjects.mockResolvedValue([{ id: 'native-project-1', ownerUserId: 'owner-1', tasks: [{ id: 'native-task-1', status: 'queued' }], artifacts: [] }]);
     mocks.listStudioWorkerHealth.mockResolvedValue({ state: 'unknown', source: 'studio_worker_heartbeats', staleAfterMs: 30000, workers: [], note: 'Persisted Studio worker heartbeat health.' });
     mocks.getStudioDeliveryReadiness.mockResolvedValue({ projectId: 'native-project-1', state: 'in_progress', humanReviewRequired: true });
-    mocks.workerStatus.mockReturnValue({
-      state: 'running',
-      queueClaimState: 'ready',
-      lastClaimAttemptAt: new Date().toISOString(),
-      lastSuccessfulClaimAt: new Date().toISOString(),
-      lastClaimErrorCode: null,
-      lastClaimedTask: { runId: 'run-claimed', trigger: 'notification', claimedAt: new Date().toISOString() },
-      lastProcessedTask: { runId: 'run-processed', trigger: 'notification', startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), status: 'completed' },
-      listener: { state: 'listening', connected: true, subscribed: true, lastConnectedAt: new Date(), lastErrorCode: null },
-    });
     app = Fastify();
     app.decorateRequest('authUser', null);
     await app.register(engineeringEvidenceRoutes);
@@ -82,7 +65,7 @@ describe('RyanAI Studio overview API', () => {
     await app.close();
   });
 
-  it('creates an owner-scoped native Studio project and task graph without dispatching Jarvis', async () => {
+  it('creates an owner-scoped native Studio project and task graph without external orchestration', async () => {
     const response = await app.inject({
       method: 'POST', url: '/api/engineering/studio/native/projects',
       headers: { 'x-test-user': 'owner-native' },
@@ -93,7 +76,6 @@ describe('RyanAI Studio overview API', () => {
     });
     expect(response.statusCode).toBe(201);
     expect(mocks.createStudioProject).toHaveBeenCalledWith(expect.objectContaining({ ownerUserId: 'owner-native', title: 'Build Studio' }));
-    expect(mocks.dispatchAutonomousTask).not.toHaveBeenCalled();
     expect(response.json().runtime).toMatchObject({ projectLifecycle: 'studio_native', productionExecutionEnabled: false });
   });
 
@@ -142,7 +124,6 @@ describe('RyanAI Studio overview API', () => {
       objective: expect.stringContaining('Project type: engineering'),
     }));
     expect(mocks.createStudioProject.mock.calls[0][0].objective).toContain('Acceptance criteria:');
-    expect(mocks.dispatchAutonomousTask).not.toHaveBeenCalled();
     expect(response.json()).toMatchObject({
       projectId: 'native-project-1', taskId: 'native-project-1', status: 'planned', queue: 'studio_tasks',
       executionAdapter: { adapterId: 'ryanai-native-studio-worker', independentRuntime: true, lifecycleOwner: 'RyanAI Studio', authorizationAuthority: 'RyanAI platform policy' },
@@ -166,7 +147,7 @@ describe('RyanAI Studio overview API', () => {
     expect(brief).toContain('state uncertainty and evidence gaps');
   });
 
-  it('rejects credential material in project briefs before dispatch', async () => {
+  it('rejects credential material in project briefs before task creation', async () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/engineering/studio/projects',
