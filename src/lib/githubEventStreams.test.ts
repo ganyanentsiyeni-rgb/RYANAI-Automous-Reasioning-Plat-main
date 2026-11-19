@@ -1,10 +1,36 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createRyanAiGitHubEventWorker,
+  normalizeRyanAiGitHubEvent,
   createRyanAiGitHubEventWorkerWithRouter,
   type RyanAiGitHubEventStream,
   type RyanAiGitHubEventSubscription,
 } from "./githubEventStreams";
+
+describe("normalizeRyanAiGitHubEvent", () => {
+  it("canonicalizes identifiers and timestamps", () => {
+    const event = normalizeRyanAiGitHubEvent({
+      id: " evt-1 ",
+      type: "check_suite",
+      repository: " ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main ",
+      occurredAt: "2026-11-19T00:00:00+02:00",
+      payload: {},
+    });
+    expect(event.id).toBe("evt-1");
+    expect(event.repository).toBe("ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main");
+    expect(event.occurredAt).toBe("2026-11-18T22:00:00.000Z");
+  });
+
+  it("rejects malformed timestamps", () => {
+    expect(() => normalizeRyanAiGitHubEvent({
+      id: "evt-invalid",
+      type: "push",
+      repository: "repo",
+      occurredAt: "not-a-date",
+      payload: {},
+    })).toThrow("valid ISO timestamp");
+  });
+});
 
 describe("RyanAI GitHub Event Streams worker", () => {
   it("subscribes once and handles delivered events without polling", async () => {
