@@ -103,3 +103,27 @@ export function bindRyanAiGitHubEventToOwner(
     event,
   });
 }
+
+
+export type RyanAiGitHubOwnerConnection = {
+  userId: string;
+  githubUserId: string;
+  repositoryId: string;
+  repositoryFullName: string;
+};
+
+/**
+ * Resolve the OAuth connection using the authenticated RyanAI user ID as the
+ * lookup key. The resolver must query the persisted connection by userId;
+ * callers must not pass a connection row supplied by an event or browser.
+ * Returns null when this owner has not connected GitHub.
+ */
+export async function resolveRyanAiGitHubOwnerBinding(
+  authenticatedUserId: string,
+  findConnectionForUser: (userId: string) => Promise<RyanAiGitHubOwnerConnection | null>,
+): Promise<RyanAiGitHubOwnerBinding | null> {
+  const ownerUserId = requiredString(authenticatedUserId, "owner user ID");
+  const connection = await findConnectionForUser(ownerUserId);
+  if (!connection) return null;
+  return createRyanAiGitHubOwnerBinding(ownerUserId, connection);
+}
