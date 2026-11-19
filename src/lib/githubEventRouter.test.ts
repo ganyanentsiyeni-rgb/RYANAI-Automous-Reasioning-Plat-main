@@ -137,4 +137,37 @@ describe("createRyanAiGitHubEventRouter", () => {
 
     expect(wake).not.toHaveBeenCalled();
   });
+  it("coalesces concurrent redeliveries while the first wake is running", async () => {
+    let release!: () => void;
+    const wake = vi.fn(async () => new Promise<void>((resolve) => { release = resolve; }));
+    const route = createRyanAiGitHubEventRouter(wake);
+    const first = event("evt-concurrent", "check_suite");
+
+    const deliveryOne = route(first);
+    const deliveryTwo = route(first);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(wake).toHaveBeenCalledTimes(1);
+    release();
+    await Promise.all([deliveryOne, deliveryTwo]);
+    await route(first);
+    expect(wake).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the wake failure when clearing its idempotency record also fails", async () => {
+    const store = {
+      has: vi.fn(() => false),
+      remember: vi.fn(() => undefined),
+      forget: vi.fn(() => { throw new Error("store unavailable"); }),
+    };
+    const route = createRyanAiGitHubEventRouter(
+      vi.fn(async () => { throw new Error("worker unavailable"); }),
+      store,
+    );
+
+    await expect(route(event("evt-store-failure", "check_suite")))
+      .rejects.toThrow("idempotency record could not be cleared");
+  });
+
 });
