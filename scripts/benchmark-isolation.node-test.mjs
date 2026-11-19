@@ -47,6 +47,8 @@ test('container runner passes no host environment and mounts only three allowlis
 test('isolation probes reject connection-refused as evidence of a blocked route', async () => {
   const probe = await readFile('scripts/benchmark-isolation-container.mjs', 'utf8');
   assert.match(probe, /DENIED_NETWORK_CODES/);
+  assert.match(probe, /DNS_DENIED_CODES/);
+  assert.match(probe, /HOST_ALIAS_UNAVAILABLE_CODES/);
   assert.match(probe, /ENETUNREACH/);
   assert.match(probe, /EHOSTUNREACH/);
   assert.doesNotMatch(probe, /'ECONNREFUSED'\s*,?\s*'ETIMEDOUT'/);
