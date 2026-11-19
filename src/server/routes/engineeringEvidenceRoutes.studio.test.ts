@@ -5,12 +5,10 @@ const mocks = vi.hoisted(() => ({
   agentRunFindMany: vi.fn(),
   codingTaskFindMany: vi.fn(),
   providerConnectionFindMany: vi.fn(),
-  workerStatus: vi.fn(),
-  dispatchAutonomousTask: vi.fn(),
   createStudioProject: vi.fn(),
   listStudioProjects: vi.fn(),
   getStudioDeliveryReadiness: vi.fn(),
-  cancelStudioTask: vi.fn(),
+  listStudioWorkerHealth: vi.fn(),
 }));
 
 vi.mock('../../lib/prisma.js', () => ({
@@ -20,16 +18,12 @@ vi.mock('../../lib/prisma.js', () => ({
     pluginProviderConnection: { findMany: mocks.providerConnectionFindMany },
   },
 }));
-vi.mock('../../agent/operations.js', () => ({
-  getAgentTaskWorkerStatus: mocks.workerStatus,
-  dispatchAutonomousTask: mocks.dispatchAutonomousTask,
-}));
 vi.mock('../engineering/studioNativeCore.js', () => ({
   createStudioProject: mocks.createStudioProject,
   listStudioProjects: mocks.listStudioProjects,
   getStudioDeliveryReadiness: mocks.getStudioDeliveryReadiness,
-  cancelStudioTask: mocks.cancelStudioTask,
-  getStudioNativeRuntimeDescriptor: () => ({ projectLifecycle: 'studio_native', scheduler: 'database_leased_task_graph', workerRuntime: 'not_configured', authorizationAuthority: 'Gen-X', productionExecutionEnabled: false }),
+  listStudioWorkerHealth: mocks.listStudioWorkerHealth,
+  getStudioNativeRuntimeDescriptor: () => ({ projectLifecycle: 'studio_native', scheduler: 'database_leased_task_graph', workerRuntime: 'separate_process', authorizationAuthority: 'RyanAI platform policy', productionExecutionEnabled: false }),
 }));
 vi.mock('./auth.js', () => ({
   requireUser: async (request: { headers: Record<string, string | undefined>; authUser?: unknown }, reply: { code: (status: number) => { send: (body: unknown) => unknown } }) => {
@@ -57,21 +51,10 @@ describe('RyanAI Studio overview API', () => {
       connectedAt: new Date(), revokedAt: null, updatedAt: new Date(),
       accessTokenExpiresAt: new Date(Date.now() + 60_000), encryptedRefreshToken: 'encrypted-refresh-token',
     }]);
-    mocks.dispatchAutonomousTask.mockResolvedValue({ id: 'studio-project-1', status: 'queued' });
-    mocks.createStudioProject.mockResolvedValue({ project: { id: 'native-project-1', title: 'Build Studio' }, tasks: [{ id: 'native-task-1', taskType: 'engineering' }] });
-    mocks.listStudioProjects.mockResolvedValue([{ id: 'native-project-1', ownerUserId: 'owner-1' }]);
+    mocks.createStudioProject.mockResolvedValue({ project: { id: 'native-project-1', title: 'Build Studio', status: 'planned' }, tasks: [{ id: 'native-task-1', taskType: 'engineering' }] });
+    mocks.listStudioProjects.mockResolvedValue([{ id: 'native-project-1', ownerUserId: 'owner-1', tasks: [{ id: 'native-task-1', status: 'queued' }], artifacts: [] }]);
+    mocks.listStudioWorkerHealth.mockResolvedValue({ state: 'unknown', source: 'studio_worker_heartbeats', staleAfterMs: 30000, workers: [], note: 'Persisted Studio worker heartbeat health.' });
     mocks.getStudioDeliveryReadiness.mockResolvedValue({ projectId: 'native-project-1', state: 'in_progress', humanReviewRequired: true });
-    mocks.cancelStudioTask.mockResolvedValue({ cancelled: true, alreadyCancelled: false, status: 'cancelled' });
-    mocks.workerStatus.mockReturnValue({
-      state: 'running',
-      queueClaimState: 'ready',
-      lastClaimAttemptAt: new Date().toISOString(),
-      lastSuccessfulClaimAt: new Date().toISOString(),
-      lastClaimErrorCode: null,
-      lastClaimedTask: { runId: 'run-claimed', trigger: 'notification', claimedAt: new Date().toISOString() },
-      lastProcessedTask: { runId: 'run-processed', trigger: 'notification', startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), status: 'completed' },
-      listener: { state: 'listening', connected: true, subscribed: true, lastConnectedAt: new Date(), lastErrorCode: null },
-    });
     app = Fastify();
     app.decorateRequest('authUser', null);
     await app.register(engineeringEvidenceRoutes);
@@ -82,7 +65,7 @@ describe('RyanAI Studio overview API', () => {
     await app.close();
   });
 
-  it('creates an owner-scoped native Studio project and task graph without dispatching Jarvis', async () => {
+  it('creates an owner-scoped native Studio project and task graph without external orchestration', async () => {
     const response = await app.inject({
       method: 'POST', url: '/api/engineering/studio/native/projects',
       headers: { 'x-test-user': 'owner-native' },
@@ -93,7 +76,6 @@ describe('RyanAI Studio overview API', () => {
     });
     expect(response.statusCode).toBe(201);
     expect(mocks.createStudioProject).toHaveBeenCalledWith(expect.objectContaining({ ownerUserId: 'owner-native', title: 'Build Studio' }));
-    expect(mocks.dispatchAutonomousTask).not.toHaveBeenCalled();
     expect(response.json().runtime).toMatchObject({ projectLifecycle: 'studio_native', productionExecutionEnabled: false });
   });
 
@@ -122,32 +104,6 @@ describe('RyanAI Studio overview API', () => {
     expect(mocks.getStudioDeliveryReadiness).toHaveBeenCalledWith('foreign-project', 'owner-native');
   });
 
-  it('cancels a native Studio task only in the authenticated owner scope', async () => {
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/engineering/studio/native/tasks/native-task-1/cancel',
-      headers: { 'x-test-user': 'owner-native' },
-      payload: { reason: 'Owner requested cancellation' },
-    });
-    expect(response.statusCode).toBe(200);
-    expect(mocks.cancelStudioTask).toHaveBeenCalledWith(
-      'native-task-1',
-      'owner-native',
-      'Owner requested cancellation',
-    );
-    expect(response.json()).toMatchObject({ success: true, cancelled: true, status: 'cancelled' });
-  });
-
-  it('does not cancel a native Studio task without an authenticated owner', async () => {
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/engineering/studio/native/tasks/native-task-1/cancel',
-      payload: { reason: 'Unauthenticated attempt' },
-    });
-    expect(response.statusCode).toBe(401);
-    expect(mocks.cancelStudioTask).not.toHaveBeenCalled();
-  });
-
   it('submits structured briefs through the Studio execution adapter', async () => {
     const response = await app.inject({
       method: 'POST',
@@ -162,14 +118,15 @@ describe('RyanAI Studio overview API', () => {
       },
     });
     expect(response.statusCode).toBe(202);
-    expect(mocks.dispatchAutonomousTask).toHaveBeenCalledWith(
-      'owner-1',
-      expect.stringContaining('Project type: engineering'),
-    );
-    expect(mocks.dispatchAutonomousTask.mock.calls[0][1]).toContain('Acceptance criteria:');
+    expect(mocks.createStudioProject).toHaveBeenCalledWith(expect.objectContaining({
+      ownerUserId: 'owner-1',
+      projectType: 'engineering',
+      objective: expect.stringContaining('Project type: engineering'),
+    }));
+    expect(mocks.createStudioProject.mock.calls[0][0].objective).toContain('Acceptance criteria:');
     expect(response.json()).toMatchObject({
-      projectId: 'studio-project-1', taskId: 'studio-project-1', status: 'queued', queue: 'agent_runs',
-      executionAdapter: { adapterId: 'jarvis-agent-runs', independentRuntime: false, lifecycleOwner: 'RyanAI Studio' },
+      projectId: 'native-project-1', taskId: 'native-project-1', status: 'planned', queue: 'studio_tasks',
+      executionAdapter: { adapterId: 'ryanai-native-studio-worker', independentRuntime: true, lifecycleOwner: 'RyanAI Studio', authorizationAuthority: 'RyanAI platform policy' },
     });
   });
 
@@ -184,13 +141,13 @@ describe('RyanAI Studio overview API', () => {
       },
     });
     expect(response.statusCode).toBe(202);
-    const brief = mocks.dispatchAutonomousTask.mock.calls[0][1] as string;
+    const brief = mocks.createStudioProject.mock.calls[0][0].objective as string;
     expect(brief).toContain('Research quality: prioritize primary sources');
     expect(brief).toContain('source URLs and publication/access dates');
     expect(brief).toContain('state uncertainty and evidence gaps');
   });
 
-  it('rejects credential material in project briefs before dispatch', async () => {
+  it('rejects credential material in project briefs before task creation', async () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/engineering/studio/projects',
@@ -198,7 +155,7 @@ describe('RyanAI Studio overview API', () => {
       payload: { objective: 'Research a provider', projectType: 'research', constraints: ['ghp_123456789012345678901234567890'] },
     });
     expect(response.statusCode).toBe(400);
-    expect(mocks.dispatchAutonomousTask).not.toHaveBeenCalled();
+    expect(mocks.createStudioProject).not.toHaveBeenCalled();
   });
 
   it('does not create a Studio project without an authenticated owner', async () => {
@@ -208,7 +165,6 @@ describe('RyanAI Studio overview API', () => {
       payload: { objective: 'Research a provider', projectType: 'research' },
     });
     expect(response.statusCode).toBe(401);
-    expect(mocks.dispatchAutonomousTask).not.toHaveBeenCalled();
   });
 
   it('requires a verified signed-in owner', async () => {
@@ -218,33 +174,25 @@ describe('RyanAI Studio overview API', () => {
     expect(mocks.codingTaskFindMany).not.toHaveBeenCalled();
   });
 
-  it('returns canonical workforce, live runtime, owner projects, tasks and truthful plugin readiness', async () => {
+  it('returns native RyanAI workforce, heartbeat health, owner projects and truthful plugin readiness', async () => {
     const response = await app.inject({
       method: 'GET',
       url: '/api/engineering/studio/overview',
       headers: { 'x-test-user': 'owner-1' },
     });
     expect(response.statusCode).toBe(200);
-    expect(mocks.agentRunFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: 'owner-1' } }));
+    expect(mocks.agentRunFindMany).not.toHaveBeenCalled();
     expect(mocks.codingTaskFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: 'owner-1' } }));
     expect(mocks.providerConnectionFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { ownerUserId: 'owner-1' } }));
     const body = response.json();
     expect(body.workforce.moduleAgents).toHaveLength(12);
     expect(body.workforce.sharedWorkers).toHaveLength(10);
-    expect(body.runtime).toMatchObject({
-      state: 'running', queueClaimState: 'ready',
-      lastClaimedTask: { runId: 'run-claimed', trigger: 'notification' },
-      lastProcessedTask: { runId: 'run-processed', status: 'completed' },
-      listener: { connected: true, subscribed: true },
-    });
-    expect(body.execution).toMatchObject({ adapterId: 'jarvis-agent-runs', independentRuntime: false, lifecycleOwner: 'RyanAI Studio', authorizationAuthority: 'Gen-X' });
-    expect(body.projects[0]).toMatchObject({
-      id: 'project-1', objective: 'Build a service',
-      handoffs: [{ fromAgent: 'supervisor', toAgent: 'primary', status: 'running' }],
-    });
+    expect(body.runtime).toMatchObject({ state: 'unknown', source: 'studio_worker_heartbeats', workers: [] });
+    expect(body.execution).toMatchObject({ adapterId: 'ryanai-native-studio-worker', independentRuntime: true, lifecycleOwner: 'RyanAI Studio', authorizationAuthority: 'RyanAI platform policy' });
+    expect(body.projects[0]).toMatchObject({ id: 'native-project-1', ownerUserId: 'owner-1', tasks: [{ id: 'native-task-1', status: 'queued' }] });
     expect(body.codingTasks[0]).toMatchObject({ id: 'coding-1', status: 'running' });
     const calendar = body.integrations.providers.find((provider: { id: string }) => provider.id === 'google-calendar');
-    expect(calendar).toMatchObject({ connectionStatus: 'connected', adapterStatus: 'adapter_required', usable: false, state: 'blocked_adapter_required', healthState: 'not_probed', authorizationState: 'genx_per_invocation_required', executionAuthorized: false });
+    expect(calendar).toMatchObject({ connectionStatus: 'connected', adapterStatus: 'adapter_required', usable: false, state: 'blocked_adapter_required', healthState: 'not_probed', executionAuthorized: false });
     expect(calendar.capabilities[0]).toMatchObject({ state: 'blocked_adapter_required', healthState: 'not_probed', executionAuthorized: false });
     expect(calendar).toMatchObject({ connectionStatus: 'connected', authenticationStatus: 'oauth_grant_issued', healthStatus: 'not_probed', executionStatus: 'blocked_adapter_missing', adapterStatus: 'adapter_required', usable: false });
     expect(JSON.stringify(body)).not.toContain('encryptedAccessToken');
