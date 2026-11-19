@@ -39,9 +39,21 @@ export interface RyanAiEventIdempotencyStore {
   forget(eventId: string): Promise<void> | void;
 }
 
+/**
+ * Process-local deduplication only. This store is bounded and is not safe as
+ * the sole production replay barrier across restarts or multiple instances.
+ * Production adapters must provide an atomic, durable implementation.
+ */
 export function createInMemoryRyanAiEventIdempotencyStore(
   maxRememberedEventIds = 2048,
 ): RyanAiEventIdempotencyStore {
+  if (
+    !Number.isInteger(maxRememberedEventIds) ||
+    maxRememberedEventIds < 1 ||
+    maxRememberedEventIds > 1_000_000
+  ) {
+    throw new Error("maxRememberedEventIds must be an integer between 1 and 1000000.");
+  }
   const handledEventIds = new Set<string>();
 
   return {
