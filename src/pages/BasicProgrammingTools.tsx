@@ -87,6 +87,7 @@ export default function BasicProgrammingToolsPage() {
   const visibleProjects = projects.filter(project => {
     const typeMatches = tab === 'research' ? project.projectType === 'research' : project.projectType !== 'research';
     const query = search.trim().toLowerCase();
+    const statusMatches = statusFilter === 'all' || project.status.toLowerCase() === statusFilter;
     const status = project.status.toLowerCase();
     const statusMatches = statusFilter === 'all'
       || (statusFilter === 'pending' && ['pending', 'queued'].includes(status))
@@ -158,6 +159,7 @@ export default function BasicProgrammingToolsPage() {
           <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold text-white">{tab === 'research' ? 'Research library' : 'Coding projects'}</h3><span className="text-xs text-slate-500">{visibleProjects.length} shown · {projects.length} total</span></div>
           <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
             <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-[#070a10] px-3"><Search className="h-4 w-4 text-slate-500" /><input aria-label="Search project containers" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search containers…" className="min-w-0 flex-1 bg-transparent py-2.5 text-sm text-white outline-none" /></label>
+            <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-[#070a10] px-3 text-xs text-slate-400">Status<select aria-label="Filter project status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="bg-transparent py-2.5 text-sm text-white outline-none"><option value="all">All statuses</option><option value="queued">Pending / queued</option><option value="in_progress">In progress</option><option value="completed">Completed</option><option value="failed">Failed</option><option value="cancelled">Cancelled</option></select></label>
             <label className="flex items-center gap-2 rounded-lg border border-white/10 bg-[#070a10] px-3 text-xs text-slate-400">Status<select aria-label="Filter project status" value={statusFilter} onChange={event => setStatusFilter(event.target.value)} className="bg-transparent py-2.5 text-sm text-white outline-none"><option value="all">All statuses</option><option value="pending">Pending / queued</option><option value="active">Running / in progress</option><option value="completed">Completed</option><option value="failed">Failed</option><option value="cancelled">Cancelled</option></select></label>
           </div>
           {error && <p role="alert" className="mt-3 rounded-lg border border-rose-300/20 bg-rose-300/5 p-3 text-xs text-rose-200">{error}</p>}
