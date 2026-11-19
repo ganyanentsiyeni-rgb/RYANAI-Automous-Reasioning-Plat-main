@@ -5,7 +5,7 @@ import { RYANAI_GITHUB_OWNER_EVENT_WAKE_CHANNEL } from '../events/postgresGitHub
 /** Structural subset of pg.Client; callers supply a dedicated, already-connected client. */
 export interface RyanAiPgNotification {
   channel: string;
-  payload?: string;
+  payload?: string | null;
 }
 
 export interface RyanAiPgListenerClient {
