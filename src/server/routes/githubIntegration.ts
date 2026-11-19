@@ -406,18 +406,6 @@ export async function inspectConnectedGitHubWorkflowEvidence(
     throw new GitHubOAuthError('github_workflow_commit_sha_mismatch');
   }
 
-  const runPayload = await githubApi<{
-    total_count?: number;
-    workflow_runs?: Array<{
-      id?: number; name?: string; head_sha?: string; status?: string;
-      conclusion?: string | null; html_url?: string;
-    }>;
-  }>(
-    'repos/' + GITHUB_APP_REPOSITORY + '/actions/runs?head_sha=' +
-      encodeURIComponent(requestedHeadSha) + '&per_page=50',
-    accessToken,
-  );
-  const rawRuns = Array.isArray(runPayload.workflow_runs) ? runPayload.workflow_runs : [];
   const rawRuns: Array<{
     id?: number; name?: string; head_sha?: string; status?: string;
     conclusion?: string | null; html_url?: string;
@@ -443,27 +431,12 @@ export async function inspectConnectedGitHubWorkflowEvidence(
       break;
     }
   }
+
   const exactRuns = rawRuns.filter((run) =>
     typeof run.id === 'number' &&
     typeof run.head_sha === 'string' &&
     run.head_sha.toLowerCase() === requestedHeadSha.toLowerCase(),
   );
-  const workflowRuns = await Promise.all(exactRuns.map(async (run) => {
-    const jobsPayload = await githubApi<{
-      total_count?: number;
-      jobs?: Array<{ name?: string; status?: string; conclusion?: string | null }>;
-    }>(
-      'repos/' + GITHUB_APP_REPOSITORY + '/actions/runs/' +
-        encodeURIComponent(String(run.id)) + '/jobs?per_page=100',
-      accessToken,
-    );
-    const jobs = (Array.isArray(jobsPayload.jobs) ? jobsPayload.jobs : []).slice(0, 100)
-      .map((job) => ({
-        name: typeof job.name === 'string' ? job.name : 'Unnamed job',
-        status: typeof job.status === 'string' ? job.status : 'unknown',
-        conclusion: typeof job.conclusion === 'string' ? job.conclusion : null,
-      }));
-    return {
   let jobsComplete = exactRuns.length <= 50;
   const workflowRuns: ConnectedGitHubWorkflowEvidence['workflowRuns'] = [];
   for (const run of exactRuns.slice(0, 50)) {
@@ -494,9 +467,6 @@ export async function inspectConnectedGitHubWorkflowEvidence(
       status: typeof run.status === 'string' ? run.status : 'unknown',
       conclusion: typeof run.conclusion === 'string' ? run.conclusion : null,
       url: typeof run.html_url === 'string' ? run.html_url : null,
-      jobs,
-    };
-  }));
       jobs: rawJobs.slice(0, 300).map((job) => ({
         id: typeof job.id === 'number' ? job.id : 0,
         name: typeof job.name === 'string' ? job.name : 'Unnamed job',
