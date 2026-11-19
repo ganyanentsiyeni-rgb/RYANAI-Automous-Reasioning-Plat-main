@@ -75,7 +75,9 @@ const routeFromHash = (): Route => {
       ? 'signin'
       : segment === 'register'
         ? 'signup'
-        : segment;
+        : segment === 'calculator'
+          ? 'programming'
+          : segment;
   return (
     appManifest.routes.find((candidate) => candidate.id === route)?.id ??
     UI_CONFIG.defaultRoute
