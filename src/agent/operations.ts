@@ -15,7 +15,7 @@ import { publishAgentTaskNotification } from './queueNotifications.js';
 import { agentRunLeaseFilter, startAgentRunLeaseHeartbeat } from './agentRunLease.js';
 import { summarizeProviderError } from './providerErrors.js';
 import { assertBrainProbeResponse, BRAIN_PROBE_CHALLENGE, BRAIN_PROBE_ORDER } from './brainProbe.js';
-import { buildAgentRunExecutionPrompt, planQueuedAgentRun } from './agentRunExecution.js';
+import { assertPAExecutionHandlersAvailable, buildAgentRunExecutionPrompt, planQueuedAgentRun } from './agentRunExecution.js';
 import type { ExecutionChange } from './executionPlanner.js';
 import { recordRunEvidence, appendRunEvidence } from './engineeringEvidence.js';
 import { withTelemetrySpan } from '../telemetry/core.js';
@@ -287,6 +287,8 @@ async function processAgentRun(
         throw new Error('PA delegation capability scope changed after approval.');
       }
       await recordRunEvidence({ runId: run.id, eventType: 'pa.execution.scope_revalidated', payload: { delegationId: delegation.id, capabilities: runCapabilities } });
+      // Until real capability handlers are wired, do not let three-brain reasoning masquerade as delegated execution.
+      assertPAExecutionHandlersAvailable(paScope);
     }
     activeRegion = 'perception';
     await recordRegion('perception', 'started');
