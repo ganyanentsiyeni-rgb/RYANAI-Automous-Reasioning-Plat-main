@@ -10,7 +10,7 @@ import { resolveSelectedReasoningModel } from './modelSelection.js';
 import { buildBrainKnowledgeContext } from './knowledgeAgent.js';
 import { parsePAExecutionScope } from './agentRunExecution.js';
 import { getAgentRunRetryDelayMs, invokeWithCancellationRetry, shouldRetryAgentRun } from './agentRunRetry.js';
-import { persistAgentRunCompletion } from './agentRunPersistence.js';
+import { persistAgentRunCompletion, requirePADelegationRecord } from './agentRunPersistence.js';
 import { publishAgentTaskNotification } from './queueNotifications.js';
 import { agentRunLeaseFilter, startAgentRunLeaseHeartbeat } from './agentRunLease.js';
 import { summarizeProviderError } from './providerErrors.js';
@@ -438,31 +438,29 @@ async function processAgentRun(
         const scope = run.execution_scope && typeof run.execution_scope === 'object' ? run.execution_scope as Record<string, unknown> : {};
         const paDelegationId = typeof scope.paDelegationId === 'string' ? scope.paDelegationId : null;
         if (paDelegationId) {
-          const delegation = await tx.paDelegation.findUnique({ where: { id: paDelegationId }, select: { id: true, traceId: true } });
-          if (delegation) {
-            await tx.paDelegation.update({
-              where: { id: delegation.id },
-              data: { status: cancelled ? 'cancelled' : 'failed' },
-            });
-            await tx.paExecutionReceipt.upsert({
-              where: { delegationId: delegation.id },
-              create: {
-                delegationId: delegation.id,
-                agentRunId: run.id,
-                traceId: delegation.traceId,
-                attempt: run.attempts,
-                status: cancelled ? 'cancelled' : 'failed',
-                error: message,
-              },
-              update: {
-                agentRunId: run.id,
-                traceId: delegation.traceId,
-                attempt: run.attempts,
-                status: cancelled ? 'cancelled' : 'failed',
-                error: message,
-              },
-            });
-          }
+          const delegation = requirePADelegationRecord(await tx.paDelegation.findUnique({ where: { id: paDelegationId }, select: { id: true, traceId: true } }));
+          await tx.paDelegation.update({
+            where: { id: delegation.id },
+            data: { status: cancelled ? 'cancelled' : 'failed' },
+          });
+          await tx.paExecutionReceipt.upsert({
+            where: { delegationId: delegation.id },
+            create: {
+              delegationId: delegation.id,
+              agentRunId: run.id,
+              traceId: delegation.traceId,
+              attempt: run.attempts,
+              status: cancelled ? 'cancelled' : 'failed',
+              error: message,
+            },
+            update: {
+              agentRunId: run.id,
+              traceId: delegation.traceId,
+              attempt: run.attempts,
+              status: cancelled ? 'cancelled' : 'failed',
+              error: message,
+            },
+          });
         }
       }
     });
