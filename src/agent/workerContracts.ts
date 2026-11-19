@@ -79,7 +79,7 @@ export function validateWorkerTaskResult(result: WorkerTaskResult): WorkerResult
   if (!task.taskId.trim()) errors.push('Task ID is required.');
   if (!task.agentId.trim()) errors.push('Agent ID is required.');
   if (!task.workerId.trim()) errors.push('Worker ID is required.');
-  if (!/^[^/\\s]+\/[^/\\s]+$/.test(task.repository)) errors.push('Repository must use owner/name form.');
+  if (!/^[^/\\\s]+\/[^/\\\s]+$/.test(task.repository)) errors.push('Repository must use owner/name form.');
   if (!task.branch.trim()) errors.push('Branch is required.');
   if (!/^[a-f0-9]{40}$/i.test(task.commitSha)) errors.push('A full 40-character commit SHA is required.');
   if (task.pullRequestNumber !== undefined && (!Number.isInteger(task.pullRequestNumber) || task.pullRequestNumber < 1)) {
