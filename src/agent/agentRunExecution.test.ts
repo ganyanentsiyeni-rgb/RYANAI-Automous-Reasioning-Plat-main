@@ -81,6 +81,12 @@ describe('PA capability handler availability', () => {
     expect(() => assertPAExecutionHandlersAvailable(scope, ['tests.run'])).toThrow(/evidence.record/);
   });
 
+  it('permits only the implemented repository.inspect handler in this increment', () => {
+    const repositoryScope = { delegationId: '123e4567-e89b-42d3-a456-426614174000', capabilities: ['repository.inspect'] as const };
+    expect(() => assertPAExecutionHandlersAvailable(repositoryScope, ['repository.inspect'])).not.toThrow();
+    expect(() => assertPAExecutionHandlersAvailable({ ...repositoryScope, capabilities: ['diagnostics.run'] as const }, ['repository.inspect'])).toThrow(/diagnostics.run/);
+  });
+
   it('allows a scope only when every capability has a registered handler', () => {
     expect(() => assertPAExecutionHandlersAvailable(scope, ['tests.run', 'evidence.record'])).not.toThrow();
   });

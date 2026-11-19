@@ -348,6 +348,46 @@ export async function getStudioDeliveryReadiness(projectId: string, ownerUserId:
   };
 }
 
+export const STUDIO_WORKER_HEARTBEAT_STALE_AFTER_MS = 30_000;
+
+export function classifyStudioWorkerLiveness(status: string, lastSeenAt: Date, now = Date.now()): string {
+  if (status === 'stopped') return 'stopped';
+  if (status !== 'starting' && status !== 'healthy' && status !== 'degraded') return 'unknown';
+  return now - lastSeenAt.getTime() > STUDIO_WORKER_HEARTBEAT_STALE_AFTER_MS ? 'stale' : status;
+}
+
+/** Reports durable worker heartbeat evidence; it does not infer process or deployment health. */
+export async function listStudioWorkerHealth(now = Date.now()) {
+  const heartbeats = await prisma.studioWorkerHeartbeat.findMany({
+    orderBy: { lastSeenAt: 'desc' },
+    take: 100,
+    select: {
+      workerId: true,
+      status: true,
+      startedAt: true,
+      lastSeenAt: true,
+      stoppedAt: true,
+      metadata: true,
+    },
+  });
+  const workers = heartbeats.map((worker) => ({
+    ...worker,
+    liveness: classifyStudioWorkerLiveness(worker.status, worker.lastSeenAt, now),
+  }));
+  const hasIssue = workers.some((worker) => worker.liveness === 'degraded' || worker.liveness === 'stale' || worker.liveness === 'unknown');
+  const hasHealthy = workers.some((worker) => worker.liveness === 'healthy');
+  const hasStarting = workers.some((worker) => worker.liveness === 'starting');
+  const state = hasIssue ? 'degraded' : hasHealthy ? 'running' : hasStarting ? 'starting' : workers.length ? 'stopped' : 'unknown';
+  return {
+    state,
+    source: 'studio_worker_heartbeats',
+    observedAt: new Date(now).toISOString(),
+    staleAfterMs: STUDIO_WORKER_HEARTBEAT_STALE_AFTER_MS,
+    workers,
+    note: 'Persisted heartbeat evidence only; this does not prove deployment, task-handler, provider, or end-to-end readiness.',
+  };
+}
+
 export function getStudioNativeRuntimeDescriptor() {
   return {
     projectLifecycle: 'studio_native',

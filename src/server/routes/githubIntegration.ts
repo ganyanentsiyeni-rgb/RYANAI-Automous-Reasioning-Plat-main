@@ -23,7 +23,7 @@ type GitHubTokenResponse = {
 };
 
 type GitHubUser = { id?: number; login?: string; avatar_url?: string };
-type GitHubRepository = { id?: number; full_name?: string; permissions?: Record<string, boolean> };
+type GitHubRepository = { id?: number; name?: string; full_name?: string; html_url?: string; private?: boolean; pushed_at?: string; default_branch?: string; permissions?: Record<string, boolean> };
 type StoredConnection = {
   userId: string;
   githubUserId: string;
@@ -173,7 +173,7 @@ async function claimOAuthState(fastify: FastifyInstance, state: string) {
 }
 
 async function getUsableAccessToken(
-  fastify: FastifyInstance,
+  fastify: Pick<FastifyInstance, 'prisma'>,
   config: GitHubAppConfig,
   connection: StoredConnection,
 ): Promise<string | null> {
@@ -229,6 +229,78 @@ async function getUsableAccessToken(
     }
     return null;
   }
+}
+
+
+/**
+ * Inspect only the repository already bound to this user's encrypted OAuth connection.
+ * The function performs GitHub GET requests only and never accepts a repository or token
+ * from an agent-supplied payload.
+ */
+export async function inspectConnectedGitHubRepository(
+  fastify: Pick<FastifyInstance, 'prisma'>,
+  userId: string,
+): Promise<{
+  repositoryFullName: string;
+  repositoryUrl: string;
+  accountLogin: string;
+  defaultBranch: string;
+  commitSha: string;
+  commitUrl: string;
+  inspectedAt: string;
+  source: 'github-oauth-read-only';
+}> {
+  if (!userId.trim()) throw new GitHubOAuthError('github_owner_identity_missing');
+  const config = readGitHubAppConfig();
+  if (!config) throw new GitHubOAuthError('github_app_not_configured');
+  const connection = await fastify.prisma.gitHubAppConnection.findUnique({ where: { userId } });
+  if (!connection || connection.repositoryFullName !== GITHUB_APP_REPOSITORY) {
+    throw new GitHubOAuthError('github_owner_connection_missing_or_wrong_repository');
+  }
+  // Worker inspection must not rotate or persist OAuth credentials. If the access token
+  // is expired or inside the refresh window, fail closed and require the owner to reconnect.
+  if (connection.accessTokenExpiresAt &&
+      connection.accessTokenExpiresAt.getTime() <= Date.now() + REFRESH_SKEW_MS) {
+    throw new GitHubOAuthError('github_owner_reauthorization_required');
+  }
+  let accessToken: string;
+  try {
+    accessToken = decryptGitHubSecret(connection.encryptedAccessToken, config.encryptionKey);
+  } catch {
+    throw new GitHubOAuthError('github_owner_reauthorization_required');
+  }
+
+  const [account, repository] = await Promise.all([
+    githubApi<GitHubUser>('user', accessToken),
+    githubApi<GitHubRepository>('repos/' + GITHUB_APP_REPOSITORY, accessToken),
+  ]);
+  if (
+    String(account.id ?? '') !== connection.githubUserId ||
+    repository.full_name !== GITHUB_APP_REPOSITORY ||
+    repository.permissions?.pull !== true ||
+    typeof repository.default_branch !== 'string' ||
+    !repository.default_branch.trim()
+  ) throw new GitHubOAuthError('github_owner_or_repository_verification_failed');
+
+  const commit = await githubApi<{ sha?: string; html_url?: string }>(
+    'repos/' + GITHUB_APP_REPOSITORY + '/commits/' + encodeURIComponent(repository.default_branch),
+    accessToken,
+  );
+  if (typeof commit.sha !== 'string' || !/^[a-f0-9]{40}$/i.test(commit.sha)) {
+    throw new GitHubOAuthError('github_default_branch_commit_invalid');
+  }
+  return {
+    repositoryFullName: GITHUB_APP_REPOSITORY,
+    repositoryUrl: typeof repository.html_url === 'string' ? repository.html_url : 'https://github.com/' + GITHUB_APP_REPOSITORY,
+    accountLogin: connection.githubLogin,
+    defaultBranch: repository.default_branch,
+    commitSha: commit.sha,
+    commitUrl: typeof commit.html_url === 'string'
+      ? commit.html_url
+      : 'https://github.com/' + GITHUB_APP_REPOSITORY + '/commit/' + commit.sha,
+    inspectedAt: new Date().toISOString(),
+    source: 'github-oauth-read-only',
+  };
 }
 
 export const githubIntegrationRoutes: FastifyPluginAsync = async (fastify) => {

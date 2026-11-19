@@ -16,6 +16,9 @@ import { agentRunLeaseFilter, startAgentRunLeaseHeartbeat } from './agentRunLeas
 import { summarizeProviderError } from './providerErrors.js';
 import { assertBrainProbeResponse, BRAIN_PROBE_CHALLENGE, BRAIN_PROBE_ORDER } from './brainProbe.js';
 import { assertPAExecutionHandlersAvailable, buildAgentRunExecutionPrompt, planQueuedAgentRun } from './agentRunExecution.js';
+import { inspectConnectedGitHubRepository } from '../server/routes/githubIntegration.js';
+import { evaluateGenXSecurityEvent } from '../security/genxPolicy.js';
+import type { PACapabilityReceipt } from './paCapabilityCompletion.js';
 import type { ExecutionChange } from './executionPlanner.js';
 import { recordRunEvidence, appendRunEvidence } from './engineeringEvidence.js';
 import { withTelemetrySpan } from '../telemetry/core.js';
@@ -276,6 +279,7 @@ async function processAgentRun(
       select: { id: true, status: true, requestedCapabilities: true },
     });
     // Detect both tampered PA scope metadata and orphaned delegation records.
+    const capabilityReceipts: PACapabilityReceipt[] = [];
     if (paScope || delegation) {
       if (!paScope || !delegation || run.approval_status !== 'approved' || delegation.status !== 'approved' ||
           delegation.id !== paScope.delegationId) {
@@ -287,8 +291,46 @@ async function processAgentRun(
         throw new Error('PA delegation capability scope changed after approval.');
       }
       await recordRunEvidence({ runId: run.id, eventType: 'pa.execution.scope_revalidated', payload: { delegationId: delegation.id, capabilities: runCapabilities } });
-      // Until real capability handlers are wired, do not let three-brain reasoning masquerade as delegated execution.
-      assertPAExecutionHandlersAvailable(paScope);
+      // Only repository.inspect has a real handler in this increment; all other capabilities remain fail-closed.
+      assertPAExecutionHandlersAvailable(paScope, ['repository.inspect']);
+      if (paScope.capabilities.includes('repository.inspect')) {
+        const inspectionPolicy = evaluateGenXSecurityEvent({
+          agentId: 'ryanai-pa',
+          principal: run.user_id,
+          toolName: 'mcp_repository_status',
+          action: 'READ',
+          target: 'pa:repository-status',
+          environment: process.env.NODE_ENV === 'production' ? 'production' : process.env.NODE_ENV === 'staging' ? 'staging' : 'development',
+          actorType: 'human',
+        });
+        if (inspectionPolicy.decision !== 'ALLOW') {
+          throw new Error('Gen-X denied repository.inspect at the worker execution boundary.');
+        }
+        const snapshot = await inspectConnectedGitHubRepository({ prisma }, run.user_id);
+        const evidence = await recordRunEvidence({
+          runId: run.id,
+          eventType: 'pa.capability.executed',
+          actorId: run.user_id,
+          payload: {
+            capability: 'repository.inspect',
+            provider: 'github',
+            repositoryFullName: snapshot.repositoryFullName,
+            defaultBranch: snapshot.defaultBranch,
+            commitSha: snapshot.commitSha,
+            commitUrl: snapshot.commitUrl,
+            inspectedAt: snapshot.inspectedAt,
+            source: snapshot.source,
+            readOnly: true,
+            genxDecision: inspectionPolicy.decision,
+            genxRuleId: inspectionPolicy.ruleId,
+          },
+        });
+        capabilityReceipts.push({
+          capability: 'repository.inspect',
+          status: 'passed',
+          evidenceReferences: ['agent-run-evidence:' + evidence.id],
+        });
+      }
     }
     activeRegion = 'perception';
     await recordRegion('perception', 'started');
@@ -326,9 +368,10 @@ async function processAgentRun(
       : plannedObjective;
     activeRegion = 'reasoning';
     await recordRegion('reasoning', 'started', { brains: ['primary', 'secondary', 'logic'] });
-    const plan = await executeThreeBrainPlan(sharedObjective, (brain, prompt, signal) => testBrainInvoker
+    const reasoningPlan = await executeThreeBrainPlan(sharedObjective, (brain, prompt, signal) => testBrainInvoker
       ? testBrainInvoker(brain, prompt, signal)
       : invokeWithRecovery(brain, prompt, signal, run, brain === 'logic' ? run.requested_model ?? undefined : undefined), cancellation.signal);
+    const plan = { ...reasoningPlan, capabilityReceipts };
     observedOutputs = plan.outputs;
     await recordRegion('reasoning', 'completed', { brains: plan.outputs.map((item) => item.brain), degraded: plan.degraded });
     activeRegion = null;
