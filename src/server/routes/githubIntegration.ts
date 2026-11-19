@@ -100,6 +100,34 @@ async function refreshGitHubToken(config: GitHubAppConfig, refreshToken: string)
   return payload as GitHubTokenResponse;
 }
 
+async function readBoundedGitHubArchive(response: Response, maxBytes: number): Promise<Uint8Array> {
+  const reader = response.body?.getReader();
+  if (!reader) throw new GitHubOAuthError('github_job_log_archive_empty');
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const item = await reader.read();
+      if (item.done) break;
+      total += item.value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new GitHubOAuthError('github_job_log_archive_size_invalid');
+      }
+      chunks.push(item.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return result;
+}
+
 async function githubApi<T>(path: string, accessToken: string): Promise<T> {
   const response = await fetch('https://api.github.com/' + path.replace(/^\/+/, ''), {
     headers: {
@@ -491,8 +519,7 @@ export async function inspectConnectedGitHubWorkflowEvidence(
           }
           const declaredLength = Number(archiveResponse.headers.get('content-length') ?? 0);
           if (declaredLength > 2 * 1024 * 1024) { jobLogStatus = 'partial'; continue; }
-          const archive = new Uint8Array(await archiveResponse.arrayBuffer());
-          if (archive.byteLength > 2 * 1024 * 1024) { jobLogStatus = 'partial'; continue; }
+          const archive = await readBoundedGitHubArchive(archiveResponse, 2 * 1024 * 1024);
           const excerpts = extractRyanAIGitHubJobLogExcerpts(archive);
           for (const excerpt of excerpts) {
             jobLogExcerpts.push({ runId: run.id, ...excerpt });
