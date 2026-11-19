@@ -121,7 +121,7 @@ describe('concrete PostgreSQL wake listener client', () => {
     };
     const registry = {
       supportedEventTypes: () => ['github.pull_request'],
-      dispatch: vi.fn(async () => undefined),
+      dispatch: vi.fn(async (_event: typeof eventEnvelope) => undefined),
     };
     const inbox = {
       enqueue: vi.fn(async (envelope: unknown) => {
