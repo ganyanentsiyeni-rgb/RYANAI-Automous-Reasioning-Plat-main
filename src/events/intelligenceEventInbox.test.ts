@@ -279,7 +279,10 @@ describe('IntelligenceEventInbox', () => {
       id: 'row-same-worker', attempts: 1, maxAttempts: 5, leaseOwner: 'worker-reused',
       leaseExpiresAt: new Date('2026-11-18T11:59:00Z'),
     }]);
-    inboxDelegate.updateMany.mockResolvedValue({ count: 1 });
+    inboxDelegate.updateMany
+      .mockResolvedValueOnce({ count: 1 }) // expired lease recovery
+      .mockResolvedValueOnce({ count: 1 }) // same worker reclaims attempt 2
+      .mockResolvedValueOnce({ count: 0 }); // stale attempt 1 is fenced
     await expect(inbox.recoverExpiredLeases(now)).resolves.toBe(1);
 
     inboxDelegate.findFirst.mockResolvedValue({
