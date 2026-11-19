@@ -68,6 +68,30 @@ describe('Studio worker lease fencing', () => {
     }));
   });
 
+  it('marks exhausted attempts failed and clears the expired lease token', async () => {
+    const tx = {
+      studioTask: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 'task-exhausted', projectId: 'project-1', ownerUserId: 'owner-1', attempts: 3, maxAttempts: 3 },
+        ]),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      studioEvent: { create: vi.fn().mockResolvedValue({}) },
+    };
+    prismaMock.$transaction.mockImplementation(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx));
+
+    const result = await recoverExpiredStudioLeases();
+
+    expect(result).toEqual({ inspected: 1, recovered: 0, failed: 1 });
+    expect(tx.studioTask.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'task-exhausted', status: 'running' }),
+      data: expect.objectContaining({ status: 'failed', leaseOwner: null, leaseToken: null, completedAt: expect.any(Date) }),
+    }));
+    expect(tx.studioEvent.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ taskId: 'task-exhausted', eventType: 'task.lease_exhausted' }),
+    }));
+  });
+
   it('locks and verifies the active lease before registering a task artifact', async () => {
     const tx = {
       $queryRaw: vi.fn().mockResolvedValue([{ id: 'task-1' }]),
