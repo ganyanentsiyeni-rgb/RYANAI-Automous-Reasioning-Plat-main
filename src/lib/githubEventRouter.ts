@@ -32,6 +32,7 @@ export function createRyanAiGitHubEventRouter(
   handleWake: RyanAiWorkerWakeHandler,
 ): (event: RyanAiGitHubEvent) => Promise<void> {
   const handledEventIds = new Set<string>();
+  const maxRememberedEventIds = 2048;
 
   return async (event) => {
     if (handledEventIds.has(event.id)) return;
@@ -40,6 +41,10 @@ export function createRyanAiGitHubEventRouter(
     if (!target) return;
 
     handledEventIds.add(event.id);
+    if (handledEventIds.size > maxRememberedEventIds) {
+      const oldest = handledEventIds.values().next().value;
+      if (oldest) handledEventIds.delete(oldest);
+    }
 
     try {
       await handleWake({
