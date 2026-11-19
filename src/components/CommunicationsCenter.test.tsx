@@ -69,7 +69,6 @@ beforeEach(() => {
   comms.getCommsStatus.mockResolvedValue({
     status: 'configuration_snapshot',
     enabled: true,
-status: 'configuration_snapshot',
     channels: { whatsapp: true, sms: false, voice: false, email: true, attachments: true },
     note: 'Configuration only.',
   });
