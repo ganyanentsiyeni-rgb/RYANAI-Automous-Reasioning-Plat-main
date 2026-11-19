@@ -3,8 +3,8 @@
  *
  * This registry defines accountable specialist identities and bounded work
  * types. It does not start workers, schedule runs, grant credentials, or
- * authorize privileged operations. Runtime dispatch must still pass through
- * the existing task queue, Jarvis orchestration, and RyanAI/Gen-X policy.
+ * authorize privileged operations. Runtime dispatch is owned by the RyanAI task kernel and its native
+ * capability and approval policies.
  */
 export type ModuleAgentAction =
   | 'module.read'
