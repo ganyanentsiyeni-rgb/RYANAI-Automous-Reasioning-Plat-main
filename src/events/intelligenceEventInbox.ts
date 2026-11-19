@@ -208,7 +208,7 @@ export class IntelligenceEventInbox {
         ? { leaseExpiresAt: candidate.leaseExpiresAt }
         : { availableAt: { lte: now } };
       const claimed = await tx.intelligenceEventInbox.updateMany({
-        where: { id: candidate.id, status: candidate.status, ...leaseCondition },
+        where: { ...ownerScope, id: candidate.id, status: candidate.status, ...leaseCondition },
         data: {
           status: 'processing',
           attempts: { increment: 1 },
@@ -346,6 +346,11 @@ export class IntelligenceEventInbox {
   ) {
     const claimed = await this.claimNextForOwner(workerId, authenticatedOwnerUserId, now, eventTypes);
     if (!claimed) return { status: 'idle' as const };
+    const payload = claimed.payload as Record<string, unknown>;
+    const owner = payload.owner as Record<string, unknown> | undefined;
+    if (!owner || owner.userId !== authenticatedOwnerUserId) {
+      throw new Error('Claimed GitHub event owner does not match authenticated worker context.');
+    }
     let leaseLost = false;
     const heartbeat = setInterval(() => {
       void this.renewLease(claimed.id, workerId)
