@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { prisma } from '../../lib/prisma.js';
 import { runStudioWorkerOnce, registerStudioTaskHandler, recoverExpiredStudioLeases, createStudioArtifact } from './studioNativeCore.js';
-import { authorizeStudioTaskWithGenX } from './studioGenXPolicy.js';
 import { storeStudioArtifact } from './studioArtifactStorage.js';
 
 const workerId = 'studio-worker-' + (process.env.HOSTNAME || 'host').slice(0, 80) + '-' + randomUUID();
@@ -73,7 +72,7 @@ async function main() {
     return;
   }
 
-  const unregister = registerStudioTaskHandler('studio.plan', async ({ task }) => {
+  const unregister = registerStudioTaskHandler('coordination', async ({ task }) => {
     const plan = {
       schemaVersion: 1,
       projectId: task.projectId,
@@ -81,7 +80,7 @@ async function main() {
       title: task.title,
       objective: task.objective,
       generatedAt: new Date().toISOString(),
-      executionMode: 'deterministic-planning-worker',
+      executionMode: 'ryanai-native-deterministic-planning-worker',
       steps: [
         { order: 1, action: 'Clarify scope and constraints', detail: 'Extract required outcome, constraints and unresolved assumptions from the task objective.' },
         { order: 2, action: 'Identify dependencies', detail: 'Review prerequisite task completion and required capabilities.' },
@@ -110,7 +109,7 @@ async function main() {
       mimeType: stored.mimeType,
       byteSize: BigInt(stored.byteSize),
       sha256: stored.sha256,
-      provenance: { workerId, handler: 'studio.plan', schemaVersion: 1 },
+      provenance: { workerId, handler: 'coordination', schemaVersion: 1 },
     });
     return { artifactId: artifact.id, sha256: stored.sha256, byteSize: stored.byteSize, state: 'plan_artifact_created' };
   });
@@ -121,7 +120,7 @@ async function main() {
   process.once('SIGTERM', stop);
   process.once('SIGINT', stop);
 
-  log('started', { pollMs, maxTasksPerCycle, heartbeatIntervalMs, registeredTaskTypes: ['studio.plan'] });
+  log('started', { pollMs, maxTasksPerCycle, heartbeatIntervalMs, registeredTaskTypes: ['coordination'] });
   await writeHeartbeat('healthy');
   heartbeatTimer = setInterval(() => { void writeHeartbeat('healthy'); }, heartbeatIntervalMs);
   heartbeatTimer.unref();
@@ -132,7 +131,7 @@ async function main() {
         try {
           await recoverExpiredStudioLeases();
           for (let index = 0; index < maxTasksPerCycle && !stopping; index += 1) {
-            const result = await runStudioWorkerOnce(workerId, (task) => authorizeStudioTaskWithGenX(task, workerId));
+            const result = await runStudioWorkerOnce(workerId, 'coordinator');
             log('task-cycle', { state: result.state, taskId: 'taskId' in result ? result.taskId : undefined });
             if (result.state === 'idle' || result.state === 'blocked' || result.state === 'unhandled') break;
           }
