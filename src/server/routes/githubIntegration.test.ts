@@ -126,6 +126,16 @@ describe('owner-bound read-only repository inspection', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it('requires owner reauthorization instead of refreshing or rotating an expired token', async () => {
+    const app = await createApp();
+    store.connection.findUnique.mockResolvedValue(storedConnection({
+      accessTokenExpiresAt: new Date(Date.now() - 60_000),
+    }));
+    await expect(inspectConnectedGitHubRepository(app, userId)).rejects.toThrow('github_owner_reauthorization_required');
+    expect(fetch).not.toHaveBeenCalled();
+    expect(store.connection.updateMany).not.toHaveBeenCalled();
+  });
+
   it('rejects a GitHub identity mismatch before reading repository state', async () => {
     const app = await createApp();
     store.connection.findUnique.mockResolvedValue(storedConnection());
