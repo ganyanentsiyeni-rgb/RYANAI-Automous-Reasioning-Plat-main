@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { captureQueueTraceContextForStorage } from '../telemetry/queueContext.js';
 import { appendRunEvidence } from './engineeringEvidence.js';
 import { publishAgentTaskNotification } from './queueNotifications.js';
+import { resolvePAApprovalTransition } from './paDelegationApproval.js';
 import {
   signAgentIdentityProof,
   verifyPAIdentityProof,
@@ -190,10 +191,21 @@ export async function approvePADelegation(
     if (run.approvalStatus !== 'pending' || run.status !== 'queued') {
       throw new Error('This PA delegation is no longer awaiting approval.');
     }
-    await tx.agentRun.update({
-      where: { id: run.id },
+    const approvalUpdate = await tx.agentRun.updateMany({
+      where: { id: run.id, approvalStatus: 'pending', status: 'queued' },
       data: { approvalStatus: 'approved', approvedBy, approvedAt: new Date(), status: 'queued' },
     });
+    if (approvalUpdate.count !== 1) {
+      const latestRun = await tx.agentRun.findUnique({
+        where: { id: run.id },
+        select: { approvalStatus: true },
+      });
+      const transition = resolvePAApprovalTransition(approvalUpdate.count, latestRun?.approvalStatus ?? null);
+      if (transition === 'already_approved') {
+        return { delegationId, runId: run.id, status: run.status, alreadyApproved: true };
+      }
+      throw new Error('This PA delegation changed while approval was being recorded; reload before retrying.');
+    }
     await tx.paDelegation.update({ where: { id: delegation.id }, data: { status: 'approved' } });
     await appendRunEvidence(tx, {
       runId: run.id,
