@@ -12,9 +12,9 @@ describe('RyanAI Studio Native Core contracts', () => {
     const audit = vi.fn().mockResolvedValue(undefined);
     await expect(executeStudioToolCapability({
       actorId: 'owner-1', connectionRef: 'opaque-connection-ref', requestId: 'req-1',
-      capabilityId: 'messages.send', input: {}, manifest: { capabilities: [{ id: 'messages.send', risk: 'outbound', requiresHumanApproval: true }] },
+      capabilityId: 'write-communications-report', input: {}, manifest: { capabilities: [{ id: 'write-communications-report', risk: 'read', requiresHumanApproval: false }] },
       resolveConnection: async () => true, verifyApproval: async () => false, execute, audit,
-    })).rejects.toThrow('Matching human approval is required');
+    })).rejects.toThrow('Matching explicit human approval must be verified by RyanAI.');
     expect(execute).not.toHaveBeenCalled();
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'blocked' }));
   });
@@ -37,7 +37,7 @@ describe('RyanAI Studio Native Core contracts', () => {
     const audit = vi.fn().mockResolvedValue(undefined);
     await expect(executeStudioToolCapability({
       actorId: 'owner-1', connectionRef: 'unowned-ref', requestId: 'req-connection',
-      capabilityId: 'read-workflow-runs', input: {}, manifest: { capabilities: [{ id: 'files.read', risk: 'read', requiresHumanApproval: false }] },
+      capabilityId: 'read-workflow-runs', input: {}, manifest: { capabilities: [{ id: 'read-workflow-runs', risk: 'read', requiresHumanApproval: false }] },
       resolveConnection: async () => false, verifyApproval: async () => false,
       execute, audit,
     })).rejects.toThrow('Owner-scoped provider connection could not be resolved');
@@ -67,7 +67,7 @@ describe('Studio worker runtime reporting', () => {
       workerHealth: 'unknown',
       productionExecutionEnabled: false,
     });
-    expect(getStudioNativeRuntimeDescriptor().workerHealthReason).toContain('shared worker heartbeat is not yet persisted');
+    expect(getStudioNativeRuntimeDescriptor().workerHealthReason).toContain('Worker heartbeats are persisted');
   });
 });
 
