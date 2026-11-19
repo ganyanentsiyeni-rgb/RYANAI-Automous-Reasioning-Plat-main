@@ -10,7 +10,7 @@ import {
 } from '@/lib/offlineTaskOutbox';
 import { replayOfflineTaskBatch } from '@/lib/offlineTaskSyncClient';
 import OperationalAwarenessPanel from '@/components/OperationalAwarenessPanel';
-import { AgentReadyTaskFilter } from '@/components/agent-ui/AgentReadyTaskFilter';
+import { AgentReadyTaskFilter, type AgentReadyTaskFilterValue } from '@/components/agent-ui/AgentReadyTaskFilter';
 
 interface Handoff {
   fromAgent: string;
@@ -72,7 +72,7 @@ export default function OperatorConsole({ userId }: { userId: string }) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [selectedId, setSelectedId] = useState('');
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState<AgentReadyTaskFilterValue>('all');
   const [refreshedAt, setRefreshedAt] = useState<string | null>(null);
   const [ownerId, setOwnerId] = useState<string | null>(null);
   const [outboxTasks, setOutboxTasks] = useState<OfflineTaskRecord[]>([]);
