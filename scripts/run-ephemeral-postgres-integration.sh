@@ -94,6 +94,9 @@ log "Running PostgreSQL durable-queue integration tests"
 # those source modules consistently without changing production imports.
 NODE_ENV=test node --import tsx scripts/test-agent-queue.mjs
 
+log "Running PostgreSQL intelligence-event inbox concurrency and audit integration tests"
+RYANAI_DISPOSABLE_DB=1 NODE_ENV=test node --import tsx scripts/test-intelligence-event-inbox-postgres.mjs
+
 log "Running guarded agent_runs migration replay/idempotency test"
 node scripts/test-agent-runs-runtime-migration-upgrade.mjs
 
