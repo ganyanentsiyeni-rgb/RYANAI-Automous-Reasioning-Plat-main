@@ -32,6 +32,19 @@ const CATALOG: PluginDefinition[] = [
   { id: 'phonelink', name: 'RyanAI PhoneLink', category: 'Communications', description: 'Trusted mobile device pairing and permission-scoped event intake. Native device operations require the Android companion.', scopes: ['Mobile workspace', 'Approved event intake'], availability: 'adapter-required' },
   { id: 'github', name: 'GitHub', category: 'Engineering', description: 'Repository context, issues, pull requests and CI evidence.', scopes: ['PA Agent', 'Engineering workers'], availability: 'adapter-required' },
   { id: 'vscode-web', name: 'Visual Studio Code for the Web', category: 'Engineering', description: 'Open the RyanAI repository in the browser-based VS Code editor. GitHub sign-in and repository permissions are handled by GitHub.', scopes: ['RyanAI Studio', 'Engineering'], availability: 'native-planned' },
+  { id: 'jetbrains', name: 'JetBrains IDEs', category: 'Engineering', description: 'IntelliJ IDEA, PyCharm and other desktop IDEs. External app handoff; no remote IDE control is enabled.', scopes: ['RyanAI Studio'], availability: 'native-planned' },
+  { id: 'sublime-vim', name: 'Sublime Text / Vim', category: 'Engineering', description: 'Lightweight local editors. Open externally; RyanAI does not control local applications.', scopes: ['Developer workspace'], availability: 'native-planned' },
+  { id: 'replit', name: 'Replit', category: 'Engineering', description: 'Browser-based coding workspace. Account connection and project execution are not provided by this catalogue entry.', scopes: ['Developer workspace'], availability: 'native-planned' },
+  { id: 'gitlab', name: 'GitLab', category: 'Engineering', description: 'Repository hosting and collaboration. A reviewed OAuth/API adapter is required before account data can be accessed.', scopes: ['Engineering workers'], availability: 'adapter-required' },
+  { id: 'bitbucket', name: 'Bitbucket', category: 'Engineering', description: 'Repository hosting and code review. A reviewed OAuth/API adapter is required before account data can be accessed.', scopes: ['Engineering workers'], availability: 'adapter-required' },
+  { id: 'postman', name: 'Postman', category: 'Engineering', description: 'API request collections and testing. External handoff only; no collection sync adapter is registered.', scopes: ['API testing'], availability: 'native-planned' },
+  { id: 'docker', name: 'Docker', category: 'Engineering', description: 'Container tooling and local environment workflows. Runtime control requires an explicitly reviewed adapter.', scopes: ['Development environments'], availability: 'adapter-required' },
+  { id: 'trello', name: 'Trello', category: 'Workflows', description: 'Kanban boards and lightweight project planning. A provider adapter is required for board synchronisation.', scopes: ['Workforce', 'PA Agent'], availability: 'adapter-required' },
+  { id: 'jira', name: 'Jira', category: 'Workflows', description: 'Issues, backlogs and sprint planning. A provider adapter is required for issue synchronisation.', scopes: ['Engineering workers', 'Workforce'], availability: 'adapter-required' },
+  { id: 'drawio', name: 'draw.io', category: 'Engineering', description: 'Architecture diagrams and flowcharts. Opens the external diagram editor; no file sync is implied.', scopes: ['Technical documentation'], availability: 'native-planned' },
+  { id: 'miro', name: 'Miro', category: 'Workflows', description: 'Collaborative visual whiteboards. Account data requires a reviewed provider adapter.', scopes: ['Workforce'], availability: 'adapter-required' },
+  { id: 'obsidian', name: 'Obsidian', category: 'Knowledge & files', description: 'Local Markdown notes and project documentation. External app handoff only.', scopes: ['Technical documentation'], availability: 'native-planned' },
+  { id: 'discord', name: 'Discord', category: 'Communications', description: 'Team and community communication. Message access requires a reviewed bot/API adapter.', scopes: ['Comms workers'], availability: 'adapter-required' },
   { id: 'vlc', name: 'VLC Media Player', category: 'Media & audio', description: 'Planned external VLC app handoff and embedded media playback through separately reviewed adapters.', scopes: ['Music UI', 'RyanAI Studio'], availability: 'adapter-required' },
   { id: 'spotify', name: 'Spotify', category: 'Media & audio', description: 'Optional music provider; playback requires provider authorization and a reviewed adapter.', scopes: ['Music UI'], availability: 'adapter-required' },
   { id: 'youtube-music', name: 'YouTube Music', category: 'Media & audio', description: 'Optional music provider; playback requires provider authorization and a reviewed adapter.', scopes: ['Music UI'], availability: 'adapter-required' },
@@ -405,7 +418,7 @@ function PluginIntegrationsSettingsContent({
     }
   }
 
-  return <section className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 sm:p-6" aria-labelledby="plugin-integrations-title">
+  return <section id="plugin-integrations" className="rounded-2xl border border-white/10 bg-slate-900/70 p-5 sm:p-6" aria-labelledby="plugin-integrations-title">
     <div className="mb-4">
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">RyanAI ecosystem</p>
       <h2 id="plugin-integrations-title" className="mt-1 text-xl font-semibold text-white">Plugin & integrations centre</h2>
