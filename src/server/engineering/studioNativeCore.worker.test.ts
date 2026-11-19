@@ -371,4 +371,78 @@ describe('Studio worker queue lifecycle', () => {
     }));
   });
 
+
+  it('prevents a delayed old attempt from overwriting a replacement attempt after lease recovery', async () => {
+    let finishFirstAttempt!: (value: unknown) => void;
+    let markFirstAttemptStarted!: () => void;
+    const firstAttemptStarted = new Promise<void>((resolve) => { markFirstAttemptStarted = resolve; });
+    const firstAttemptResult = new Promise((resolve) => { finishFirstAttempt = resolve; });
+    mocks.queryRawUnsafe
+      .mockResolvedValueOnce([task({ attempts: 1 })])
+      .mockResolvedValueOnce([task({ attempts: 2 })]);
+    mocks.taskFindMany.mockResolvedValue([{
+      id: 'task-1',
+      projectId: 'project-1',
+      ownerUserId: 'owner-1',
+      leaseOwner: 'worker-1',
+      attempts: 1,
+      maxAttempts: 3,
+    }]);
+    mocks.taskUpdateMany.mockImplementation(async (args: { where?: { attempts?: number }; data?: { status?: string } }) => {
+      if (args.where?.attempts === 1 && args.data?.status === 'queued') return { count: 1 };
+      if (args.where?.attempts === 2 && args.data?.status === 'completed') return { count: 1 };
+      if (args.where?.attempts === 1 && args.data?.status === 'completed') return { count: 0 };
+      return { count: 0 };
+    });
+    mocks.directTaskUpdateMany.mockImplementation(async (args: { where?: { attempts?: number } }) => ({
+      count: args.where?.attempts === 2 ? 1 : 0,
+    }));
+
+    const handler = vi.fn(async ({ task: claimedTask }: { task: ReturnType<typeof task> }) => {
+      if (claimedTask.attempts === 1) {
+        markFirstAttemptStarted();
+        return firstAttemptResult;
+      }
+      return { result: 'replacement-attempt', attempt: claimedTask.attempts };
+    });
+    const unregister = registerStudioTaskHandler('ci-failure', handler);
+    try {
+      const oldAttempt = runStudioWorkerOnce('worker-1', 'ci-diagnostics');
+      await firstAttemptStarted;
+
+      const recovery = await recoverExpiredStudioLeases();
+      expect(recovery).toEqual({ inspected: 1, recovered: 1, failed: 0 });
+
+      const replacement = await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
+      expect(replacement).toMatchObject({ state: 'completed', taskId: 'task-1' });
+
+      finishFirstAttempt({ result: 'stale-attempt-output', attempt: 1 });
+      const stale = await oldAttempt;
+      expect(stale).toMatchObject({
+        state: 'failed',
+        taskId: 'task-1',
+        error: 'Studio worker lease expired before completion could be committed.',
+      });
+
+      expect(mocks.taskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ id: 'task-1', attempts: 1, status: 'running' }),
+        data: expect.objectContaining({ status: 'completed', output: { result: 'stale-attempt-output', attempt: 1 } }),
+      }));
+      expect(mocks.eventCreate).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({
+          eventType: 'task.completed',
+          payload: { attempt: 2 },
+        }),
+      }));
+      expect(mocks.eventCreate).not.toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({
+          eventType: 'task.completed',
+          payload: { attempt: 1 },
+        }),
+      }));
+    } finally {
+      unregister();
+    }
+  });
+
 });
