@@ -40,7 +40,7 @@ export function createPostgresRyanAiGitHubWorkerWakePublisher(
       repository: signal.repository,
       occurredAt: signal.occurredAt,
     });
-    if (Buffer.byteLength(payload, "utf8") > 7_000) {
+    if (new TextEncoder().encode(payload).length > 7_000) {
       throw new Error("GitHub worker wake envelope exceeds the 7000-byte safety limit.");
     }
     await notify(channel, payload);
