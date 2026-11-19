@@ -4,7 +4,13 @@ import { PrismaClient } from '@prisma/client';
 import { IntelligenceEventInbox } from '../src/events/intelligenceEventInbox.ts';
 
 if (process.env.RYANAI_DISPOSABLE_DB !== '1' || !process.env.DATABASE_URL) {
-  throw new Error('Refusing to run unless RYANAI_DISPOSABLE_DB=1 and DATABASE_URL targets disposable PostgreSQL.');
+  throw new Error('Refusing to run unless RYANAI_DISPOSABLE_DB=1 and DATABASE_URL are set by the disposable PostgreSQL harness.');
+}
+const databaseUrl = new URL(process.env.DATABASE_URL);
+const databaseName = decodeURIComponent(databaseUrl.pathname.replace(/^\\//, ''));
+if (!['127.0.0.1', 'localhost', '::1'].includes(databaseUrl.hostname)
+  || !databaseName.includes('disposable')) {
+  throw new Error('Refusing to run: DATABASE_URL must target a loopback host and a database name containing "disposable".');
 }
 
 const db = new PrismaClient();
@@ -71,6 +77,49 @@ try {
   const unchanged = await db.intelligenceEventInbox.findUniqueOrThrow({ where: { id: missingAudit.id } });
   assert.equal(unchanged.status, 'processing', 'audit failure must roll back the inbox transition');
   console.log('PASS: missing attempt audit aborts and rolls back acknowledgement');
+
+  const missingFailureAudit = await enqueue('missing-failure-audit');
+  await db.intelligenceEventInbox.update({
+    where: { id: missingFailureAudit.id },
+    data: { status: 'processing', attempts: 1, leaseOwner: 'worker-fail', leaseExpiresAt: new Date(now.getTime() + 60_000) },
+  });
+  await assert.rejects(
+    inbox.fail(missingFailureAudit.id, 'worker-fail', 1, new Error('synthetic failure'), now),
+    /Expected exactly one started attempt audit record/,
+  );
+  const failureUnchanged = await db.intelligenceEventInbox.findUniqueOrThrow({ where: { id: missingFailureAudit.id } });
+  assert.equal(failureUnchanged.status, 'processing');
+  console.log('PASS: missing failure audit aborts and rolls back inbox retry transition');
+
+  const missingRecoveryAudit = await enqueue('missing-recovery-audit');
+  await db.intelligenceEventInbox.update({
+    where: { id: missingRecoveryAudit.id },
+    data: { status: 'processing', attempts: 1, leaseOwner: 'worker-recover', leaseExpiresAt: new Date(now.getTime() - 1_000) },
+  });
+  await assert.rejects(
+    inbox.recoverExpiredLeases(now),
+    /Expected exactly one started attempt audit record/,
+  );
+  const recoveryUnchanged = await db.intelligenceEventInbox.findUniqueOrThrow({ where: { id: missingRecoveryAudit.id } });
+  assert.equal(recoveryUnchanged.status, 'processing');
+  console.log('PASS: missing recovery audit aborts and rolls back lease recovery');
+
+  const stale = await enqueue('stale-worker-fencing');
+  await db.intelligenceEventInbox.update({
+    where: { id: stale.id },
+    data: { status: 'processing', attempts: 2, leaseOwner: 'current-worker', leaseExpiresAt: new Date(now.getTime() + 60_000) },
+  });
+  await db.intelligenceEventAttempt.create({
+    data: { eventInboxId: stale.id, attempt: 2, workerId: 'current-worker', status: 'started' },
+  });
+  await assert.rejects(
+    inbox.acknowledge(stale.id, 'stale-worker', 1, now),
+    /lease is missing, expired, or owned by another worker/,
+  );
+  const staleUnchanged = await db.intelligenceEventInbox.findUniqueOrThrow({ where: { id: stale.id } });
+  assert.equal(staleUnchanged.leaseOwner, 'current-worker');
+  assert.equal(staleUnchanged.status, 'processing');
+  console.log('PASS: stale worker cannot acknowledge a newer attempt');
 
   const duplicate = await enqueue('duplicate-audit');
   await db.intelligenceEventAttempt.create({
