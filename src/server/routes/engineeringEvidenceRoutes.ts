@@ -138,7 +138,6 @@ export const engineeringEvidenceRoutes: FastifyPluginAsync = async (fastify) => 
   }, async (request, reply) => {
     try {
       const result = await cancelStudioTask(request.params.taskId, request.authUser!.id, request.body?.reason);
-      if (!result.cancelled && result.status === 'not_found') return reply.code(404).send({ error: 'Studio task not found.' });
       return reply.code(200).send({ success: true, ...result });
     } catch (error) {
       request.log.warn({ err: error }, 'Studio task cancellation was rejected');
