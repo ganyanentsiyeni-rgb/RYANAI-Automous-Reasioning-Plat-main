@@ -139,7 +139,7 @@ export async function persistAgentRunCompletion(
         result: buildPAExecutionReceiptResult(plan, repositoryInspection),
         error: null,
       },
-      });
+    });
   }
   await appendRunEvidence(tx, {
     runId: run.id,
