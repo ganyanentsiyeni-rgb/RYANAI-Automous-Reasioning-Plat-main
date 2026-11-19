@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createInMemoryRyanAiEventIdempotencyStore,
   createRyanAiGitHubEventRouter,
+  createRyanAiWorkerWakeDispatcher,
 } from "./githubEventRouter";
 
 const event = (id: string, type: "check_suite" | "pull_request_review" | "pull_request") => ({
@@ -50,6 +51,39 @@ describe("createRyanAiGitHubEventRouter", () => {
       target: "pull-request",
       eventType: "pull_request",
     }));
+  });
+
+  it("dispatches wakes to the handler for their target", async () => {
+    const ci = vi.fn();
+    const review = vi.fn();
+    const dispatcher = createRyanAiWorkerWakeDispatcher({ ci, review });
+
+    await dispatcher({
+      eventId: "evt-dispatch",
+      target: "ci",
+      eventType: "check_suite",
+      repository: "ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main",
+      occurredAt: "2026-11-19T00:00:00.000Z",
+      payload: { conclusion: "success" },
+    });
+
+    expect(ci).toHaveBeenCalledTimes(1);
+    expect(review).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when a target has no registered worker", async () => {
+    const dispatcher = createRyanAiWorkerWakeDispatcher({});
+
+    await expect(
+      dispatcher({
+        eventId: "evt-unregistered",
+        target: "repository",
+        eventType: "push",
+        repository: "ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main",
+        occurredAt: "2026-11-19T00:00:00.000Z",
+        payload: {},
+      }),
+    ).resolves.toBeUndefined();
   });
 
   it("supports an injected idempotency store", async () => {
