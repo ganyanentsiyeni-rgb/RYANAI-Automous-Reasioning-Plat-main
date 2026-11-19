@@ -1,20 +1,9 @@
-/**
- * RyanAI Studio execution boundary.
- *
- * Studio owns project intake and lifecycle semantics. Execution is delegated
- * through this adapter contract so Studio can later use its own scheduler or
- * a different worker runtime without making the UI or route depend on Jarvis.
- *
- * The only adapter shipped today is explicitly Jarvis-backed. This module
- * does not claim independent execution until a separately reviewed native
- * scheduler/worker adapter is implemented and verified.
- */
-import { dispatchAutonomousTask } from '../../agent/operations.js';
+import { createStudioProject, type StudioProjectType } from './studioNativeCore.js';
 
 export interface StudioProjectRequest {
   readonly ownerId: string;
   readonly brief: string;
-  readonly projectType: 'engineering' | 'research' | 'design' | 'data' | 'automation';
+  readonly projectType: StudioProjectType;
 }
 
 export interface StudioProjectReceipt {
@@ -23,6 +12,31 @@ export interface StudioProjectReceipt {
   readonly queue: string;
 }
 
+const nativeStudioAdapter: StudioExecutionAdapter = Object.freeze({
+  id: 'ryanai-native-studio-worker',
+  displayName: 'RyanAI-native Studio task queue',
+  independent: true,
+  async submit(request: StudioProjectRequest): Promise<StudioProjectReceipt> {
+    const result = await createStudioProject({
+      ownerUserId: request.ownerId,
+      title: request.brief.slice(0, 200) || 'RyanAI Studio project',
+      objective: request.brief,
+      projectType: request.projectType,
+      initialTasks: [{
+        title: 'Coordinate Studio project',
+        objective: request.brief,
+        taskType: 'coordination',
+        requiredCapabilities: ['read-task', 'record-progress'],
+      }],
+    });
+    return {
+      id: result.project.id,
+      status: result.project.status,
+      queue: 'studio_tasks',
+    };
+  },
+});
+
 export interface StudioExecutionAdapter {
   readonly id: string;
   readonly displayName: string;
@@ -30,39 +44,24 @@ export interface StudioExecutionAdapter {
   submit(request: StudioProjectRequest): Promise<StudioProjectReceipt>;
 }
 
-const jarvisQueueAdapter: StudioExecutionAdapter = Object.freeze({
-  id: 'jarvis-agent-runs',
-  displayName: 'Jarvis-backed agent_runs queue',
-  independent: false,
-  async submit(request: StudioProjectRequest): Promise<StudioProjectReceipt> {
-    const task = await dispatchAutonomousTask(request.ownerId, request.brief);
-    return { id: task.id, status: task.status, queue: 'agent_runs' };
-  },
-});
+let activeAdapter: StudioExecutionAdapter = nativeStudioAdapter;
 
-let activeAdapter: StudioExecutionAdapter = jarvisQueueAdapter;
-
-/** Submit through the configured adapter. Adapter selection is server-owned. */
 export async function submitStudioProject(request: StudioProjectRequest): Promise<StudioProjectReceipt> {
   return activeAdapter.submit(request);
 }
 
-/** Truthful runtime metadata for Studio UI and operational diagnostics. */
 export function getStudioExecutionDescriptor() {
   return {
     adapterId: activeAdapter.id,
     adapterName: activeAdapter.displayName,
     independentRuntime: activeAdapter.independent,
     lifecycleOwner: 'RyanAI Studio',
-    authorizationAuthority: 'Gen-X',
-    state: 'adapter_configured',
-    note: activeAdapter.independent
-      ? 'Studio-native execution adapter is active; worker health and task completion are reported separately.'
-      : 'Studio owns project intake, but execution is currently delegated to the Jarvis-backed queue. Independent Studio scheduling is not yet implemented.',
+    authorizationAuthority: 'RyanAI platform policy',
+    state: 'native_task_queue',
+    note: 'Studio project intake persists work directly into the RyanAI Studio task queue. Independent worker liveness is reported by the Studio worker heartbeat service.',
   } as const;
 }
 
-/** Test-only injection seam; production callers cannot select adapters over HTTP. */
 export function setStudioExecutionAdapterForTests(adapter: StudioExecutionAdapter): () => void {
   const previous = activeAdapter;
   activeAdapter = adapter;
