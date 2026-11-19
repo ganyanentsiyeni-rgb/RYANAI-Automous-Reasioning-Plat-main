@@ -196,6 +196,25 @@ describe('IntelligenceEventInbox', () => {
       .rejects.toBeInstanceOf(EventLeaseLostError);
     expect(inboxDelegate.updateMany).toHaveBeenCalledTimes(3);
     expect(attemptDelegate.updateMany).toHaveBeenCalledTimes(1);
+  it('fences a reclaimed attempt from a stale worker with the same worker id', async () => {
+    const now = new Date('2026-11-18T12:00:00Z');
+    inboxDelegate.updateMany.mockResolvedValue({ count: 0 });
+    await expect(inbox.renewLease('row-1', 'worker-a', 1, now)).resolves.toBe(false);
+    expect(inboxDelegate.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'row-1', leaseOwner: 'worker-a', attempts: 1 }),
+    }));
+
+    inboxDelegate.updateMany.mockClear();
+    await expect(inbox.acknowledge('row-1', 'worker-a', 1, now)).rejects.toBeInstanceOf(EventLeaseLostError);
+    expect(inboxDelegate.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: 'row-1', leaseOwner: 'worker-a', attempts: 1 }),
+    }));
+    expect(attemptDelegate.updateMany).not.toHaveBeenCalled();
+
+    inboxDelegate.findFirst.mockResolvedValue(null);
+    await expect(inbox.fail('row-1', 'worker-a', 1, new Error('late failure'), now))
+      .rejects.toBeInstanceOf(EventLeaseLostError);
+    expect(attemptDelegate.updateMany).not.toHaveBeenCalled();
   });
 
   it('does not recover or close an attempt after its lease was renewed or reclaimed', async () => {
