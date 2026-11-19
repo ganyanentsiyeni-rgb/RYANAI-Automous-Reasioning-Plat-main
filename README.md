@@ -6,9 +6,13 @@ RyanAI is an AI-assisted, human-governed engineering and operations platform. It
 
 This README describes the application and contracts present in this repository. It does not claim that every integration is connected, every workflow is passing, or every service is deployed. A source file, configured provider, queued job, green unit test, or healthy process is not by itself proof of end-to-end production readiness.
 
+**Documentation baseline (19 November 2026):** implementation notes and links below are reconciled against the official repository's current mainline as of PR #282. The README is an index and summary; the relevant source, migration, runbook, workflow, and pull-request evidence remains authoritative. Current main SHA: `eaa6f599272fb542ee2b54e71a9e6b6219b421c2`.
+
 ## Contents
 
 - [Product overview](#product-overview)
+- [Implementation record — 18–19 November 2026](#implementation-record--1819-november-2026)
+- [Current readiness notes — 19 November 2026](#current-readiness-notes--19-november-2026)
 - [Architecture](#architecture)
 - [Mission-centric target architecture](#mission-centric-target-architecture)
 - [Core workspaces](#core-workspaces)
@@ -164,7 +168,8 @@ Comms routes and provider adapters are subject to server-side capability checks,
 
 Twilio is the planned provider for RyanAI WhatsApp, SMS, and inbound/outbound voice. The Render service contract declares the server-side variables `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, and `TWILIO_WHATSAPP_NUMBER`. Configure these only in the private API runtime environment; never use `VITE_*` names or commit real values.
 
-**Trial-expiry action required:** the owner received a Twilio notice for “My First Twilio Account” stating that one week remained in the 30-day trial. The account owner must sign in to the Twilio Console, review the account, billing method, service requirements and any trial restrictions, then decide whether to upgrade before the trial ends. RyanAI does not upgrade accounts or authorize paid spend automatically. Until the owner confirms account status and authorizes any paid change, treat Twilio as trial-limited and potentially interruptible.
+Provider account status, sender verification, callback configuration, trial restrictions, and billing state must be checked directly in the provider console at the time of activation. This README does not assert that an account is verified, paid, upgraded, or currently able to send. Any paid change requires separate owner approval.
+
 
 Before enabling live Comms, verify the Account SID and Auth Token privately, confirm the purchased/verified sender resources and WhatsApp sender approval as applicable, configure HTTPS inbound/status/voice callbacks, validate Twilio request signatures, and verify callback delivery. Then obtain explicit owner authorization for a test destination and test window. Do not send messages or place calls merely because credentials are present. Keep `COMMUNICATIONS_ENABLED=false` until all gates are evidenced. No account SID, auth token, phone number, or billing details belong in README, source control, logs, screenshots, or chat.
 
@@ -476,6 +481,245 @@ Verify the server-side endpoint, model identifier, key presence (never its value
 ### Communications and devices
 
 A registered integration or paired-device record is not proof of live delivery or device connectivity. Verify the provider callback, owner/destination, device identity, and explicit test authorization before live tests.
+
+## Implementation record — 18–19 November 2026
+
+This section records merged work in the repository history. A merged code change is not, by itself, evidence of a successful deployment, completed database operation, provider connection, or end-to-end production verification.
+
+### Identity, Admin Console, and workspace access
+
+- **PR #183–#185:** added protected user-directory contract coverage and a distinct owner-only authorization guard. Owner-level operations require the verified owner identity; ordinary administrator status is not sufficient.
+- **PR #188 and #193:** introduced owner-confirmed account lifecycle requests and transactional replay protection for role changes, suspension, and session revocation. Owner elevation is prohibited.
+- **PR #203, #205–#206, #208–#209, #220–#221, and #231:** added SHA-256 canonical event hashing and hash-linked lifecycle audit verification; serialized confirmation; rejected replay and tampered/incomplete audit history; repaired audit payload typing, migration bootstrap, and related regression tests.
+- **PR #251:** replaced inert Admin Console tiles with navigation to existing workspaces and read-only runtime diagnostics. Failed refreshes preserve last-known snapshots but mark them stale/unavailable instead of presenting misleading empty or zero values.
+- **PR #253:** disables approval controls when the latest approval-queue refresh fails, preventing decisions against stale queue data.
+- **PR #250:** restores navigation visibility for registered non-privileged workspaces while preserving administrator-only Admin Console access and owner-only Comms access.
+
+### Gen-X policy, event intake, and agent processing
+
+- **PR #190–#191, #198–#199, and #204:** restored and normalized Gen-X protections for credentials, sensitive targets, and command-control/injection attempts.
+- **PR #207:** exposes Gen-X policy regression tests as a distinct CI step.
+- **PR #186–#197:** added signed provider-neutral event ingestion, a durable event inbox, and a supervised worker with a server-owned handler registry, bounded polling, graceful shutdown, error backoff, and lease-aware processing.
+- **PR #200, #216, #218, and #228:** repaired event-worker control flow and agent/API regression failures while retaining security assertions.
+
+### Database ownership, schema validation, and migration workflow
+
+- **PR #210–#212, #217, #222–#223, and #226:** bootstrapped the Jarvis audit ledger in the Supabase migration chain and strengthened read-only schema audits for event-attempt columns, PostgreSQL types, checks, indexes, foreign keys, and referential actions.
+- **PR #213, #224–#225, and #230:** made local Supabase service ports collision-safe and used dynamically allocated ports for the primary and Prisma shadow databases in CI.
+- **PR #214–#215, #219, #221, and #232:** repaired cross-schema Supabase Auth/Prisma drift, CI SQL delimiters, and Supabase CLI v3 command compatibility.
+- **PR #227:** aligned the LangGraph PostgreSQL pool with the validated Supabase Session Pooler resolver and retained strict TLS/CA parameters.
+- **PR #229:** distinguishes PostgreSQL connectivity failures from missing application-schema readiness; it does not run migrations automatically.
+- **PR #254:** fails closed when the project-qualified Supabase pooler username does not match the project identity derived from the configured Supabase URL.
+- **PR #258:** adds an idempotent profile backfill from existing Auth users and pins the immutable Jarvis audit function search path. Shared-room policies were not restored where their exact prior expressions were unavailable.
+- **PR #268–#272:** adds a hard-pinned, one-shot Render staging-only migration runner, target validation, transaction/advisory-lock and rollback safeguards, a manual dispatch requiring explicit confirmation, and pull-request validation that does not mutate a database.
+- **PR #275:** requires PostgreSQL TLS with trusted certificate verification for the staging migration runner. Disabling certificate verification is not an accepted workaround.
+
+### Hosting, MCP, CORS, and isolation
+
+- **PR #234–#243:** declares a dedicated U2EB Render MCP service, aligns API/MCP host and health wiring, fixes duplicate Blueprint YAML keys, and corrects the four-resource U2EB deployment contract.
+- **PR #245–#248:** adds explicit verified frontend CORS origins and regression coverage for authenticated preflight requests. Wildcard/reflected-origin access is not introduced.
+- **PR #236:** blocks Railway staging deployment when the inspected staging environment shares a service and PostgreSQL volume with production. A separate isolated staging target must be provisioned and verified before the workflow can proceed.
+- **PR #256:** records the U2EB API/web/MCP/Redis service topology and separates API-only, MCP-only, and browser-safe environment ownership.
+- **PR #257:** cleans the manual provider-verification workflow without performing provider calls or consuming inference credits.
+- **PR #279:** aligns readiness contracts with a read-only CI audit, a separate manual repair workflow, staging-only Render deployment, and explicit production release/migration inputs.
+
+### Communications and attachment security
+
+- **PR #233:** preserves Twilio webhook signature and owner-sender checks while suppressing automatic inbound WhatsApp replies unless the separate test-authorization gate is exactly enabled.
+- **PR #249:** keeps the owner-scoped Comms workspace, status, and history available when outbound communications are disabled; the send endpoint remains explicitly gated.
+- **PR #250:** preserves owner-only access and server-side destination verification, action approval, idempotency, webhook-signature, and malware-scanning enforcement.
+- **PR #255:** derives owner status from verified Supabase Auth app metadata, with the configured owner-email fallback; client-editable user metadata is not trusted.
+- **PR #273:** gates the attachment UI using the authenticated Comms status while retaining server-side private-storage, scanner, and clean-file enforcement.
+- **PR #276:** repairs launcher test mocks and preserves file selection when attachment storage/scanner configuration is absent. The API upload and dispatch checks remain authoritative.
+- **PR #281:** makes Comms loading, failed-history, retry, empty-history, and server-disabled states explicit. The UI disables outbound dispatch when the server says communications are disabled.
+- **PR #282:** aligns Comms test fixtures with the server status contract's required enabled boolean; it is a test-fixture update, not a new runtime feature.
+
+### LangGraph and NVIDIA Aerial
+
+- **PR #260:** adds the RyanAI-side NVIDIA Aerial client, authenticated health/status/inference routes, a dependency-free development bridge, smoke test, and dedicated CI contract job.
+- **PR #261–#262:** adds the versioned LangGraph checkpoint schema and development Aerial simulator behavior, then ensures an explicitly configured external Aerial runtime takes precedence over the simulator.
+- **PR #263 and #265–#267:** adds an owner-guarded LangGraph package initialization endpoint and a phone-accessible owner control. Follow-up repairs distinguish checkpoint table presence from package migration-ledger completion and retain accurate schema status if ledger verification fails.
+- **PR #269–#270:** restores the benchmark-isolation CI contract and explicitly tests accepted network-isolation DNS outcomes.
+
+### 19 November validation repairs
+
+- **PR #274:** removes an unused JWT-secret export from the disposable local Supabase CI step; no credential was created or changed.
+- **PR #277–#278:** repairs TypeScript/workflow command compatibility, Comms orchestration test import paths, and adds a read-only repository-inventory contract test.
+- **PR #280:** merges the validation-alignment follow-up.
+- **PR #281–#282:** completes the latest Comms server-state UI contract and its corresponding test-fixture alignment.
+
+Use the [repository pull-request history](https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main/pulls?q=is%3Apr+is%3Amerged+created%3A2026-11-18..2026-11-19) to inspect exact diffs, reviews, checks, and timestamps. This summary does not replace exact-head evidence.
+
+## Current readiness notes — 19 November 2026
+
+The following limitations are important when interpreting repository state:
+
+- **Mainline CI:** PR #282's description recorded GitHub Actions as pending. Re-check the current main SHA and every required workflow before reporting CI/security as green. Queued, skipped, cancelled, missing, or provider-blocked is not passed.
+- **Render build capacity:** PR #282 recorded Render builds blocked by exhausted workspace build-pipeline minutes. Source merges are not evidence of a deployment. Do not purchase an upgrade without separate authorization.
+- **MCP runtime:** the U2EB service is declared in the Blueprint, but PR #234 recorded that the required delegation signing secret and service token were absent or too short in the inspected live service. Verify the existing secret references privately, then test MCP health, authenticated tool discovery, and API delegation. Never put credential values in documentation.
+- **Communications:** the Comms workspace and owner-scoped history can remain available with outbound dispatch disabled. Provider credentials, webhook callbacks, signature validation, verified owner destination, explicit test authorization, approval, and delivery callbacks remain separate gates.
+- **Attachments:** file selection in the UI is not upload readiness. The API requires private storage and malware-scanner configuration; clean-file checks control download/dispatch paths.
+- **LangGraph:** checkpoint table existence is not package initialization. Verify the package migration ledger (version 5 or later in the current setup contract) and readiness separately. The owner-only setup route requires deliberate owner invocation; it does not run on API startup.
+- **Render staging migrations:** the runner is manual, staging-only, target-pinned, TLS-verified, and requires explicit confirmation. Pull-request validation does not apply the migration. Production remains a separate approval path.
+- **Railway staging:** the workflow must reject the inspected shared production service/storage target until a separate isolated staging project is established and verified.
+- **NVIDIA Aerial:** the development bridge validates RyanAI's API contract only. It does not prove NVIDIA GPU, NIC, CUDA, real-time kernel, or production Aerial runtime readiness.
+- **Hybrid OS:** Ubuntu Core, Kali Security, Raspberry Pi Edge, network segmentation, and recovery are documented architecture/validation targets; do not describe the OS rollout or hardware procurement as deployed.
+- **Agent workforce:** the 12-module roster is an ownership/capability registry, not proof of twelve always-on agents. Availability, queue connectivity, assignment, and completed work require separate runtime evidence.
+- **Studio:** the current execution adapter remains Jarvis-backed and reports that it is not an independent Studio runtime.
+
+## Complete supporting-document index
+
+This index links the repository's main engineering, architecture, security, product, and operations documents. Supporting files remain the authoritative detail; update them in their own focused change when their implementation contract changes.
+
+### Governance and repository policy
+
+- [Agent and contributor engineering contract](AGENTS.md)
+- [Security reporting and deployment policy](SECURITY.md)
+- [Agent governance policy](governance/agent-governance-policy.json)
+- [Model governance policy](governance/model-governance.yaml)
+- [License](LICENSE)
+
+### Architecture and operating model
+
+- [Architecture and governance reference](docs/ARCHITECTURE.md)
+- [Canonical topology and deployment contract](docs/architecture/RYANAI_CANONICAL_TOPOLOGY.md)
+- [Mission-centric operating architecture](docs/architecture/mission-centric-operating-architecture.md)
+- [API control-plane contract](docs/architecture/API_CONTROL_PLANE_CONTRACT.md)
+- [Agent governance engine](docs/architecture/AGENT_GOVERNANCE_ENGINE.md)
+- [12-module agent workforce](docs/architecture/RYANAI-12-MODULE-AGENT-WORKFORCE.md)
+- [Jarvis internal control plane](docs/architecture/internal-jarvis-control-plane.md)
+- [Jarvis governance and staged access](docs/architecture/jarvis-governance-and-staged-access.md)
+- [MCP delegated runtime](docs/architecture/MCP_DELEGATED_RUNTIME.md)
+- [Specialist adapter contract](docs/architecture/SPECIALIST-ADAPTER-CONTRACT.md)
+- [Governed provider gateway contract](docs/architecture/GOVERNED_PROVIDER_GATEWAY_CONTRACT.md)
+- [RIIP model registry](docs/architecture/RIIP-MODEL-REGISTRY.md)
+- [RIIP universal model governance](docs/architecture/RIIP-UNIVERSAL-MODEL-GOVERNANCE.md)
+- [Specialist model fit and adoption](docs/architecture/SPECIALIST_MODEL_FIT_AND_ADOPTION.md)
+- [Benchmark operational readiness](docs/architecture/BENCHMARK-OPERATIONAL-READINESS.md)
+- [Benchmark executable checks](docs/architecture/BENCHMARK-GATE-EXECUTABLE-CHECKS.md)
+- [Offline benchmark harness proposal](docs/architecture/OFFLINE-BENCHMARK-HARNESS-IMPLEMENTATION-PROPOSAL.md)
+- [Model-independent multimodal security](docs/architecture/MODEL_INDEPENDENT_MULTIMODAL_SECURITY.md)
+- [Ghostunnel mTLS foundation](docs/architecture/GHOSTUNNEL-MTLS-FOUNDATION.md)
+- [OpenTelemetry agent observability design](docs/architecture/RYANAI-OPENTELEMETRY-AGENT-OBSERVABILITY-DESIGN.md)
+- [Studio worker readiness architecture](docs/architecture/STUDIO_WORKER_READINESS.md)
+- [Topology integration backlog](docs/architecture/TOPOLOGY_INTEGRATION_BACKLOG.md)
+- [RyanAI UI implementation](docs/architecture/RYANAI-UI-IMPLEMENTATION.md)
+- [AIOA implementation](docs/architecture/RYANAI_AIOA_IMPLEMENTATION.md)
+- [Ubuntu Core Phase 1 audit](docs/architecture/ubuntu-core-phase1-audit.md)
+
+### Security, identity, and privacy
+
+- [Hybrid OS security architecture](docs/security/hybrid-os-security.md)
+- [Gen-X security hardening](docs/GENX_HARDCORE_SECURITY.md)
+- [Security Centre data contract](docs/SECURITY_CENTRE_DATA_CONTRACT.md)
+- [Security cleanup runbook](docs/SECURITY_CLEANUP.md)
+- [Static security audit](docs/PR-1345-static-security-audit.md)
+- [Private attachment storage](docs/SECURE_ATTACHMENT_STORAGE.md)
+- [Attachment malware scanning](docs/ATTACHMENT_MALWARE_SCANNING.md)
+- [Attachment message-path guard](docs/ATTACHMENT_MESSAGE_PATH_GUARD.md)
+- [Attachment quarantine retention](docs/ATTACHMENT_QUARANTINE_RETENTION.md)
+- [Attachment orphan cleanup](docs/ATTACHMENT_ORPHAN_CLEANUP.md)
+- [Supabase Auth completion](docs/auth/supabase-auth-completion.md)
+- [Supabase OAuth server integration](docs/SUPABASE_OAUTH_SERVER.md)
+- [Supabase login investigation](docs/authentication/2026-11-07-supabase-login-investigation.md)
+
+### Agents, Jarvis, events, and integrations
+
+- [Jarvis integration](docs/JARVIS_INTEGRATION.md)
+- [AI Inspector audit agent](docs/AI_INSPECTOR_AUDIT_AGENT.md)
+- [Agent evaluation and incremental migration](docs/agent-evaluation-and-incremental-migration.md)
+- [Durable queue execution planner](docs/durable-queue-execution-planner.md)
+- [Targeted execution reliability](docs/targeted-execution-reliability.md)
+- [AI engineering tools registry](docs/ai-engineering-tools-registry.md)
+- [GenAI code engineering adapter](docs/GENAICODE_ENGINEERING_ADAPTER.md)
+- [Plugin integrations centre](docs/PLUGIN_INTEGRATIONS_CENTRE.md)
+- [Cloudflare MCP integration](docs/CLOUDFLARE_MCP_INTEGRATION.md)
+- [Microsoft Agent Framework evaluation](docs/engineering/MICROSOFT_AGENT_FRAMEWORK_EVALUATION.md)
+- [Agent run runtime recovery](docs/operations/agent-runs-runtime-recovery.md)
+- [Agent run runtime schema review](docs/operations/agent-runs-runtime-schema-review.md)
+
+### Communications, voice, and messaging
+
+- [Communications Gateway](docs/communications-gateway.md)
+- [Owner communications production setup](docs/owner-communications-production-setup.md)
+- [Twil8B evaluation](docs/TWIL8B_EVALUATION.md)
+- [React Native Agent Console](docs/REACT_NATIVE_AGENT_CONSOLE.md)
+- [RyanAI audio intelligence architecture](docs/ryanai-audio-intelligence-architecture.md)
+
+### Workspace and product documentation
+
+- [Studio README and lifecycle](docs/studio/README.md)
+- [Studio product blueprint](docs/studio/PRODUCT_BLUEPRINT.md)
+- [Studio native core](docs/studio/NATIVE_CORE.md)
+- [Studio worker service](docs/studio/WORKER_SERVICE.md)
+- [Studio independent worker runtime](docs/studio/INDEPENDENT_WORKER_RUNTIME.md)
+- [Studio inference performance evidence](docs/studio/INFERENCE_PERFORMANCE_EVIDENCE.md)
+- [PhoneLink documentation](docs/phonelink/README.md)
+- [Audiobook render worker](docs/AUDIOBOOK_RENDER_WORKER.md)
+- [Quant market data contract](docs/QUANT_MARKET_DATA.md)
+- [Quant trading research and FX architecture](docs/architecture/RYANAI_QUANT_TRADING_RESEARCH_AND_FX.md)
+- [NVIDIA Aerial AI-RAN integration](docs/aerial-ai-ran.md)
+- [South African government procurement agent](docs/ZA_GOVERNMENT_PROCUREMENT_AGENT.md)
+- [Research documentation index](docs/research/README.md)
+- [LLM foundations learning and evaluation](docs/research/LLM-FOUNDATIONS-LEARNING-AND-EVALUATION.md)
+
+### Hybrid OS, hardware, and recovery
+
+- [Hybrid OS v1 architecture](docs/hybrid-os-v1.md)
+- [Ubuntu Core Phase 1 repository audit](docs/architecture/ubuntu-core-phase1-audit.md)
+- [Raspberry Pi edge platform](docs/hardware/ryanai-edge.md)
+- [Recovery and integrity layer](docs/recovery/ryanai-recovery.md)
+- [Hybrid OS implementation validation matrix](docs/implementation/hybrid-os-v1-validation.md)
+
+### Database, hosting, and operations
+
+- [Supabase migration ownership and local setup](supabase/README.md)
+- [Database migration ownership and reproducibility](docs/operations/DATABASE_MIGRATION_OWNERSHIP_AND_REPRODUCIBILITY.md)
+- [Database migration reconciliation](docs/operations/DATABASE_MIGRATION_RECONCILIATION_2026-11-08.md)
+- [Supabase U2EB migration runbook](docs/operations/supabase-u2eb-migration-runbook.md)
+- [Supabase PostgreSQL TLS trust](docs/operations/supabase-postgres-tls.md)
+- [Production migrations runbook](docs/operations/production-migrations.md)
+- [Shared Render/Railway environment variables](docs/operations/SHARED_ENV_VARIABLES_RENDER_RAILWAY.md)
+- [Render environment alignment](docs/operations/render-environment-alignment.md)
+- [Render and governance reconciliation plan](docs/operations/render-and-governance-reconciliation-plan.md)
+- [Render primary / Railway backup deployment plan](docs/operations/render-primary-railway-backup-deployment-plan.md)
+- [Main protection and Render recovery](docs/operations/main-protection-and-render-recovery.md)
+- [Staging Render runtime verification](docs/ops/render-staging-runtime-verification.md)
+- [Database branching and CI](docs/database-branching-cicd.md)
+- [Database runbook DB-001](docs/RUNBOOK-DB-001.md)
+- [Deployment and quota runbook](docs/DEPLOYMENT_AND_QUOTA_RUNBOOK.md)
+- [Governed production release](docs/governed-production-release.md)
+- [Startup backups](docs/startup-backups.md)
+- [PagerDuty maintenance windows](docs/pagerduty-maintenance-windows.md)
+
+### Engineering evidence, designs, and release history
+
+- [Engineering evidence workbench](docs/engineering-evidence-workbench.md)
+- [Engineering intelligence observability baseline](docs/engineering/ENGINEERING_INTELLIGENCE_OBSERVABILITY_BASELINE_2026-11-08.md)
+- [OpenTelemetry instrumentation lifecycle audit](docs/engineering/OPENTELEMETRY_INSTRUMENTATION_LIFECYCLE_AUDIT_2026-11-08.md)
+- [Copilot review provenance and telemetry contracts](docs/engineering/COPILOT_REVIEW_PROVENANCE_AND_TELEMETRY_CONTRACTS_2026-11-08.md)
+- [Engineering design assurance](docs/engineering/EGM_DESIGN_ASSURANCE.md)
+- [Worker workforce benchmark v1.5](docs/engineering/WORKER-WORKFORCE-BENCHMARK-V1.5.md)
+- [Verified telemetry snapshot integration](docs/engineering/VERIFIED_TELEMETRY_SNAPSHOT_INTEGRATION_2026-11-08.md)
+- [Repository inventory snapshot](docs/engineering/repository-inventory-2026-11-05.json)
+- [Release readiness — 30 October](docs/RELEASE_READINESS_2026-10-30.md)
+- [Release readiness after PR 460](docs/RELEASE_READINESS_POST_460_2026-10-30.md)
+- [Deep audit findings and release gates](docs/DEEP_AUDIT_FINDINGS_AND_RELEASE_GATES.md)
+- [Beta vision and release gates](docs/BETA_VISION_AND_RELEASE_GATES.md)
+- [Darkside completion and operational milestones](docs/DARKSIDE_COMPLETION_AND_OPERATIONAL_MILESTONES.md)
+- [Root configuration and deployment audit](docs/ROOT_CONFIG_DEPLOYMENT_AUDIT.md)
+- [Issue 435 acceptance evidence](docs/ISSUE_435_ACCEPTANCE_EVIDENCE.md)
+- [Issue 435 staging execution runbook](docs/ISSUE_435_STAGING_EXECUTION_RUNBOOK.md)
+- [Database schema reconciliation design](docs/designs/DATABASE_SCHEMA_RECONCILIATION_DRAFT.md)
+- [Designs index](docs/designs/README.md)
+- [CI reliability design draft](docs/designs/ci-reliability/design_draft.md)
+- [Community survey design draft](docs/designs/community-survey/design_draft.md)
+- [Database schema reconciliation design draft](docs/designs/database-schema-reconciliation/design_draft.md)
+- [GitHub governance design draft](docs/designs/github-governance/design_draft.md)
+- [Database/CI/security branch-protection verification](docs/verification/2026-11-04-database-ci-security-branch-protection.md)
+- [Copilot VS Code session handoff](docs/COPILOT_VSCODE_SESSION_HANDOFF.md)
+
+Workflow definitions and automated checks are maintained in [GitHub Actions workflows](.github/workflows/). Security/quality workflow definitions include CI, CodeQL, dependency review, container security, secret scanning, SBOM, API security, Codacy, benchmark isolation, database migration validation, and separately gated staging/production release workflows. Their presence does not prove a check passed on the current commit; inspect the exact workflow run and job result.
 
 ## Repository map
 
