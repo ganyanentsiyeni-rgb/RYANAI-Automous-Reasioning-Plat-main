@@ -276,6 +276,8 @@ export async function inspectConnectedGitHubRepository(
   ]);
   if (
     String(account.id ?? '') !== connection.githubUserId ||
+    typeof account.login !== 'string' || !account.login.trim() ||
+    String(repository.id ?? '') !== connection.repositoryId ||
     repository.full_name !== GITHUB_APP_REPOSITORY ||
     repository.permissions?.pull !== true ||
     typeof repository.default_branch !== 'string' ||
@@ -292,7 +294,7 @@ export async function inspectConnectedGitHubRepository(
   return {
     repositoryFullName: GITHUB_APP_REPOSITORY,
     repositoryUrl: typeof repository.html_url === 'string' ? repository.html_url : 'https://github.com/' + GITHUB_APP_REPOSITORY,
-    accountLogin: connection.githubLogin,
+    accountLogin: account.login,
     defaultBranch: repository.default_branch,
     commitSha: commit.sha,
     commitUrl: typeof commit.html_url === 'string'
