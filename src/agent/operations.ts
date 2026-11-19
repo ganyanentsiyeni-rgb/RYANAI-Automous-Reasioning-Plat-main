@@ -271,16 +271,20 @@ async function processAgentRun(
     await recordRegion('execution', 'started', { attempt: run.attempts });
     // Revalidate PA delegation provenance at the worker boundary; queue approval alone is insufficient.
     const paScope = parsePAExecutionScope(run.execution_scope);
-    if (paScope) {
-      if (run.approval_status !== 'approved') throw new Error('PA delegation run is not approved.');
-      const delegation = await prisma.paDelegation.findFirst({
-        where: { id: paScope.delegationId, ownerUserId: run.user_id, agentRunId: run.id, status: 'approved' },
-        select: { id: true, requestedCapabilities: true },
-      });
-      const persistedCapabilities = Array.isArray(delegation?.requestedCapabilities) ? delegation.requestedCapabilities.filter((item): item is string => typeof item === 'string').sort() : [];
+    const delegation = await prisma.paDelegation.findFirst({
+      where: { agentRunId: run.id, ownerUserId: run.user_id },
+      select: { id: true, status: true, requestedCapabilities: true },
+    });
+    // Detect both tampered PA scope metadata and orphaned delegation records.
+    if (paScope || delegation) {
+      if (!paScope || !delegation || run.approval_status !== 'approved' || delegation.status !== 'approved' ||
+          delegation.id !== paScope.delegationId) {
+        throw new Error('PA delegation is missing, unapproved, owner-mismatched, or its execution scope is incomplete.');
+      }
+      const persistedCapabilities = Array.isArray(delegation.requestedCapabilities) ? delegation.requestedCapabilities.filter((item): item is string => typeof item === 'string').sort() : [];
       const runCapabilities = [...paScope.capabilities].sort();
-      if (!delegation || persistedCapabilities.length !== runCapabilities.length || persistedCapabilities.some((item, index) => item !== runCapabilities[index])) {
-        throw new Error('PA delegation is missing, unapproved, owner-mismatched, or its capability scope changed.');
+      if (persistedCapabilities.length !== runCapabilities.length || persistedCapabilities.some((item, index) => item !== runCapabilities[index])) {
+        throw new Error('PA delegation capability scope changed after approval.');
       }
       await recordRunEvidence({ runId: run.id, eventType: 'pa.execution.scope_revalidated', payload: { delegationId: delegation.id, capabilities: runCapabilities } });
     }
