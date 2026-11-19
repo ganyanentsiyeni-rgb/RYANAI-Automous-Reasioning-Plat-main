@@ -16,6 +16,22 @@ export interface RyanAiGitHubEvent<TPayload = unknown> {
   payload: TPayload;
 }
 
+export function normalizeRyanAiGitHubEvent(
+  event: RyanAiGitHubEvent,
+): RyanAiGitHubEvent {
+  if (!event.id.trim()) throw new Error("GitHub event ID is required.");
+  if (!event.repository.trim()) throw new Error("GitHub event repository is required.");
+  if (!event.occurredAt.trim() || Number.isNaN(Date.parse(event.occurredAt))) {
+    throw new Error("GitHub event occurredAt must be a valid ISO timestamp.");
+  }
+  return {
+    ...event,
+    id: event.id.trim(),
+    repository: event.repository.trim(),
+    occurredAt: new Date(event.occurredAt).toISOString(),
+  };
+}
+
 export interface RyanAiGitHubEventSubscription {
   subscriptionId: string;
   repository: string;
