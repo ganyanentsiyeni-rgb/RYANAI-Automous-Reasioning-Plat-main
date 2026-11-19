@@ -42,6 +42,7 @@ const runCiDiagnosticsTask = async ({ task }: {
       { prisma },
       task.ownerUserId,
       requestedHeadSha,
+      { includeJobLogs: task.requiredCapabilities.includes('read-job-logs') },
     );
     const report = analyzeRyanAICiEvidence({
       headSha: evidence.verifiedHeadSha,
@@ -53,6 +54,7 @@ const runCiDiagnosticsTask = async ({ task }: {
         conclusion: run.conclusion,
         url: run.url,
       })),
+      jobLogs: evidence.jobLogExcerpts,
     }, task.requiredCapabilities);
 
     return {
@@ -72,7 +74,9 @@ const runCiDiagnosticsTask = async ({ task }: {
       notes: [
         ...report.notes,
         'Workflow run and job metadata were fetched read-only from the owner-bound GitHub connection.',
-        'No raw workflow logs were downloaded; log signature analysis is not available in this adapter yet.',
+        evidence.jobLogStatus === 'not_requested'
+          ? 'Job logs were not requested; the read-job-logs capability was not present.'
+          : 'Job-log retrieval status: ' + evidence.jobLogStatus + '. Raw log text is never included in this report.',
       ],
     };
   } catch (error) {
