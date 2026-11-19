@@ -386,7 +386,8 @@ async function processAgentRun(
     );
     activeRegion = 'reasoning';
     await recordRegion('reasoning', 'started', { brains: ['primary', 'secondary', 'logic'] });
-    await assertExecutionLeaseActive();\n    const reasoningPlan = await executeThreeBrainPlan(sharedObjective, (brain, prompt, signal) => testBrainInvoker
+    await assertExecutionLeaseActive();
+    const reasoningPlan = await executeThreeBrainPlan(sharedObjective, (brain, prompt, signal) => testBrainInvoker
       ? testBrainInvoker(brain, prompt, signal)
       : invokeWithRecovery(brain, prompt, signal, run, brain === 'logic' ? run.requested_model ?? undefined : undefined), cancellation.signal);
     const plan = { ...reasoningPlan, capabilityReceipts };
@@ -401,7 +402,8 @@ async function processAgentRun(
     await recordRegion('verification', 'completed', { verified: plan.verification?.verified === true, reason: plan.verification?.reason ?? null });
     activeRegion = null;
 
-    await assertExecutionLeaseActive();\n    const rows = await prisma.agentHandoff.findMany({
+    await assertExecutionLeaseActive();
+    const rows = await prisma.agentHandoff.findMany({
       where: { runId: run.id },
       orderBy: { startedAt: 'asc' },
     });
