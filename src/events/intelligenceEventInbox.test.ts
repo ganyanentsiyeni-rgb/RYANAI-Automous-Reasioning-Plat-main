@@ -102,6 +102,50 @@ describe('IntelligenceEventInbox', () => {
   });
 
 
+  it('requires authenticated owner context before claiming GitHub events', async () => {
+    await expect(inbox.claimNextForOwner('worker-a', '   ')).rejects.toThrow(
+      'authenticatedOwnerUserId must contain 1-128 characters.',
+    );
+    expect(inboxDelegate.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('filters GitHub claims by the authenticated owner in the database query', async () => {
+    const now = new Date('2026-11-18T12:00:00Z');
+    inboxDelegate.findFirst.mockResolvedValue(null);
+    await inbox.claimNextForOwner('worker-a', 'owner-a', now, ['github.pull_request']);
+    expect(inboxDelegate.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        sourceProvider: 'github',
+        sourceService: 'event-streams',
+        payload: { path: ['owner', 'userId'], equals: 'owner-a' },
+        eventType: { in: ['github.pull_request'] },
+      }),
+    }));
+  });
+
+  it('prevents generic workers from claiming the owner-scoped GitHub lane', async () => {
+    inboxDelegate.findFirst.mockResolvedValue(null);
+    await inbox.claimNext('generic-worker', new Date('2026-11-18T12:00:00Z'));
+    expect(inboxDelegate.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        NOT: { sourceProvider: 'github', sourceService: 'event-streams' },
+      }),
+    }));
+  });
+
+  it('does not rewrite owner identity when an owner-scoped event is retried', async () => {
+    inboxDelegate.findFirst.mockResolvedValue({
+      id: 'row-owner', attempts: 1, maxAttempts: 5,
+      leaseExpiresAt: new Date('2026-11-18T12:01:00Z'),
+      payload: { owner: { userId: 'owner-a' }, githubEvent: { payload: { ownerUserId: 'owner-b' } } },
+    });
+    inboxDelegate.updateMany.mockResolvedValue({ count: 1 });
+    await inbox.fail('row-owner', 'worker-a', new Error('temporary'), new Date('2026-11-18T12:00:00Z'));
+    const update = inboxDelegate.updateMany.mock.calls[0][0] as { data: Record<string, unknown> };
+    expect(update.data).not.toHaveProperty('payload');
+    expect(update.data.status).toBe('retry');
+  });
+
   it('restricts worker claims to explicitly registered event types', async () => {
     const now = new Date('2026-11-18T12:00:00Z');
     inboxDelegate.findFirst.mockResolvedValue(null);
