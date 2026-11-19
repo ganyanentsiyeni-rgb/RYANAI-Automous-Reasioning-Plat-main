@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
-import { IntelligenceEventInbox } from '../src/events/intelligenceEventInbox.ts';
+import { EventLeaseLostError, IntelligenceEventInbox } from '../src/events/intelligenceEventInbox.ts';
 
 if (process.env.RYANAI_DISPOSABLE_DB !== '1' || !process.env.DATABASE_URL) {
   throw new Error('Refusing to run unless RYANAI_DISPOSABLE_DB=1 and DATABASE_URL are set by the disposable PostgreSQL harness.');
