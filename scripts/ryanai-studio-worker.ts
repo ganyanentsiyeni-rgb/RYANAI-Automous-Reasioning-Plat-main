@@ -3,7 +3,7 @@ import {
   getStudioWorkerHandlerReadiness,
   registerStudioTaskHandler,
 } from '../src/server/engineering/studioNativeCore.js';
-import { analyzeRyanAICiEvidence, createRyanAICiProviderBlockedReport } from '../src/server/engineering/ryanaiCiDiagnostics.js';
+import { analyzeRyanAICiEvidence, createRyanAICiProviderBlockedReport, createRyanAIVerifiedCiReport } from '../src/server/engineering/ryanaiCiDiagnostics.js';
 import { generateRepositoryInventory } from './repository-inventory.mjs';
 import { prisma } from '../src/lib/prisma.js';
 import { inspectConnectedGitHubWorkflowEvidence } from '../src/server/routes/githubIntegration.js';
@@ -57,36 +57,7 @@ const runCiDiagnosticsTask = async ({ task }: {
       jobLogs: evidence.jobLogExcerpts,
     }, task.requiredCapabilities);
 
-    return {
-      ...report,
-      source: evidence.source,
-      evidenceTrust: 'github_verified_exact_sha',
-      repositoryFullName: evidence.repositoryFullName,
-      requestedHeadSha: evidence.requestedHeadSha,
-      verifiedHeadSha: evidence.verifiedHeadSha,
-      inspectedAt: evidence.inspectedAt,
-      snapshotComplete: evidence.complete,
-      jobLogRetrievalStatus: evidence.jobLogStatus,
-      liveProviderFetchPerformed: true,
-      jobs: evidence.workflowRuns.map((run) => ({
-        runId: run.id,
-        workflow: run.name,
-        jobs: run.jobs,
-      })),
-      notes: [
-        ...report.notes.filter((note) =>
-          note !== 'This worker analyzes the task-supplied snapshot; it does not fetch GitHub data or verify snapshot provenance.',
-        ),
-        'The requested commit SHA was verified against GitHub before its workflow evidence was retrieved.',
-        'Workflow run and job metadata were fetched read-only from the owner-bound GitHub connection.',
-        evidence.complete
-          ? 'Workflow and job metadata pagination completed within the configured bounds.'
-          : 'Workflow or job metadata is partial because the configured pagination bounds were reached or exact-head filtering removed unexpected records.',
-        evidence.jobLogStatus === 'not_requested'
-          ? 'Job logs were not requested; the read-job-logs capability was not present.'
-          : 'Job-log retrieval status: ' + evidence.jobLogStatus + '. Raw log text is never included in this report.',
-      ],
-    };
+    return createRyanAIVerifiedCiReport(report, evidence);
   } catch (error) {
     return createRyanAICiProviderBlockedReport(
       /^[a-f0-9]{40}$/i.test(requestedHeadSha) ? requestedHeadSha.toLowerCase() : null,
