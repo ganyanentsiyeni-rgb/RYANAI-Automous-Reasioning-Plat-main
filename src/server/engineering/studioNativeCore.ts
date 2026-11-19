@@ -95,6 +95,7 @@ WITH candidate AS (
   WHERE task.status = 'queued' AND task.available_at <= NOW()
     AND task.attempts < task.max_attempts
     AND task.task_type = ANY($1::text[])
+    AND ($4::text IS NULL OR task.assigned_worker_id = $4::text)
     AND (NOT task.approval_required OR task.approval_status = 'approved')
     AND NOT EXISTS (
       SELECT 1 FROM unnest(task.depends_on_ids) AS dependency_id
@@ -113,11 +114,11 @@ FROM candidate WHERE task.id = candidate.id
 RETURNING task.*;
 `;
 
-export async function claimStudioTask(workerId: string, supportedTaskTypes: readonly string[], leaseSeconds = 90) {
+export async function claimStudioTask(workerId: string, supportedTaskTypes: readonly string[], leaseSeconds = 90, workerProfileId?: string) {
   if (!workerId.trim() || supportedTaskTypes.length === 0) return null;
   const safeLease = Math.max(15, Math.min(leaseSeconds, 600));
   return prisma.$transaction(async (tx) => {
-    const claimed = await tx.$queryRawUnsafe<StudioTask[]>(CLAIM_STUDIO_TASK_SQL, [...supportedTaskTypes], workerId, safeLease);
+    const claimed = await tx.$queryRawUnsafe<StudioTask[]>(CLAIM_STUDIO_TASK_SQL, [...supportedTaskTypes], workerId, safeLease, workerProfileId ?? null);
     if (claimed[0]) await tx.studioEvent.create({ data: {
       projectId: claimed[0].projectId, taskId: claimed[0].id, ownerUserId: claimed[0].ownerUserId,
       actorId: workerId, eventType: 'task.leased', payload: { attempt: claimed[0].attempts, leaseSeconds: safeLease },
@@ -177,8 +178,8 @@ export function registerStudioTaskHandler(taskType: string, handler: StudioTaskH
   return () => { if (taskHandlers.get(taskType) === handler) taskHandlers.delete(taskType); };
 }
 
-export async function runStudioWorkerOnce(workerId: string) {
-  const task = await claimStudioTask(workerId, [...taskHandlers.keys()]);
+export async function runStudioWorkerOnce(workerId: string, workerProfileId = workerId, leaseSeconds = 90) {
+  const task = await claimStudioTask(workerId, [...taskHandlers.keys()], leaseSeconds, workerProfileId);
   if (!task) return { state: 'idle' as const };
   const handler = taskHandlers.get(task.taskType);
   if (!handler) {
@@ -204,7 +205,6 @@ export async function runStudioWorkerOnce(workerId: string) {
     payload: {
       decision: decision.decision ?? 'ALLOW',
       ruleId: decision.ruleId ?? 'unspecified',
-      approvalReference: decision.approvalReference ?? null,
     },
   } });
   try {
