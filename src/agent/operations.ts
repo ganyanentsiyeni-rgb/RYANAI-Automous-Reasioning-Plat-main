@@ -12,7 +12,7 @@ import { parsePAExecutionScope } from './agentRunExecution.js';
 import { getAgentRunRetryDelayMs, invokeWithCancellationRetry, shouldRetryAgentRun } from './agentRunRetry.js';
 import { persistAgentRunCompletion, requirePADelegationRecord } from './agentRunPersistence.js';
 import { publishAgentTaskNotification } from './queueNotifications.js';
-import { agentRunLeaseFilter, startAgentRunLeaseHeartbeat } from './agentRunLease.js';
+import { agentRunLeaseFilter, assertAgentRunLeaseActive, startAgentRunLeaseHeartbeat } from './agentRunLease.js';
 import { summarizeProviderError } from './providerErrors.js';
 import { assertBrainProbeResponse, BRAIN_PROBE_CHALLENGE, BRAIN_PROBE_ORDER } from './brainProbe.js';
 import { assertPAExecutionHandlersAvailable, buildAgentRunExecutionPrompt, buildPARepositoryInspectionContext, buildSharedReasoningObjective, planQueuedAgentRun } from './agentRunExecution.js';
@@ -270,6 +270,12 @@ async function processAgentRun(
     5_000,
   );
   try {
+    const assertExecutionLeaseActive = () => assertAgentRunLeaseActive(
+    { id: run.id, workerId: run.worker_id, attempts: run.attempts },
+    async (where) => Boolean(await prisma.agentRun.findFirst({ where, select: { id: true } })),
+    cancellation.signal,
+  );
+    await assertExecutionLeaseActive();
     await recordRunEvidence({ runId: run.id, eventType: run.attempts > 1 ? 'execution.recovered' : 'execution.started', payload: { workerId: run.worker_id, attempt: run.attempts, approvalStatus: run.approval_status, planHash: run.approved_plan_hash, baseCommitSha: run.approved_commit_sha, proposedDiffHash: run.approved_diff_hash } });
     activeRegion = 'execution';
     await recordRegion('execution', 'started', { attempt: run.attempts });
@@ -308,7 +314,9 @@ async function processAgentRun(
         if (inspectionPolicy.decision !== 'ALLOW') {
           throw new Error('Gen-X denied repository.inspect at the worker execution boundary.');
         }
+        await assertExecutionLeaseActive();
         const snapshot = await inspectConnectedGitHubRepository({ prisma }, run.user_id);
+        await assertExecutionLeaseActive();
         verifiedCapabilityContext = buildPARepositoryInspectionContext(snapshot);
         const evidence = await recordRunEvidence({
           runId: run.id,
@@ -379,6 +387,7 @@ async function processAgentRun(
     );
     activeRegion = 'reasoning';
     await recordRegion('reasoning', 'started', { brains: ['primary', 'secondary', 'logic'] });
+    await assertExecutionLeaseActive();
     const reasoningPlan = await executeThreeBrainPlan(sharedObjective, (brain, prompt, signal) => testBrainInvoker
       ? testBrainInvoker(brain, prompt, signal)
       : invokeWithRecovery(brain, prompt, signal, run, brain === 'logic' ? run.requested_model ?? undefined : undefined), cancellation.signal);
@@ -394,6 +403,7 @@ async function processAgentRun(
     await recordRegion('verification', 'completed', { verified: plan.verification?.verified === true, reason: plan.verification?.reason ?? null });
     activeRegion = null;
 
+    await assertExecutionLeaseActive();
     const rows = await prisma.agentHandoff.findMany({
       where: { runId: run.id },
       orderBy: { startedAt: 'asc' },
