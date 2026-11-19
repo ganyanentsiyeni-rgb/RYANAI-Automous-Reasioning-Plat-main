@@ -68,6 +68,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   comms.getCommsStatus.mockResolvedValue({
     status: 'configuration_snapshot',
+    enabled: true,
+status: 'configuration_snapshot',
     channels: { whatsapp: true, sms: false, voice: false, email: true, attachments: true },
     note: 'Configuration only.',
   });
@@ -195,6 +197,8 @@ describe('RyanAI Comms inbox controls', () => {
   it('keeps file selection available while accurately reporting server-side storage/scanner gating', async () => {
     comms.getCommsStatus.mockResolvedValueOnce({
       status: 'configuration_snapshot',
+      enabled: true,
+status: 'configuration_snapshot',
       channels: { whatsapp: true, sms: false, voice: false, email: true, attachments: false },
       note: 'Configuration only.',
     });
