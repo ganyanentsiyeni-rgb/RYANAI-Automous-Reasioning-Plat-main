@@ -4,7 +4,8 @@ import {
   type RyanAiPgListenerClient,
   type RyanAiPgNotification,
 } from './postgresWakeListenerClient.js';
-import { RYANAI_GITHUB_OWNER_EVENT_WAKE_CHANNEL, startPostgresGitHubOwnerEventWorker } from '../events/postgresGitHubOwnerEventWakeSource.js';
+import { createPostgresGitHubOwnerEventNotifier, RYANAI_GITHUB_OWNER_EVENT_WAKE_CHANNEL, startPostgresGitHubOwnerEventWorker } from '../events/postgresGitHubOwnerEventWakeSource.js';
+import { enqueueRyanAiGitHubOwnerBoundEvent } from '../events/githubOwnerBoundEvent.js';
 
 function fakeClient() {
   const listeners = new Set<(message: RyanAiPgNotification) => void>();
@@ -98,6 +99,86 @@ describe('concrete PostgreSQL wake listener client', () => {
     );
     expect(onError).not.toHaveBeenCalled();
     stop();
+  });
+
+  it('moves an owner-bound event from enqueue through NOTIFY, LISTEN, and owner-scoped dispatch', async () => {
+    const fake = fakeClient();
+    const listener = createRyanAiPostgresWakeListener(fake.client);
+    const persisted: unknown[] = [];
+    const order: string[] = [];
+    const eventEnvelope = {
+      eventId: '11111111-1111-5111-8111-111111111111',
+      eventType: 'github.pull_request',
+      schemaVersion: 1,
+      occurredAt: '2026-11-19T12:00:00.000Z',
+      source: { provider: 'github', service: 'event-streams' },
+      idempotencyKey: 'github:12345:evt-1',
+      classification: 'confidential',
+      payload: {
+        owner: { userId: 'owner-1', githubUserId: 'gh-1', repositoryId: '12345', repositoryFullName: 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main' },
+        githubEvent: { id: 'evt-1', type: 'pull_request', repository: 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main', occurredAt: '2026-11-19T12:00:00.000Z', payload: {} },
+      },
+    };
+    const inbox = {
+      enqueue: vi.fn(async (envelope: unknown) => {
+        persisted.push(envelope);
+        order.push('enqueue-committed');
+        return { event: {}, duplicate: false };
+      }),
+      processNextForOwner: vi.fn(async (_worker: string, owner: string, handler: (event: typeof eventEnvelope) => Promise<void>) => {
+        const stored = persisted.find((item) => (item as typeof eventEnvelope).payload.owner.userId === owner) as typeof eventEnvelope;
+        if (!stored) return { status: 'idle' as const };
+        await handler(stored);
+        return { status: 'processed' as const, eventId: stored.eventId };
+      }),
+    };
+    const registry = {
+      supportedEventTypes: () => ['github.pull_request'],
+      dispatch: vi.fn(async () => undefined),
+    };
+    const listOwners = vi.fn().mockResolvedValue(['owner-1']);
+    const stop = startPostgresGitHubOwnerEventWorker(
+      listener, inbox as never, registry as never, listOwners,
+      { workerId: 'integration-worker' },
+    );
+    const notifier = createPostgresGitHubOwnerEventNotifier(async (sql, params) => {
+      expect(sql).toBe('SELECT pg_notify($1, $2)');
+      expect(params?.[0]).toBe(RYANAI_GITHUB_OWNER_EVENT_WAKE_CHANNEL);
+      order.push('notify-after-commit');
+      fake.emit({ channel: RYANAI_GITHUB_OWNER_EVENT_WAKE_CHANNEL, payload: String(params?.[1] ?? '') });
+      return [];
+    });
+
+    try {
+      await enqueueRyanAiGitHubOwnerBoundEvent(
+        inbox as never,
+        'owner-1',
+        async (userId) => ({
+          userId,
+          githubUserId: 'gh-1',
+          repositoryId: '12345',
+          repositoryFullName: 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main',
+        }),
+        {
+          id: 'evt-1',
+          type: 'pull_request',
+          repository: 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main',
+          occurredAt: '2026-11-19T12:00:00.000Z',
+          payload: {
+            repository: { id: 12345, full_name: 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main' },
+            action: 'opened',
+          },
+        },
+        notifier,
+      );
+      await vi.waitFor(() => expect(registry.dispatch).toHaveBeenCalledOnce());
+      expect(order).toEqual(['enqueue-committed', 'notify-after-commit']);
+      expect(listOwners).toHaveBeenCalledOnce();
+      expect(inbox.processNextForOwner).toHaveBeenCalledOnce();
+      expect(registry.dispatch.mock.calls[0][0].payload.owner.userId).toBe('owner-1');
+    } finally {
+      stop();
+    }
   });
 
   it('reports asynchronous consumer failures without leaking an unhandled rejection', async () => {
