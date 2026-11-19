@@ -2,7 +2,7 @@
  * RyanAI Studio Native Core.
  * Studio owns project/task/artifact lifecycle. Queue claims use Postgres row
  * locks and leases. Execution is fail-closed until a registered worker and
- * Gen-X policy bridge are supplied by the host runtime.
+ * RyanAI-native task admission is enforced before registered handlers run.
  */
 import { Prisma, type StudioTask } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
