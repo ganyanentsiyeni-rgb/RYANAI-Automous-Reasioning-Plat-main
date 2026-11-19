@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import type { RyanAiPostgresQuery } from "./postgresGitHubEventIdempotencyStore";
 import type {
   RyanAiWorkerWakeHandler,
   RyanAiWorkerWakeSignal,
@@ -54,6 +56,52 @@ export function createPostgresRyanAiGitHubWorkerWakePublisher(
       throw new Error("GitHub worker wake envelope exceeds the 7000-byte safety limit.");
     }
     await notify(channel, payload);
+  };
+}
+
+/**
+ * Durable persistence adapter for the existing provider-neutral
+ * intelligence_event_inbox table. The source/idempotency unique key makes
+ * duplicate provider deliveries safe across processes.
+ */
+export function createPostgresRyanAiGitHubWakePersistence(
+  query: RyanAiPostgresQuery,
+): RyanAiGitHubWakePersistence {
+  return async (signal) => {
+    if (!signal.eventId.trim() || signal.eventId.length > 200) {
+      throw new Error("GitHub event ID must contain 1 to 200 characters.");
+    }
+    const eventIdentity = createHash("sha256").update(signal.eventId).digest("hex");
+    const uuidHex = `${eventIdentity.slice(0, 12)}5${eventIdentity.slice(13, 16)}${((parseInt(eventIdentity[16], 16) & 0x3) | 0x8).toString(16)}${eventIdentity.slice(17, 20)}${eventIdentity.slice(20, 32)}`;
+    const eventUuid = `${uuidHex.slice(0, 8)}-${uuidHex.slice(8, 12)}-${uuidHex.slice(12, 16)}-${uuidHex.slice(16, 20)}-${uuidHex.slice(20, 32)}`;
+    const payload = {
+      id: signal.eventId,
+      type: signal.eventType,
+      target: signal.target,
+      repository: signal.repository,
+      occurredAt: signal.occurredAt,
+      payload: signal.payload,
+    };
+    const serializedPayload = JSON.stringify(payload);
+    const payloadHash = createHash("sha256").update(serializedPayload).digest("hex");
+    await query(
+      `INSERT INTO public.intelligence_event_inbox
+         (event_id, event_type, schema_version, occurred_at, source_provider,
+          source_service, correlation_id, idempotency_key, classification,
+          payload, payload_hash, status)
+       VALUES ($1::uuid, $2, 1, $3::timestamptz, 'github', 'event-streams',
+               $4, $5, 'internal', $6::jsonb, $7, 'pending')
+       ON CONFLICT (source_provider, idempotency_key) DO NOTHING`,
+      [
+        eventUuid,
+        signal.eventType,
+        signal.occurredAt,
+        signal.eventId,
+        signal.eventId,
+        serializedPayload,
+        payloadHash,
+      ],
+    );
   };
 }
 
