@@ -260,6 +260,45 @@ describe('Studio worker queue lifecycle', () => {
     }
   });
 
+
+
+  it('never reports all checks passed when exact-head workflow pagination is incomplete', async () => {
+    const headSha = 'e'.repeat(40);
+    const inspect = vi.fn().mockResolvedValue({
+      repositoryFullName: 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main',
+      requestedHeadSha: headSha,
+      verifiedHeadSha: headSha,
+      source: 'github-oauth-read-only',
+      inspectedAt: '2026-11-19T18:30:00.000Z',
+      workflowRuns: [{
+        id: 88, name: 'visible-build', headSha, status: 'completed', conclusion: 'success',
+        url: null, jobs: [],
+      }],
+      jobLogExcerpts: [],
+      jobLogStatus: 'not_requested',
+      complete: false,
+    });
+    mocks.queryRawUnsafe.mockResolvedValue([task({
+      input: { headSha },
+      requiredCapabilities: ['read-workflow-runs'],
+    })]);
+    const unregister = registerStudioTaskHandler('ci-failure', createRyanAICiDiagnosticsTaskHandler(inspect));
+    try {
+      const result = await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
+      expect(result).toMatchObject({ state: 'completed', taskId: 'task-1' });
+      const completion = mocks.taskUpdateMany.mock.calls.find(([args]) => args.data?.status === 'completed');
+      expect(completion?.[0].data.output).toMatchObject({
+        evidenceTrust: 'github_verified_exact_sha',
+        snapshotComplete: false,
+        summary: 'checks_incomplete',
+        counts: { passed: 1 },
+      });
+      expect(completion?.[0].data.output.summary).not.toBe('all_observed_runs_passed');
+    } finally {
+      unregister();
+    }
+  });
+
   it('persists provider-blocked output when the provider verifies a different commit SHA', async () => {
     const requestedHeadSha = 'c'.repeat(40);
     const inspect = vi.fn().mockResolvedValue({
