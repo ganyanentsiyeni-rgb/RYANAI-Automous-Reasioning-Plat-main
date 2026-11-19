@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   createStudioProject: vi.fn(),
   listStudioProjects: vi.fn(),
   getStudioDeliveryReadiness: vi.fn(),
+  cancelStudioTask: vi.fn(),
 }));
 
 vi.mock('../../lib/prisma.js', () => ({
@@ -27,6 +28,7 @@ vi.mock('../engineering/studioNativeCore.js', () => ({
   createStudioProject: mocks.createStudioProject,
   listStudioProjects: mocks.listStudioProjects,
   getStudioDeliveryReadiness: mocks.getStudioDeliveryReadiness,
+  cancelStudioTask: mocks.cancelStudioTask,
   getStudioNativeRuntimeDescriptor: () => ({ projectLifecycle: 'studio_native', scheduler: 'database_leased_task_graph', workerRuntime: 'not_configured', authorizationAuthority: 'Gen-X', productionExecutionEnabled: false }),
 }));
 vi.mock('./auth.js', () => ({
@@ -59,6 +61,7 @@ describe('RyanAI Studio overview API', () => {
     mocks.createStudioProject.mockResolvedValue({ project: { id: 'native-project-1', title: 'Build Studio' }, tasks: [{ id: 'native-task-1', taskType: 'engineering' }] });
     mocks.listStudioProjects.mockResolvedValue([{ id: 'native-project-1', ownerUserId: 'owner-1' }]);
     mocks.getStudioDeliveryReadiness.mockResolvedValue({ projectId: 'native-project-1', state: 'in_progress', humanReviewRequired: true });
+    mocks.cancelStudioTask.mockResolvedValue({ cancelled: true, alreadyCancelled: false, status: 'cancelled' });
     mocks.workerStatus.mockReturnValue({
       state: 'running',
       queueClaimState: 'ready',
@@ -117,6 +120,32 @@ describe('RyanAI Studio overview API', () => {
     expect(response.statusCode).toBe(404);
     expect(response.json()).toEqual({ error: 'Studio project not found.' });
     expect(mocks.getStudioDeliveryReadiness).toHaveBeenCalledWith('foreign-project', 'owner-native');
+  });
+
+  it('cancels a native Studio task only in the authenticated owner scope', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/engineering/studio/native/tasks/native-task-1/cancel',
+      headers: { 'x-test-user': 'owner-native' },
+      payload: { reason: 'Owner requested cancellation' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(mocks.cancelStudioTask).toHaveBeenCalledWith(
+      'native-task-1',
+      'owner-native',
+      'Owner requested cancellation',
+    );
+    expect(response.json()).toMatchObject({ success: true, cancelled: true, status: 'cancelled' });
+  });
+
+  it('does not cancel a native Studio task without an authenticated owner', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/engineering/studio/native/tasks/native-task-1/cancel',
+      payload: { reason: 'Unauthenticated attempt' },
+    });
+    expect(response.statusCode).toBe(401);
+    expect(mocks.cancelStudioTask).not.toHaveBeenCalled();
   });
 
   it('submits structured briefs through the Studio execution adapter', async () => {
