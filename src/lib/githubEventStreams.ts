@@ -14,6 +14,16 @@ export interface RyanAiGitHubEvent<TPayload = unknown> {
   payload: TPayload;
 }
 
+export function createRyanAiGitHubEventWorkerWithRouter(
+  subscriptions: readonly RyanAiGitHubEventSubscription[],
+  handleWake: import("./githubEventRouter").RyanAiWorkerWakeHandler,
+): RyanAiGitHubEventWorker {
+  return createRyanAiGitHubEventWorker(
+    subscriptions,
+    createRyanAiGitHubEventRouter(handleWake),
+  );
+}
+
 export interface RyanAiGitHubEventSubscription {
   subscriptionId: string;
   repository: string;
@@ -35,6 +45,8 @@ export interface RyanAiGitHubEventStream {
  * Until GitHub Event Streams access is enabled for the installation, this
  * interface remains an integration boundary rather than a fake live stream.
  */
+import { createRyanAiGitHubEventRouter } from "./githubEventRouter";
+
 export interface RyanAiGitHubEventWorker {
   start(stream: RyanAiGitHubEventStream): Promise<() => Promise<void>>;
 }
