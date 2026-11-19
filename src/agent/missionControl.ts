@@ -16,7 +16,7 @@ export interface MissionWorkerAssignment {
 }
 export interface MissionSwarmPlan {
   state: 'ready' | 'waiting_for_dependencies' | 'budget_exhausted' | 'no_workers_available';
-  recommendedConcurrency: number; readyTaskIds: string[]; assignments: MissionWorkerAssignment[];
+  recommendedConcurrency: number; readyTaskIds: string[]; unassignedTaskIds: string[]; assignments: MissionWorkerAssignment[];
   evaluator: { id: 'mission-evaluator'; independent: true; mayApproveExecution: false };
   budgetRemaining: MissionUsage; reasons: string[];
 }
