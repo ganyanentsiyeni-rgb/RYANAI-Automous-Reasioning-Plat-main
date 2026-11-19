@@ -187,7 +187,13 @@ test('detects missing or weakened attempt and status CHECK constraints even when
 test('detects the exact six-column LangGraph checkpoint_writes primary key', () => {
   const expected = ['thread_id', 'checkpoint_ns', 'checkpoint_id', 'task_id', 'idx', 'channel'];
   const base = { columns: new Set(), tables: new Set(), indexes: new Set(), extensions: new Set(), memoryColumns: new Set(), cacheColumns: new Set() };
-  const valid = assessSchema({ ...base, checkpointWritePrimaryKeyColumns: expected });
+  const valid = assessSchema({
+    ...base,
+    tables: new Set(['checkpoint_writes']),
+    checkpointWritePrimaryKeyColumns: expected,
+  });
+  assert.equal(valid.checkpointWrites.tablePresent, true);
+  assert.equal(valid.checkpointWrites.primaryKeyPresent, true);
   assert.deepEqual(valid.checkpointWrites.actualPrimaryKeyColumns, expected);
   assert.equal(valid.checkpointWrites.primaryKeyMatches, true);
   const fiveColumn = assessSchema({ ...base, checkpointWritePrimaryKeyColumns: expected.slice(0, 5) });
@@ -195,5 +201,15 @@ test('detects the exact six-column LangGraph checkpoint_writes primary key', () 
   const wrongOrder = assessSchema({ ...base, checkpointWritePrimaryKeyColumns: [...expected].reverse() });
   assert.equal(wrongOrder.checkpointWrites.primaryKeyMatches, false);
   const absent = assessSchema(base);
+  assert.equal(absent.checkpointWrites.tablePresent, false);
+  assert.equal(absent.checkpointWrites.primaryKeyPresent, false);
+  assert.equal(absent.checkpointWrites.actualPrimaryKeyColumns, null);
   assert.equal(absent.checkpointWrites.primaryKeyMatches, false);
+  const tableWithoutKey = assessSchema({
+    ...base,
+    tables: new Set(['checkpoint_writes']),
+  });
+  assert.equal(tableWithoutKey.checkpointWrites.tablePresent, true);
+  assert.equal(tableWithoutKey.checkpointWrites.primaryKeyPresent, false);
+  assert.equal(tableWithoutKey.checkpointWrites.primaryKeyMatches, false);
 });
