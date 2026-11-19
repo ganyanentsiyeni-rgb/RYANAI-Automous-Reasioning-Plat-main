@@ -386,7 +386,7 @@ export class IntelligenceEventInbox {
     // Keep long-running handlers from losing their lease while work is in flight.
     let leaseLost = false;
     const heartbeat = setInterval(() => {
-      void this.renewLease(claimed.id, workerId)
+      void this.renewLease(claimed.id, workerId, claimed.attempts)
         .then((renewed) => { if (!renewed) leaseLost = true; })
         .catch(() => { leaseLost = true; });
     }, Math.max(50, Math.floor(this.leaseMs / 3)));
@@ -395,11 +395,11 @@ export class IntelligenceEventInbox {
     try {
       await handler(toEnvelope(claimed));
       if (leaseLost) throw new EventLeaseLostError();
-      await this.acknowledge(claimed.id, workerId, new Date());
+      await this.acknowledge(claimed.id, workerId, claimed.attempts, new Date());
       return { status: 'processed' as const, eventId: claimed.eventId };
     } catch (error) {
       if (leaseLost) throw new EventLeaseLostError();
-      const outcome = await this.fail(claimed.id, workerId, error, new Date());
+      const outcome = await this.fail(claimed.id, workerId, claimed.attempts, error, new Date());
       return { ...outcome, eventId: claimed.eventId };
     } finally {
       clearInterval(heartbeat);
