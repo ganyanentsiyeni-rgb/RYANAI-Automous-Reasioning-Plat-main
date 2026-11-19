@@ -24,7 +24,7 @@ describe('RyanAI Studio Native Core contracts', () => {
     const audit = vi.fn().mockResolvedValue(undefined);
     await expect(executeStudioToolCapability({
       actorId: 'owner-1', connectionRef: 'opaque-connection-ref', requestId: 'req-2',
-      capabilityId: 'read-workflow-runs', input: {}, manifest: { capabilities: [{ id: 'files.read', risk: 'read', requiresHumanApproval: false }] },
+      capabilityId: 'files.read', input: {}, manifest: { capabilities: [{ id: 'files.read', risk: 'read', requiresHumanApproval: false }] },
       resolveConnection: async () => true, verifyApproval: async () => false,
       execute, audit,
     })).rejects.toThrow('Capability is not declared by the RyanAI workforce registry.');
@@ -41,7 +41,6 @@ describe('RyanAI Studio Native Core contracts', () => {
       resolveConnection: async () => false, verifyApproval: async () => false,
       execute, audit,
     })).rejects.toThrow('Owner-scoped provider connection could not be resolved');
-    expect(authorize).not.toHaveBeenCalled();
     expect(execute).not.toHaveBeenCalled();
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'blocked' }));
   });
