@@ -178,6 +178,7 @@ export async function recoverExpiredStudioLeases() {
       where: { status: 'running', leaseExpiresAt: { lte: now } },
       select: { id: true, projectId: true, ownerUserId: true, attempts: true, maxAttempts: true, leaseToken: true },
       take: 250,
+      select: { id: true, projectId: true, ownerUserId: true, attempts: true, maxAttempts: true }, take: 250,
     });
     let recovered = 0;
     let failed = 0;
@@ -197,10 +198,14 @@ export async function recoverExpiredStudioLeases() {
           leaseToken: null,
           leaseExpiresAt: null,
           heartbeatAt: null,
+        where: { id: task.id, status: 'running', leaseExpiresAt: { lte: now } },
+        data: { status: exhausted ? 'failed' : 'queued', leaseOwner: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null,
           availableAt: exhausted ? now : new Date(Date.now() + Math.min(300000, 1000 * 2 ** task.attempts)),
           completedAt: exhausted ? now : null,
         },
       });
+      // Another recovery process may have won the conditional update. Only the
+      // process that actually changes the lease may append its lifecycle event.
       if (updated.count !== 1) continue;
       if (exhausted) failed += 1;
       else recovered += 1;
@@ -271,12 +276,10 @@ async function lockActiveStudioTaskLease(
 export async function runStudioWorkerOnce(workerId: string, workerProfileId = workerId, leaseSeconds = 90) {
   const task = await claimStudioTask(workerId, [...taskHandlers.keys()], leaseSeconds, workerProfileId);
   if (!task) return { state: 'idle' as const };
-  const claimToken = task.leaseToken;
-  if (!claimToken) throw new Error('Claimed Studio task is missing its lease fencing token.');
   const handler = taskHandlers.get(task.taskType);
   if (!handler) {
     await prisma.studioTask.updateMany({
-      where: { id: task.id, status: 'running', leaseOwner: workerId, leaseToken: claimToken, leaseExpiresAt: { gt: new Date() } },
+      where: { id: task.id, status: 'running', leaseOwner: workerId, leaseToken: task.leaseToken, leaseExpiresAt: { gt: new Date() } },
       data: { status: 'queued', leaseOwner: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null },
     });
     return { state: 'unhandled' as const, taskId: task.id };
@@ -345,6 +348,26 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId = wo
           heartbeatAt: null,
         },
       });
+      const blocked = await tx.studioTask.updateMany({ where: { id: task.id, status: 'running', leaseOwner: workerId, leaseToken: task.leaseToken, leaseExpiresAt: { gt: new Date() } },
+        data: { status: 'blocked', leaseOwner: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null, approvalStatus: 'blocked' } });
+      if (blocked.count === 1) await tx.studioEvent.create({ data: { projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
+        actorId: workerId, eventType: 'task.policy_blocked', payload: { decision: decision.decision ?? 'DENY_OR_REQUIRE_APPROVAL', ruleId: decision.ruleId ?? 'unknown', reason: decision.reason ?? 'RyanAI platform policy denied task admission.' } } });
+    });
+    return { state: 'blocked' as const, taskId: task.id };
+  }
+  await prisma.studioEvent.create({ data: {
+    projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
+    actorId: workerId, eventType: 'task.policy_authorized',
+    payload: {
+      decision: decision.decision ?? 'ALLOW',
+      ruleId: decision.ruleId ?? 'unspecified',
+    },
+  } });
+  try {
+    const output = await handler({ workerId, claimToken: task.leaseToken ?? '', task, heartbeat: () => heartbeatStudioTask(task.id, workerId, task.leaseToken ?? '') });
+    await prisma.$transaction(async (tx) => {
+      const completed = await tx.studioTask.updateMany({ where: { id: task.id, status: 'running', leaseOwner: workerId, leaseToken: task.leaseToken, leaseExpiresAt: { gt: new Date() } },
+        data: { status: 'completed', output: output as Prisma.InputJsonValue, completedAt: new Date(), leaseOwner: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null } });
       if (completed.count !== 1) throw new Error('Studio worker lease expired before completion could be committed.');
       await tx.studioEvent.create({ data: {
         projectId: task.projectId,
@@ -379,6 +402,11 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId = wo
         eventType: 'task.execution_failed',
         payload: { attempt: task.attempts, error: message.slice(0, 1000) },
       } });
+      const released = await tx.studioTask.updateMany({ where: { id: task.id, status: 'running', leaseOwner: workerId, leaseToken: task.leaseToken, leaseExpiresAt: { gt: new Date() } },
+        data: { status: exhausted ? 'failed' : 'queued', leaseOwner: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null,
+          availableAt: new Date(Date.now() + Math.min(300000, 1000 * 2 ** task.attempts)) } });
+      if (released.count === 1) await tx.studioEvent.create({ data: { projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
+        actorId: workerId, eventType: 'task.execution_failed', payload: { attempt: task.attempts, error: message.slice(0, 1000) } } });
     });
     return { state: 'failed' as const, taskId: task.id, error: message };
   }
@@ -475,6 +503,29 @@ export async function createStudioArtifact(input: {
       if (!task) throw new Error('Studio task lease does not match this owner and project.');
     }
 
+  projectId: string; taskId?: string; ownerUserId: string; title: string; kind: string;
+  storageProvider: string; storageKey: string; mimeType?: string; byteSize?: bigint; sha256?: string;
+  provenance?: Prisma.InputJsonValue; leaseFence?: { workerId: string; claimToken: string };
+}) {
+  const project = await prisma.studioProject.findFirst({ where: { id: input.projectId, ownerUserId: input.ownerUserId }, select: { id: true } });
+  if (!project) throw new Error('Studio project not found for this owner.');
+  if (input.leaseFence && !input.taskId) throw new Error('A fenced artifact must be associated with its Studio task.');
+  return prisma.$transaction(async (tx) => {
+    if (input.taskId && input.leaseFence) {
+      const owned = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM public.studio_tasks
+        WHERE id = ${input.taskId} AND project_id = ${input.projectId}
+          AND owner_user_id = ${input.ownerUserId} AND status = 'running'
+          AND lease_owner = ${input.leaseFence.workerId}
+          AND lease_token = ${input.leaseFence.claimToken}::uuid
+          AND lease_expires_at > NOW()
+        FOR UPDATE
+      `;
+      if (owned.length !== 1) throw new Error('Studio worker lease expired before artifact registration.');
+    } else if (input.taskId) {
+      const task = await tx.studioTask.findFirst({ where: { id: input.taskId, projectId: input.projectId, ownerUserId: input.ownerUserId }, select: { id: true } });
+      if (!task) throw new Error('Studio task not found for this owner and project.');
+    }
     const artifact = await tx.studioArtifact.create({ data: {
       projectId: input.projectId,
       taskId: input.taskId,
