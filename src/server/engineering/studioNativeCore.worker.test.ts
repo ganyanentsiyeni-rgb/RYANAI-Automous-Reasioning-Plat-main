@@ -374,6 +374,8 @@ describe('Studio worker queue lifecycle', () => {
 
   it('prevents a delayed old attempt from overwriting a replacement attempt after lease recovery', async () => {
     let finishFirstAttempt!: (value: unknown) => void;
+    let markFirstAttemptStarted!: () => void;
+    const firstAttemptStarted = new Promise<void>((resolve) => { markFirstAttemptStarted = resolve; });
     const firstAttemptResult = new Promise((resolve) => { finishFirstAttempt = resolve; });
     mocks.queryRawUnsafe
       .mockResolvedValueOnce([task({ attempts: 1 })])
@@ -396,18 +398,17 @@ describe('Studio worker queue lifecycle', () => {
       count: args.where?.attempts === 2 ? 1 : 0,
     }));
 
-    const handler = vi.fn(async ({ task: claimedTask, heartbeat }: {
-      task: ReturnType<typeof task>;
-      heartbeat: () => Promise<boolean>;
-    }) => {
-      if (claimedTask.attempts === 1) return firstAttemptResult;
+    const handler = vi.fn(async ({ task: claimedTask }: { task: ReturnType<typeof task> }) => {
+      if (claimedTask.attempts === 1) {
+        markFirstAttemptStarted();
+        return firstAttemptResult;
+      }
       return { result: 'replacement-attempt', attempt: claimedTask.attempts };
     });
     const unregister = registerStudioTaskHandler('ci-failure', handler);
     try {
       const oldAttempt = runStudioWorkerOnce('worker-1', 'ci-diagnostics');
-      await Promise.resolve();
-      await Promise.resolve();
+      await firstAttemptStarted;
 
       const recovery = await recoverExpiredStudioLeases();
       expect(recovery).toEqual({ inspected: 1, recovered: 1, failed: 0 });
