@@ -63,6 +63,7 @@ export function createRyanAIStudioWorkerRuntime(
   let heartbeatTimer: ReturnType<typeof setTimeout> | undefined;
   let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
   const inFlight = new Set<Promise<void>>();
+  let startupPromise: Promise<void> | null = null;
 
   const track = (operation: Promise<void>) => {
     inFlight.add(operation);
@@ -160,18 +161,28 @@ export function createRyanAIStudioWorkerRuntime(
       if (started) return;
       started = true;
       stopping = false;
+      startupPromise = (async () => {
+        try {
+          await persistHeartbeat('starting');
+          await persistHeartbeat('healthy');
+          // A shutdown signal may arrive while the durable startup heartbeat
+          // is pending. Do not launch loops after shutdown has begun.
+          if (stopping) return;
+          track(poll());
+          track(heartbeatLoop());
+          track(recoveryLoop());
+        } catch (error) {
+          started = false;
+          status = 'degraded';
+          lastError = error instanceof Error ? error.message : 'Studio worker startup heartbeat failed.';
+          throw error;
+        }
+      })();
       try {
-        await persistHeartbeat('starting');
-        await persistHeartbeat('healthy');
-      } catch (error) {
-        started = false;
-        status = 'degraded';
-        lastError = error instanceof Error ? error.message : 'Studio worker startup heartbeat failed.';
-        throw error;
+        await startupPromise;
+      } finally {
+        startupPromise = null;
       }
-      track(poll());
-      track(heartbeatLoop());
-      track(recoveryLoop());
     },
 
     async stop() {
@@ -180,6 +191,9 @@ export function createRyanAIStudioWorkerRuntime(
       if (pollTimer) clearTimeout(pollTimer);
       if (heartbeatTimer) clearTimeout(heartbeatTimer);
       if (recoveryTimer) clearTimeout(recoveryTimer);
+      // Finish startup before draining loops so a late startup heartbeat
+      // cannot overwrite the terminal stopped state.
+      if (startupPromise) await startupPromise.catch(() => undefined);
       // Drain in-flight poll/heartbeat/recovery operations before publishing
       // the terminal stopped heartbeat. Loops cannot reschedule once stopping.
       await Promise.allSettled([...inFlight]);
