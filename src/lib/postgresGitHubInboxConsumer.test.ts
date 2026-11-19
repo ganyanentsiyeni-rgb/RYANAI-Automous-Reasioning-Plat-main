@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createPostgresRyanAiGitHubInboxConsumer,
   processNextRyanAiGitHubInboxEvent,
+  startRyanAiGitHubInboxWorker,
   type RyanAiDurableGitHubInboxEvent,
 } from "./postgresGitHubInboxConsumer";
 
@@ -199,5 +200,77 @@ describe("processNextRyanAiGitHubInboxEvent", () => {
       "ci-worker-1",
       {},
     )).resolves.toEqual({ status: "empty" });
+  });
+});
+
+
+describe("startRyanAiGitHubInboxWorker", () => {
+  it("subscribes before draining startup backlog and shuts down the listener", async () => {
+    const order: string[] = [];
+    let onWake: (() => Promise<void>) | undefined;
+    const listener = {
+      listen: vi.fn(async (_channel: string, callback: (payload: string) => Promise<void>) => {
+        order.push("subscribe");
+        onWake = () => callback(JSON.stringify({
+          version: 1,
+          eventId: "provider-event-2",
+          target: "ci",
+          eventType: "check_suite",
+          repository: claimedEvent.payload.repository,
+          occurredAt: claimedEvent.occurred_at,
+        }));
+        return async () => { order.push("unsubscribe"); };
+      }),
+    };
+    let claimsRemaining = 1;
+    const consumer = {
+      recoverExpired: vi.fn(async () => { order.push("recover"); return 0; }),
+      claimNext: vi.fn(async () => {
+        order.push("claim");
+        if (claimsRemaining-- > 0) return claimedEvent;
+        return null;
+      }),
+      complete: vi.fn(async () => true),
+      fail: vi.fn(async () => "retry" as const),
+    };
+    const handler = vi.fn(async () => { order.push("handle"); });
+
+    const stop = await startRyanAiGitHubInboxWorker(
+      consumer,
+      listener,
+      "ci",
+      "ci-worker-1",
+      { ci: handler },
+    );
+
+    expect(order.slice(0, 2)).toEqual(["subscribe", "recover"]);
+    expect(handler).toHaveBeenCalledTimes(1);
+    await onWake?.();
+    await stop();
+
+    expect(listener.listen).toHaveBeenCalledWith("ryanai_github_ci_wake", expect.any(Function));
+    expect(order[order.length - 1]).toBe("unsubscribe");
+  });
+
+  it("unsubscribes when the initial durable backlog drain fails", async () => {
+    const unsubscribe = vi.fn(async () => undefined);
+    const listener = {
+      listen: vi.fn(async () => unsubscribe),
+    };
+    const consumer = {
+      recoverExpired: vi.fn(async () => { throw new Error("database unavailable"); }),
+      claimNext: vi.fn(async () => null),
+      complete: vi.fn(async () => true),
+      fail: vi.fn(async () => "retry" as const),
+    };
+
+    await expect(startRyanAiGitHubInboxWorker(
+      consumer,
+      listener,
+      "ci",
+      "ci-worker-1",
+      {},
+    )).rejects.toThrow("database unavailable");
+    expect(unsubscribe).toHaveBeenCalledOnce();
   });
 });
