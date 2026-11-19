@@ -34,6 +34,8 @@ export function createRyanAiWorkerWakeDispatcher(
 }
 
 export interface RyanAiEventIdempotencyStore {
+  /** Atomically reserves an unseen event ID; false means it was already claimed. */
+  claim(eventId: string): Promise<boolean> | boolean;
   has(eventId: string): Promise<boolean> | boolean;
   remember(eventId: string): Promise<void> | void;
   forget(eventId: string): Promise<void> | void;
@@ -57,6 +59,15 @@ export function createInMemoryRyanAiEventIdempotencyStore(
   const handledEventIds = new Set<string>();
 
   return {
+    claim: (eventId) => {
+      if (handledEventIds.has(eventId)) return false;
+      handledEventIds.add(eventId);
+      if (handledEventIds.size > maxRememberedEventIds) {
+        const oldest = handledEventIds.values().next().value;
+        if (oldest) handledEventIds.delete(oldest);
+      }
+      return true;
+    },
     has: (eventId) => handledEventIds.has(eventId),
     remember: (eventId) => {
       handledEventIds.add(eventId);
@@ -88,12 +99,11 @@ export function createRyanAiGitHubEventRouter(
   const inFlight = new Map<string, Promise<void>>();
 
   const processEvent = async (event: RyanAiGitHubEvent): Promise<void> => {
-    if (await idempotencyStore.has(event.id)) return;
-
     const target = targetByEventType[event.type];
     if (!target) return;
 
-    await idempotencyStore.remember(event.id);
+    // claim() must be atomic for durable multi-instance stores.
+    if (!(await idempotencyStore.claim(event.id))) return;
 
     try {
       await handleWake({
