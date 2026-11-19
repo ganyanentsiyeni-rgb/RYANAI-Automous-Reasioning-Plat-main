@@ -1,5 +1,3 @@
-import type { RyanAiGitHubEvent } from "./githubEventStreams";
-
 /**
  * Server-derived identity for one owner's already-verified GitHub OAuth
  * connection. Never construct this from an event payload or browser input.
@@ -11,12 +9,20 @@ export interface RyanAiGitHubOwnerBinding {
   repositoryFullName: string;
 }
 
+export interface RyanAiGitHubOwnerEvent {
+  id: string;
+  type: "pull_request" | "pull_request_review" | "pull_request_review_thread" | "check_suite" | "check_run" | "push";
+  repository: string;
+  occurredAt: string;
+  payload: unknown;
+}
+
 export interface RyanAiOwnerBoundGitHubEvent {
   ownerUserId: string;
   githubUserId: string;
   repositoryId: string;
   repositoryFullName: string;
-  event: RyanAiGitHubEvent;
+  event: RyanAiGitHubOwnerEvent;
 }
 
 function requiredString(value: unknown, field: string): string {
@@ -76,7 +82,7 @@ function readEventRepository(payload: unknown): { id: string; fullName: string }
  */
 export function bindRyanAiGitHubEventToOwner(
   binding: RyanAiGitHubOwnerBinding,
-  event: RyanAiGitHubEvent,
+  event: RyanAiGitHubOwnerEvent,
 ): RyanAiOwnerBoundGitHubEvent {
   if (!binding.ownerUserId || !binding.githubUserId || !binding.repositoryId) {
     throw new Error("GitHub owner binding is incomplete.");
