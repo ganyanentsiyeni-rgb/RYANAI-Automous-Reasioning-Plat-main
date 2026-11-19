@@ -124,7 +124,13 @@ export function createRyanAiGitHubEventWorker(
           return Promise.reject(new Error("GitHub event worker is at capacity; provider should retry delivery."));
         }
         pendingEvents += 1;
-        const event = normalizeRyanAiGitHubEvent(rawEvent);
+        let event: RyanAiGitHubEvent;
+        try {
+          event = normalizeRyanAiGitHubEvent(rawEvent);
+        } catch (error) {
+          pendingEvents -= 1;
+          return Promise.reject(error);
+        }
         const delivery = deliveryTail.then(() => handleEvent(event));
         deliveryTail = delivery.then(() => undefined, () => undefined);
         return delivery.finally(() => {
