@@ -80,3 +80,41 @@ describe('RyanAI CI provider-blocked evidence', () => {
     expect(JSON.stringify(report)).not.toContain('secret-value');
   });
 });
+
+
+describe('verified GitHub CI report composition', () => {
+  it('replaces snapshot-only trust claims with exact-head provider provenance', async () => {
+    const { createRyanAIVerifiedCiReport } = await import('./ryanaiCiDiagnostics.js');
+    const analysis = analyzeRyanAICiEvidence({
+      headSha: 'a'.repeat(40),
+      workflowRuns: [{ id: 1, name: 'build', status: 'completed', conclusion: 'success' }],
+      jobLogs: [{ runId: 1, jobName: 'typecheck', excerpt: 'error TS2322: hidden raw detail' }],
+    }, ['read-job-logs']);
+    const report = createRyanAIVerifiedCiReport(analysis, {
+      source: 'github-oauth-read-only',
+      repositoryFullName: 'owner/repository',
+      requestedHeadSha: 'a'.repeat(40),
+      verifiedHeadSha: 'a'.repeat(40),
+      inspectedAt: '2026-11-19T00:00:00.000Z',
+      complete: false,
+      jobLogStatus: 'partial',
+      workflowRuns: [{
+        id: 1, name: 'build',
+        jobs: [{ id: 2, name: 'typecheck', status: 'completed', conclusion: 'failure' }],
+      }],
+    });
+    expect(report).toMatchObject({
+      source: 'github-oauth-read-only',
+      evidenceTrust: 'github_verified_exact_sha',
+      requestedHeadSha: 'a'.repeat(40),
+      verifiedHeadSha: 'a'.repeat(40),
+      snapshotComplete: false,
+      jobLogRetrievalStatus: 'partial',
+      liveProviderFetchPerformed: true,
+      jobs: [{ runId: 1, workflow: 'build', jobs: [{ id: 2 }] }],
+    });
+    expect(report.notes.join(' ')).not.toContain('task-supplied snapshot');
+    expect(report.notes.join(' ')).toContain('metadata is partial');
+    expect(JSON.stringify(report)).not.toContain('hidden raw detail');
+  });
+});
