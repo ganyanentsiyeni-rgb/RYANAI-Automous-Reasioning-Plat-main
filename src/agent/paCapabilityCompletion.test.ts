@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assertPACompletionCapabilityReceipts } from './paCapabilityCompletion.js';
+import { assertPACompletionCapabilityReceipts, assertPARepositoryInspectionEvidence } from './paCapabilityCompletion.js';
 
 const scope = { paDelegationId: '123e4567-e89b-42d3-a456-426614174000', capabilities: ['repository.inspect', 'evidence.record'] };
 const passed = (capability: 'repository.inspect' | 'evidence.record') => ({ capability, status: 'passed' as const, evidenceReferences: ['evidence:' + capability] });
@@ -19,5 +19,45 @@ describe('PA finalization capability receipts', () => {
   });
   it('does not change ordinary non-PA worker completion', () => {
     expect(() => assertPACompletionCapabilityReceipts({ ordinary: true }, [])).not.toThrow();
+  });
+});
+
+
+describe('PA repository inspection evidence linkage', () => {
+  const snapshot = {
+    repositoryFullName: 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main',
+    commitSha: 'a'.repeat(40),
+    inspectedAt: '2026-11-19T17:00:00.000Z',
+    source: 'github-oauth-read-only' as const,
+  };
+  const receipt = {
+    capability: 'repository.inspect' as const,
+    status: 'passed' as const,
+    evidenceReferences: ['agent-run-evidence:evidence-1'],
+    repositoryInspection: snapshot,
+  };
+  const event = {
+    id: 'evidence-1',
+    eventType: 'pa.capability.executed',
+    payload: { capability: 'repository.inspect', ...snapshot, readOnly: true },
+  };
+
+  it('accepts only the exact snapshot represented by its evidence event', () => {
+    expect(() => assertPARepositoryInspectionEvidence([receipt], [event])).not.toThrow();
+  });
+  it('rejects a missing evidence event', () => {
+    expect(() => assertPARepositoryInspectionEvidence([receipt], [])).toThrow(/does not match/);
+  });
+  it('rejects a mismatched commit SHA even when the receipt says passed', () => {
+    expect(() => assertPARepositoryInspectionEvidence(
+      [{ ...receipt, repositoryInspection: { ...snapshot, commitSha: 'b'.repeat(40) } }],
+      [event],
+    )).toThrow(/does not match/);
+  });
+  it('rejects missing or malformed snapshot metadata', () => {
+    expect(() => assertPARepositoryInspectionEvidence(
+      [{ ...receipt, repositoryInspection: undefined }],
+      [event],
+    )).toThrow(/metadata or evidence reference is missing/);
   });
 });
