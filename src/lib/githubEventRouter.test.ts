@@ -157,6 +157,7 @@ describe("createRyanAiGitHubEventRouter", () => {
 
   it("preserves the wake failure when clearing its idempotency record also fails", async () => {
     const store = {
+      claim: vi.fn(() => true),
       has: vi.fn(() => false),
       remember: vi.fn(() => undefined),
       forget: vi.fn(() => { throw new Error("store unavailable"); }),
