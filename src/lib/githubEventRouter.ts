@@ -19,6 +19,32 @@ export type RyanAiWorkerWakeHandler = (
   signal: RyanAiWorkerWakeSignal,
 ) => Promise<void> | void;
 
+export interface RyanAiEventIdempotencyStore {
+  has(eventId: string): Promise<boolean> | boolean;
+  remember(eventId: string): Promise<void> | void;
+  forget(eventId: string): Promise<void> | void;
+}
+
+export function createInMemoryRyanAiEventIdempotencyStore(
+  maxRememberedEventIds = 2048,
+): RyanAiEventIdempotencyStore {
+  const handledEventIds = new Set<string>();
+
+  return {
+    has: (eventId) => handledEventIds.has(eventId),
+    remember: (eventId) => {
+      handledEventIds.add(eventId);
+      if (handledEventIds.size > maxRememberedEventIds) {
+        const oldest = handledEventIds.values().next().value;
+        if (oldest) handledEventIds.delete(oldest);
+      }
+    },
+    forget: (eventId) => {
+      handledEventIds.delete(eventId);
+    },
+  };
+}
+
 const targetByEventType: Partial<Record<RyanAiGitHubEventType, RyanAiWorkerWakeTarget>> = {
   check_suite: "ci",
   check_run: "ci",
@@ -30,21 +56,16 @@ const targetByEventType: Partial<Record<RyanAiGitHubEventType, RyanAiWorkerWakeT
 
 export function createRyanAiGitHubEventRouter(
   handleWake: RyanAiWorkerWakeHandler,
+  idempotencyStore: RyanAiEventIdempotencyStore =
+    createInMemoryRyanAiEventIdempotencyStore(),
 ): (event: RyanAiGitHubEvent) => Promise<void> {
-  const handledEventIds = new Set<string>();
-  const maxRememberedEventIds = 2048;
-
   return async (event) => {
-    if (handledEventIds.has(event.id)) return;
+    if (await idempotencyStore.has(event.id)) return;
 
     const target = targetByEventType[event.type];
     if (!target) return;
 
-    handledEventIds.add(event.id);
-    if (handledEventIds.size > maxRememberedEventIds) {
-      const oldest = handledEventIds.values().next().value;
-      if (oldest) handledEventIds.delete(oldest);
-    }
+    await idempotencyStore.remember(event.id);
 
     try {
       await handleWake({
@@ -56,7 +77,7 @@ export function createRyanAiGitHubEventRouter(
         payload: event.payload,
       });
     } catch (error) {
-      handledEventIds.delete(event.id);
+      await idempotencyStore.forget(event.id);
       throw error;
     }
   };
