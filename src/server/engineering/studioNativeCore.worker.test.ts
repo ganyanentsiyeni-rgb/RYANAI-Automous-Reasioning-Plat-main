@@ -23,7 +23,11 @@ const task = (overrides: Record<string, unknown> = {}) => ({
   id: 'task-1',
   projectId: 'project-1',
   ownerUserId: 'owner-1',
-  taskType: 'studio.test',
+  taskType: 'ci-failure',
+  assignedWorkerId: 'ci-diagnostics',
+  requiredCapabilities: ['read-workflow-runs'],
+  approvalRequired: false,
+  approvalStatus: 'not_required',
   status: 'running',
   attempts: 1,
   maxAttempts: 3,
@@ -46,40 +50,35 @@ describe('Studio worker queue lifecycle', () => {
     mocks.eventCreate.mockResolvedValue({});
   });
 
-  it('releases a task and records retry evidence when Gen-X authorization throws', async () => {
+  it('blocks a task whose requested capabilities exceed its assigned RyanAI worker', async () => {
+    mocks.queryRawUnsafe.mockResolvedValue([task({ requiredCapabilities: ['production.deploy'] })]);
     const handler = vi.fn().mockResolvedValue({ ok: true });
-    const unregister = registerStudioTaskHandler('studio.test', handler);
+    const unregister = registerStudioTaskHandler('ci-failure', handler);
     try {
-      const result = await runStudioWorkerOnce('worker-1', async () => {
-        throw new Error('Gen-X policy service unavailable');
-      });
-
-      expect(result).toMatchObject({ state: 'failed', taskId: 'task-1', error: 'Gen-X policy service unavailable' });
+      const result = await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
+      expect(result).toMatchObject({ state: 'blocked', taskId: 'task-1' });
       expect(handler).not.toHaveBeenCalled();
       expect(mocks.taskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
-        where: expect.objectContaining({ id: 'task-1', status: 'running', leaseOwner: 'worker-1' }),
-        data: expect.objectContaining({ status: 'queued', leaseOwner: null, leaseExpiresAt: null }),
+        data: expect.objectContaining({ status: 'blocked', approvalStatus: 'blocked' }),
       }));
       expect(mocks.eventCreate).toHaveBeenCalledWith(expect.objectContaining({
-        data: expect.objectContaining({ eventType: 'task.authorization_failed' }),
+        data: expect.objectContaining({ eventType: 'task.policy_blocked' }),
       }));
     } finally {
       unregister();
     }
   });
 
-  it('marks authorization failures exhausted when the final attempt was claimed', async () => {
-    mocks.queryRawUnsafe.mockResolvedValue([task({ attempts: 3, maxAttempts: 3 })]);
-    const unregister = registerStudioTaskHandler('studio.test', vi.fn());
+  it('blocks a task until its persisted owner approval is approved', async () => {
+    mocks.queryRawUnsafe.mockResolvedValue([task({ approvalRequired: true, approvalStatus: 'pending' })]);
+    const handler = vi.fn().mockResolvedValue({ ok: true });
+    const unregister = registerStudioTaskHandler('ci-failure', handler);
     try {
-      await runStudioWorkerOnce('worker-1', async () => {
-        throw new Error('policy timeout');
-      });
-      expect(mocks.taskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
-        data: expect.objectContaining({ status: 'failed', completedAt: expect.any(Date) }),
-      }));
+      const result = await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
+      expect(result).toMatchObject({ state: 'blocked', taskId: 'task-1' });
+      expect(handler).not.toHaveBeenCalled();
       expect(mocks.eventCreate).toHaveBeenCalledWith(expect.objectContaining({
-        data: expect.objectContaining({ eventType: 'task.authorization_exhausted' }),
+        data: expect.objectContaining({ eventType: 'task.policy_blocked' }),
       }));
     } finally {
       unregister();
@@ -90,9 +89,7 @@ describe('Studio worker queue lifecycle', () => {
     const handler = vi.fn();
     const unregister = registerStudioTaskHandler('studio.test', handler);
     try {
-      const result = await runStudioWorkerOnce('worker-1', async () => ({
-        allowed: false, decision: 'DENY', ruleId: 'test-deny', reason: 'Denied by policy',
-      }));
+      const result = await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
       expect(result).toMatchObject({ state: 'blocked', taskId: 'task-1' });
       expect(handler).not.toHaveBeenCalled();
       expect(mocks.taskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
@@ -110,7 +107,7 @@ describe('Studio worker queue lifecycle', () => {
     const handler = vi.fn().mockRejectedValue(new Error('temporary handler fault'));
     const unregister = registerStudioTaskHandler('studio.test', handler);
     try {
-      const result = await runStudioWorkerOnce('worker-1', async () => ({ allowed: true }));
+      const result = await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
       expect(result).toMatchObject({ state: 'failed', taskId: 'task-1', error: 'temporary handler fault' });
       expect(mocks.taskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
         data: expect.objectContaining({ status: 'queued', leaseOwner: null, leaseExpiresAt: null }),
