@@ -21,10 +21,13 @@ const signal = {
 
 describe("PostgreSQL GitHub worker wake transport", () => {
   it("publishes a compact envelope to the target-specific channel", async () => {
+    const persistWake = vi.fn(async () => undefined);
     const notify = vi.fn(async (_channel: string, _payload: string) => undefined);
-    const publish = createPostgresRyanAiGitHubWorkerWakePublisher(notify);
+    const publish = createPostgresRyanAiGitHubWorkerWakePublisher(persistWake, notify);
 
     await publish(signal);
+
+    expect(persistWake).toHaveBeenCalledWith(signal);
 
     expect(notify).toHaveBeenCalledTimes(1);
     const [channel, raw] = notify.mock.calls[0];
@@ -90,6 +93,7 @@ describe("GitHub Event Streams PostgreSQL wake composition", () => {
         return async () => undefined;
       },
     };
+    const persistWake = vi.fn(async () => undefined);
     const notify = vi.fn(async (_channel: string, _payload: string) => undefined);
     const worker = createRyanAiGitHubEventWorkerWithPostgresWake(
       [{
@@ -97,6 +101,7 @@ describe("GitHub Event Streams PostgreSQL wake composition", () => {
         repository: "ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main",
         eventTypes: ["check_suite"],
       }],
+      persistWake,
       notify,
     );
     const stop = await worker.start(stream);
@@ -109,6 +114,7 @@ describe("GitHub Event Streams PostgreSQL wake composition", () => {
       payload: { conclusion: "success" },
     });
 
+    expect(persistWake).toHaveBeenCalledTimes(1);
     expect(notify).toHaveBeenCalledTimes(1);
     expect(notify.mock.calls[0][0]).toBe(RYANAI_GITHUB_WORKER_WAKE_CHANNELS.ci);
     expect(JSON.parse(notify.mock.calls[0][1])).toMatchObject({
