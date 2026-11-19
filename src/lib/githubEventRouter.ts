@@ -19,6 +19,20 @@ export type RyanAiWorkerWakeHandler = (
   signal: RyanAiWorkerWakeSignal,
 ) => Promise<void> | void;
 
+export type RyanAiWorkerWakeHandlers = Partial<
+  Record<RyanAiWorkerWakeTarget, RyanAiWorkerWakeHandler>
+>;
+
+export function createRyanAiWorkerWakeDispatcher(
+  handlers: RyanAiWorkerWakeHandlers,
+): RyanAiWorkerWakeHandler {
+  return async (signal) => {
+    const handler = handlers[signal.target];
+    if (!handler) return;
+    await handler(signal);
+  };
+}
+
 export interface RyanAiEventIdempotencyStore {
   has(eventId: string): Promise<boolean> | boolean;
   remember(eventId: string): Promise<void> | void;
