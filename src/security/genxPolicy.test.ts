@@ -14,6 +14,26 @@ describe('Gen-X deterministic security enforcement', () => {
   it('blocks command execution', () => {
     expect(evaluateGenXSecurityEvent({ ...base, toolName: 'execute_shell_command', action: 'EXECUTE' }).decision).toBe('DENY');
   });
+  it('routes only the isolated development/staging test runner through human approval', () => {
+    for (const environment of ['development', 'staging'] as const) {
+      expect(evaluateGenXSecurityEvent({
+        ...base, toolName: 'test_runner', action: 'EXECUTE', target: 'pa:isolated-test-suite',
+        actorType: 'human', environment,
+      })).toMatchObject({ decision: 'REQUIRE_APPROVAL', ruleId: 'GX-ISOLATED-TEST-APPROVAL-001' });
+    }
+    expect(evaluateGenXSecurityEvent({
+      ...base, toolName: 'test_runner', action: 'EXECUTE', target: 'pa:isolated-test-suite',
+      actorType: 'human', environment: 'production',
+    })).toMatchObject({ decision: 'DENY', ruleId: 'GX-EXEC-001' });
+    expect(evaluateGenXSecurityEvent({
+      ...base, toolName: 'execute_shell_command', action: 'EXECUTE', target: 'pa:isolated-test-suite',
+      actorType: 'human', environment: 'development',
+    })).toMatchObject({ decision: 'DENY', ruleId: 'GX-EXEC-001' });
+    expect(evaluateGenXSecurityEvent({
+      ...base, toolName: 'test_runner', action: 'EXECUTE', target: 'pa:isolated-test-suite',
+      command: 'npm test', actorType: 'human', environment: 'development',
+    })).toMatchObject({ decision: 'DENY', ruleId: 'GX-EXEC-001' });
+  });
   it('blocks credential access', () => {
     expect(evaluateGenXSecurityEvent({ ...base, action: 'CREDENTIAL_ACCESS', target: 'vault' }).decision).toBe('DENY');
     expect(evaluateGenXSecurityEvent({ ...base, action: 'CREDENTIAL_ACCESS' })).toMatchObject({
