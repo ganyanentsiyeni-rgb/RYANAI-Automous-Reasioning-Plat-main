@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { createRyanAiGitHubEventRouter } from "./githubEventRouter";
+import {
+  createInMemoryRyanAiEventIdempotencyStore,
+  createRyanAiGitHubEventRouter,
+} from "./githubEventRouter";
 
 const event = (id: string, type: "check_suite" | "pull_request_review" | "pull_request") => ({
   id,
@@ -47,6 +50,19 @@ describe("createRyanAiGitHubEventRouter", () => {
       target: "pull-request",
       eventType: "pull_request",
     }));
+  });
+
+  it("supports an injected idempotency store", async () => {
+    const wake = vi.fn();
+    const store = createInMemoryRyanAiEventIdempotencyStore();
+    const route = createRyanAiGitHubEventRouter(wake, store);
+    const first = event("evt-store", "check_suite");
+
+    await route(first);
+    await route(first);
+
+    expect(await store.has("evt-store")).toBe(true);
+    expect(wake).toHaveBeenCalledTimes(1);
   });
 
   it("ignores duplicate event IDs", async () => {
