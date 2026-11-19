@@ -99,6 +99,40 @@ describe("createRyanAiGitHubEventRouter", () => {
     expect(wake).toHaveBeenCalledTimes(1);
   });
 
+  it("marks the event complete after a successful worker wake", async () => {
+    const store = {
+      claim: vi.fn(() => true),
+      has: vi.fn(() => false),
+      remember: vi.fn(() => undefined),
+      forget: vi.fn(() => undefined),
+    };
+    const route = createRyanAiGitHubEventRouter(vi.fn(), store);
+
+    await route(event("evt-complete", "check_suite"));
+
+    expect(store.claim).toHaveBeenCalledWith("evt-complete");
+    expect(store.remember).toHaveBeenCalledWith("evt-complete");
+    expect(store.forget).not.toHaveBeenCalled();
+  });
+
+  it("does not mark an event complete when the worker wake fails", async () => {
+    const store = {
+      claim: vi.fn(() => true),
+      has: vi.fn(() => false),
+      remember: vi.fn(() => undefined),
+      forget: vi.fn(() => undefined),
+    };
+    const route = createRyanAiGitHubEventRouter(
+      vi.fn(async () => { throw new Error("worker unavailable"); }),
+      store,
+    );
+
+    await expect(route(event("evt-failed", "check_suite"))).rejects.toThrow("worker unavailable");
+
+    expect(store.remember).not.toHaveBeenCalled();
+    expect(store.forget).toHaveBeenCalledWith("evt-failed");
+  });
+
   it("ignores duplicate event IDs", async () => {
     const wake = vi.fn();
     const route = createRyanAiGitHubEventRouter(wake);
