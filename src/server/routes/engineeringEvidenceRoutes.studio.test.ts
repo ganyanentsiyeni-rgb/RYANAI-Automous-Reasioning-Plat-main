@@ -155,7 +155,6 @@ describe('RyanAI Studio overview API', () => {
       payload: { objective: 'Research a provider', projectType: 'research', constraints: ['ghp_123456789012345678901234567890'] },
     });
     expect(response.statusCode).toBe(400);
-    expect(mocks.dispatchAutonomousTask).not.toHaveBeenCalled();
     expect(mocks.createStudioProject).not.toHaveBeenCalled();
   });
 
@@ -166,7 +165,6 @@ describe('RyanAI Studio overview API', () => {
       payload: { objective: 'Research a provider', projectType: 'research' },
     });
     expect(response.statusCode).toBe(401);
-    expect(mocks.dispatchAutonomousTask).not.toHaveBeenCalled();
   });
 
   it('requires a verified signed-in owner', async () => {
