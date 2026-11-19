@@ -17,6 +17,18 @@ const candidateKey = publishableKey || legacyAnonKey;
 const isSecretKey = candidateKey.startsWith('sb_secret_');
 const supabaseKey = isSecretKey ? '' : candidateKey;
 
+// Use PKCE so OAuth callbacks exchange the authorization code for a session.
+// Keep the session in browser storage across refreshes and let the SDK refresh
+// expiring tokens and detect the callback URL on initial client construction.
+const authOptions = {
+  flowType: 'pkce' as const,
+  persistSession: true,
+  autoRefreshToken: true,
+  detectSessionInUrl: true,
+};
+
 // Explicitly typed and fail closed when configuration is missing or unsafe.
 export const supabase: SupabaseClient | null =
-  SUPABASE_URL && supabaseKey ? createClient(SUPABASE_URL, supabaseKey) : null;
+  SUPABASE_URL && supabaseKey
+    ? createClient(SUPABASE_URL, supabaseKey, { auth: authOptions })
+    : null;
