@@ -6,7 +6,7 @@ import {
   encryptGitHubSecret,
   GITHUB_APP_REPOSITORY,
 } from '../githubAppOAuth.js';
-import { githubIntegrationRoutes } from './githubIntegration.js';
+import { githubIntegrationRoutes, inspectConnectedGitHubRepository } from './githubIntegration.js';
 import { installAuthentication } from './auth.js';
 
 const store = vi.hoisted(() => ({
@@ -85,6 +85,54 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+});
+
+
+describe('owner-bound read-only repository inspection', () => {
+  it('returns the pinned repository and exact default-branch commit for its connected owner', async () => {
+    const app = await createApp();
+    store.connection.findUnique.mockResolvedValue(storedConnection());
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(mockResponse({ id: 123456, login: 'synthetic-owner' }))
+      .mockResolvedValueOnce(mockResponse({
+        id: 1361308785,
+        name: 'RYANAI-Automous-Reasioning-Plat-main',
+        full_name: GITHUB_APP_REPOSITORY,
+        html_url: 'https://github.com/' + GITHUB_APP_REPOSITORY,
+        default_branch: 'main',
+        permissions: { pull: true, push: false, admin: false },
+      }))
+      .mockResolvedValueOnce(mockResponse({
+        sha: 'a'.repeat(40),
+        html_url: 'https://github.com/' + GITHUB_APP_REPOSITORY + '/commit/' + 'a'.repeat(40),
+      }));
+    const snapshot = await inspectConnectedGitHubRepository(app, userId);
+    expect(snapshot.repositoryFullName).toBe(GITHUB_APP_REPOSITORY);
+    expect(snapshot.accountLogin).toBe('synthetic-owner');
+    expect(snapshot.defaultBranch).toBe('main');
+    expect(snapshot.commitSha).toBe('a'.repeat(40));
+    expect(snapshot.source).toBe('github-oauth-read-only');
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(vi.mocked(fetch).mock.calls.every(([url, init]) =>
+      String(url).startsWith('https://api.github.com/') &&
+      (init as RequestInit | undefined)?.method === undefined,
+    )).toBe(true);
+  });
+
+  it('rejects a missing owner connection without making a provider request', async () => {
+    const app = await createApp();
+    store.connection.findUnique.mockResolvedValue(null);
+    await expect(inspectConnectedGitHubRepository(app, userId)).rejects.toThrow('github_owner_connection_missing_or_wrong_repository');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('rejects a GitHub identity mismatch before reading repository state', async () => {
+    const app = await createApp();
+    store.connection.findUnique.mockResolvedValue(storedConnection());
+    vi.mocked(fetch).mockResolvedValueOnce(mockResponse({ id: 999999, login: 'different-owner' }));
+    await expect(inspectConnectedGitHubRepository(app, userId)).rejects.toThrow('github_owner_or_repository_verification_failed');
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('GitHub App in-app authorization lifecycle', () => {
