@@ -45,7 +45,7 @@ describe('createPostgresGitHubOwnerEventWakeSource', () => {
     expect(unsubscribe).toHaveBeenCalledOnce();
   });
 
-  it('reports listener setup and cleanup failures without activating a worker', async () => {
+  it('reports listener setup failures without activating a worker', async () => {
     const setupError = new Error('LISTEN unavailable');
     const onError = vi.fn();
     const listen = vi.fn().mockRejectedValue(setupError);
@@ -56,4 +56,17 @@ describe('createPostgresGitHubOwnerEventWakeSource', () => {
     await Promise.resolve();
     expect(onError).toHaveBeenCalledWith(setupError);
   });
+  it('reports asynchronous unsubscribe failures', async () => {
+    const cleanupError = new Error('UNLISTEN failed');
+    const onError = vi.fn();
+    const listen = vi.fn().mockResolvedValue(() => Promise.reject(cleanupError));
+    const source = createPostgresGitHubOwnerEventWakeSource({ listen }, onError);
+
+    const stop = source.subscribe(vi.fn());
+    await Promise.resolve();
+    stop();
+    await Promise.resolve();
+    expect(onError).toHaveBeenCalledWith(cleanupError);
+  });
+
 });
