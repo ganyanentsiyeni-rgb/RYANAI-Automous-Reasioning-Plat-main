@@ -73,7 +73,9 @@ export function createRyanAiGitHubEventRouter(
   idempotencyStore: RyanAiEventIdempotencyStore =
     createInMemoryRyanAiEventIdempotencyStore(),
 ): (event: RyanAiGitHubEvent) => Promise<void> {
-  return async (event) => {
+  const inFlight = new Map<string, Promise<void>>();
+
+  const processEvent = async (event: RyanAiGitHubEvent): Promise<void> => {
     if (await idempotencyStore.has(event.id)) return;
 
     const target = targetByEventType[event.type];
@@ -91,8 +93,28 @@ export function createRyanAiGitHubEventRouter(
         payload: event.payload,
       });
     } catch (error) {
-      await idempotencyStore.forget(event.id);
+      try {
+        await idempotencyStore.forget(event.id);
+      } catch (forgetError) {
+        throw new AggregateError(
+          [error, forgetError],
+          "GitHub event handling failed and its idempotency record could not be cleared.",
+        );
+      }
       throw error;
     }
+  };
+
+  return (event) => {
+    // Coalesce concurrent redeliveries before the durable idempotency check
+    // completes; otherwise two deliveries can both observe an unseen ID.
+    const existing = inFlight.get(event.id);
+    if (existing) return existing;
+
+    const processing = processEvent(event).finally(() => {
+      if (inFlight.get(event.id) === processing) inFlight.delete(event.id);
+    });
+    inFlight.set(event.id, processing);
+    return processing;
   };
 }
