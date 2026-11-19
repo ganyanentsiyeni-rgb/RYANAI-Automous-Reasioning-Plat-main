@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateTarget } from './migrate-render-staging.mjs';
+import { createPoolOptions, validateTarget } from './migrate-render-staging.mjs';
 
 const good = 'postgresql://ryanai_database_user:secret@dpg-dbtev2rm8hqs73anvf00-a.oregon-postgres.render.com/ryanai_database';
 
@@ -17,3 +17,10 @@ test('rejects Supabase, pooler, production, other Render DBs and wrong database/
   ]) assert.throws(() => validateTarget(value));
 });
 test('rejects missing DATABASE_URL', () => assert.throws(() => validateTarget(undefined)));
+
+test('requires TLS and verifies the PostgreSQL server certificate', () => {
+  const options = createPoolOptions(good);
+  assert.deepEqual(options.ssl, { rejectUnauthorized: true });
+  assert.equal(options.connectionString, good);
+  assert.equal(options.max, 1);
+});
