@@ -4,7 +4,7 @@ import {
   type RyanAiPgListenerClient,
   type RyanAiPgNotification,
 } from './postgresWakeListenerClient.js';
-import { RYANAI_GITHUB_OWNER_EVENT_WAKE_CHANNEL } from '../events/postgresGitHubOwnerEventWakeSource.js';
+import { RYANAI_GITHUB_OWNER_EVENT_WAKE_CHANNEL, startPostgresGitHubOwnerEventWorker } from '../events/postgresGitHubOwnerEventWakeSource.js';
 
 function fakeClient() {
   const listeners = new Set<(message: RyanAiPgNotification) => void>();
@@ -77,7 +77,7 @@ describe('concrete PostgreSQL wake listener client', () => {
     expect(fake.end).toHaveBeenCalledOnce();
   });
 
-  it('reports asynchronous consumer failures without leaking an unhandled rejection', async () => {
+  it('wakes the owner-scoped worker through the concrete listener adapter', async () => {\n    const fake = fakeClient();\n    const listener = createRyanAiPostgresWakeListener(fake.client);\n    const listOwners = vi.fn().mockResolvedValue(['owner-1']);\n    const inbox = { processNextForOwner: vi.fn().mockResolvedValue({ status: 'idle' }) };\n    const registry = { supportedEventTypes: () => ['github.pull_request'] };\n    const onError = vi.fn();\n    const stop = startPostgresGitHubOwnerEventWorker(\n      listener, inbox as never, registry as never, listOwners,\n      { workerId: 'owner-worker', onError },\n    );\n    await Promise.resolve();\n    fake.emit({ channel: RYANAI_GITHUB_OWNER_EVENT_WAKE_CHANNEL, payload: 'untrusted payload is ignored' });\n    await Promise.resolve();\n    await Promise.resolve();\n    expect(listOwners).toHaveBeenCalledOnce();\n    expect(inbox.processNextForOwner).toHaveBeenCalledWith(\n      'owner-worker', 'owner-1', expect.any(Function), expect.any(Date), ['github.pull_request'],\n    );\n    expect(onError).not.toHaveBeenCalled();\n    stop();\n  });\n\n  it('reports asynchronous consumer failures without leaking an unhandled rejection', async () => {
     const fake = fakeClient();
     const error = new Error('consumer failed');
     const onError = vi.fn();
