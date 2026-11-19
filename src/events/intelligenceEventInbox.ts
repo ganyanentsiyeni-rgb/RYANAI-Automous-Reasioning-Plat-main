@@ -226,6 +226,7 @@ export class IntelligenceEventInbox {
   }
 
   async renewLease(eventId: string, workerId: string, attempt: number, now = new Date()): Promise<boolean> {
+    positiveInteger(attempt, 'attempt');
     const result = await this.db.intelligenceEventInbox.updateMany({
       where: { id: eventId, status: 'processing', leaseOwner: workerId, attempts: attempt, leaseExpiresAt: { gt: now } },
       data: { leaseExpiresAt: new Date(now.getTime() + this.leaseMs) },
@@ -234,6 +235,7 @@ export class IntelligenceEventInbox {
   }
 
   async acknowledge(eventId: string, workerId: string, attempt: number, now = new Date()): Promise<void> {
+    positiveInteger(attempt, 'attempt');
     await this.db.$transaction(async (tx) => {
       const result = await tx.intelligenceEventInbox.updateMany({
         where: { id: eventId, status: 'processing', leaseOwner: workerId, attempts: attempt, leaseExpiresAt: { gt: now } },
@@ -248,6 +250,7 @@ export class IntelligenceEventInbox {
   }
 
   async fail(eventId: string, workerId: string, attempt: number, error: unknown, now = new Date()) {
+    positiveInteger(attempt, 'attempt');
     return this.db.$transaction(async (tx) => {
       const current = await tx.intelligenceEventInbox.findFirst({
         where: { id: eventId, status: 'processing', leaseOwner: workerId, attempts: attempt, leaseExpiresAt: { gt: now } },
