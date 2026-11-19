@@ -61,8 +61,14 @@ async function main() {
       throw new Error('Connected database identity does not match the approved staging target.');
     }
 
+    const platformState = await client.query("SELECT (SELECT count(*)::int FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE') AS public_table_count, (SELECT count(*)::int FROM information_schema.schemata WHERE schema_name IN ('auth', 'storage', 'realtime', 'vault', 'supabase_functions')) AS supabase_schema_count, (SELECT count(*)::int FROM pg_roles WHERE rolname IN ('anon', 'authenticated', 'service_role', 'supabase_admin')) AS supabase_role_count, (SELECT count(*)::int FROM pg_extension WHERE extname <> 'plpgsql') AS unexpected_extension_count");
+    const state = platformState.rows[0];
+    if (Number(state.public_table_count) !== 0 || Number(state.supabase_schema_count) !== 0 || Number(state.supabase_role_count) !== 0 || Number(state.unexpected_extension_count) !== 0) {
+      throw new Error('Unexpected database baseline (public tables, Supabase platform objects, or extensions found); refusing to initialize.');
+    }
+
     const existing = await client.query(
-      "SELECT name, to_regclass('public.' || name) IS NOT NULL AS present FROM unnest($1::text[]) AS name",
+      "SELECT name, to_regclass('public.' || name) IS NOT NULL AS present FROM unnest($1::text[]) AS t(name)",
       [REQUIRED],
     );
     const present = existing.rows.filter((row) => row.present).map((row) => row.name);
@@ -88,7 +94,7 @@ async function main() {
     `);
     await client.query(migrationSql);
     const verify = await client.query(
-      "SELECT name, to_regclass('public.' || name) IS NOT NULL AS present FROM unnest($1::text[]) AS name",
+      "SELECT name, to_regclass('public.' || name) IS NOT NULL AS present FROM unnest($1::text[]) AS t(name)",
       [REQUIRED],
     );
     const missing = verify.rows.filter((row) => !row.present).map((row) => row.name);
