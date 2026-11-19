@@ -1,5 +1,8 @@
 import type { RyanAiPostgresWakeListener } from '../lib/postgresGitHubWorkerWake.js';
 import type { RyanAiPostgresQuery } from '../lib/postgresGitHubEventIdempotencyStore.js';
+import { startGitHubOwnerEventWorker, type AuthorizedGitHubOwnerLister, type GitHubOwnerEventWorkerOptions } from './githubOwnerEventDispatcher.js';
+import type { EventHandlerRegistry } from './eventHandlerRegistry.js';
+import type { IntelligenceEventInbox } from './intelligenceEventInbox.js';
 
 export const RYANAI_GITHUB_OWNER_EVENT_WAKE_CHANNEL = 'ryanai_github_owner_events';
 
@@ -62,4 +65,29 @@ export function createPostgresGitHubOwnerEventWakeSource(
       };
     },
   };
+}
+
+
+/**
+ * Composition helper for an explicitly enabled server-side worker process.
+ * Calling this function activates LISTEN; do not invoke from request handlers.
+ */
+export function startPostgresGitHubOwnerEventWorker(
+  listener: RyanAiPostgresWakeListener,
+  inbox: Pick<IntelligenceEventInbox, 'processNextForOwner'>,
+  registry: EventHandlerRegistry,
+  listAuthorizedOwnerUserIds: AuthorizedGitHubOwnerLister,
+  options: GitHubOwnerEventWorkerOptions,
+): () => void {
+  const source = createPostgresGitHubOwnerEventWakeSource(
+    listener,
+    (error) => options.onError?.(error),
+  );
+  return startGitHubOwnerEventWorker(
+    source,
+    inbox,
+    registry,
+    listAuthorizedOwnerUserIds,
+    options,
+  );
 }
