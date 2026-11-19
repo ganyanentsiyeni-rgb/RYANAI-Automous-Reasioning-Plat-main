@@ -27,6 +27,12 @@ const runRepositoryInventoryTask = async ({ task }: {
 };
 
 const runCiDiagnosticsTask = createRyanAICiDiagnosticsTaskHandler(
+  (ownerUserId, headSha, options) => inspectConnectedGitHubWorkflowEvidence(
+    { prisma },
+    ownerUserId,
+    headSha,
+    options,
+  ),
   (ownerUserId, headSha, options) =>
     inspectConnectedGitHubWorkflowEvidence({ prisma }, ownerUserId, headSha, options),
 );
