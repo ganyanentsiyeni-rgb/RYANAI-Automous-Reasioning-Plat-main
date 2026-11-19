@@ -1,6 +1,8 @@
 import { createRyanAiGitHubEventRouter } from "./githubEventRouter";
+import type { RyanAiPostgresQuery } from "./postgresGitHubEventIdempotencyStore";
 import {
   createPostgresRyanAiGitHubWorkerWakePublisher,
+  createPostgresRyanAiGitHubWakePersistence,
   type RyanAiPostgresNotify,
   type RyanAiGitHubWakePersistence,
 } from "./postgresGitHubWorkerWake";
@@ -208,6 +210,26 @@ export function createRyanAiGitHubEventWorkerWithPostgresWake(
   notify: RyanAiPostgresNotify,
   idempotencyStore?: import("./githubEventRouter").RyanAiEventIdempotencyStore,
 ): RyanAiGitHubEventWorker {
+  const publishWake = createPostgresRyanAiGitHubWorkerWakePublisher(persistWake, notify);
+  return createRyanAiGitHubEventWorker(
+    subscriptions,
+    createRyanAiGitHubEventRouter(publishWake, idempotencyStore),
+  );
+}
+
+
+/**
+ * Ready-to-compose PostgreSQL inbox + NOTIFY transport. The caller supplies
+ * a parameterized query bound to the trusted server database connection and
+ * a NOTIFY adapter. No migration is run and no provider connection is opened.
+ */
+export function createRyanAiGitHubEventWorkerWithPostgresInbox(
+  subscriptions: readonly RyanAiGitHubEventSubscription[],
+  query: RyanAiPostgresQuery,
+  notify: RyanAiPostgresNotify,
+  idempotencyStore?: import("./githubEventRouter").RyanAiEventIdempotencyStore,
+): RyanAiGitHubEventWorker {
+  const persistWake = createPostgresRyanAiGitHubWakePersistence(query);
   const publishWake = createPostgresRyanAiGitHubWorkerWakePublisher(persistWake, notify);
   return createRyanAiGitHubEventWorker(
     subscriptions,
