@@ -251,19 +251,22 @@ export async function executeStudioToolCapability(request: StudioToolExecutionRe
     await request.audit({ actorId: request.actorId, requestId: request.requestId, capabilityId: request.capabilityId, outcome: 'blocked', reason: 'Owner-scoped provider connection could not be resolved.' });
     throw new Error('Owner-scoped provider connection could not be resolved.');
   }
-  if ((capability.risk !== 'read' || capability.requiresHumanApproval)
-    && (!request.approval?.reference || !await request.verifyApproval(request.approval, request.actorId, request.capabilityId))) {
-    await request.audit({ actorId: request.actorId, requestId: request.requestId, capabilityId: request.capabilityId, outcome: 'blocked', reason: 'Matching human approval is required.' });
-    throw new Error('Matching human approval is required for this capability.');
-  }
-  const decision = evaluateRyanAIToolCapabilityPolicy({
+  let decision = evaluateRyanAIToolCapabilityPolicy({
     actorId: request.actorId,
     capabilityId: request.capabilityId,
-    risk: capability.risk,
-    requiresHumanApproval: capability.requiresHumanApproval,
     approvalReference: request.approval?.reference,
-    approved: Boolean(request.approval?.reference),
+    approvalVerified: false,
   });
+  if (!decision.allowed && decision.ruleId === 'RYANAI-CAP-003') {
+    const verified = Boolean(request.approval?.reference)
+      && await request.verifyApproval(request.approval!, request.actorId, request.capabilityId);
+    decision = evaluateRyanAIToolCapabilityPolicy({
+      actorId: request.actorId,
+      capabilityId: request.capabilityId,
+      approvalReference: request.approval?.reference,
+      approvalVerified: verified,
+    });
+  }
   if (!decision.allowed) {
     await request.audit({ actorId: request.actorId, requestId: request.requestId, capabilityId: request.capabilityId, outcome: 'blocked', reason: decision.reason });
     throw new Error(decision.reason);
@@ -323,7 +326,7 @@ export function getStudioNativeRuntimeDescriptor() {
     scheduler: 'database_leased_task_graph',
     workerRuntime: 'separate_process',
     workerHealth: 'unknown',
-    workerHealthReason: 'The API process cannot observe worker-local handler registration or liveness. A shared worker heartbeat is not yet persisted.',
+    workerHealthReason: 'Worker heartbeats are persisted, but production worker process registration and live health have not been verified.',
     pluginGateway: 'fail_closed_policy_and_approval_contract',
     authorizationAuthority: 'RyanAI platform policy',
     productionExecutionEnabled: false,
