@@ -8,6 +8,7 @@ import { executeThreeBrainPlan, type BrainId, type BrainOutput } from './operati
 import { resolveBrainProviderConfig } from './providerConfig.js';
 import { resolveSelectedReasoningModel } from './modelSelection.js';
 import { buildBrainKnowledgeContext } from './knowledgeAgent.js';
+import { parsePAExecutionScope } from './agentRunExecution.js';
 import { getAgentRunRetryDelayMs, invokeWithCancellationRetry, shouldRetryAgentRun } from './agentRunRetry.js';
 import { persistAgentRunCompletion } from './agentRunPersistence.js';
 import { publishAgentTaskNotification } from './queueNotifications.js';
@@ -268,6 +269,21 @@ async function processAgentRun(
     await recordRunEvidence({ runId: run.id, eventType: run.attempts > 1 ? 'execution.recovered' : 'execution.started', payload: { workerId: run.worker_id, attempt: run.attempts, approvalStatus: run.approval_status, planHash: run.approved_plan_hash, baseCommitSha: run.approved_commit_sha, proposedDiffHash: run.approved_diff_hash } });
     activeRegion = 'execution';
     await recordRegion('execution', 'started', { attempt: run.attempts });
+    // Revalidate PA delegation provenance at the worker boundary; queue approval alone is insufficient.
+    const paScope = parsePAExecutionScope(run.execution_scope);
+    if (paScope) {
+      if (run.approval_status !== 'approved') throw new Error('PA delegation run is not approved.');
+      const delegation = await prisma.paDelegation.findFirst({
+        where: { id: paScope.delegationId, ownerUserId: run.user_id, agentRunId: run.id, status: 'approved' },
+        select: { id: true, requestedCapabilities: true },
+      });
+      const persistedCapabilities = Array.isArray(delegation?.requestedCapabilities) ? delegation.requestedCapabilities.filter((item): item is string => typeof item === 'string').sort() : [];
+      const runCapabilities = [...paScope.capabilities].sort();
+      if (!delegation || persistedCapabilities.length !== runCapabilities.length || persistedCapabilities.some((item, index) => item !== runCapabilities[index])) {
+        throw new Error('PA delegation is missing, unapproved, owner-mismatched, or its capability scope changed.');
+      }
+      await recordRunEvidence({ runId: run.id, eventType: 'pa.execution.scope_revalidated', payload: { delegationId: delegation.id, capabilities: runCapabilities } });
+    }
     activeRegion = 'perception';
     await recordRegion('perception', 'started');
     await recordRegion('perception', 'completed', { objectiveLength: run.objective.length });
