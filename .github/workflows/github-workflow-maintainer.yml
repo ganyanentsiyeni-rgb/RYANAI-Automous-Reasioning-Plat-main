@@ -17,6 +17,8 @@ on:
       - '.github/**'
       - 'scripts/github-workflow-agent.mjs'
       - 'scripts/validate-github-workflows.mjs'
+      - 'scripts/validate-github-installation-token-compat.mjs'
+      - 'scripts/github-installation-token-compat.test.mjs'
       - 'package.json'
 
 permissions:
@@ -52,4 +54,8 @@ jobs:
             npm run workflow:agent:fix
           else
             npm run workflow:agent
+      - name: Audit GitHub installation-token compatibility
+        run: npm run github:tokens:validate
+      - name: Test GitHub installation-token compatibility guard
+        run: npm run test:github-token-compat
           fi
