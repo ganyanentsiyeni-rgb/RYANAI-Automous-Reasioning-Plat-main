@@ -331,6 +331,12 @@ async function processAgentRun(
           capability: 'repository.inspect',
           status: 'passed',
           evidenceReferences: ['agent-run-evidence:' + evidence.id],
+          repositoryInspection: {
+            repositoryFullName: snapshot.repositoryFullName,
+            commitSha: snapshot.commitSha,
+            inspectedAt: snapshot.inspectedAt,
+            source: snapshot.source,
+          },
         });
       }
     }
