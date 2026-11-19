@@ -1263,6 +1263,7 @@ model StudioTask {
   maxAttempts         Int       @default(3) @map("max_attempts")
   availableAt         DateTime  @default(now()) @map("available_at") @db.Timestamptz(6)
   leaseOwner          String?   @map("lease_owner") @db.VarChar(128)
+  leaseToken          String?   @map("lease_token") @db.Uuid
   leaseExpiresAt      DateTime? @map("lease_expires_at") @db.Timestamptz(6)
   heartbeatAt         DateTime? @map("heartbeat_at") @db.Timestamptz(6)
   approvalRequired    Boolean   @default(false) @map("approval_required")
