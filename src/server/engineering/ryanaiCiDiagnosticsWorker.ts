@@ -83,6 +83,9 @@ export function createRyanAICiDiagnosticsTaskHandler(inspect: RyanAIGitHubEviden
         verifiedHeadSha: evidence.verifiedHeadSha,
         inspectedAt: evidence.inspectedAt,
         snapshotComplete: evidence.complete,
+        summary: !evidence.complete && analysis.summary === 'all_observed_runs_passed'
+          ? 'checks_incomplete'
+          : analysis.summary,
         jobLogRetrievalStatus: evidence.jobLogStatus,
         liveProviderFetchPerformed: true,
         jobs: evidence.workflowRuns.map((run) => ({
