@@ -18,25 +18,34 @@ concurrency:
 jobs:
   require-independent-approval:
     name: Require independent human approval
-    if: github.event.pull_request.draft != true
+    # Deliberately no draft-state job-level condition: a skipped required check
+    # can be treated as successful by branch protection. Draft PRs fail closed.
     runs-on: ubuntu-latest
     steps:
-      - name: Verify at least one current approval from a non-author
+      - name: Verify PR is reviewable and has a current independent approval
         uses: actions/github-script@v9
         with:
           script: |
-            const pull = context.payload.pull_request ?? context.payload.review?.pull_request;
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
+            const pull = context.payload.pull_request;
+            if (!pull) {
+              core.setFailed('Pull request payload is missing; refusing to pass the approval gate.');
+              return;
+            }
+
             const number = pull.number;
             const author = pull.user.login.toLowerCase();
+
+            if (pull.draft) {
+              core.setFailed(`PR #${number} is a draft. Draft PRs cannot satisfy the required human-approval check.`);
+              return;
+            }
+
             const reviews = await github.paginate(
               github.rest.pulls.listReviews,
-              { owner, repo, pull_number: number, per_page: 100 }
+              { owner: context.repo.owner, repo: context.repo.repo, pull_number: number, per_page: 100 }
             );
 
-            // GitHub may contain multiple reviews per reviewer. Only each
-            // reviewer's latest submitted state is relevant.
+            // A reviewer's most recent submitted state supersedes older reviews.
             const latest = new Map();
             for (const review of reviews.sort((a, b) =>
               new Date(a.submitted_at ?? 0) - new Date(b.submitted_at ?? 0)
@@ -59,9 +68,9 @@ jobs:
 
             if (approvals.length === 0) {
               core.setFailed(
-                `No current independent human approval found for PR #${number}. PR author: @${author}. Request review; do not merge on queued/skipped checks or self-approval.`
+                `No current independent human approval found for PR #${number} at head ${currentHead}. Request review; do not merge on queued, skipped, cancelled, or missing checks.`
               );
               return;
             }
 
-            core.info(`Independent human approval recorded from: ${approvals.join(', ')}`);
+            core.info(`Independent human approval recorded from: ${approvals.join(', ')} at ${currentHead}`);
