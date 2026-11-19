@@ -22,16 +22,18 @@ vi.mock('fastify', async (importOriginal) => {
     },
   };
 });
-vi.mock('pg', () => ({
-  default: {
-    Pool: class {
-      query = vi.fn().mockImplementation(async () => {
-        state.events.push('database');
-        return { rows: [{ now: 'test' }] };
-      });
-    },
-  },
-}));
+vi.mock('pg', () => {
+  class MockPool {
+    query = vi.fn().mockImplementation(async () => {
+      state.events.push('database');
+      return { rows: [{ now: 'test' }] };
+    });
+  }
+  return {
+    Pool: MockPool,
+    default: { Pool: MockPool },
+  };
+});
 vi.mock('./connectRedis.js', () => ({
   connectRedis: vi.fn().mockImplementation(async () => {
     state.events.push('redis');
