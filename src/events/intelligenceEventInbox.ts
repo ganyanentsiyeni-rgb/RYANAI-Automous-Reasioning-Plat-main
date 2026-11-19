@@ -27,6 +27,13 @@ export class EventLeaseLostError extends Error {
   }
 }
 
+export class EventAttemptAuditError extends Error {
+  constructor(count: number) {
+    super(`Expected exactly one started attempt audit record to transition; updated ${count}.`);
+    this.name = 'EventAttemptAuditError';
+  }
+}
+
 export interface EventInboxOptions {
   maxAttempts?: number;
   leaseMs?: number;
@@ -66,6 +73,10 @@ function errorMessage(error: unknown): string {
 function isUniqueConstraintError(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error
     && (error as { code?: unknown }).code === 'P2002';
+}
+
+function assertSingleAttemptAuditTransition(count: number): void {
+  if (count !== 1) throw new EventAttemptAuditError(count);
 }
 
 function toEnvelope(row: Prisma.IntelligenceEventInboxGetPayload<true>): RyanAIEventEnvelope {
@@ -226,6 +237,7 @@ export class IntelligenceEventInbox {
   }
 
   async renewLease(eventId: string, workerId: string, attempt: number, now = new Date()): Promise<boolean> {
+    positiveInteger(attempt, 'attempt');
     const result = await this.db.intelligenceEventInbox.updateMany({
       where: { id: eventId, status: 'processing', leaseOwner: workerId, attempts: attempt, leaseExpiresAt: { gt: now } },
       data: { leaseExpiresAt: new Date(now.getTime() + this.leaseMs) },
@@ -234,20 +246,23 @@ export class IntelligenceEventInbox {
   }
 
   async acknowledge(eventId: string, workerId: string, attempt: number, now = new Date()): Promise<void> {
+    positiveInteger(attempt, 'attempt');
     await this.db.$transaction(async (tx) => {
       const result = await tx.intelligenceEventInbox.updateMany({
         where: { id: eventId, status: 'processing', leaseOwner: workerId, attempts: attempt, leaseExpiresAt: { gt: now } },
         data: { status: 'processed', processedAt: now, leaseOwner: null, leaseExpiresAt: null, lastError: null },
       });
       if (result.count !== 1) throw new EventLeaseLostError();
-      await tx.intelligenceEventAttempt.updateMany({
+      const audited = await tx.intelligenceEventAttempt.updateMany({
         where: { eventInboxId: eventId, attempt, workerId, status: 'started' },
         data: { status: 'succeeded', finishedAt: now },
       });
+      assertSingleAttemptAuditTransition(audited.count);
     });
   }
 
   async fail(eventId: string, workerId: string, attempt: number, error: unknown, now = new Date()) {
+    positiveInteger(attempt, 'attempt');
     return this.db.$transaction(async (tx) => {
       const current = await tx.intelligenceEventInbox.findFirst({
         where: { id: eventId, status: 'processing', leaseOwner: workerId, attempts: attempt, leaseExpiresAt: { gt: now } },
@@ -267,10 +282,11 @@ export class IntelligenceEventInbox {
         },
       });
       if (result.count !== 1) throw new EventLeaseLostError();
-      await tx.intelligenceEventAttempt.updateMany({
+      const audited = await tx.intelligenceEventAttempt.updateMany({
         where: { eventInboxId: eventId, attempt, workerId, status: 'started' },
         data: { status: deadLetter ? 'dead_letter' : 'retry', error: errorMessage(error), finishedAt: now },
       });
+      assertSingleAttemptAuditTransition(audited.count);
       return { status: deadLetter ? 'dead_letter' as const : 'retry' as const, retryAt };
     });
   }
@@ -297,10 +313,11 @@ export class IntelligenceEventInbox {
           },
         });
         if (moved.count === 1) {
-          await tx.intelligenceEventAttempt.updateMany({
+          const audited = await tx.intelligenceEventAttempt.updateMany({
             where: { eventInboxId: event.id, attempt: event.attempts, workerId: event.leaseOwner ?? undefined, status: 'started' },
             data: { status: 'lease_expired', error: 'Worker lease expired before acknowledgement.', finishedAt: now },
           });
+          assertSingleAttemptAuditTransition(audited.count);
         }
         return moved.count;
       });
