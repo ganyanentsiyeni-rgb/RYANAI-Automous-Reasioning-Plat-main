@@ -74,3 +74,51 @@ describe('Studio worker runtime reporting', () => {
     expect(getStudioNativeRuntimeDescriptor().workerHealthReason).toContain('shared worker heartbeat is not yet persisted');
   });
 });
+
+
+describe('RyanAI-native Studio task admission', () => {
+  it('allows only a registered worker assigned to a supported task type', async () => {
+    const { evaluateRyanAIStudioTaskAdmission } = await import('./ryanaiStudioTaskAdmission.js');
+    expect(evaluateRyanAIStudioTaskAdmission({
+      taskType: 'ci-failure',
+      assignedWorkerId: 'ci-diagnostics',
+      requiredCapabilities: ['read-workflow-runs', 'read-job-logs'],
+      approvalRequired: false,
+      approvalStatus: 'not_required',
+    })).toMatchObject({ allowed: true, decision: 'ALLOW' });
+  });
+
+  it('denies missing or unknown worker assignments', async () => {
+    const { evaluateRyanAIStudioTaskAdmission } = await import('./ryanaiStudioTaskAdmission.js');
+    expect(evaluateRyanAIStudioTaskAdmission({
+      taskType: 'ci-failure', assignedWorkerId: null, requiredCapabilities: [],
+      approvalRequired: false, approvalStatus: 'not_required',
+    }).allowed).toBe(false);
+    expect(evaluateRyanAIStudioTaskAdmission({
+      taskType: 'ci-failure', assignedWorkerId: 'unregistered', requiredCapabilities: [],
+      approvalRequired: false, approvalStatus: 'not_required',
+    }).allowed).toBe(false);
+  });
+
+  it('denies unsupported task types and undeclared capabilities', async () => {
+    const { evaluateRyanAIStudioTaskAdmission } = await import('./ryanaiStudioTaskAdmission.js');
+    expect(evaluateRyanAIStudioTaskAdmission({
+      taskType: 'production-deploy', assignedWorkerId: 'ci-diagnostics', requiredCapabilities: [],
+      approvalRequired: false, approvalStatus: 'not_required',
+    }).allowed).toBe(false);
+    expect(evaluateRyanAIStudioTaskAdmission({
+      taskType: 'ci-failure', assignedWorkerId: 'ci-diagnostics', requiredCapabilities: ['production.deploy'],
+      approvalRequired: false, approvalStatus: 'not_required',
+    }).allowed).toBe(false);
+  });
+
+  it('requires persisted owner approval when the task declares it', async () => {
+    const { evaluateRyanAIStudioTaskAdmission } = await import('./ryanaiStudioTaskAdmission.js');
+    const task = {
+      taskType: 'ci-failure', assignedWorkerId: 'ci-diagnostics', requiredCapabilities: [],
+      approvalRequired: true, approvalStatus: 'pending',
+    };
+    expect(evaluateRyanAIStudioTaskAdmission(task).allowed).toBe(false);
+    expect(evaluateRyanAIStudioTaskAdmission({ ...task, approvalStatus: 'approved' }).allowed).toBe(true);
+  });
+});
