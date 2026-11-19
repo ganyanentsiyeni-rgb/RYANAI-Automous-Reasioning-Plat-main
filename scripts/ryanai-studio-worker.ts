@@ -4,6 +4,7 @@ import {
   registerStudioTaskHandler,
 } from '../src/server/engineering/studioNativeCore.js';
 import { analyzeRyanAICiEvidence, createRyanAICiProviderBlockedReport, createRyanAIVerifiedCiReport } from '../src/server/engineering/ryanaiCiDiagnostics.js';
+import { createRyanAICiDiagnosticsTaskHandler } from '../src/server/engineering/ryanaiCiDiagnosticsWorker.js';
 import { generateRepositoryInventory } from './repository-inventory.mjs';
 import { prisma } from '../src/lib/prisma.js';
 import { inspectConnectedGitHubWorkflowEvidence } from '../src/server/routes/githubIntegration.js';
@@ -65,6 +66,14 @@ const runCiDiagnosticsTask = async ({ task }: {
     );
   }
 };
+const runCiDiagnosticsTask = createRyanAICiDiagnosticsTaskHandler(
+  (ownerUserId, headSha, options) => inspectConnectedGitHubWorkflowEvidence(
+    { prisma },
+    ownerUserId,
+    headSha,
+    options,
+  ),
+);
 
 // Handlers are registered only for the selected specialist profile. Both
 // adapters are read-only and require their declared capability at admission.

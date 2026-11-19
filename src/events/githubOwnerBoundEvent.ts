@@ -6,6 +6,7 @@ import {
   type RyanAiGitHubOwnerEvent,
 } from '../lib/githubEventOwnerBinding.js';
 import type { EnqueueEventResult, IntelligenceEventInbox } from './intelligenceEventInbox.js';
+import type { GitHubOwnerEventNotifier } from './postgresGitHubOwnerEventWakeSource.js';
 
 export type GitHubOwnerConnectionLookup = (
   authenticatedUserId: string,
@@ -50,6 +51,7 @@ export async function enqueueRyanAiGitHubOwnerBoundEvent(
   authenticatedUserId: string,
   findConnectionForUser: GitHubOwnerConnectionLookup,
   event: RyanAiGitHubOwnerEvent,
+  notifyOwnerEvent?: GitHubOwnerEventNotifier,
 ): Promise<EnqueueEventResult | null> {
   const binding = await resolveRyanAiGitHubOwnerBinding(authenticatedUserId, findConnectionForUser);
   if (!binding) return null;
@@ -85,5 +87,10 @@ export async function enqueueRyanAiGitHubOwnerBoundEvent(
     },
   };
 
-  return inbox.enqueue(envelope);
+  // enqueue resolves only after the durable inbox write has committed. Send
+  // the lossy wake hint afterwards; a failed notify is safe to retry because
+  // the provider event and inbox idempotency key are stable.
+  const result = await inbox.enqueue(envelope);
+  if (result && notifyOwnerEvent) await notifyOwnerEvent(envelope.eventId);
+  return result;
 }

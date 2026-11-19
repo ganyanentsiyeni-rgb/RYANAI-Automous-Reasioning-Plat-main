@@ -99,4 +99,51 @@ describe('owner-bound GitHub inbox adapter', () => {
     expect(enqueue.mock.calls[0][0].eventId).toBe(enqueue.mock.calls[1][0].eventId);
     expect(enqueue.mock.calls[0][0].idempotencyKey).toBe(enqueue.mock.calls[1][0].idempotencyKey);
   });
+  it('publishes a wake only after the durable inbox enqueue resolves', async () => {
+    const order: string[] = [];
+    const enqueue = vi.fn(async () => {
+      order.push('committed');
+      return { event: { id: 'row-1' }, duplicate: false };
+    });
+    const notify = vi.fn(async () => { order.push('notified'); });
+
+    await enqueueRyanAiGitHubOwnerBoundEvent(
+      { enqueue } as never,
+      'owner-1',
+      async () => connection,
+      event,
+      notify,
+    );
+
+    expect(order).toEqual(['committed', 'notified']);
+    expect(notify).toHaveBeenCalledWith(expect.stringMatching(/^[0-9a-f-]{36}$/));
+  });
+
+  it('does not notify when no authenticated owner connection exists', async () => {
+    const enqueue = vi.fn();
+    const notify = vi.fn();
+    await enqueueRyanAiGitHubOwnerBoundEvent(
+      { enqueue } as never,
+      'owner-1',
+      async () => null,
+      event,
+      notify,
+    );
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('keeps the durable event when notification fails so a replay can wake it again', async () => {
+    const enqueue = vi.fn().mockResolvedValue({ event: { id: 'row-1' }, duplicate: false });
+    const notify = vi.fn().mockRejectedValue(new Error('NOTIFY unavailable'));
+    await expect(enqueueRyanAiGitHubOwnerBoundEvent(
+      { enqueue } as never,
+      'owner-1',
+      async () => connection,
+      event,
+      notify,
+    )).rejects.toThrow('NOTIFY unavailable');
+    expect(enqueue).toHaveBeenCalledOnce();
+    expect(notify).toHaveBeenCalledOnce();
+  });
+
 });

@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { captureQueueTraceContextForStorage } from '../telemetry/queueContext.js';
 import { appendRunEvidence } from './engineeringEvidence.js';
 import { publishAgentTaskNotification } from './queueNotifications.js';
-import { resolvePAApprovalTransition } from './paDelegationApproval.js';
+import { resolvePAApprovalTransition, resolvePARejectionTransition } from './paDelegationApproval.js';
 import {
   signAgentIdentityProof,
   verifyPAIdentityProof,
@@ -258,10 +258,15 @@ export async function rejectPADelegation(ownerUserId: string, delegationId: stri
     });
     if (!delegation?.agentRun || delegation.agentRun.approvalStatus !== 'pending' || delegation.agentRun.status !== 'queued') return false;
     const now = new Date();
-    await tx.agentRun.update({
-      where: { id: delegation.agentRun.id },
+    // The initial read is only a convenience check. This compare-and-set is the
+    // concurrency boundary shared with approval and worker pickup: whichever
+    // transition changes pending/queued first wins; a stale rejection writes
+    // no delegation status, evidence, or audit event.
+    const rejectionUpdate = await tx.agentRun.updateMany({
+      where: { id: delegation.agentRun.id, approvalStatus: 'pending', status: 'queued' },
       data: { approvalStatus: 'rejected', status: 'cancelled', error: 'Rejected by the authenticated owner.', completedAt: now },
     });
+    if (resolvePARejectionTransition(rejectionUpdate.count) !== 'rejected') return false;
     await tx.paDelegation.update({ where: { id: delegation.id }, data: { status: 'rejected' } });
     await appendRunEvidence(tx, {
       runId: delegation.agentRun.id,
