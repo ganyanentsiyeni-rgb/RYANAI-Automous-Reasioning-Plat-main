@@ -220,7 +220,7 @@ model Profile {
   email     String?
   fullName  String?   @map("full_name")
   avatarUrl String?   @map("avatar_url")
-  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamptz(6) @db.Timestamptz(6)
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   @@map("profiles")
@@ -263,7 +263,7 @@ model MemoryEntry {
   key       String
   value     String    @db.Text
   category  String    @default("preference")
-  createdAt DateTime? @default(now()) @map("created_at")
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@unique([userId, key], map: "memory_entries_user_key_idx")
   @@index([userId])
