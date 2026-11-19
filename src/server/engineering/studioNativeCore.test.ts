@@ -21,7 +21,7 @@ describe('RyanAI Studio Native Core contracts', () => {
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'blocked' }));
   });
 
-  it('defers execution to Gen-X policy and fails closed on denial', async () => {
+  it('defers provider capability authorization and fails closed on denial', async () => {
     const execute = vi.fn();
     const audit = vi.fn().mockResolvedValue(undefined);
     await expect(executeStudioToolCapability({
