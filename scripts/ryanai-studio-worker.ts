@@ -37,7 +37,7 @@ const runCiDiagnosticsTask = async ({ task }: {
     : {};
   const requestedHeadSha = typeof input.headSha === 'string' ? input.headSha : '';
   const evidence = await inspectConnectedGitHubWorkflowEvidence(
-    { prisma } as never,
+    { prisma },
     task.ownerUserId,
     requestedHeadSha,
   );
