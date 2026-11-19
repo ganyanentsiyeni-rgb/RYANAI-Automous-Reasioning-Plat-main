@@ -12,6 +12,7 @@ describe('RyanAI module workforce', () => {
   it('resolves accountable owners and rejects unknown task types', () => {
     expect(findModuleAgentForTask('ci-diagnostics')?.id).toBe('github-module-agent');
     expect(findModuleAgentForTask('quant-research')?.id).toBe('quant-module-agent');
+    expect(findModuleAgentForTask('studio.plan')?.id).toBe('studio-module-agent');
     expect(findModuleAgentForTask('unknown-task')).toBeNull();
   });
   it('keeps declared actions inside the safe registry capability set', () => {
