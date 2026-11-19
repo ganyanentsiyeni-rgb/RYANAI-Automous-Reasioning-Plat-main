@@ -140,6 +140,7 @@ describe('IntelligenceEventInbox', () => {
       payload: { owner: { userId: 'owner-a' }, githubEvent: { payload: { ownerUserId: 'owner-b' } } },
     });
     inboxDelegate.updateMany.mockResolvedValue({ count: 1 });
+    await inbox.fail('row-owner', 'worker-a', new Error('temporary'), new Date('2026-11-18T12:00:00Z'));
     await inbox.fail('row-owner', 'worker-a', 1, new Error('temporary'), new Date('2026-11-18T12:00:00Z'));
     const update = inboxDelegate.updateMany.mock.calls[0][0] as { data: Record<string, unknown> };
     expect(update.data).not.toHaveProperty('payload');

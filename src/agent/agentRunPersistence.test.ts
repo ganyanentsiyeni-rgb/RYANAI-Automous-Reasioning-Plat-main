@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { buildPAExecutionReceiptResult, requirePADelegationForCompletion } from './agentRunPersistence.js';
 import { buildPAExecutionReceiptResult, requirePADelegationRecord } from './agentRunPersistence.js';
 
 describe('PA execution receipt upsert result parity', () => {
@@ -38,6 +39,9 @@ describe('PA execution receipt upsert result parity', () => {
 
 
 describe('PA delegation completion guard', () => {
+  it('refuses successful completion when the referenced delegation no longer exists', () => {
+    expect(() => requirePADelegationForCompletion(null)).toThrow(
+      'PA delegation record is missing; completion receipt cannot be persisted.',
   it('refuses a terminal transition when the referenced delegation no longer exists', () => {
     expect(() => requirePADelegationRecord(null)).toThrow(
       'PA delegation record is missing; terminal receipt cannot be persisted.',
@@ -46,6 +50,7 @@ describe('PA delegation completion guard', () => {
 
   it('returns the exact persisted delegation identity for receipt linkage', () => {
     const delegation = { id: 'delegation-1', traceId: 'trace-1' };
+    expect(requirePADelegationForCompletion(delegation)).toBe(delegation);
     expect(requirePADelegationRecord(delegation)).toBe(delegation);
   });
 });
