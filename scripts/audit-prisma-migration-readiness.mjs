@@ -13,7 +13,7 @@ export function compareMigrationState(localNames, appliedRows) {
   return { local, applied: [...applied].sort(), pending: local.filter((name) => !applied.has(name)), databaseOnly: [...applied].filter((name) => !local.includes(name)).sort() };
 }
 
-export function assessSchema({ columns, tables, indexes, extensions, memoryColumns, cacheColumns, sharedColumns = new Set(), eventAttemptColumns = null, eventAttemptConstraints = [], eventAttemptIndexes = [], eventAttemptRlsEnabled = null }) {
+export function assessSchema({ columns, tables, indexes, extensions, memoryColumns, cacheColumns, sharedColumns = new Set(), eventAttemptColumns = null, eventAttemptConstraints = [], eventAttemptIndexes = [], eventAttemptRlsEnabled = null, checkpointWritePrimaryKeyColumns = null }) {
   const requiredColumns = ['requested_model', 'execution_scope', 'approval_status', 'plan_snapshot', 'plan_hash', 'base_commit_sha', 'proposed_diff_hash', 'approved_plan_hash', 'approved_commit_sha', 'approved_diff_hash', 'approved_by', 'approved_at', 'steering_notes', 'cancel_requested_at', 'queue_type'];
   const requiredTables = ['agent_run_evidence', 'jarvis_audit_events', 'coding_tasks', 'profiles', 'conversations', 'messages', 'memory_entries', 'rooms', 'room_members', 'room_messages'];
   const requiredSharedColumns = ['profiles.id', 'profiles.email', 'profiles.full_name', 'profiles.avatar_url', 'profiles.created_at', 'profiles.updated_at', 'conversations.id', 'conversations.user_id', 'conversations.title', 'conversations.model', 'conversations.created_at', 'conversations.updated_at', 'messages.id', 'messages.conversation_id', 'messages.role', 'messages.content', 'messages.model', 'messages.steps', 'messages.created_at', 'messages.metadata', 'memory_entries.id', 'memory_entries.user_id', 'memory_entries.key', 'memory_entries.value', 'memory_entries.category', 'memory_entries.created_at', 'rooms.id', 'rooms.name', 'rooms.created_by', 'rooms.created_at', 'room_members.room_id', 'room_members.user_id', 'room_members.joined_at', 'room_messages.id', 'room_messages.room_id', 'room_messages.sender_id', 'room_messages.body', 'room_messages.created_at'];
@@ -65,6 +65,14 @@ export function assessSchema({ columns, tables, indexes, extensions, memoryColum
   };
   const missingAttemptIndexes = Object.keys(expectedAttemptIndexes).filter((name) => !indexByName.has(name));
   const mismatchedAttemptIndexes = Object.entries(expectedAttemptIndexes).filter(([name, expected]) => indexByName.has(name) && !indexByName.get(name).includes(normalizeDefinition(expected))).map(([name, expected]) => ({ name, expected, actual: indexByName.get(name) }));
+  const expectedCheckpointWritePrimaryKey = ['thread_id', 'checkpoint_ns', 'checkpoint_id', 'task_id', 'idx', 'channel'];
+  const checkpointWrites = {
+    expectedPrimaryKeyColumns: expectedCheckpointWritePrimaryKey,
+    actualPrimaryKeyColumns: Array.isArray(checkpointWritePrimaryKeyColumns) ? checkpointWritePrimaryKeyColumns : null,
+    primaryKeyMatches: Array.isArray(checkpointWritePrimaryKeyColumns)
+      && checkpointWritePrimaryKeyColumns.length === expectedCheckpointWritePrimaryKey.length
+      && checkpointWritePrimaryKeyColumns.every((column, index) => column === expectedCheckpointWritePrimaryKey[index]),
+  };
   const eventAttempts = {
     tablePresent: tables.has('intelligence_event_attempts'),
     missingColumns: missingAttemptColumns,
@@ -80,6 +88,7 @@ export function assessSchema({ columns, tables, indexes, extensions, memoryColum
     missingColumns, missingTables, missingSharedColumns,
     vector: { extensionPresent: extensions.has('vector'), missingTables: missingVectorTables, missingMemoryColumns, missingCacheColumns, missingIndexes, indexPresent: missingIndexes.length === 0 },
     eventAttempts,
+    checkpointWrites,
   };
 }
 
@@ -94,7 +103,7 @@ async function main() {
   try {
     const migrationResult = await pool.query('SELECT migration_name, finished_at, rolled_back_at FROM public._prisma_migrations ORDER BY migration_name');
     const state = compareMigrationState(localNames, migrationResult.rows);
-    const [columnResult, tableResult, indexResult, extensionResult, memoryColumnResult, cacheColumnResult, sharedColumnResult, attemptColumnResult, attemptConstraintResult, attemptIndexResult, attemptRlsResult] = await Promise.all([
+    const [columnResult, tableResult, indexResult, extensionResult, memoryColumnResult, cacheColumnResult, sharedColumnResult, attemptColumnResult, attemptConstraintResult, attemptIndexResult, attemptRlsResult, checkpointWritePrimaryKeyResult] = await Promise.all([
       pool.query("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='agent_runs'"),
       pool.query("SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'"),
       pool.query("SELECT indexname FROM pg_indexes WHERE schemaname='public'"),
@@ -106,6 +115,7 @@ async function main() {
       pool.query("SELECT conname, pg_get_constraintdef(oid, true) AS definition FROM pg_constraint WHERE conrelid=to_regclass('public.intelligence_event_attempts')"),
       pool.query("SELECT indexname, indexdef FROM pg_indexes WHERE schemaname='public' AND tablename='intelligence_event_attempts'"),
       pool.query("SELECT relrowsecurity FROM pg_class WHERE oid=to_regclass('public.intelligence_event_attempts')"),
+      pool.query("SELECT array_agg(a.attname ORDER BY key_column.ordinality) AS columns FROM pg_constraint c CROSS JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS key_column(attnum, ordinality) JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=key_column.attnum WHERE c.conrelid=to_regclass('public.checkpoint_writes') AND c.contype='p' GROUP BY c.oid"),
     ]);
     const schema = assessSchema({
       columns: new Set(columnResult.rows.map((row) => row.column_name)),
@@ -119,9 +129,10 @@ async function main() {
       eventAttemptConstraints: attemptConstraintResult.rows,
       eventAttemptIndexes: attemptIndexResult.rows,
       eventAttemptRlsEnabled: attemptRlsResult.rows[0]?.relrowsecurity ?? false,
+      checkpointWritePrimaryKeyColumns: checkpointWritePrimaryKeyResult.rows[0]?.columns ?? null,
     });
     console.log(JSON.stringify({ mode: 'read-only', migrationState: state, schema, remediation: 'Review each pending migration against live schema before applying. This command never applies DDL.' }, null, 2));
-    if (state.pending.length || state.databaseOnly.length || schema.missingColumns.length || schema.missingTables.length || schema.missingSharedColumns.length || !schema.vector.extensionPresent || schema.vector.missingTables.length || schema.vector.missingMemoryColumns.length || schema.vector.missingCacheColumns.length || schema.vector.missingIndexes.length || !schema.eventAttempts.tablePresent || schema.eventAttempts.missingColumns.length || schema.eventAttempts.mismatchedColumns.length || schema.eventAttempts.missingConstraints.length || schema.eventAttempts.mismatchedConstraints.length || schema.eventAttempts.missingIndexes.length || schema.eventAttempts.mismatchedIndexes.length || schema.eventAttempts.rlsEnabled !== true) process.exitCode = 1;
+    if (state.pending.length || state.databaseOnly.length || schema.missingColumns.length || schema.missingTables.length || schema.missingSharedColumns.length || !schema.vector.extensionPresent || schema.vector.missingTables.length || schema.vector.missingMemoryColumns.length || schema.vector.missingCacheColumns.length || schema.vector.missingIndexes.length || !schema.eventAttempts.tablePresent || schema.eventAttempts.missingColumns.length || schema.eventAttempts.mismatchedColumns.length || schema.eventAttempts.missingConstraints.length || schema.eventAttempts.mismatchedConstraints.length || schema.eventAttempts.missingIndexes.length || schema.eventAttempts.mismatchedIndexes.length || schema.eventAttempts.rlsEnabled !== true || !schema.checkpointWrites.primaryKeyMatches) process.exitCode = 1;
   } catch {
     console.error('BLOCKED: migration metadata/schema audit failed. Check database connectivity and permissions; connection details were suppressed.');
     process.exitCode = 2;

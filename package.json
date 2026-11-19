@@ -52,7 +52,7 @@
     "db:audiobook:status": "prisma migrate status --schema=prisma/audiobook/schema.prisma",
     "db:audiobook:migrate": "prisma migrate deploy --schema=prisma/audiobook/schema.prisma",
     "db:migration:audit": "node scripts/audit-prisma-migration-readiness.mjs",
-    "test:migration:audit": "node --test scripts/audit-prisma-migration-readiness.node-test.mjs && npm run test:migration:scope",
+    "test:migration:audit": "node --test scripts/audit-prisma-migration-readiness.node-test.mjs scripts/langgraph-checkpoint-schema.node-test.mjs && npm run test:migration:scope",
     "test:migration:scope": "node --import tsx --test scripts/scoped-prisma-migration.node-test.mjs",
     "db:push": "prisma db push",
     "db:migrate": "node --import tsx/esm src/db/migrate.ts",

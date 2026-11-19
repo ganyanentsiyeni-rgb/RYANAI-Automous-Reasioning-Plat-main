@@ -182,3 +182,18 @@ test('detects missing or weakened attempt and status CHECK constraints even when
   });
   assert.ok(missingStatus.eventAttempts.missingConstraints.includes('intelligence_event_attempts_status_check'));
 });
+
+
+test('detects the exact six-column LangGraph checkpoint_writes primary key', () => {
+  const expected = ['thread_id', 'checkpoint_ns', 'checkpoint_id', 'task_id', 'idx', 'channel'];
+  const base = { columns: new Set(), tables: new Set(), indexes: new Set(), extensions: new Set(), memoryColumns: new Set(), cacheColumns: new Set() };
+  const valid = assessSchema({ ...base, checkpointWritePrimaryKeyColumns: expected });
+  assert.deepEqual(valid.checkpointWrites.actualPrimaryKeyColumns, expected);
+  assert.equal(valid.checkpointWrites.primaryKeyMatches, true);
+  const fiveColumn = assessSchema({ ...base, checkpointWritePrimaryKeyColumns: expected.slice(0, 5) });
+  assert.equal(fiveColumn.checkpointWrites.primaryKeyMatches, false);
+  const wrongOrder = assessSchema({ ...base, checkpointWritePrimaryKeyColumns: [...expected].reverse() });
+  assert.equal(wrongOrder.checkpointWrites.primaryKeyMatches, false);
+  const absent = assessSchema(base);
+  assert.equal(absent.checkpointWrites.primaryKeyMatches, false);
+});

@@ -728,6 +728,7 @@ model LangGraphCheckpointWrite {
   blob Bytes
   taskPath String @default("") @map("task_path")
 
+  @@id([threadId, checkpointNs, checkpointId, taskId, idx, channel])
   @@id([threadId, checkpointNs, checkpointId, taskId, idx])
   @@index([threadId], map: "checkpoint_writes_thread_id_idx")
   @@map("checkpoint_writes")
