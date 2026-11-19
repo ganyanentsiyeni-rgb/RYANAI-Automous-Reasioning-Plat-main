@@ -269,6 +269,12 @@ async function processAgentRun(
     },
   );
   try {
+  const assertExecutionLeaseActive = () => assertAgentRunLeaseActive(
+    { id: run.id, workerId: run.worker_id, attempts: run.attempts },
+    async (where) => Boolean(await prisma.agentRun.findFirst({ where, select: { id: true } })),
+    cancellation.signal,
+  );
+    await assertExecutionLeaseActive();
     await recordRunEvidence({ runId: run.id, eventType: run.attempts > 1 ? 'execution.recovered' : 'execution.started', payload: { workerId: run.worker_id, attempt: run.attempts, approvalStatus: run.approval_status, planHash: run.approved_plan_hash, baseCommitSha: run.approved_commit_sha, proposedDiffHash: run.approved_diff_hash } });
     activeRegion = 'execution';
     await recordRegion('execution', 'started', { attempt: run.attempts });
@@ -307,7 +313,9 @@ async function processAgentRun(
         if (inspectionPolicy.decision !== 'ALLOW') {
           throw new Error('Gen-X denied repository.inspect at the worker execution boundary.');
         }
+        await assertExecutionLeaseActive();
         const snapshot = await inspectConnectedGitHubRepository({ prisma }, run.user_id);
+        await assertExecutionLeaseActive();
         verifiedCapabilityContext = buildPARepositoryInspectionContext(snapshot);
         const evidence = await recordRunEvidence({
           runId: run.id,
