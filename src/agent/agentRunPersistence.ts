@@ -20,6 +20,16 @@ export function buildPAExecutionReceiptResult(
   };
 }
 
+/** A PA-scoped run cannot complete successfully after its delegation record disappears. */
+export function requirePADelegationForCompletion(
+  delegation: { id: string; traceId: string } | null,
+): { id: string; traceId: string } {
+  if (!delegation) {
+    throw new Error('PA delegation record is missing; completion receipt cannot be persisted.');
+  }
+  return delegation;
+}
+
 interface PersistableAgentRun {
   id: string;
   user_id: string;
@@ -109,8 +119,8 @@ export async function persistAgentRunCompletion(
   const scope = run.execution_scope && typeof run.execution_scope === 'object' ? run.execution_scope as Record<string, unknown> : {};
   const paDelegationId = typeof scope.paDelegationId === 'string' ? scope.paDelegationId : null;
   if (paDelegationId) {
-    const delegation = await tx.paDelegation.findUnique({ where: { id: paDelegationId }, select: { id: true, traceId: true } });
-    if (delegation) {
+    const delegation = requirePADelegationForCompletion(await tx.paDelegation.findUnique({ where: { id: paDelegationId }, select: { id: true, traceId: true } }));
+    {
       await tx.paDelegation.update({ where: { id: delegation.id }, data: { status: 'completed' } });
       await tx.paExecutionReceipt.upsert({
         where: { delegationId: delegation.id },
