@@ -371,38 +371,58 @@ export async function inspectConnectedGitHubWorkflowEvidence(
     throw new GitHubOAuthError('github_workflow_commit_sha_mismatch');
   }
 
-  const runPayload = await githubApi<{
-    total_count?: number;
-    workflow_runs?: Array<{
-      id?: number; name?: string; head_sha?: string; status?: string;
-      conclusion?: string | null; html_url?: string;
-    }>;
-  }>(
-    'repos/' + GITHUB_APP_REPOSITORY + '/actions/runs?head_sha=' +
-      encodeURIComponent(requestedHeadSha) + '&per_page=50',
-    accessToken,
-  );
-  const rawRuns = Array.isArray(runPayload.workflow_runs) ? runPayload.workflow_runs : [];
+  const rawRuns: Array<{
+    id?: number; name?: string; head_sha?: string; status?: string;
+    conclusion?: string | null; html_url?: string;
+  }> = [];
+  let runsComplete = false;
+  for (let page = 1; page <= 3; page += 1) {
+    const runPayload = await githubApi<{
+      total_count?: number;
+      workflow_runs?: Array<{
+        id?: number; name?: string; head_sha?: string; status?: string;
+        conclusion?: string | null; html_url?: string;
+      }>;
+    }>(
+      'repos/' + GITHUB_APP_REPOSITORY + '/actions/runs?head_sha=' +
+        encodeURIComponent(requestedHeadSha) + '&per_page=50&page=' + page,
+      accessToken,
+    );
+    const pageRuns = Array.isArray(runPayload.workflow_runs) ? runPayload.workflow_runs : [];
+    rawRuns.push(...pageRuns);
+    const totalCount = typeof runPayload.total_count === 'number' ? runPayload.total_count : null;
+    if (pageRuns.length < 50 || (totalCount !== null && rawRuns.length >= totalCount)) {
+      runsComplete = true;
+      break;
+    }
+  }
   const exactRuns = rawRuns.filter((run) =>
     typeof run.id === 'number' &&
     typeof run.head_sha === 'string' &&
     run.head_sha.toLowerCase() === requestedHeadSha.toLowerCase(),
   );
+  let jobsComplete = true;
   const workflowRuns = await Promise.all(exactRuns.map(async (run) => {
-    const jobsPayload = await githubApi<{
-      total_count?: number;
-      jobs?: Array<{ name?: string; status?: string; conclusion?: string | null }>;
-    }>(
-      'repos/' + GITHUB_APP_REPOSITORY + '/actions/runs/' +
-        encodeURIComponent(String(run.id)) + '/jobs?per_page=100',
-      accessToken,
-    );
-    const jobs = (Array.isArray(jobsPayload.jobs) ? jobsPayload.jobs : []).slice(0, 100)
-      .map((job) => ({
-        name: typeof job.name === 'string' ? job.name : 'Unnamed job',
-        status: typeof job.status === 'string' ? job.status : 'unknown',
-        conclusion: typeof job.conclusion === 'string' ? job.conclusion : null,
-      }));
+    const rawJobs: Array<{ name?: string; status?: string; conclusion?: string | null }> = [];
+    let runJobsComplete = false;
+    for (let page = 1; page <= 3; page += 1) {
+      const jobsPayload = await githubApi<{
+        total_count?: number;
+        jobs?: Array<{ name?: string; status?: string; conclusion?: string | null }>;
+      }>(
+        'repos/' + GITHUB_APP_REPOSITORY + '/actions/runs/' +
+          encodeURIComponent(String(run.id)) + '/jobs?per_page=100&page=' + page,
+        accessToken,
+      );
+      const pageJobs = Array.isArray(jobsPayload.jobs) ? jobsPayload.jobs : [];
+      rawJobs.push(...pageJobs);
+      const totalCount = typeof jobsPayload.total_count === 'number' ? jobsPayload.total_count : null;
+      if (pageJobs.length < 100 || (totalCount !== null && rawJobs.length >= totalCount)) {
+        runJobsComplete = true;
+        break;
+      }
+    }
+    if (!runJobsComplete) jobsComplete = false;
     return {
       id: run.id!,
       name: typeof run.name === 'string' ? run.name : 'Unnamed workflow',
@@ -410,7 +430,11 @@ export async function inspectConnectedGitHubWorkflowEvidence(
       status: typeof run.status === 'string' ? run.status : 'unknown',
       conclusion: typeof run.conclusion === 'string' ? run.conclusion : null,
       url: typeof run.html_url === 'string' ? run.html_url : null,
-      jobs,
+      jobs: rawJobs.slice(0, 300).map((job) => ({
+        name: typeof job.name === 'string' ? job.name : 'Unnamed job',
+        status: typeof job.status === 'string' ? job.status : 'unknown',
+        conclusion: typeof job.conclusion === 'string' ? job.conclusion : null,
+      })),
     };
   }));
 
@@ -421,7 +445,7 @@ export async function inspectConnectedGitHubWorkflowEvidence(
     source: 'github-oauth-read-only',
     inspectedAt: new Date().toISOString(),
     workflowRuns,
-    complete: rawRuns.length < 50 && exactRuns.length === rawRuns.length,
+    complete: runsComplete && jobsComplete && exactRuns.length === rawRuns.length,
   };
 }
 
