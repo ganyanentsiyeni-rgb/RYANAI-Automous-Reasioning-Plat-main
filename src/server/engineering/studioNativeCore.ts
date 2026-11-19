@@ -7,6 +7,7 @@
 import { Prisma, type StudioTask } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { RYANAI_WORKER_ROSTER } from '../../agent/workerRegistry.js';
+import { findModuleAgentForTask } from '../../agent/moduleAgentRegistry.js';
 
 export type StudioProjectType = 'engineering' | 'research' | 'design' | 'data' | 'automation';
 export interface CreateStudioProjectInput {
@@ -44,11 +45,29 @@ export async function createStudioProject(input: CreateStudioProjectInput) {
     const createdTasks: StudioTask[] = [];
     for (const task of tasks) {
       const assigned = recommendStudioWorker(task.taskType, task.requiredCapabilities);
-      createdTasks.push(await tx.studioTask.create({ data: {
+      const moduleOwner = findModuleAgentForTask(task.taskType);
+      const created = await tx.studioTask.create({ data: {
         projectId: project.id, ownerUserId: input.ownerUserId, title: task.title.trim(), objective: task.objective.trim(),
         taskType: task.taskType, priority: task.priority ?? 0, requiredCapabilities: task.requiredCapabilities ?? [],
-        assignedWorkerId: assigned?.id ?? null, dependsOnIds: [], input: { projectType: input.projectType },
-      } }));
+        assignedWorkerId: assigned?.id ?? null, dependsOnIds: [], input: {
+          projectType: input.projectType,
+          accountableModuleAgentId: moduleOwner?.id ?? null,
+          accountableModuleAgentName: moduleOwner?.name ?? null,
+          sharedSpecialistWorkerId: assigned?.id ?? null,
+        },
+      } });
+      createdTasks.push(created);
+      await tx.studioEvent.create({ data: {
+        projectId: project.id, taskId: created.id, ownerUserId: input.ownerUserId,
+        actorId: input.ownerUserId,
+        eventType: moduleOwner ? 'task.module_agent_assigned' : 'task.module_agent_unassigned',
+        payload: {
+          moduleAgentId: moduleOwner?.id ?? null,
+          moduleAgentName: moduleOwner?.name ?? null,
+          sharedSpecialistWorkerId: assigned?.id ?? null,
+          taskType: task.taskType,
+        },
+      } });
     }
     for (let index = 0; index < tasks.length; index += 1) {
       const dependencies = (tasks[index].dependsOnIndexes ?? []).map((dependency) => createdTasks[dependency].id);

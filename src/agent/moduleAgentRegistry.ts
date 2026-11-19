@@ -148,7 +148,7 @@ export const RYANAI_MODULE_AGENT_ROSTER: readonly ModuleAgentDefinition[] = Obje
     moduleName: 'RyanAI Studio',
     name: 'Studio Builder',
     responsibility: 'Review creative and development workspace workflows, editor reliability, project scaffolding, and user-facing quality; propose isolated improvements.',
-    taskTypes: ['studio-workflow-audit', 'workspace-quality-review', 'studio-regression-test'],
+    taskTypes: ['studio.plan', 'studio-workflow-audit', 'workspace-quality-review', 'studio-regression-test'],
     allowedActions: SAFE_MODULE_ACTIONS,
     kpis: ['workflow defects detected', 'verified UX improvements', 'regression coverage'],
   },
