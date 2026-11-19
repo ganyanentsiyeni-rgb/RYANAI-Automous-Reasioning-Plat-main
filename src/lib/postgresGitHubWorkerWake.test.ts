@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createRyanAiGitHubEventWorkerWithPostgresWake } from "./githubEventStreams";
 import {
   RYANAI_GITHUB_WORKER_WAKE_CHANNELS,
   createPostgresRyanAiGitHubWorkerWakePublisher,
@@ -72,5 +73,49 @@ describe("PostgreSQL GitHub worker wake transport", () => {
     await expect(receive(JSON.stringify({ ...signal, version: 1 })))
       .rejects.toThrow("Invalid RyanAI GitHub worker wake envelope");
     expect(onWake).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("GitHub Event Streams PostgreSQL wake composition", () => {
+  it("routes a delivered check-suite event to the PostgreSQL CI wake channel", async () => {
+    let deliver!: (event: {
+      id: string;
+      type: "check_suite";
+      repository: string;
+      occurredAt: string;
+      payload: unknown;
+    }) => Promise<void>;
+    const subscribe = vi.fn(async (_subscription: unknown, callback: typeof deliver) => {
+      deliver = callback;
+      return async () => undefined;
+    });
+    const notify = vi.fn(async () => undefined);
+    const worker = createRyanAiGitHubEventWorkerWithPostgresWake(
+      [{
+        subscriptionId: "ci-events",
+        repository: "ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main",
+        eventTypes: ["check_suite"],
+      }],
+      notify,
+    );
+    const stop = await worker.start({ subscribe });
+
+    await deliver({
+      id: "evt-stream-ci",
+      type: "check_suite",
+      repository: "ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main",
+      occurredAt: "2026-11-19T17:00:00.000Z",
+      payload: { conclusion: "success" },
+    });
+
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify.mock.calls[0][0]).toBe(RYANAI_GITHUB_WORKER_WAKE_CHANNELS.ci);
+    expect(JSON.parse(notify.mock.calls[0][1])).toMatchObject({
+      eventId: "evt-stream-ci",
+      target: "ci",
+      eventType: "check_suite",
+    });
+    await stop();
   });
 });
