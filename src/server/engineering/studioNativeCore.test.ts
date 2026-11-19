@@ -12,11 +12,26 @@ describe('RyanAI Studio Native Core contracts', () => {
     const audit = vi.fn().mockResolvedValue(undefined);
     await expect(executeStudioToolCapability({
       actorId: 'owner-1', connectionRef: 'opaque-connection-ref', requestId: 'req-1',
-      capabilityId: 'messages.send', input: {}, manifest: { capabilities: [{ id: 'messages.send', risk: 'outbound', requiresHumanApproval: true }] },
+      capabilityId: 'write-communications-report', input: {}, manifest: { capabilities: [{ id: 'write-communications-report', risk: 'read', requiresHumanApproval: false }] },
       resolveConnection: async () => true, verifyApproval: async () => false, execute, audit,
-    })).rejects.toThrow('Matching human approval is required');
+    })).rejects.toThrow('Matching explicit human approval must be verified by RyanAI.');
     expect(execute).not.toHaveBeenCalled();
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'blocked' }));
+  });
+
+  it('executes a registered write capability only after RyanAI verifies approval', async () => {
+    const execute = vi.fn().mockResolvedValue({ saved: true });
+    const audit = vi.fn().mockResolvedValue(undefined);
+    const verifyApproval = vi.fn().mockResolvedValue(true);
+    const result = await executeStudioToolCapability({
+      actorId: 'owner-1', connectionRef: 'opaque-connection-ref', requestId: 'req-write',
+      capabilityId: 'write-communications-report', approval: { reference: 'approval-verified-1' },
+      input: {}, manifest: { capabilities: [{ id: 'write-communications-report', risk: 'read', requiresHumanApproval: false }] },
+      resolveConnection: async () => true, verifyApproval, execute, audit,
+    });
+    expect(result).toEqual({ saved: true });
+    expect(verifyApproval).toHaveBeenCalledOnce();
+    expect(execute).toHaveBeenCalledOnce();
   });
 
   it('denies capabilities not declared by the RyanAI workforce registry', async () => {
@@ -37,7 +52,7 @@ describe('RyanAI Studio Native Core contracts', () => {
     const audit = vi.fn().mockResolvedValue(undefined);
     await expect(executeStudioToolCapability({
       actorId: 'owner-1', connectionRef: 'unowned-ref', requestId: 'req-connection',
-      capabilityId: 'read-workflow-runs', input: {}, manifest: { capabilities: [{ id: 'files.read', risk: 'read', requiresHumanApproval: false }] },
+      capabilityId: 'read-workflow-runs', input: {}, manifest: { capabilities: [{ id: 'read-workflow-runs', risk: 'read', requiresHumanApproval: false }] },
       resolveConnection: async () => false, verifyApproval: async () => false,
       execute, audit,
     })).rejects.toThrow('Owner-scoped provider connection could not be resolved');
@@ -50,7 +65,7 @@ describe('RyanAI Studio Native Core contracts', () => {
     const audit = vi.fn().mockResolvedValue(undefined);
     const result = await executeStudioToolCapability({
       actorId: 'owner-1', connectionRef: 'opaque-connection-ref', requestId: 'req-3',
-      capabilityId: 'read-workflow-runs', input: {}, manifest: { capabilities: [{ id: 'files.read', risk: 'read', requiresHumanApproval: false }] },
+      capabilityId: 'read-workflow-runs', input: {}, manifest: { capabilities: [{ id: 'read-workflow-runs', risk: 'write', requiresHumanApproval: true }] },
       resolveConnection: async () => true, verifyApproval: async () => true,
       execute, audit,
     });
@@ -61,13 +76,13 @@ describe('RyanAI Studio Native Core contracts', () => {
 });
 
 describe('Studio worker runtime reporting', () => {
-  it('reports separate-process worker health as unknown until a shared heartbeat exists', () => {
+  it('reports persisted heartbeat capability separately from unverified production worker health', () => {
     expect(getStudioNativeRuntimeDescriptor()).toMatchObject({
       workerRuntime: 'separate_process',
       workerHealth: 'unknown',
       productionExecutionEnabled: false,
     });
-    expect(getStudioNativeRuntimeDescriptor().workerHealthReason).toContain('shared worker heartbeat is not yet persisted');
+    expect(getStudioNativeRuntimeDescriptor().workerHealthReason).toContain('Worker heartbeats are persisted');
   });
 });
 
