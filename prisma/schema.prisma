@@ -726,7 +726,7 @@ model LangGraphCheckpointWrite {
   blob Bytes
   taskPath String @default("") @map("task_path")
 
-  @@id([threadId, checkpointNs, checkpointId, taskId, idx])
+  @@id([threadId, checkpointNs, checkpointId, taskId, idx, channel])
   @@map("checkpoint_writes")
   @@schema("public")
 }
