@@ -162,6 +162,9 @@ export async function claimStudioTask(workerId: string, supportedTaskTypes: read
   });
 }
 
+export async function heartbeatStudioTask(taskId: string, workerId: string, attempt: number, leaseSeconds = 90) {
+  const safeLease = Math.max(15, Math.min(leaseSeconds, 600));
+  const result = await prisma.studioTask.updateMany({
 export async function heartbeatStudioTask(taskId: string, workerId: string, claimToken: string, leaseSeconds = 90) {
   const safeLease = Math.max(15, Math.min(leaseSeconds, 600));
   const result = await prisma.studioTask.updateMany({
