@@ -65,6 +65,7 @@ const runCiDiagnosticsTask = async ({ task }: {
       verifiedHeadSha: evidence.verifiedHeadSha,
       inspectedAt: evidence.inspectedAt,
       snapshotComplete: evidence.complete,
+      jobLogRetrievalStatus: evidence.jobLogStatus,
       liveProviderFetchPerformed: true,
       jobs: evidence.workflowRuns.map((run) => ({
         runId: run.id,
