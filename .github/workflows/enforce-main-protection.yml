@@ -61,9 +61,9 @@ jobs:
                 required_approving_review_count: 1,
                 dismiss_stale_reviews_on_push: true,
                 require_code_owner_review: false,
-                require_last_push_approval: false,
+                require_last_push_approval: true,
                 required_review_thread_resolution: true,
-                allowed_merge_methods: ["squash", "merge"]
+                allowed_merge_methods: ["squash", "rebase"]
               }},
               { type: "required_status_checks", parameters: {
                 strict_required_status_checks_policy: true,
@@ -71,25 +71,27 @@ jobs:
                 required_status_checks: [
                   { context: "Validate (typecheck, lint, test, build)" },
                   { context: "MCP server and workflow worker" },
+                  { context: "Integration and end-to-end checks" },
                   { context: "Issue 435 migrations and attachment security" },
                   { context: "validate-database" },
+                  { context: "Verify Supabase and Prisma fresh-stack migrations" },
+                  { context: "Ephemeral PostgreSQL integration dry-run" },
                   { context: "Upgrade legacy pgvector database safely (quoted)" },
                   { context: "Upgrade legacy pgvector database safely (unquoted)" },
                   { context: "Test agent API contracts" },
+                  { context: "Inspect release quality" },
                   { context: "Dependency audit" },
                   { context: "Trivy filesystem scan" },
                   { context: "Analyze (javascript-typescript)" },
                   { context: "Analyze (python)" },
                   { context: "TruffleHog secret audit" },
-                  { context: "Codacy Security Scan" }
+                  { context: "Codacy Security Scan" },
+                  { context: "Require independent human approval" }
                 ]
               }},
+              { type: "required_linear_history" },
               { type: "non_fast_forward" },
               { type: "deletion" },
-              { type: "copilot_code_review", parameters: {
-                review_on_push: true,
-                review_draft_pull_requests: true
-              }}
             ]
           }' > ruleset.json
 
@@ -117,9 +119,8 @@ jobs:
             and ([.rules[].type] | index("required_status_checks") != null)
             and ([.rules[].type] | index("non_fast_forward") != null)
             and ([.rules[].type] | index("deletion") != null)
-            and ([.rules[].type] | index("copilot_code_review") != null)
+            and ([.rules[].type] | index("required_linear_history") != null)
             and ([.conditions.ref_name.include[]] | index("refs/heads/main") != null)
-            and ([.rules[] | select(.type == "copilot_code_review") | .parameters | select(.review_on_push == true and .review_draft_pull_requests == true)] | length == 1)
             and ([
               .rules[] | select(.type == "required_status_checks") | .parameters
               | select(.strict_required_status_checks_policy == true)
@@ -128,24 +129,30 @@ jobs:
               | select([
                   "Validate (typecheck, lint, test, build)",
                   "MCP server and workflow worker",
+                  "Integration and end-to-end checks",
                   "Issue 435 migrations and attachment security",
                   "validate-database",
+                  "Verify Supabase and Prisma fresh-stack migrations",
+                  "Ephemeral PostgreSQL integration dry-run",
                   "Upgrade legacy pgvector database safely (quoted)",
                   "Upgrade legacy pgvector database safely (unquoted)",
                   "Test agent API contracts",
+                  "Inspect release quality",
                   "Dependency audit",
                   "Trivy filesystem scan",
                   "Analyze (javascript-typescript)",
                   "Analyze (python)",
                   "TruffleHog secret audit",
-                  "Codacy Security Scan"
+                  "Codacy Security Scan",
+                  "Require independent human approval"
                 ] | all(. as $required | $contexts | index($required) != null))
             ] | length == 1)
             and ([
               .rules[] | select(.type == "pull_request") | .parameters
               | select(.required_approving_review_count == 1
                 and .dismiss_stale_reviews_on_push == true
-                and .required_review_thread_resolution == true)
+                and .required_review_thread_resolution == true
+                and .require_last_push_approval == true)
             ] | length == 1)
           ' ruleset-final.json
           echo "Verified: main protection is active, requires review and CI, and has no bypass actors."
