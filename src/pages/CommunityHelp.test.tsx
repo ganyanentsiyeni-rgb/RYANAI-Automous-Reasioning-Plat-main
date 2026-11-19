@@ -14,6 +14,11 @@ describe('Community Help Centre', () => {
   expect(container.textContent).toContain('Community & Help Centre');
   expect(container.textContent).toContain('What is Gen-X?');
   expect(container.textContent).toContain('Can I use Quant Lab for live trading?');
+  expect(container.textContent).toContain('Current capability status guide');
+  expect(container.textContent).toContain('Privacy Policy');
+  expect(container.querySelector('a[href="/terms/"]')).not.toBeNull();
+  expect(container.querySelector('a[href="/about/"]')).not.toBeNull();
+  expect(container.querySelector('a[href="/author/"]')).not.toBeNull();
   expect(container.querySelector('a[href="#/survey"]')).not.toBeNull();
  });
  it('filters answers while preserving relevant category context', async () => {
