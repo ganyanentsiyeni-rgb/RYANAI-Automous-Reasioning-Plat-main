@@ -515,7 +515,6 @@ describe('owner-bound exact-head GitHub workflow evidence', () => {
       String(url).startsWith('https://api.github.com/') &&
       (init as RequestInit | undefined)?.method === undefined,
     )).toBe(true);
-    await app.close();
   });
 
   it('rejects a non-full commit SHA before any GitHub request', async () => {
@@ -523,7 +522,6 @@ describe('owner-bound exact-head GitHub workflow evidence', () => {
     await expect(inspectConnectedGitHubWorkflowEvidence(app, userId, 'main'))
       .rejects.toThrow('github_workflow_head_sha_invalid');
     expect(fetch).not.toHaveBeenCalled();
-    await app.close();
   });
 
   it('rejects a response whose commit SHA does not match the requested SHA', async () => {
@@ -539,6 +537,5 @@ describe('owner-bound exact-head GitHub workflow evidence', () => {
     await expect(inspectConnectedGitHubWorkflowEvidence(app, userId, 'b'.repeat(40)))
       .rejects.toThrow('github_workflow_commit_sha_mismatch');
     expect(fetch).toHaveBeenCalledTimes(3);
-    await app.close();
   });
 });
