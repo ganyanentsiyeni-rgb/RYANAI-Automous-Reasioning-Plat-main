@@ -208,4 +208,58 @@ describe("RyanAI GitHub Event Streams worker", () => {
     expect(handled).toEqual(["first", "second"]);
   });
 
+  it("preserves non-Error startup and cleanup failures together", async () => {
+    const stop = vi.fn(async () => { throw "cleanup-failure"; });
+    const subscribe = vi.fn()
+      .mockResolvedValueOnce(stop)
+      .mockRejectedValueOnce("provider-failure");
+    const worker = createRyanAiGitHubEventWorker(
+      [
+        { subscriptionId: "one", repository: "owner/repo", eventTypes: ["push"] },
+        { subscriptionId: "two", repository: "owner/repo", eventTypes: ["check_run"] },
+      ],
+      async () => undefined,
+    );
+
+    let caught: unknown;
+    try {
+      await worker.start({ subscribe });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(AggregateError);
+    expect((caught as AggregateError).errors).toEqual(["provider-failure", "cleanup-failure"]);
+  });
+
+  it("does not finish shutdown until accepted delivery finalization completes", async () => {
+    let release!: () => void;
+    let receive!: (event: {
+      id: string; type: "push"; repository: string; occurredAt: string; payload: unknown;
+    }) => Promise<void> | void;
+    const worker = createRyanAiGitHubEventWorker(
+      [{ subscriptionId: "one", repository: "owner/repo", eventTypes: ["push"] }],
+      async () => new Promise<void>((resolve) => { release = resolve; }),
+    );
+    const shutdownStop = vi.fn(async () => undefined);
+    const shutdown = await worker.start({
+      subscribe: async (_subscription, onEvent) => {
+        receive = onEvent as typeof receive;
+        return shutdownStop;
+      },
+    });
+    const delivery = receive({
+      id: "in-flight", type: "push", repository: "owner/repo",
+      occurredAt: "2026-11-19T00:00:00Z", payload: {},
+    });
+    await Promise.resolve();
+    let shutdownFinished = false;
+    const stopping = shutdown().then(() => { shutdownFinished = true; });
+    await Promise.resolve();
+    expect(shutdownFinished).toBe(false);
+    release();
+    await Promise.all([delivery, stopping]);
+    expect(shutdownFinished).toBe(true);
+    expect(shutdownStop).toHaveBeenCalledTimes(1);
+  });
+
 });
