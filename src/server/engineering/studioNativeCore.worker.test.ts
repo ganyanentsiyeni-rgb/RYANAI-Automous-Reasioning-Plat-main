@@ -117,6 +117,26 @@ describe('Studio worker queue lifecycle', () => {
     }
   });
 
+  it('runs coordinator tasks through RyanAI-native admission', async () => {
+    mocks.queryRawUnsafe.mockResolvedValue([task({
+      taskType: 'coordination',
+      assignedWorkerId: 'coordinator',
+      requiredCapabilities: [],
+    })]);
+    const handler = vi.fn().mockResolvedValue({ kind: 'coordination.receipt', status: 'accepted' });
+    const unregister = registerStudioTaskHandler('coordination', handler);
+    try {
+      const result = await runStudioWorkerOnce('worker-1', 'coordinator');
+      expect(result).toMatchObject({ state: 'completed', taskId: 'task-1' });
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(mocks.eventCreate).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ eventType: 'task.policy_authorized', actorId: 'worker-1' }),
+      }));
+    } finally {
+      unregister();
+    }
+  });
+
   it('runs an authorized handler, renews its lease and commits completion', async () => {
     const handler = vi.fn().mockImplementation(async ({ heartbeat }: { heartbeat: () => Promise<boolean> }) => {
       expect(await heartbeat()).toBe(true);

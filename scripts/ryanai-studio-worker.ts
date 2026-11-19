@@ -1,11 +1,20 @@
 import { createRyanAIStudioWorkerRuntime } from '../src/server/engineering/ryanaiStudioWorkerRuntime.js';
 import { getStudioWorkerHandlerReadiness } from '../src/server/engineering/studioNativeCore.js';
+import { getStudioWorkerHandlerReadiness, registerStudioTaskHandler } from '../src/server/engineering/studioNativeCore.js';
 
 const profileId = process.env.RYANAI_STUDIO_WORKER_PROFILE_ID?.trim() || 'coordinator';
 const workerId = process.env.RYANAI_STUDIO_WORKER_ID?.trim();
 
 const handlerReadiness = getStudioWorkerHandlerReadiness(profileId);
 if (!handlerReadiness.ready) {
+  throw new Error(
+    `RyanAI Studio worker ${profileId} cannot start: ${handlerReadiness.reason} Supported task types: ${handlerReadiness.supportedTaskTypes.join(', ')}.`,
+  );
+}
+
+const handlerReadiness = getStudioWorkerHandlerReadiness(profileId);
+if (!handlerReadiness.ready) {
+  unregisterCoordination?.();
   throw new Error(
     `RyanAI Studio worker ${profileId} cannot start: ${handlerReadiness.reason} Supported task types: ${handlerReadiness.supportedTaskTypes.join(', ')}.`,
   );

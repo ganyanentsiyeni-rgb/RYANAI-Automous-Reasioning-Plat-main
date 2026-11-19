@@ -3,7 +3,7 @@ import type { ExecutionPlan } from './executionPlanner.js';
 import { appendRunEvidence } from './engineeringEvidence.js';
 import type { Prisma } from '@prisma/client';
 import type { BrainOutput } from './operationsCore.js';
-import { assertPACompletionCapabilityReceipts, type PACapabilityReceipt } from './paCapabilityCompletion.js';
+import { assertPACompletionCapabilityReceipts, assertPARepositoryInspectionEvidence, type PACapabilityReceipt } from './paCapabilityCompletion.js';
 
 interface PersistableAgentRun {
   id: string;
@@ -31,6 +31,18 @@ export async function persistAgentRunCompletion(
 ): Promise<void> {
   // A PA delegation is complete only when every approved capability has a passed, evidence-backed handler receipt.
   assertPACompletionCapabilityReceipts(run.execution_scope, plan.capabilityReceipts ?? []);
+  const repositoryReceipt = plan.capabilityReceipts?.find((item) => item.capability === 'repository.inspect');
+  const evidenceIds = (repositoryReceipt?.evidenceReferences ?? [])
+    .filter((reference) => reference.startsWith('agent-run-evidence:'))
+    .map((reference) => reference.slice('agent-run-evidence:'.length));
+  const repositoryEvidence = evidenceIds.length
+    ? await tx.agentRunEvidence.findMany({
+        where: { runId: run.id, id: { in: evidenceIds } },
+        select: { id: true, eventType: true, payload: true },
+      })
+    : [];
+  assertPARepositoryInspectionEvidence(plan.capabilityReceipts ?? [], repositoryEvidence);
+  const repositoryInspection = repositoryReceipt?.repositoryInspection ?? null;
   const outputByBrain = new Map(plan.outputs.map((item) => [item.brain, item]));
   for (const row of handoffs) {
     const output = row.toAgent === 'primary'
@@ -72,7 +84,7 @@ export async function persistAgentRunCompletion(
     where: { id: run.id, status: 'running', workerId: run.worker_id, attempts: run.attempts, cancelRequestedAt: null },
     data: {
       status: 'completed',
-      result: { synthesis: plan.synthesis, degraded: plan.degraded, executionPlan, brains: plan.outputs.map(({ brain, latencyMs }) => ({ brain, latencyMs })) },
+      result: { synthesis: plan.synthesis, degraded: plan.degraded, executionPlan, brains: plan.outputs.map(({ brain, latencyMs }) => ({ brain, latencyMs })), capabilityReceipts: plan.capabilityReceipts ?? [], repositoryInspection },
       completedAt: new Date(),
       lockedAt: null,
       workerId: null,
@@ -93,14 +105,14 @@ export async function persistAgentRunCompletion(
           traceId: delegation.traceId,
           attempt: run.attempts,
           status: 'completed',
-          result: { synthesis: plan.synthesis, degraded: plan.degraded, verification: plan.verification ?? { verified: false, reason: 'Verification evidence was not supplied.' } },
+          result: { synthesis: plan.synthesis, degraded: plan.degraded, verification: plan.verification ?? { verified: false, reason: 'Verification evidence was not supplied.' }, capabilityReceipts: plan.capabilityReceipts ?? [], repositoryInspection },
         },
         update: {
           agentRunId: run.id,
           traceId: delegation.traceId,
           attempt: run.attempts,
           status: 'completed',
-          result: { synthesis: plan.synthesis, degraded: plan.degraded, verification: plan.verification ?? { verified: false, reason: 'Verification evidence was not supplied.' } },
+          result: { synthesis: plan.synthesis, degraded: plan.degraded, verification: plan.verification ?? { verified: false, reason: 'Verification evidence was not supplied.' }, capabilityReceipts: plan.capabilityReceipts ?? [], repositoryInspection },
           error: null,
         },
       });
@@ -116,6 +128,8 @@ export async function persistAgentRunCompletion(
       brains: plan.outputs.map(({ brain, latencyMs }) => ({ brain, latencyMs })),
       synthesisSha256: createHash('sha256').update(plan.synthesis, 'utf8').digest('hex'),
       verificationStatus: plan.verification?.verified ? 'three_brain_complete' : 'degraded',
+      capabilityReceipts: plan.capabilityReceipts ?? [],
+      repositoryInspection,
     },
   });
 }

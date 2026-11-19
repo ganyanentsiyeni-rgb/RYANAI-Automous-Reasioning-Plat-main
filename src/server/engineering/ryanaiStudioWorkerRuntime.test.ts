@@ -6,6 +6,7 @@ describe('RyanAI native Studio worker runtime', () => {
   it('reports profiles without registered native handlers as not ready', () => {
     const readiness = getStudioWorkerHandlerReadiness('repository-auditor');
     expect(getStudioWorkerHandlerReadiness('coordinator').ready).toBe(false);
+    expect(readiness).toMatchObject({ workerProfileId: 'repository-auditor', ready: false, registeredTaskTypes: [] });
     expect(readiness).toMatchObject({
       workerProfileId: 'repository-auditor',
       ready: false,
@@ -18,6 +19,7 @@ describe('RyanAI native Studio worker runtime', () => {
     const unregister = registerStudioTaskHandler('coordination', async () => ({ accepted: true }));
     try {
       expect(getStudioWorkerHandlerReadiness('coordinator')).toMatchObject({
+        workerProfileId: 'coordinator', ready: true, registeredTaskTypes: ['coordination'],
         workerProfileId: 'coordinator',
         ready: true,
         registeredTaskTypes: ['coordination'],
@@ -26,6 +28,7 @@ describe('RyanAI native Studio worker runtime', () => {
       unregister();
     }
   });
+
 
   it('rejects an unregistered worker profile', () => {
     expect(() => createRyanAIStudioWorkerRuntime({

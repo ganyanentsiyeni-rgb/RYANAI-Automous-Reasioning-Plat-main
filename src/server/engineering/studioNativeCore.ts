@@ -85,7 +85,10 @@ export async function createStudioProject(input: CreateStudioProjectInput) {
 
 export function classifyStudioWorkerLiveness(status: string, lastSeenAt: Date, now = Date.now()): string {
   if (status === 'stopped') return 'stopped';
-  return now - lastSeenAt.getTime() > 30_000 ? 'stale' : status;
+  if (!['starting', 'healthy', 'degraded'].includes(status)) return 'unknown';
+  const lastSeen = lastSeenAt instanceof Date ? lastSeenAt.getTime() : Number.NaN;
+  if (!Number.isFinite(lastSeen) || lastSeen > now + 60_000) return 'unknown';
+  return now - lastSeen > 30_000 ? 'stale' : status;
 }
 
 export async function listStudioWorkerHealth() {
@@ -101,7 +104,8 @@ export async function listStudioWorkerHealth() {
   const hasIssue = workers.some((worker) => worker.liveness === 'degraded' || worker.liveness === 'stale');
   const hasHealthy = workers.some((worker) => worker.liveness === 'healthy');
   const hasStarting = workers.some((worker) => worker.liveness === 'starting');
-  const state = hasIssue ? 'degraded' : hasHealthy ? 'running' : hasStarting ? 'starting' : workers.length ? 'stopped' : 'unknown';
+  const hasUnknown = workers.some((worker) => worker.liveness === 'unknown');
+  const state = hasIssue ? 'degraded' : hasHealthy ? 'running' : hasStarting ? 'starting' : hasUnknown ? 'unknown' : workers.length ? 'stopped' : 'unknown';
   return {
     state,
     source: 'studio_worker_heartbeats',
