@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   queryRawUnsafe: vi.fn(),
   taskFindMany: vi.fn(),
+  taskFindFirst: vi.fn(),
   taskUpdateMany: vi.fn(),
   eventCreate: vi.fn(),
   directTaskUpdateMany: vi.fn(),
@@ -12,7 +13,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../lib/prisma.js', () => ({
   prisma: {
     $transaction: mocks.transaction,
-    studioTask: { updateMany: mocks.directTaskUpdateMany },
+    studioTask: { findFirst: mocks.taskFindFirst, updateMany: mocks.directTaskUpdateMany },
     studioEvent: { create: mocks.eventCreate },
   },
 }));
@@ -45,6 +46,7 @@ describe('Studio worker queue lifecycle', () => {
     mocks.transaction.mockImplementation(async (callback: (tx: typeof transactionClient) => unknown) => callback(transactionClient));
     mocks.queryRawUnsafe.mockResolvedValue([task()]);
     mocks.taskFindMany.mockResolvedValue([]);
+    mocks.taskFindFirst.mockResolvedValue(null);
     mocks.taskUpdateMany.mockResolvedValue({ count: 1 });
     mocks.directTaskUpdateMany.mockResolvedValue({ count: 1 });
     mocks.eventCreate.mockResolvedValue({});
