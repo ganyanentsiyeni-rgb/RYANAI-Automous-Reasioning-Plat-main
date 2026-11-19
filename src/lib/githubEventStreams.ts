@@ -63,14 +63,39 @@ export function createRyanAiGitHubEventWorker(
 ): RyanAiGitHubEventWorker {
   return {
     async start(stream) {
-      const stops = await Promise.all(
-        subscriptions.map((subscription) =>
-          stream.subscribe(subscription, handleEvent),
-        ),
-      );
+      const stops: Array<() => Promise<void>> = [];
+      try {
+        for (const subscription of subscriptions) {
+          stops.push(await stream.subscribe(subscription, async (event) => {
+            await handleEvent(normalizeRyanAiGitHubEvent(event));
+          }));
+        }
+      } catch (error) {
+        const cleanup = await Promise.allSettled(
+          stops.reverse().map((stop) => stop()),
+        );
+        const cleanupErrors = cleanup
+          .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+          .map((result) => result.reason);
+        if (cleanupErrors.length > 0 && error instanceof Error) {
+          throw new AggregateError([error, ...cleanupErrors], "GitHub event subscription startup failed and cleanup was incomplete.");
+        }
+        throw error;
+      }
 
+      let stopped = false;
       return async () => {
-        await Promise.all(stops.map((stop) => stop()));
+        if (stopped) return;
+        stopped = true;
+        const results = await Promise.allSettled(
+          stops.splice(0).reverse().map((stop) => stop()),
+        );
+        const errors = results
+          .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+          .map((result) => result.reason);
+        if (errors.length > 0) {
+          throw new AggregateError(errors, "One or more GitHub event subscriptions failed to stop.");
+        }
       };
     },
   };
