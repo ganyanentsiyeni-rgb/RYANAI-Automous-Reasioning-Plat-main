@@ -499,7 +499,8 @@ async function processAgentRun(
         }
       }
     });
-    if (transitioned) console.error('[agent-worker] Run ' + run.id + (terminalCancelled ? ' cancelled' : terminalRetry ? ' scheduled for retry' : ' failed permanently') + ': ' + message);\n    else console.warn('[agent-worker] Failure transition skipped because this worker no longer owns the active attempt for run ' + run.id);
+    if (transitioned) console.error('[agent-worker] Run ' + run.id + (terminalCancelled ? ' cancelled' : terminalRetry ? ' scheduled for retry' : ' failed permanently') + ': ' + message);
+    else console.warn('[agent-worker] Failure transition skipped because this worker no longer owns the active attempt for run ' + run.id);
   } finally {
     const elapsedMs = Math.max(1, Date.now() - runStartedAt);
     const cpu = process.cpuUsage(cpuStartedAt);
