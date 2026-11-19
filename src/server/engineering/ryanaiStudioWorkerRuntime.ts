@@ -62,6 +62,17 @@ export function createRyanAIStudioWorkerRuntime(
   let pollTimer: ReturnType<typeof setTimeout> | undefined;
   let heartbeatTimer: ReturnType<typeof setTimeout> | undefined;
   let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
+  const inFlight = new Set<Promise<void>>();
+  let startupPromise: Promise<void> | null = null;
+  let heartbeatWrite: Promise<void> = Promise.resolve();
+
+  const track = (operation: Promise<void>) => {
+    inFlight.add(operation);
+    void operation.then(
+      () => inFlight.delete(operation),
+      () => inFlight.delete(operation),
+    );
+  };
 
   const heartbeat = options.heartbeat ?? (async (id, nextStatus, metadata) => {
     const now = new Date();
@@ -98,9 +109,15 @@ export function createRyanAIStudioWorkerRuntime(
   });
 
   const persistHeartbeat = async (nextStatus: RyanAIStudioWorkerStatus) => {
-    await heartbeat(workerId, nextStatus, metadata());
-    lastHeartbeatAt = new Date().toISOString();
-    status = nextStatus;
+    // Serialize status writes so a slower healthy heartbeat cannot overwrite
+    // a newer degraded/stopped transition in the shared durable record.
+    const write = heartbeatWrite.then(async () => {
+      await heartbeat(workerId, nextStatus, metadata());
+      lastHeartbeatAt = new Date().toISOString();
+      status = nextStatus;
+    });
+    heartbeatWrite = write.catch(() => undefined);
+    await write;
   };
 
   const poll = async () => {
@@ -109,7 +126,7 @@ export function createRyanAIStudioWorkerRuntime(
       const result = await executeOnce(workerId, profile.id, leaseSeconds);
       lastExecutionAt = new Date().toISOString();
       lastExecutionState = result.state;
-      lastError = result.error ?? null;
+      lastError = null;
       if (status !== 'healthy') await persistHeartbeat('healthy');
     } catch (error) {
       lastExecutionAt = new Date().toISOString();
@@ -117,19 +134,19 @@ export function createRyanAIStudioWorkerRuntime(
       lastError = error instanceof Error ? error.message : 'Studio worker runtime error.';
       await persistHeartbeat('degraded');
     } finally {
-      if (!stopping) pollTimer = setTimeout(() => { void poll(); }, pollIntervalMs);
+      if (!stopping) pollTimer = setTimeout(() => { track(poll()); }, pollIntervalMs);
     }
   };
 
   const heartbeatLoop = async () => {
     if (stopping) return;
     try {
-      await persistHeartbeat('healthy');
+      await persistHeartbeat(status === 'degraded' ? 'degraded' : 'healthy');
     } catch (error) {
       status = 'degraded';
       lastError = error instanceof Error ? error.message : 'Studio worker heartbeat failed.';
     } finally {
-      if (!stopping) heartbeatTimer = setTimeout(() => { void heartbeatLoop(); }, heartbeatIntervalMs);
+      if (!stopping) heartbeatTimer = setTimeout(() => { track(heartbeatLoop()); }, heartbeatIntervalMs);
     }
   };
 
@@ -141,7 +158,7 @@ export function createRyanAIStudioWorkerRuntime(
       status = 'degraded';
       lastError = error instanceof Error ? error.message : 'Studio lease recovery failed.';
     } finally {
-      if (!stopping) recoveryTimer = setTimeout(() => { void recoveryLoop(); }, recoveryIntervalMs);
+      if (!stopping) recoveryTimer = setTimeout(() => { track(recoveryLoop()); }, recoveryIntervalMs);
     }
   };
 
@@ -150,11 +167,28 @@ export function createRyanAIStudioWorkerRuntime(
       if (started) return;
       started = true;
       stopping = false;
-      await persistHeartbeat('starting');
-      await persistHeartbeat('healthy');
-      void poll();
-      void heartbeatLoop();
-      void recoveryLoop();
+      startupPromise = (async () => {
+        try {
+          await persistHeartbeat('starting');
+          await persistHeartbeat('healthy');
+          // A shutdown signal may arrive while the durable startup heartbeat
+          // is pending. Do not launch loops after shutdown has begun.
+          if (stopping) return;
+          track(poll());
+          track(heartbeatLoop());
+          track(recoveryLoop());
+        } catch (error) {
+          started = false;
+          status = 'degraded';
+          lastError = error instanceof Error ? error.message : 'Studio worker startup heartbeat failed.';
+          throw error;
+        }
+      })();
+      try {
+        await startupPromise;
+      } finally {
+        startupPromise = null;
+      }
     },
 
     async stop() {
@@ -163,6 +197,12 @@ export function createRyanAIStudioWorkerRuntime(
       if (pollTimer) clearTimeout(pollTimer);
       if (heartbeatTimer) clearTimeout(heartbeatTimer);
       if (recoveryTimer) clearTimeout(recoveryTimer);
+      // Finish startup before draining loops so a late startup heartbeat
+      // cannot overwrite the terminal stopped state.
+      if (startupPromise) await startupPromise.catch(() => undefined);
+      // Drain in-flight poll/heartbeat/recovery operations before publishing
+      // the terminal stopped heartbeat. Loops cannot reschedule once stopping.
+      await Promise.allSettled([...inFlight]);
       await persistHeartbeat('stopped');
       started = false;
     },
