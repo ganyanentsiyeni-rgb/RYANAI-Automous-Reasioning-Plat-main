@@ -61,16 +61,16 @@ test('isolation probes reject connection-refused as evidence of a blocked route'
 test('isolation probe exercises positive loopback and negative public/private egress', async () => {
   const probe = await readFile('scripts/benchmark-isolation-container.mjs', 'utf8');
   for (const marker of [
-    "'127.0.0.1'",
-    "'::1'",
-    "'1.1.1.1'",
-    "'10.0.0.1'",
-    "'example.com'",
-    "'host.docker.internal'",
-    'credential-environment-absent',
-    'only-loopback-network-interface',
-    'HARNESS_PASS_ONLY_NOT_GATE_PASS'
-  ]) assert.ok(probe.includes(marker), `missing isolation assertion: ${marker}`);
+    /127\.0\.0\.1/,
+    /['"]::1['"]/,
+    /['"]1\.1\.1\.1['"]/,
+    /['"]10\.0\.0\.1['"]/,
+    /['"]example\.com['"]/,
+    /['"]host\.docker\.internal['"]/,
+    /credential-environment-absent/,
+    /only-loopback-network-interface/,
+    /HARNESS_PASS_ONLY_NOT_GATE_PASS/
+  ]) assert.match(probe, marker, `missing isolation assertion: ${marker}`);
   assert.match(probe, /modelInvocation:\s*false/);
 });
 
