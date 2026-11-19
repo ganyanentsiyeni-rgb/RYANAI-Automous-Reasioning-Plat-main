@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { EventHandlerRegistry } from './eventHandlerRegistry.js';
-import { dispatchNextGitHubEventForAuthorizedOwners } from './githubOwnerEventDispatcher.js';
+import { dispatchNextGitHubEventForAuthorizedOwners, startGitHubOwnerEventWorker } from './githubOwnerEventDispatcher.js';
 import type { RyanAIEventEnvelope } from './eventContract.js';
 
 const event: RyanAIEventEnvelope = {
@@ -57,6 +57,38 @@ describe('dispatchNextGitHubEventForAuthorizedOwners', () => {
       { processNextForOwner } as never, registry, async () => ['owner-a'], 'worker-a',
     )).rejects.toThrow('authorized owner dispatch context');
     expect(handler).not.toHaveBeenCalled();
+  });
+
+
+  it('wakes owner-scoped dispatch only from the subscribed notification source', async () => {
+    let notify: (() => void) | undefined;
+    const unsubscribe = vi.fn();
+    const wakeSource = {
+      subscribe: vi.fn((listener: () => void) => { notify = listener; return unsubscribe; }),
+    };
+    const processNextForOwner = vi.fn().mockResolvedValue({ status: 'idle' as const });
+    const registry = new EventHandlerRegistry();
+    registry.register('github.pull_request', vi.fn());
+    const listOwners = vi.fn().mockResolvedValue(['owner-a']);
+    const stop = startGitHubOwnerEventWorker(
+      wakeSource,
+      { processNextForOwner } as never,
+      registry,
+      listOwners,
+      { workerId: 'wake-worker' },
+    );
+    expect(processNextForOwner).not.toHaveBeenCalled();
+    notify?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(processNextForOwner).toHaveBeenCalledTimes(1);
+    expect(processNextForOwner).toHaveBeenCalledWith(
+      'wake-worker', 'owner-a', expect.any(Function), expect.any(Date), ['github.pull_request'],
+    );
+    stop();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+    notify?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(processNextForOwner).toHaveBeenCalledTimes(1);
   });
 
   it('rejects an empty worker identity before resolving owners', async () => {
