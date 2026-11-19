@@ -99,19 +99,41 @@ export interface RyanAiGitHubEventWorker {
   start(stream: RyanAiGitHubEventStream): Promise<() => Promise<void>>;
 }
 
+export interface RyanAiGitHubEventWorkerOptions {
+  /** Maximum accepted events, including the event currently being handled. */
+  maxPendingEvents?: number;
+}
+
 export function createRyanAiGitHubEventWorker(
   subscriptions: readonly RyanAiGitHubEventSubscription[],
   handleEvent: (event: RyanAiGitHubEvent) => Promise<void> | void,
+  options: RyanAiGitHubEventWorkerOptions = {},
 ): RyanAiGitHubEventWorker {
   validateRyanAiGitHubEventSubscriptions(subscriptions);
+  const maxPendingEvents = options.maxPendingEvents ?? 64;
+  if (!Number.isInteger(maxPendingEvents) || maxPendingEvents < 1 || maxPendingEvents > 10_000) {
+    throw new Error("maxPendingEvents must be an integer between 1 and 10000.");
+  }
   return {
     async start(stream) {
       const stops: Array<() => Promise<void>> = [];
+      let pendingEvents = 0;
+      let deliveryTail: Promise<void> = Promise.resolve();
+      const deliver = (rawEvent: RyanAiGitHubEvent): Promise<void> => {
+        if (pendingEvents >= maxPendingEvents) {
+          return Promise.reject(new Error("GitHub event worker is at capacity; provider should retry delivery."));
+        }
+        pendingEvents += 1;
+        const event = normalizeRyanAiGitHubEvent(rawEvent);
+        const delivery = deliveryTail.then(() => handleEvent(event));
+        deliveryTail = delivery.then(() => undefined, () => undefined);
+        return delivery.finally(() => {
+          pendingEvents -= 1;
+        });
+      };
       try {
         for (const subscription of subscriptions) {
-          stops.push(await stream.subscribe(subscription, async (event) => {
-            await handleEvent(normalizeRyanAiGitHubEvent(event));
-          }));
+          stops.push(await stream.subscribe(subscription, deliver));
         }
       } catch (error) {
         const cleanup = await Promise.allSettled(
@@ -133,6 +155,7 @@ export function createRyanAiGitHubEventWorker(
         const results = await Promise.allSettled(
           stops.splice(0).reverse().map((stop) => stop()),
         );
+        await deliveryTail;
         const errors = results
           .filter((result): result is PromiseRejectedResult => result.status === "rejected")
           .map((result) => result.reason);
