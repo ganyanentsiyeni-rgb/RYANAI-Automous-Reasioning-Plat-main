@@ -6,7 +6,7 @@ RyanAI is an AI-assisted, human-governed engineering and operations platform. It
 
 This README describes the application and contracts present in this repository. It does not claim that every integration is connected, every workflow is passing, or every service is deployed. A source file, configured provider, queued job, green unit test, or healthy process is not by itself proof of end-to-end production readiness.
 
-**Documentation baseline (19 November 2026):** implementation notes and links below are reconciled against the official repository's current mainline as of PR #282. The README is an index and summary; the relevant source, migration, runbook, workflow, and pull-request evidence remains authoritative. Current main SHA: `eaa6f599272fb542ee2b54e71a9e6b6219b421c2`.
+**Documentation baseline (19 November 2026):** implementation notes and links below are reconciled against the official repository's current mainline through PR #283. The README is an index and summary; the relevant source, migration, runbook, workflow, and pull-request evidence remains authoritative. Current main SHA: `ff0e33b8792c6d851d039c1e01b224a3e4fd8903`.
 
 ## Contents
 
@@ -547,6 +547,7 @@ This section records merged work in the repository history. A merged code change
 - **PR #277–#278:** repairs TypeScript/workflow command compatibility, Comms orchestration test import paths, and adds a read-only repository-inventory contract test.
 - **PR #280:** merges the validation-alignment follow-up.
 - **PR #281–#282:** completes the latest Comms server-state UI contract and its corresponding test-fixture alignment.
+- **PR #283:** converts the Render staging-migration test to Vitest so the repository test runner discovers it, and adds the PostgreSQL pool event-listener mock required by the checkpointer import in launcher tests.
 
 Use the [repository pull-request history](https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main/pulls?q=is%3Apr+is%3Amerged+created%3A2026-11-18..2026-11-19) to inspect exact diffs, reviews, checks, and timestamps. This summary does not replace exact-head evidence.
 
@@ -554,7 +555,7 @@ Use the [repository pull-request history](https://github.com/ganyanentsiyeni-rgb
 
 The following limitations are important when interpreting repository state:
 
-- **Mainline CI:** PR #282's description recorded GitHub Actions as pending. Re-check the current main SHA and every required workflow before reporting CI/security as green. Queued, skipped, cancelled, missing, or provider-blocked is not passed.
+- **Mainline CI:** the current main snapshot is `ff0e33b8792c6d851d039c1e01b224a3e4fd8903` (PR #283). At the last inspection of that exact PR head (`9853036f75b04990b4000b1e31b63b806c711b82`), CodeQL, TruffleHog, SBOM, Security Scan, Container Security, AI Inspector, and the disposable Prisma/pgvector upgrade test reported success; CI build/test, Agent API regression, Docker image build, and Codacy were still in progress; Docker validation, Database Schema Validation, Human PR Approval Gate, and the guarded staging migration workflow reported failure. These are distinct outcomes; the migration dispatch failure is not evidence that a migration ran successfully. Re-check the live exact-head results before reporting current status. Queued, skipped, cancelled, missing, or provider-blocked is not passed.
 - **Render build capacity:** PR #282 recorded Render builds blocked by exhausted workspace build-pipeline minutes. Source merges are not evidence of a deployment. Do not purchase an upgrade without separate authorization.
 - **MCP runtime:** the U2EB service is declared in the Blueprint, but PR #234 recorded that the required delegation signing secret and service token were absent or too short in the inspected live service. Verify the existing secret references privately, then test MCP health, authenticated tool discovery, and API delegation. Never put credential values in documentation.
 - **Communications:** the Comms workspace and owner-scoped history can remain available with outbound dispatch disabled. Provider credentials, webhook callbacks, signature validation, verified owner destination, explicit test authorization, approval, and delivery callbacks remain separate gates.
