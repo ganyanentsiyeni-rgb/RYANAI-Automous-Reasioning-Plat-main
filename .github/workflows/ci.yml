@@ -65,6 +65,8 @@ jobs:
           src/App.test.tsx
       - name: Run plugin integrations centre regression tests
         run: npx vitest run src/components/PluginIntegrationsSettings.test.tsx
+      - name: Run intelligence-event inbox lifecycle unit tests
+        run: npx vitest run src/events/intelligenceEventInbox.test.ts
       - name: Typecheck API independently of application lint
         run: npm run build:server
 
@@ -152,11 +154,11 @@ jobs:
         env:
           POSTGRES_USER: ryanai
           POSTGRES_PASSWORD: ci_password
-          POSTGRES_DB: ryanai_db
+          POSTGRES_DB: ryanai_disposable_db
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U ryanai -d ryanai_db"
+          --health-cmd "pg_isready -U ryanai -d ryanai_disposable_db"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -174,7 +176,7 @@ jobs:
       NODE_ENV: production
       HOST: 127.0.0.1
       PORT: '3000'
-      DATABASE_URL: postgresql://ryanai:ci_password@127.0.0.1:5432/ryanai_db
+      DATABASE_URL: postgresql://ryanai:ci_password@127.0.0.1:5432/ryanai_disposable_db
       REDIS_URL: redis://127.0.0.1:6379
       JWT_SECRET: ci_only_secret_at_least_32_characters_long
       OPENAI_API_KEY: ''
@@ -248,6 +250,11 @@ jobs:
         run: node --import tsx/esm scripts/test-studio-worker-queue.integration.mjs
       - name: Verify durable agent queue claims and lease recovery against disposable PostgreSQL
         run: node --import tsx/esm scripts/test-agent-queue.mjs
+      - name: Verify intelligence-event inbox concurrency and audit atomicity against disposable PostgreSQL
+        env:
+          RYANAI_DISPOSABLE_DB: '1'
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: node --import tsx/esm scripts/test-intelligence-event-inbox-postgres.mjs
 
 
       - name: Verify production startup failure and recovery against disposable services
