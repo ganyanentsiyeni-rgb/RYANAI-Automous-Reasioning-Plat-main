@@ -101,6 +101,8 @@
     "frontend:validate": "npm run workflow:validate && npm run frontend:agent",
     "workflow:agent": "node scripts/github-workflow-agent.mjs --audit",
     "workflow:agent:fix": "node scripts/github-workflow-agent.mjs --fix",
+    "github:tokens:validate": "node scripts/validate-github-installation-token-compat.mjs",
+    "test:github-token-compat": "vitest run scripts/github-installation-token-compat.test.mjs",
     "workflow:validate": "node scripts/validate-github-workflows.mjs && npm run provider-verification:validate",
     "stack:validate": "node scripts/validate-stack-manifest.mjs",
     "jarvis:status": "node --import tsx/esm scripts/jarvis-sync.ts status",
