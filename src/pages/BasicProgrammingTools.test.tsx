@@ -82,6 +82,34 @@ describe('Basic Programming Tools project containers', () => {
     expect(container.textContent).not.toContain('Pending coding task');
   });
 
+  it('groups pending and active lifecycle aliases in their corresponding filters', async () => {
+    api.authenticatedFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ projects: [
+        { id: 'pending-1', title: 'Pending record', objective: 'Wait for worker', projectType: 'engineering', status: 'pending', createdAt: '2026-11-19T00:00:00Z', tasks: [] },
+        { id: 'queued-1', title: 'Queued record', objective: 'Queued for worker', projectType: 'engineering', status: 'queued', createdAt: '2026-11-19T00:00:00Z', tasks: [] },
+        { id: 'running-1', title: 'Running record', objective: 'Worker active', projectType: 'engineering', status: 'running', createdAt: '2026-11-19T00:00:00Z', tasks: [] },
+        { id: 'progress-1', title: 'In progress record', objective: 'Work underway', projectType: 'engineering', status: 'in_progress', createdAt: '2026-11-19T00:00:00Z', tasks: [] },
+      ] }),
+    });
+    await mount();
+    const filter = container.querySelector('[aria-label="Filter project status"]') as HTMLSelectElement;
+    await act(async () => {
+      filter.value = 'pending';
+      filter.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(container.textContent).toContain('Pending record');
+    expect(container.textContent).toContain('Queued record');
+    expect(container.textContent).not.toContain('Running record');
+    await act(async () => {
+      filter.value = 'active';
+      filter.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    expect(container.textContent).toContain('Running record');
+    expect(container.textContent).toContain('In progress record');
+    expect(container.textContent).not.toContain('Pending record');
+  });
+
   it('creates a separate research container with a research planning task', async () => {
     api.authenticatedFetch.mockImplementation(async (_url: string, options?: RequestInit) => ({
       ok: true,
