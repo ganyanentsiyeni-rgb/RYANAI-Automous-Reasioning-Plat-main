@@ -21,6 +21,12 @@ let errorOutput = '';
 
 function waitForExit(processHandle, timeoutMs = 10000) {
   return new Promise((resolve, reject) => {
+    // A child can exit between kill() and listener registration. Also, a
+    // signal-terminated child has signalCode set while exitCode remains null.
+    if (processHandle.exitCode !== null || processHandle.signalCode !== null) {
+      resolve({ code: processHandle.exitCode, signal: processHandle.signalCode });
+      return;
+    }
     const timer = setTimeout(() => reject(new Error('Studio worker did not exit after SIGTERM.')), timeoutMs);
     processHandle.once('exit', (code, signal) => {
       clearTimeout(timer);
@@ -69,7 +75,7 @@ try {
 
   const deadline = Date.now() + 10000;
   while (!output.includes('"event":"disabled"') && Date.now() < deadline) {
-    if (child.exitCode !== null) throw new Error('Worker exited before reporting disabled state: ' + errorOutput);
+    if (child.exitCode !== null || child.signalCode !== null) throw new Error('Worker exited before reporting disabled state: ' + errorOutput);
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   assert.ok(output.includes('"event":"disabled"'), 'worker must explicitly report its disabled state');
@@ -94,9 +100,10 @@ try {
 
   console.log('Studio worker disabled-gate integration passed: real entrypoint stayed idle, left PostgreSQL task queued, and shut down cleanly.');
 } finally {
-  if (child && child.exitCode === null) {
+  if (child && child.exitCode === null && child.signalCode === null) {
+    const exitPromise = waitForExit(child);
     child.kill('SIGKILL');
-    await new Promise((resolve) => child.once('exit', resolve));
+    await exitPromise;
   }
   if (projectId) await prisma.studioProject.delete({ where: { id: projectId } }).catch(() => undefined);
   await prisma.user.delete({ where: { id: ownerUserId } }).catch(() => undefined);

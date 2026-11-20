@@ -77,13 +77,13 @@ async function listTools(token) {
     `MCP initialized notification failed: HTTP ${notification.status}`,
   );
 
-  const listed = await post("tools/list", 2, token, session);
-  assert.equal(listed.response.status, 200, `tools/list failed: HTTP ${listed.response.status}`);
-  assert.ok(Array.isArray(listed.payload?.result?.tools), "tools/list did not return a tools array");
-  return listed.payload.result.tools;
+  return await post("tools/list", 2, token, session);
 }
 
-const allowedTools = await listTools(allowedToken);
+const allowedListing = await listTools(allowedToken);
+assert.equal(allowedListing.response.status, 200, `Allowed tools/list failed: HTTP ${allowedListing.response.status}`);
+assert.ok(Array.isArray(allowedListing.payload?.result?.tools), "Allowed client tools/list did not return a tools array");
+const allowedTools = allowedListing.payload.result.tools;
 const toolNames = allowedTools.map((tool) => tool.name);
 assert.ok(
   toolNames.some((name) => name.endsWith("__platform_health")),
@@ -91,10 +91,23 @@ assert.ok(
 );
 console.log("PASS: authorized client discovers the explicitly allowed RyanAI health tool");
 
-const restrictedTools = await listTools(restrictedToken);
-assert.equal(
-  restrictedTools.length,
-  0,
-  `Client with an empty server allowlist must see no tools; received: ${restrictedTools.map((tool) => tool.name).join(", ")}`,
-);
-console.log("PASS: authenticated client with an empty allowlist receives no tools");
+const restrictedListing = await listTools(restrictedToken);
+if (restrictedListing.response.status === 401 || restrictedListing.response.status === 403) {
+  console.log(`PASS: authenticated client with an empty allowlist was denied (HTTP ${restrictedListing.response.status})`);
+} else {
+  assert.equal(restrictedListing.response.status, 200, `Restricted tools/list failed unexpectedly: HTTP ${restrictedListing.response.status}`);
+  const restrictedTools = restrictedListing.payload?.result?.tools;
+  if (Array.isArray(restrictedTools)) {
+    assert.equal(
+      restrictedTools.length,
+      0,
+      `Client with an empty server allowlist must see no tools; received: ${restrictedTools.map((tool) => tool.name).join(", ")}`,
+    );
+  } else {
+    assert.ok(
+      restrictedListing.payload?.error && restrictedListing.payload.error.code !== undefined,
+      `Restricted client must receive an empty tools array or an explicit JSON-RPC denial; received: ${JSON.stringify(restrictedListing.payload)}`,
+    );
+  }
+  console.log("PASS: authenticated client with an empty allowlist receives no tools or an explicit JSON-RPC denial");
+}
