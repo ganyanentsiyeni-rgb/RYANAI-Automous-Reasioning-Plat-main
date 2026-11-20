@@ -54,6 +54,8 @@ describe('Studio worker queue lifecycle', () => {
     mocks.eventCreate.mockResolvedValue({});
   });
 
+  it('blocks a task whose requested capabilities exceed its assigned RyanAI worker', async () => {
+    mocks.queryRawUnsafe.mockResolvedValue([task({ requiredCapabilities: ['production.deploy'] })]);
   it('does not append authorization evidence after the claimed lease has already been lost', async () => {
     mocks.queryRawUnsafe
       .mockResolvedValueOnce([task()])
@@ -62,6 +64,13 @@ describe('Studio worker queue lifecycle', () => {
     const unregister = registerStudioTaskHandler('ci-failure', handler);
     try {
       const result = await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
+      expect(result).toMatchObject({ state: 'blocked', taskId: 'task-1' });
+      expect(handler).not.toHaveBeenCalled();
+      expect(mocks.taskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ status: 'blocked', approvalStatus: 'blocked' }),
+      }));
+      expect(mocks.eventCreate).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ eventType: 'task.policy_blocked' }),
       expect(result).toMatchObject({ state: 'lease_lost', taskId: 'task-1' });
       expect(handler).not.toHaveBeenCalled();
       expect(mocks.eventCreate).not.toHaveBeenCalledWith(expect.objectContaining({
@@ -72,6 +81,8 @@ describe('Studio worker queue lifecycle', () => {
     }
   });
 
+  it('blocks a task until its persisted owner approval is approved', async () => {
+    mocks.queryRawUnsafe.mockResolvedValue([task({ approvalRequired: true, approvalStatus: 'pending' })]);
   it('blocks a task whose requested capabilities exceed its assigned RyanAI worker', async () => {
     mocks.queryRawUnsafe.mockResolvedValue([task({ requiredCapabilities: ['production.deploy'] })]);
     const handler = vi.fn().mockResolvedValue({ ok: true });
@@ -91,6 +102,9 @@ describe('Studio worker queue lifecycle', () => {
     }
   });
 
+  it('blocks tasks without an assigned RyanAI worker before invoking a handler', async () => {
+    mocks.queryRawUnsafe.mockResolvedValue([task({ assignedWorkerId: null })]);
+    const handler = vi.fn();
   it('blocks a task until its persisted owner approval is approved', async () => {
     mocks.queryRawUnsafe.mockResolvedValue([task({ approvalRequired: true, approvalStatus: 'pending' })]);
     const handler = vi.fn().mockResolvedValue({ ok: true });
