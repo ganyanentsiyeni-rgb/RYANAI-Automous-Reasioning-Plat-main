@@ -353,30 +353,19 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId: str
   });
   if (!authorized) return { state: 'lease_lost' as const, taskId: task.id };
 
+  let output: unknown;
   try {
-    const output = await handler({
+    output = await handler({
       workerId,
       claimToken: task.leaseToken ?? '',
       task,
       heartbeat: () => heartbeatStudioTask(task.id, workerId, task.leaseToken ?? ''),
     });
-    await prisma.$transaction(async (tx) => {
-      const completed = await tx.studioTask.updateMany({
-        where: { id: task.id, status: 'running', leaseOwner: workerId, leaseToken: task.leaseToken, leaseExpiresAt: { gt: new Date() } },
-        data: { status: 'completed', output: output as Prisma.InputJsonValue, completedAt: new Date(), leaseOwner: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null },
-      });
-      if (completed.count !== 1) throw new Error('Studio worker lease expired before completion could be committed.');
-      await tx.studioEvent.create({ data: {
-        projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
-        actorId: workerId, eventType: 'task.completed', payload: { attempt: task.attempts },
-      } });
-    });
-    return { state: 'completed' as const, taskId: task.id };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Studio worker failed.';
     const exhausted = task.attempts >= task.maxAttempts;
-    await prisma.$transaction(async (tx) => {
-      const released = await tx.studioTask.updateMany({
+    const released = await prisma.$transaction(async (tx) => {
+      const result = await tx.studioTask.updateMany({
         where: { id: task.id, status: 'running', leaseOwner: workerId, leaseToken: task.leaseToken, leaseExpiresAt: { gt: new Date() } },
         data: {
           status: exhausted ? 'failed' : 'queued',
@@ -385,16 +374,39 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId: str
           leaseExpiresAt: null,
           heartbeatAt: null,
           availableAt: new Date(Date.now() + Math.min(300000, 1000 * 2 ** task.attempts)),
+          completedAt: exhausted ? new Date() : null,
         },
       });
-      if (released.count === 1) await tx.studioEvent.create({ data: {
+      if (result.count === 1) await tx.studioEvent.create({ data: {
         projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
         actorId: workerId, eventType: 'task.execution_failed',
         payload: { attempt: task.attempts, error: message.slice(0, 1000) },
       } });
+      return result.count === 1;
     });
-    return { state: 'failed' as const, taskId: task.id, error: message };
+    return released
+      ? { state: 'failed' as const, taskId: task.id, error: message }
+      : { state: 'lease_lost' as const, taskId: task.id };
   }
+
+  // A handler result is not a completion receipt. Commit completion with a
+  // token-fenced compare-and-set; if another worker recovered/replaced this
+  // lease, report lease_lost and never emit task.completed for the stale run.
+  const completed = await prisma.$transaction(async (tx) => {
+    const result = await tx.studioTask.updateMany({
+      where: { id: task.id, status: 'running', leaseOwner: workerId, leaseToken: task.leaseToken, leaseExpiresAt: { gt: new Date() } },
+      data: { status: 'completed', output: output as Prisma.InputJsonValue, completedAt: new Date(), leaseOwner: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null },
+    });
+    if (result.count !== 1) return false;
+    await tx.studioEvent.create({ data: {
+      projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
+      actorId: workerId, eventType: 'task.completed', payload: { attempt: task.attempts },
+    } });
+    return true;
+  });
+  return completed
+    ? { state: 'completed' as const, taskId: task.id }
+    : { state: 'lease_lost' as const, taskId: task.id };
 }
 
 export interface StudioToolExecutionRequest {
