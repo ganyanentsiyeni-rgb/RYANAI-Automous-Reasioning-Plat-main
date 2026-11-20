@@ -36,6 +36,7 @@ test('detects schema and vector-memory drift, including runtime columns and inde
   assert.ok(result.missingColumns.includes('approval_status'));
   assert.ok(result.missingColumns.includes('requested_model'));
   assert.ok(result.missingColumns.includes('queue_type'));
+  assert.ok(result.missingTables.includes('agent_brain_health'));
   assert.ok(result.missingTables.includes('agent_run_evidence'));
   assert.ok(result.missingTables.includes('coding_tasks'));
   assert.ok(result.missingTables.includes('profiles'));
@@ -56,7 +57,7 @@ test('accepts a complete schema and vector-memory installation', () => {
     'approved_by', 'approved_at', 'steering_notes', 'cancel_requested_at', 'requested_model'];
   const result = assessSchema({
     columns: new Set(columns),
-    tables: new Set(['agent_run_evidence', 'jarvis_audit_events', 'coding_tasks', 'reasoning_cache', 'agent_memory', 'profiles', 'conversations', 'messages', 'memory_entries', 'rooms', 'room_members', 'room_messages']),
+    tables: new Set(['agent_runs', 'agent_handoffs', 'agent_brain_health', 'agent_run_evidence', 'jarvis_audit_events', 'coding_tasks', 'reasoning_cache', 'agent_memory', 'profiles', 'conversations', 'messages', 'memory_entries', 'rooms', 'room_members', 'room_messages']),
     sharedColumns: new Set(['profiles.id', 'profiles.email', 'profiles.full_name', 'profiles.avatar_url', 'profiles.created_at', 'profiles.updated_at', 'conversations.id', 'conversations.user_id', 'conversations.title', 'conversations.model', 'conversations.created_at', 'conversations.updated_at', 'messages.id', 'messages.conversation_id', 'messages.role', 'messages.content', 'messages.model', 'messages.steps', 'messages.created_at', 'messages.metadata', 'memory_entries.id', 'memory_entries.user_id', 'memory_entries.key', 'memory_entries.value', 'memory_entries.category', 'memory_entries.created_at', 'rooms.id', 'rooms.name', 'rooms.created_by', 'rooms.created_at', 'room_members.room_id', 'room_members.user_id', 'room_members.joined_at', 'room_messages.id', 'room_messages.room_id', 'room_messages.sender_id', 'room_messages.body', 'room_messages.created_at']),
     indexes: vectorIndexes,
     extensions: new Set(['vector']),
