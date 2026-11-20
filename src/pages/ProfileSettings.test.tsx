@@ -74,7 +74,7 @@ describe('RyanAI Settings', () => {
     expect(container.textContent).toContain('Profile management & access control');
     expect(container.textContent).toContain('Account security');
     expect(container.textContent).toContain('Provider and integration security');
-    expect(container.querySelector('[data-testid="calculator-enabled-toggle"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="programming-enabled-toggle"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="voice-enabled-toggle"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="audiobook-default-voice"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="inference-default-model"]')).not.toBeNull();
@@ -126,7 +126,7 @@ describe('RyanAI Settings', () => {
     await changeValue(container.querySelector('input[autocomplete="name"]') as HTMLInputElement, 'Ntsiyeni Ganyane');
     await act(async () => {
       (container.querySelector('[data-testid="voice-enabled-toggle"]') as HTMLInputElement).click();
-      (container.querySelector('[data-testid="calculator-enabled-toggle"]') as HTMLInputElement).click();
+      (container.querySelector('[data-testid="programming-enabled-toggle"]') as HTMLInputElement).click();
       (container.querySelector('[data-testid="copilot-show-alex-status"]') as HTMLInputElement).click();
     });
     await changeValue(container.querySelector('[data-testid="copilot-refresh-interval"]') as HTMLSelectElement, '60');
@@ -139,7 +139,7 @@ describe('RyanAI Settings', () => {
       ryanai_language: 've-ZA',
       ryanai_copilot_settings: { personality: 'balanced', responseStyle: 'balanced', initiative: 'ask-first', collaboration: 'collaborative', useAccountMemory: true, showAlexStatus: false, showDelegationPanel: true, refreshIntervalSeconds: 60 },
       ryanai_voice_enabled: true,
-      ryanai_dashboard_ui_preferences: { calculator: false, music: true },
+      ryanai_dashboard_ui_preferences: { programming: false, music: true },
       ryanai_audiobook_settings: { defaultVoice: 'coral', narrationSpeed: 1 },
       
       ryanai_phonelink_settings: { autoReconnect: true, wifiOnlyTransfers: true, notifyComms: true, notifyTasks: true, allowShareIntake: true, requireConfirmation: true, quietHoursEnabled: false, quietHoursStart: '22:00', quietHoursEnd: '07:00' },

@@ -53,8 +53,8 @@ vi.mock('@/pages/TradingTerminal', () => ({
 vi.mock('@/components/CommunicationsCenter', () => ({
   default: () => <div>Private communications</div>,
 }));
-vi.mock('@/pages/Calculator', () => ({
-  default: () => <div>Private calculator</div>,
+vi.mock('@/pages/BasicProgrammingTools', () => ({
+  default: () => <div>Private Basic Programming Tools</div>,
 }));
 vi.mock('@/pages/MusicWorkspace', () => ({ default: () => <div>Private RyanAI Music workspace</div> }));
 vi.mock('@/pages/PhoneLinkWorkspace', () => ({ default: () => <div>Private PhoneLink workspace</div> }));
@@ -131,7 +131,7 @@ async function mount(hash: string) {
 }
 
 describe('application authentication boundary', () => {
-  it.each(['dashboard', 'calculator', 'cockpit', 'workspace', 'operator', 'operations', 'settings', 'admin', 'studio', 'music', 'phonelink'])(
+  it.each(['dashboard', 'programming', 'cockpit', 'workspace', 'operator', 'operations', 'settings', 'admin', 'studio', 'music', 'phonelink'])(
     'blocks anonymous direct access to %s',
     async (route) => {
       await mount(`/${route}`);
@@ -237,7 +237,7 @@ describe('application authentication boundary', () => {
     await mount('/dashboard');
     await expectContent('Private dashboard');
 
-    for (const path of ['/dashboard', '/calculator', '/quant', '/cockpit', '/workspace', '/audiobook', '/operator', '/operations', '/settings', '/trading', '/studio']) {
+    for (const path of ['/dashboard', '/programming', '/quant', '/cockpit', '/workspace', '/audiobook', '/operator', '/operations', '/settings', '/trading', '/studio']) {
       expect(container.querySelector(`nav[aria-label="Main navigation"] a[href="#${path}"]`)).not.toBeNull();
       expect(container.querySelector(`nav[aria-label="Mobile navigation"] a[href="#${path}"]`)).not.toBeNull();
     }
@@ -354,7 +354,7 @@ describe('application authentication boundary', () => {
   });
 
   it.each([
-    ['calculator', 'Private calculator'],
+    ['programming', 'Private Basic Programming Tools'],
     ['quant', 'Private quant lab'],
     ['trading', 'Private trading terminal'],
     ['audiobook', 'Private audiobook studio'],
