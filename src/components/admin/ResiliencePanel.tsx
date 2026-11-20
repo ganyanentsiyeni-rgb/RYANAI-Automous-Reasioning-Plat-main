@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { DatabaseBackup, RefreshCw, ShieldAlert, Wrench } from 'lucide-react';
 import { authenticatedFetch } from '@/lib/authenticatedFetch';
 
-interface ResilienceStatus {
+interface BackupInventory {\n  status: 'available' | 'not_configured' | 'unavailable';\n  bucket: string | null;\n  retentionDays: number;\n  listedAt: string;\n  hasMore: boolean;\n  reason?: string;\n  items: Array<{ backupId: string; prefix: string; createdAt: string | null; databaseBytes: number | null; databaseSha256: string | null; manifestPresent: boolean; retention: 'within_policy' | 'outside_policy' | 'unknown' }>;\n}\n\ninterface ResilienceStatus {
   generatedAt: string;
   online: boolean;
   backup: {
@@ -19,7 +19,7 @@ interface ResilienceStatus {
 }
 
 export default function ResiliencePanel({ userId }: { userId: string }) {
-  const [status, setStatus] = useState<ResilienceStatus | null>(null);
+  const [status, setStatus] = useState<ResilienceStatus | null>(null);\n  const [inventory, setInventory] = useState<BackupInventory | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -30,6 +30,10 @@ export default function ResiliencePanel({ userId }: { userId: string }) {
       const payload = await response.json() as ResilienceStatus & { error?: string };
       if (!response.ok) throw new Error(payload.error || 'Resilience status unavailable.');
       setStatus(payload);
+      const inventoryResponse = await authenticatedFetch('/api/admin/resilience/backups', { headers: { Accept: 'application/json' } }, userId);
+      const inventoryPayload = await inventoryResponse.json() as BackupInventory;
+      if (!inventoryResponse.ok) throw new Error(inventoryPayload.reason || 'Backup inventory unavailable.');
+      setInventory(inventoryPayload);
       setError('');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Resilience status unavailable.');
@@ -82,6 +86,32 @@ export default function ResiliencePanel({ userId }: { userId: string }) {
           <button disabled={busy || status?.backup.status !== 'ready'} onClick={() => void runBackup()} className="mt-4 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-semibold disabled:opacity-40">
             {busy ? 'Running backup…' : 'Run database backup'}
           </button>
+        </article>
+
+        <article className="rounded-xl border border-slate-800 bg-slate-900 p-4 md:col-span-2">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="font-medium">Backup inventory &amp; retention preview</h3>
+            <span className="text-xs text-slate-400">Policy window: {inventory?.retentionDays ?? 30} days</span>
+          </div>
+          {!inventory || inventory.status !== 'available' ? (
+            <p className="mt-2 text-xs text-amber-200">{inventory?.reason || 'Inventory not verified.'}</p>
+          ) : inventory.items.length === 0 ? (
+            <p className="mt-2 text-xs text-slate-400">No backup artifacts were returned by the storage inventory.</p>
+          ) : (
+            <ul className="mt-3 space-y-2">
+              {inventory.items.map((item) => (
+                <li key={item.prefix} className="rounded-lg border border-slate-800 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-medium">{item.backupId}</span>
+                    <span className={'text-xs ' + (item.retention === 'outside_policy' ? 'text-amber-200' : 'text-slate-400')}>{item.retention.replace('_', ' ')}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-400">{item.createdAt ? new Date(item.createdAt).toLocaleString() : 'Creation time unknown'} · {item.databaseBytes == null ? 'Size unknown' : item.databaseBytes.toLocaleString() + ' bytes'} · manifest {item.manifestPresent ? 'readable' : 'missing/unreadable'}</p>
+                  <p className="mt-1 break-all text-xs text-slate-500">SHA-256: {item.databaseSha256 || 'not available'}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-3 text-xs text-amber-200">Retention is preview-only. No backup objects are deleted or modified by this panel.</p>
         </article>
 
         <article className="rounded-xl border border-slate-800 bg-slate-900 p-4">
