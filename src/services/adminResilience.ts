@@ -203,11 +203,12 @@ export async function listDatabaseBackups(): Promise<BackupInventory> {
       const objects = await listStorageObjects(storage, prefix);
       const dump = objects.find((entry) => entry.name === 'database.dump');
       const manifestObject = objects.find((entry) => entry.name === 'manifest.json');
-      let manifest: {
+      type BackupManifest = {
         backupId?: string;
         createdAt?: string;
         databaseDump?: { bytes?: number; sha256?: string };
-      } | null = null;
+      };
+      let manifest: BackupManifest | null = null;
 
       if (manifestObject) {
         try {
@@ -216,7 +217,7 @@ export async function listDatabaseBackups(): Promise<BackupInventory> {
             storage.key,
             '/storage/v1/object/' + encodeURIComponent(storage.bucket) + '/' + prefix.split('/').map(encodeURIComponent).join('/') + '/manifest.json',
           );
-          manifest = await response.json() as typeof manifest;
+          manifest = await response.json() as BackupManifest;
         } catch {
           manifest = null;
         }
