@@ -63,7 +63,7 @@ try {
       { title: 'Concurrent claim A', objective: 'Claim exactly once.', taskType: taskType.claimA, priority: 20 },
       { title: 'Concurrent claim B', objective: 'Claim exactly once.', taskType: taskType.claimB, priority: 19 },
       { title: 'Successful handler', objective: 'Persist output and completion evidence.', taskType: taskType.success, priority: 18 },
-      { title: 'Policy denial', objective: 'Remain blocked without executing handler.', taskType: taskType.denied, priority: 17 },
+      { title: 'Policy denial', objective: 'Remain blocked without executing handler.', taskType: taskType.denied, requiredCapabilities: ['production.deploy'], priority: 17 },
       { title: 'Authorization retry', objective: 'Release lease for retry.', taskType: taskType.retry, priority: 16 },
       { title: 'Authorization exhaustion', objective: 'Fail at max attempts.', taskType: taskType.exhausted, priority: 15 },
       { title: 'Handler retry', objective: 'Release lease after handler error.', taskType: taskType.handlerFailure, priority: 14 },
