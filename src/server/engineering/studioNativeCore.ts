@@ -121,12 +121,17 @@ export async function claimStudioTask(workerId: string, supportedTaskTypes: read
   const safeLease = Math.max(15, Math.min(leaseSeconds, 600));
   return prisma.$transaction(async (tx) => {
     const claimToken = randomUUID();
-    const claimed = await tx.$queryRawUnsafe<StudioTask[]>(CLAIM_STUDIO_TASK_SQL, [...supportedTaskTypes], workerId, safeLease, workerProfileId ?? null, claimToken);
-    if (claimed[0]) await tx.studioEvent.create({ data: {
-      projectId: claimed[0].projectId, taskId: claimed[0].id, ownerUserId: claimed[0].ownerUserId,
-      actorId: workerId, eventType: 'task.leased', payload: { attempt: claimed[0].attempts, leaseSeconds: safeLease },
+    const claimed = await tx.$queryRawUnsafe<Array<{ id: string }>>(CLAIM_STUDIO_TASK_SQL, [...supportedTaskTypes], workerId, safeLease, workerProfileId ?? null, claimToken);
+    if (!claimed[0]) return null;
+    // PostgreSQL returns raw column names (project_id, owner_user_id, lease_token).
+    // Reload through Prisma so required relations and camelCase fields are present.
+    const leasedTask = await tx.studioTask.findUnique({ where: { id: claimed[0].id } });
+    if (!leasedTask) throw new Error('Claimed Studio task could not be reloaded for lease evidence.');
+    await tx.studioEvent.create({ data: {
+      projectId: leasedTask.projectId, taskId: leasedTask.id, ownerUserId: leasedTask.ownerUserId,
+      actorId: workerId, eventType: 'task.leased', payload: { attempt: leasedTask.attempts, leaseSeconds: safeLease },
     } });
-    return claimed[0] ?? null;
+    return leasedTask;
   });
 }
 
