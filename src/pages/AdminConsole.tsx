@@ -381,7 +381,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
       <AdminSettingsHub />
 
       {identity?.user.isOwner && <SelfPatchPanel />}
-      {identity?.user.isOwner && <ResiliencePanel userId={userId} />
+      {identity?.user.isOwner && <ResiliencePanel userId={userId} />}
 
       {identity?.user.isOwner && <section id="admin-langgraph-setup" className="scroll-mt-6 rounded-2xl border border-amber-300/25 bg-slate-900/70 p-5 sm:p-6" aria-labelledby="admin-langgraph-setup-title">
         <div className="flex flex-wrap items-start justify-between gap-3">
