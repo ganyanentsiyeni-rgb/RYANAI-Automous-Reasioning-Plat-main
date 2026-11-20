@@ -305,7 +305,7 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId: str
   }
   // Gen-X is the execution authority, not an optional observer. It runs for
   // every production worker path before any task handler can perform effects.
-  let genxDecision;
+  let genxDecision: Awaited<ReturnType<typeof authorizeStudioTaskWithGenX>>;
   try {
     genxDecision = await authorizeStudioTaskWithGenX(task, workerId);
   } catch (error) {
