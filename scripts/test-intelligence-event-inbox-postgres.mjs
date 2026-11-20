@@ -168,8 +168,6 @@ try {
     'generic workers must not claim GitHub Event Streams events');
   const ownerClaimNow = new Date(githubEvent.event.availableAt.getTime() + 1_000);
   const ownerClaim = await inbox.claimNextForOwner('github-owner-worker', githubOwner, ownerClaimNow, ['github.pull_request']);
-  const ownerClaimAt = new Date(githubEvent.event.availableAt.getTime() + 1_000);
-  const ownerClaim = await inbox.claimNextForOwner('github-owner-worker', githubOwner, ownerClaimAt, ['github.pull_request']);
   assert.equal(ownerClaim?.id, githubEvent.event.id,
     'the authenticated owner-scoped path must claim its own GitHub event');
   console.log('PASS: PostgreSQL GitHub event lane requires authenticated owner-scoped claim');
