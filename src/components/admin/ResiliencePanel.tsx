@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { DatabaseBackup, RefreshCw, ShieldAlert, Wrench } from 'lucide-react';
 import { authenticatedFetch } from '@/lib/authenticatedFetch';
 
+interface MaintenanceRequest { id: string; actorId: string; createdAt: string; summary: string; startsAt: string; endsAt: string; status: string; }
+interface MaintenanceResponse { status: string; automation: string; activation: string; requests: MaintenanceRequest[]; }
+
 interface BackupInventory {
   status: 'available' | 'not_configured' | 'unavailable';
   bucket: string | null;
@@ -60,6 +63,11 @@ export default function ResiliencePanel({ userId }: { userId: string }) {
   const [endsAt, setEndsAt] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [maintenance, setMaintenance] = useState<MaintenanceResponse | null>(null);
+  const [maintenanceSummary, setMaintenanceSummary] = useState('');
+  const [maintenanceStart, setMaintenanceStart] = useState('');
+  const [maintenanceEnd, setMaintenanceEnd] = useState('');
+  const [maintenanceBusy, setMaintenanceBusy] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -145,6 +153,50 @@ export default function ResiliencePanel({ userId }: { userId: string }) {
       setError(cause instanceof Error ? cause.message : 'Could not close maintenance record.');
     } finally {
       setBusy(false);
+    }
+  }
+
+
+  async function submitMaintenanceRequest() {
+    if (maintenanceBusy) return;
+    setMaintenanceBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const response = await authenticatedFetch('/api/admin/resilience/maintenance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          summary: maintenanceSummary,
+          startsAt: new Date(maintenanceStart).toISOString(),
+          endsAt: new Date(maintenanceEnd).toISOString(),
+        }),
+      }, userId);
+      const payload = await response.json() as { success?: boolean; error?: string };
+      if (!response.ok) throw new Error(payload.error || 'Maintenance request failed.');
+      setNotice('Maintenance request recorded for owner review. No alerting or deployment automation was activated.');
+      setMaintenanceSummary('');
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Maintenance request failed.');
+    } finally {
+      setMaintenanceBusy(false);
+    }
+  }
+
+  async function cancelMaintenanceRequest(id: string) {
+    if (maintenanceBusy || !window.confirm('Cancel this maintenance request?')) return;
+    setMaintenanceBusy(true);
+    try {
+      const response = await authenticatedFetch('/api/admin/resilience/maintenance/' + encodeURIComponent(id) + '/cancel', { method: 'POST' }, userId);
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || 'Cancellation failed.');
+      setNotice('Maintenance request cancelled and audited.');
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Cancellation failed.');
+    } finally {
+      setMaintenanceBusy(false);
     }
   }
 
