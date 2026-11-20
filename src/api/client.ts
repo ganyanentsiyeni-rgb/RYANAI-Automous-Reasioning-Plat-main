@@ -1,85 +1,225 @@
 import type { WebSocketMessage } from '../shared/types.js';
-// src/api/client.ts - Frontend WebSocket client
-import { ref } from 'vue';
+import { ref, type Ref } from 'vue';
+
+export type RyanAIConnectionState =
+  | 'offline'
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting'
+  | 'degraded'
+  | 'disconnected';
 
 export interface ClientOptions {
   url?: string;
   reconnect?: boolean;
   reconnectInterval?: number;
   maxReconnectAttempts?: number;
+  maxReconnectDelay?: number;
 }
 
+interface Subscription {
+  channel: string;
+  handler: (data: unknown) => void;
+}
+
+const DEFAULT_RECONNECT_INTERVAL = 3_000;
+const DEFAULT_MAX_RECONNECT_DELAY = 30_000;
+const DEFAULT_MAX_RECONNECT_ATTEMPTS = 8;
+
+function nextReconnectDelay(base: number, attempt: number, max: number): number {
+  const exponential = Math.min(max, base * 2 ** Math.max(0, attempt - 1));
+  const jitter = Math.floor(exponential * 0.2 * Math.random());
+  return Math.min(max, exponential + jitter);
+}
+
+function randomMessageId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `ryanai-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+/**
+ * Frontend transport continuity layer.
+ *
+ * Important safety boundary:
+ * - subscriptions are restored automatically after reconnect;
+ * - in-flight requests are NOT replayed automatically because the server may
+ *   have committed the request before the connection dropped;
+ * - durable offline work continues through offlineTaskOutbox/offlineTaskSyncClient.
+ *
+ * This prevents duplicate privileged actions while keeping the UI's live event
+ * channels continuously recoverable.
+ */
 export class RyanAIClient {
   private ws: WebSocket | null = null;
   private url: string;
-  private reconnect: boolean;
+  private reconnectEnabled: boolean;
   private reconnectInterval: number;
   private maxReconnectAttempts: number;
+  private maxReconnectDelay: number;
   private reconnectAttempts = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+  private manualDisconnect = false;
+  private connectPromise: Promise<void> | null = null;
   private messageHandlers: Map<string, (data: WebSocketMessage) => void> = new Map();
+  private requestTimeouts: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private eventHandlers: Map<string, ((data: unknown) => void)[]> = new Map();
+  private subscriptions: Map<string, Subscription[]> = new Map();
+  private browserOnline = true;
+  private readonly onlineListener: () => void;
+  private readonly offlineListener: () => void;
 
-  public connected = ref(false);
-  public authenticated = ref(false);
+  public connected: Ref<boolean> = ref(false);
+  public authenticated: Ref<boolean> = ref(false);
+  public connectionState: Ref<RyanAIConnectionState> = ref('disconnected');
 
   constructor(options: ClientOptions = {}) {
     this.url = options.url || `ws://${window.location.host}/ws`;
-    this.reconnect = options.reconnect !== false;
-    this.reconnectInterval = options.reconnectInterval || 3000;
-    this.maxReconnectAttempts = options.maxReconnectAttempts || 5;
+    this.reconnectEnabled = options.reconnect !== false;
+    this.reconnectInterval = Math.max(250, options.reconnectInterval ?? DEFAULT_RECONNECT_INTERVAL);
+    this.maxReconnectAttempts = Math.max(0, options.maxReconnectAttempts ?? DEFAULT_MAX_RECONNECT_ATTEMPTS);
+    this.maxReconnectDelay = Math.max(this.reconnectInterval, options.maxReconnectDelay ?? DEFAULT_MAX_RECONNECT_DELAY);
+
+    this.browserOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
+    this.onlineListener = () => {
+      this.browserOnline = true;
+      if (!this.manualDisconnect && !this.connected.value) {
+        void this.connect();
+      }
+    };
+    this.offlineListener = () => {
+      this.browserOnline = false;
+      this.connectionState.value = 'offline';
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', this.onlineListener);
+      window.addEventListener('offline', this.offlineListener);
+    }
   }
 
   public async connect(token?: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      try {
-        this.ws = new WebSocket(this.url);
+    if (this.connected.value && this.ws?.readyState === WebSocket.OPEN) return;
+    if (this.connectPromise) return this.connectPromise;
 
-        this.ws.onopen = () => {
+    this.manualDisconnect = false;
+    this.connectionState.value = this.browserOnline ? 'connecting' : 'offline';
+
+    if (!this.browserOnline) {
+      return Promise.reject(new Error('Browser is offline; the connection will resume when connectivity returns.'));
+    }
+
+    this.clearReconnectTimer();
+
+    this.connectPromise = new Promise((resolve, reject) => {
+      let settled = false;
+      try {
+        const socket = new WebSocket(this.url);
+        this.ws = socket;
+
+        socket.onopen = () => {
+          settled = true;
           this.connected.value = true;
+          this.connectionState.value = 'connected';
           this.reconnectAttempts = 0;
 
+          // Restore subscriptions only. Requests are intentionally not replayed.
+          for (const channel of this.subscriptions.keys()) {
+            this.sendRaw({
+              id: randomMessageId(),
+              type: 'request',
+              channel: 'subscribe',
+              data: { channel },
+              timestamp: Date.now(),
+            });
+          }
+
           if (token) {
-            this.send('auth.verify', { token });
+            void this.send('auth.verify', { token }).catch(() => {
+              this.authenticated.value = false;
+            });
           }
 
           resolve();
         };
 
-        this.ws.onmessage = (event: MessageEvent) => {
+        socket.onmessage = (event: MessageEvent) => {
           try {
-            const message = JSON.parse(event.data);
-            this.handleMessage(message);
-          } catch (err) {
-            console.error('Message parse error:', err);
+            this.handleMessage(JSON.parse(String(event.data)) as WebSocketMessage);
+          } catch {
+            this.connectionState.value = 'degraded';
+            console.error('RyanAI WebSocket message parse error.');
           }
         };
 
-        this.ws.onclose = () => {
+        socket.onclose = () => {
           this.connected.value = false;
-          if (this.reconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.reconnectAttempts++;
-            setTimeout(() => this.connect(token), this.reconnectInterval);
+          this.authenticated.value = false;
+
+          if (this.manualDisconnect) {
+            this.connectionState.value = 'disconnected';
+            return;
           }
+
+          this.connectionState.value = this.browserOnline ? 'reconnecting' : 'offline';
+          this.scheduleReconnect(token);
         };
 
-        this.ws.onerror = (err: Event) => {
-          console.error('WebSocket error:', err);
-          reject(err);
+        socket.onerror = (error: Event) => {
+          this.connectionState.value = 'degraded';
+          console.error('RyanAI WebSocket transport error:', error);
+          if (!settled) {
+            settled = true;
+            reject(new Error('RyanAI WebSocket connection failed.'));
+          }
         };
-      } catch (err) {
-        reject(err);
+      } catch (error) {
+        settled = true;
+        this.connectionState.value = 'degraded';
+        reject(error instanceof Error ? error : new Error('RyanAI WebSocket connection failed.'));
       }
+    }).finally(() => {
+      this.connectPromise = null;
     });
+
+    return this.connectPromise;
   }
 
   public disconnect(): void {
+    this.manualDisconnect = true;
+    this.clearReconnectTimer();
+    this.connected.value = false;
+    this.authenticated.value = false;
+    this.connectionState.value = 'disconnected';
+
     if (this.ws) {
-      this.ws.close();
+      const socket = this.ws;
       this.ws = null;
+      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+        socket.close();
+      }
     }
   }
 
-  /** Sends a request on the given channel and resolves with the server's response data. */
+  /** Remove browser listeners when the owning UI scope is permanently disposed. */
+  public destroy(): void {
+    this.disconnect();
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', this.onlineListener);
+      window.removeEventListener('offline', this.offlineListener);
+    }
+    for (const timeout of this.requestTimeouts.values()) clearTimeout(timeout);
+    this.requestTimeouts.clear();
+    this.messageHandlers.clear();
+    this.eventHandlers.clear();
+    this.subscriptions.clear();
+  }
+
+  /**
+   * Sends a request. In-flight requests are never automatically replayed after
+   * a transport loss because the server may have committed them already.
+   */
   public send(channel: string, data: unknown): Promise<unknown> {
     return new Promise((resolve, reject) => {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
@@ -87,8 +227,8 @@ export class RyanAIClient {
         return;
       }
 
-      const id = `${Date.now()}-${Math.random()}`;
-      const message = {
+      const id = randomMessageId();
+      const message: WebSocketMessage = {
         id,
         type: 'request',
         channel,
@@ -96,105 +236,155 @@ export class RyanAIClient {
         timestamp: Date.now(),
       };
 
-      // Register handler for response
       const handler = (response: WebSocketMessage) => {
         this.messageHandlers.delete(id);
-        if (response.error) {
-          reject(new Error(response.error.message));
-        } else {
-          resolve(response.data);
-        }
+        const timeout = this.requestTimeouts.get(id);
+        if (timeout) clearTimeout(timeout);
+        this.requestTimeouts.delete(id);
+
+        if (response.error) reject(new Error(response.error.message));
+        else resolve(response.data);
       };
 
       this.messageHandlers.set(id, handler);
-      this.ws.send(JSON.stringify(message));
+      this.requestTimeouts.set(id, setTimeout(() => {
+        this.messageHandlers.delete(id);
+        this.requestTimeouts.delete(id);
+        reject(new Error('Request timeout'));
+      }, 30_000));
 
-      // Timeout after 30s
-      setTimeout(() => {
-        if (this.messageHandlers.has(id)) {
-          this.messageHandlers.delete(id);
-          reject(new Error('Request timeout'));
-        }
-      }, 30000);
+      try {
+        this.sendRaw(message);
+      } catch (error) {
+        this.messageHandlers.delete(id);
+        const timeout = this.requestTimeouts.get(id);
+        if (timeout) clearTimeout(timeout);
+        this.requestTimeouts.delete(id);
+        reject(error instanceof Error ? error : new Error('WebSocket send failed.'));
+      }
     });
   }
 
-  /** Registers an event/stream handler for a channel and returns an unsubscribe function. */
+  /** Registers a live event/stream handler and remembers the channel for reconnect resubscription. */
   public on(channel: string, handler: (data: unknown) => void): () => void {
-    if (!this.eventHandlers.has(channel)) {
-      this.eventHandlers.set(channel, []);
-    }
-    this.eventHandlers.get(channel)!.push(handler);
+    const subscription: Subscription = { channel, handler };
+    const handlers = this.subscriptions.get(channel) ?? [];
+    handlers.push(subscription);
+    this.subscriptions.set(channel, handlers);
 
-    // Return unsubscribe function
+    if (this.connected.value) {
+      void this.send('subscribe', { channel }).catch(() => {
+        this.connectionState.value = 'degraded';
+      });
+    }
+
     return () => {
-      const handlers = this.eventHandlers.get(channel);
-      if (handlers) {
-        const idx = handlers.indexOf(handler);
-        if (idx >= 0) handlers.splice(idx, 1);
-      }
+      const current = this.subscriptions.get(channel);
+      if (!current) return;
+      const next = current.filter((item) => item !== subscription);
+      if (next.length === 0) this.subscriptions.delete(channel);
+      else this.subscriptions.set(channel, next);
     };
   }
 
-  /** Starts a reasoning request and safely extracts the string result, defaulting to '' when absent. */
   public async reasoning(prompt: string, context?: Record<string, unknown>): Promise<string> {
     const response = await this.send('reasoning.start', {
       prompt,
       context,
       sessionId: `session-${Date.now()}`,
     });
-    return typeof response === 'object' && response !== null && 'result' in response && typeof response.result === 'string' ? response.result : '';
+    return typeof response === 'object'
+      && response !== null
+      && 'result' in response
+      && typeof response.result === 'string'
+      ? response.result
+      : '';
   }
 
-  /** Routes an incoming WebSocket message to the matching response handler or event/stream listeners. */
+  private sendRaw(message: WebSocketMessage): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      throw new Error('WebSocket not connected');
+    }
+    this.ws.send(JSON.stringify(message));
+  }
+
   private handleMessage(message: WebSocketMessage<{ authenticated?: boolean }>) {
     const { id, type, channel, data, error } = message;
 
-    // Handle response to request
     if (type === 'response' && this.messageHandlers.has(id)) {
-      const handler = this.messageHandlers.get(id)!;
-      handler({ ...message, error });
+      this.messageHandlers.get(id)!(message);
     }
 
-    // Handle events/streams
     if (type === 'event' || type === 'stream') {
-      const handlers = this.eventHandlers.get(channel);
-      if (handlers) {
-        handlers.forEach(h => h(data));
+      for (const subscription of this.subscriptions.get(channel) ?? []) {
+        subscription.handler(data);
       }
     }
 
-    // Handle auth
-    if (channel === 'auth.verify') {
-      this.authenticated.value = data?.authenticated || false;
+    if (channel === 'auth.verify' && type === 'response') {
+      this.authenticated.value = data?.authenticated === true;
+    }
+
+    if (type === 'error') {
+      this.connectionState.value = 'degraded';
+      console.error(`RyanAI WebSocket error [${error?.code ?? 'UNKNOWN'}]: ${error?.message ?? 'Unknown error'}`);
+    }
+  }
+
+  private scheduleReconnect(token?: string): void {
+    if (!this.reconnectEnabled || this.manualDisconnect || !this.browserOnline) return;
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      this.connectionState.value = 'degraded';
+      return;
+    }
+
+    this.clearReconnectTimer();
+    this.reconnectAttempts += 1;
+    const delay = nextReconnectDelay(
+      this.reconnectInterval,
+      this.reconnectAttempts,
+      this.maxReconnectDelay,
+    );
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = undefined;
+      void this.connect(token).catch(() => {
+        // The socket's close/error lifecycle schedules the next attempt.
+      });
+    }, delay);
+  }
+
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = undefined;
     }
   }
 }
 
-// Export Vue composable
 export function useRyanAI(options?: ClientOptions) {
   const client = new RyanAIClient(options);
   const connected = ref(false);
   const authenticated = ref(false);
+  const connectionState = ref<RyanAIConnectionState>('disconnected');
 
   const connect = async (token?: string) => {
     await client.connect(token);
     connected.value = client.connected.value;
     authenticated.value = client.authenticated.value;
+    connectionState.value = client.connectionState.value;
   };
 
-  const reason = async (prompt: string) => {
-    return await client.reasoning(prompt);
-  };
+  const reason = async (prompt: string) => client.reasoning(prompt);
 
-  const subscribe = (channel: string, handler: (data: unknown) => void) => {
-    return client.on(channel, handler);
-  };
+  const subscribe = (channel: string, handler: (data: unknown) => void) =>
+    client.on(channel, handler);
 
   return {
     client,
     connected,
     authenticated,
+    connectionState,
     connect,
     reason,
     subscribe,
