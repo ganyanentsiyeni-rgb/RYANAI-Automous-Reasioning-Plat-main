@@ -3,7 +3,8 @@
  * Read-only Prisma migration readiness audit.
  * Never applies migrations, alters schema, prints DATABASE_URL, or reads row data.
  */
-import { readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -11,6 +12,39 @@ export function compareMigrationState(localNames, appliedRows) {
   const applied = new Set(appliedRows.filter((row) => row.finished_at && !row.rolled_back_at).map((row) => row.migration_name));
   const local = [...localNames].filter((name) => /^\d{14}_[a-z0-9_]+$/.test(name)).sort();
   return { local, applied: [...applied].sort(), pending: local.filter((name) => !applied.has(name)), databaseOnly: [...applied].filter((name) => !local.includes(name)).sort() };
+}
+
+export function assessMigrationLedger(localMigrations, ledgerRows) {
+  const localByName = new Map(localMigrations.map((item) => [item.name, item.checksum]));
+  const completedRows = ledgerRows.filter((row) => row.finished_at && !row.rolled_back_at);
+  const appliedNames = [...new Set(completedRows.map((row) => row.migration_name))].sort();
+  const localNames = [...localByName.keys()].sort();
+  const completedCounts = new Map();
+  for (const row of completedRows) completedCounts.set(row.migration_name, (completedCounts.get(row.migration_name) ?? 0) + 1);
+  const checksumMismatches = completedRows
+    .filter((row) => localByName.has(row.migration_name) && row.checksum !== localByName.get(row.migration_name))
+    .map((row) => ({ migration: row.migration_name, localChecksum: localByName.get(row.migration_name), databaseChecksum: row.checksum }));
+  const unresolved = ledgerRows
+    .filter((row) => !row.finished_at && !row.rolled_back_at)
+    .map((row) => ({ migration: row.migration_name, startedAt: row.started_at, hasErrorLog: Boolean(row.logs), appliedStepsCount: row.applied_steps_count }));
+  const rolledBack = ledgerRows
+    .filter((row) => row.rolled_back_at)
+    .map((row) => ({ migration: row.migration_name, rolledBackAt: row.rolled_back_at, startedAt: row.started_at }));
+  const duplicateCompleted = [...completedCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([migration, count]) => ({ migration, completedRecords: count }));
+  const appliedSet = new Set(appliedNames);
+  return {
+    local: localNames,
+    localChecksums: Object.fromEntries([...localByName.entries()].sort(([a], [b]) => a.localeCompare(b))),
+    applied: appliedNames,
+    pending: localNames.filter((name) => !appliedSet.has(name)),
+    databaseOnly: appliedNames.filter((name) => !localByName.has(name)),
+    checksumMismatches,
+    unresolved,
+    rolledBack,
+    duplicateCompleted,
+  };
 }
 
 export function assessSchema({ columns, tables, indexes, extensions, memoryColumns, cacheColumns, sharedColumns = new Set(), eventAttemptColumns = null, eventAttemptConstraints = [], eventAttemptIndexes = [], eventAttemptRlsEnabled = null, checkpointWritePrimaryKeyColumns = null }) {
@@ -99,12 +133,16 @@ async function main() {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
   const migrationRoot = resolve(root, 'prisma/migrations');
   const entries = await readdir(migrationRoot, { withFileTypes: true });
-  const localNames = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+  const migrationEntries = entries.filter((entry) => entry.isDirectory()).sort((a, b) => a.name.localeCompare(b.name));
+  const localMigrations = await Promise.all(migrationEntries.map(async (entry) => {
+    const sql = await readFile(resolve(migrationRoot, entry.name, 'migration.sql'));
+    return { name: entry.name, checksum: createHash('sha256').update(sql).digest('hex') };
+  }));
   const { Pool } = await import('pg');
   const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1, connectionTimeoutMillis: 8000 });
   try {
-    const migrationResult = await pool.query('SELECT migration_name, finished_at, rolled_back_at FROM public._prisma_migrations ORDER BY migration_name');
-    const state = compareMigrationState(localNames, migrationResult.rows);
+    const migrationResult = await pool.query('SELECT migration_name, checksum, started_at, finished_at, rolled_back_at, logs, applied_steps_count FROM public._prisma_migrations ORDER BY migration_name, started_at');
+    const state = assessMigrationLedger(localMigrations, migrationResult.rows);
     const [columnResult, tableResult, indexResult, extensionResult, memoryColumnResult, cacheColumnResult, sharedColumnResult, attemptColumnResult, attemptConstraintResult, attemptIndexResult, attemptRlsResult, checkpointWritePrimaryKeyResult] = await Promise.all([
       pool.query("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='agent_runs'"),
       pool.query("SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'"),
@@ -134,7 +172,7 @@ async function main() {
       checkpointWritePrimaryKeyColumns: checkpointWritePrimaryKeyResult.rows[0]?.columns ?? null,
     });
     console.log(JSON.stringify({ mode: 'read-only', migrationState: state, schema, remediation: 'Review each pending migration against live schema before applying. This command never applies DDL.' }, null, 2));
-    if (state.pending.length || state.databaseOnly.length || schema.missingColumns.length || schema.missingTables.length || schema.missingSharedColumns.length || !schema.vector.extensionPresent || schema.vector.missingTables.length || schema.vector.missingMemoryColumns.length || schema.vector.missingCacheColumns.length || schema.vector.missingIndexes.length || !schema.eventAttempts.tablePresent || schema.eventAttempts.missingColumns.length || schema.eventAttempts.mismatchedColumns.length || schema.eventAttempts.missingConstraints.length || schema.eventAttempts.mismatchedConstraints.length || schema.eventAttempts.missingIndexes.length || schema.eventAttempts.mismatchedIndexes.length || schema.eventAttempts.rlsEnabled !== true || !schema.checkpointWrites.primaryKeyMatches) process.exitCode = 1;
+    if (state.pending.length || state.databaseOnly.length || state.checksumMismatches.length || state.unresolved.length || state.duplicateCompleted.length || schema.missingColumns.length || schema.missingTables.length || schema.missingSharedColumns.length || !schema.vector.extensionPresent || schema.vector.missingTables.length || schema.vector.missingMemoryColumns.length || schema.vector.missingCacheColumns.length || schema.vector.missingIndexes.length || !schema.eventAttempts.tablePresent || schema.eventAttempts.missingColumns.length || schema.eventAttempts.mismatchedColumns.length || schema.eventAttempts.missingConstraints.length || schema.eventAttempts.mismatchedConstraints.length || schema.eventAttempts.missingIndexes.length || schema.eventAttempts.mismatchedIndexes.length || schema.eventAttempts.rlsEnabled !== true || !schema.checkpointWrites.primaryKeyMatches) process.exitCode = 1;
   } catch {
     console.error('BLOCKED: migration metadata/schema audit failed. Check database connectivity and permissions; connection details were suppressed.');
     process.exitCode = 2;

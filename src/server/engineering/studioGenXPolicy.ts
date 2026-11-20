@@ -35,7 +35,7 @@ export async function authorizeStudioTaskWithGenX(
 
   if (policy.decision === 'REQUIRE_APPROVAL') {
     const approval = await prisma.studioEvent.findFirst({
-      where: { taskId: task.id, ownerUserId: task.ownerUserId, eventType: 'task.human_approved' },
+      where: { taskId: task.id, ownerUserId: task.ownerUserId, actorId: task.ownerUserId, eventType: 'task.human_approved' },
       orderBy: { createdAt: 'desc' },
       select: { id: true },
     });
