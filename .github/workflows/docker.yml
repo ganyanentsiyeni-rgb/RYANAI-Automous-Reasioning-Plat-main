@@ -68,6 +68,7 @@ jobs:
           REDIS_PASSWORD: ci-only-redis-password
           JWT_SECRET: ci_only_secret_at_least_32_characters_long
           MCP_AUTH_TOKEN: ci-only-mcp-token
+          MCP_PROXY_DELEGATION_TOKEN: ci-only-delegation-placeholder
           CLOUDFLARE_TUNNEL_TOKEN: ci-only-cloudflare-placeholder
         run: docker compose --file docker-compose.yml config --quiet
 
