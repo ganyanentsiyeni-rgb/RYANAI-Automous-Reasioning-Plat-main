@@ -16,6 +16,9 @@ projects:
             branch: main
             region: oregon
             plan: free
+            # Root Directory must be the repository root. A folder value such as "Dockerfile.api" makes the Render build fail.
+            rootDir: .
+            dockerContext: .
             dockerfilePath: ./Dockerfile.api
             healthCheckPath: /health
             autoDeployTrigger: off
