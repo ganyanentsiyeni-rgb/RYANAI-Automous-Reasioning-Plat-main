@@ -120,7 +120,6 @@ FROM candidate WHERE task.id = candidate.id
 RETURNING task.*;
 `;
 
-export async function claimStudioTask(workerId: string, supportedTaskTypes: readonly string[], leaseSeconds = 90, workerProfileId?: string | null) {
 // Raw SQL returns snake_case columns (project_id, lease_token, ...); Prisma's StudioTask is camelCase.
 function toCamelCaseRow<T>(row: Record<string, unknown>): T {
   return Object.fromEntries(
@@ -201,34 +200,6 @@ export function registerStudioTaskHandler(taskType: string, handler: StudioTaskH
   return () => { if (taskHandlers.get(taskType) === handler) taskHandlers.delete(taskType); };
 }
 
-export type StudioTaskAuthorizer = (task: StudioTask) => Promise<void>;
-
-async function releaseStudioTaskAfterAuthorizationFailure(task: StudioTask, workerId: string, error: unknown) {
-  const message = error instanceof Error ? error.message : 'Studio task authorization failed.';
-  const exhausted = task.attempts >= task.maxAttempts;
-  await prisma.$transaction(async (tx) => {
-    const released = await tx.studioTask.updateMany({
-      where: { id: task.id, status: 'running', leaseOwner: workerId, leaseExpiresAt: { gt: new Date() } },
-      data: {
-        status: exhausted ? 'failed' : 'queued',
-        leaseOwner: null,
-        leaseExpiresAt: null,
-        heartbeatAt: null,
-        availableAt: new Date(Date.now() + Math.min(300000, 1000 * 2 ** task.attempts)),
-        completedAt: exhausted ? new Date() : null,
-      },
-    });
-    if (released.count === 1) await tx.studioEvent.create({ data: {
-      projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
-      actorId: workerId,
-      eventType: exhausted ? 'task.authorization_exhausted' : 'task.authorization_failed',
-      payload: { attempt: task.attempts, maxAttempts: task.maxAttempts, error: message.slice(0, 1000) },
-    } });
-  });
-  return { state: 'failed' as const, taskId: task.id, error: message };
-}
-
-export async function runStudioWorkerOnce(workerId: string, workerProfileId: string | null = workerId, leaseSeconds = 90, authorize?: StudioTaskAuthorizer) {
 /** Reports whether this worker profile has at least one real task handler registered in this process. */
 export function getStudioWorkerHandlerReadiness(workerProfileId: string) {
   const profile = RYANAI_WORKER_ROSTER.find((worker) => worker.id === workerProfileId);
@@ -279,27 +250,6 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId = wo
       ? { state: 'blocked' as const, taskId: task.id }
       : { state: 'lease_lost' as const, taskId: task.id };
   }
-  if (authorize) {
-    try {
-      await authorize(task);
-    } catch (error) {
-      return releaseStudioTaskAfterAuthorizationFailure(task, workerId, error);
-    }
-  }
-  await prisma.studioEvent.create({ data: {
-    projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
-    actorId: workerId, eventType: 'task.policy_authorized',
-    payload: {
-      decision: decision.decision ?? 'ALLOW',
-      ruleId: decision.ruleId ?? 'unspecified',
-    },
-  } });
-  try {
-    const isCancelled = () => isStudioTaskCancellationRequested(task.id, workerId);
-    const throwIfCancelled = async () => {
-      if (await isCancelled()) throw new StudioTaskCancelledError();
-    };
-    const output = await handler({
   // Re-check and lock the claimed row in the same transaction as the
   // authorization event. A lease handoff cannot race an authorization receipt.
   const authorized = await prisma.$transaction(async (tx) => {
