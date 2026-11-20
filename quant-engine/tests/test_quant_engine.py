@@ -15,7 +15,7 @@ def bars(count=80):
         # Deterministic uptrend followed by a downtrend to exercise both sides.
         price += -1.0 if index < 20 else 1.4 if index < 50 else -1.6
         result.append({
-            "date": f"2026-01-{index + 1:02d}" if index < 28 else f"2026-02-{index - 27:02d}" if index < 56 else f"2026-03-{index - 55:02d}",
+            "date": (date(2026, 1, 1) + timedelta(days=index)).isoformat(),
             "open": price - 0.2, "high": price + 0.5,
             "low": price - 0.5, "close": price, "volume": 1000,
         })
@@ -264,7 +264,7 @@ class QuantEngineTests(unittest.TestCase):
         self.assertEqual(first["execution_mode"], "risk_research_only")
 
     def test_volatility_rejects_nonstationary_garch_parameters(self):
-        with self.assertRaisesRegex(ValueError, "alpha + beta < 1"):
+        with self.assertRaisesRegex(ValueError, r"alpha \+ beta < 1"):
             run_volatility_forecast({"bars": bars(80), "garch_alpha": 0.1, "garch_beta": 0.9})
 
     def test_volatility_rejects_zero_variance_returns(self):
