@@ -124,6 +124,143 @@ function pgDump(file: string): Promise<void> {
   });
 }
 
+export interface BackupInventoryItem {
+  backupId: string;
+  prefix: string;
+  createdAt: string | null;
+  databaseBytes: number | null;
+  databaseSha256: string | null;
+  manifestPresent: boolean;
+  retention: 'within_policy' | 'outside_policy' | 'unknown';
+}
+
+export interface BackupInventory {
+  status: 'available' | 'not_configured' | 'unavailable';
+  bucket: string | null;
+  retentionDays: number;
+  listedAt: string;
+  items: BackupInventoryItem[];
+  hasMore: boolean;
+  reason?: string;
+}
+
+function retentionWindowDays(): number {
+  const parsed = Number.parseInt(process.env.RYANAI_BACKUP_RETENTION_DAYS || '30', 10);
+  return Number.isFinite(parsed) && parsed >= 7 && parsed <= 3650 ? parsed : 30;
+}
+
+async function listStorageObjects(storage: NonNullable<ReturnType<typeof storageConfig>>, prefix: string) {
+  const response = await storageRequest(
+    storage.baseUrl,
+    storage.key,
+    '/storage/v1/object/list/' + encodeURIComponent(storage.bucket),
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prefix,
+        limit: 1000,
+        offset: 0,
+        sortBy: { column: 'created_at', order: 'desc' },
+      }),
+    },
+  );
+  return await response.json() as Array<{
+    name?: string;
+    id?: string | null;
+    created_at?: string;
+    updated_at?: string;
+    metadata?: { size?: number } | null;
+  }>;
+}
+
+export async function listDatabaseBackups(): Promise<BackupInventory> {
+  const storage = storageConfig();
+  const retentionDays = retentionWindowDays();
+  const listedAt = new Date().toISOString();
+  if (!storage) {
+    return {
+      status: 'not_configured',
+      bucket: null,
+      retentionDays,
+      listedAt,
+      items: [],
+      hasMore: false,
+      reason: 'Private backup storage is not configured.',
+    };
+  }
+
+  try {
+    const folders = await listStorageObjects(storage, 'ryanai-admin');
+    const folderNames = folders
+      .filter((entry) => !entry.id && entry.name)
+      .map((entry) => entry.name as string)
+      .filter((name) => name !== '.' && name !== '..')
+      .slice(0, 100);
+    const now = Date.now();
+    const items: BackupInventoryItem[] = [];
+
+    for (const folder of folderNames) {
+      const prefix = 'ryanai-admin/' + folder;
+      const objects = await listStorageObjects(storage, prefix);
+      const dump = objects.find((entry) => entry.name === 'database.dump');
+      const manifestObject = objects.find((entry) => entry.name === 'manifest.json');
+      let manifest: {
+        backupId?: string;
+        createdAt?: string;
+        databaseDump?: { bytes?: number; sha256?: string };
+      } | null = null;
+
+      if (manifestObject) {
+        try {
+          const response = await storageRequest(
+            storage.baseUrl,
+            storage.key,
+            '/storage/v1/object/' + encodeURIComponent(storage.bucket) + '/' + prefix.split('/').map(encodeURIComponent).join('/') + '/manifest.json',
+          );
+          manifest = await response.json() as typeof manifest;
+        } catch {
+          manifest = null;
+        }
+      }
+
+      const createdAt = manifest?.createdAt || dump?.created_at || manifestObject?.created_at || null;
+      const age = createdAt ? now - Date.parse(createdAt) : Number.NaN;
+      const retention = Number.isFinite(age)
+        ? age > retentionDays * 24 * 60 * 60 * 1000 ? 'outside_policy' : 'within_policy'
+        : 'unknown';
+      items.push({
+        backupId: manifest?.backupId || folder,
+        prefix,
+        createdAt,
+        databaseBytes: manifest?.databaseDump?.bytes ?? dump?.metadata?.size ?? null,
+        databaseSha256: manifest?.databaseDump?.sha256 ?? null,
+        manifestPresent: Boolean(manifestObject && manifest),
+        retention,
+      });
+    }
+
+    return {
+      status: 'available',
+      bucket: storage.bucket,
+      retentionDays,
+      listedAt,
+      items: items.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')),
+      hasMore: folders.length > 100,
+    };
+  } catch (error) {
+    return {
+      status: 'unavailable',
+      bucket: storage.bucket,
+      retentionDays,
+      listedAt,
+      items: [],
+      hasMore: false,
+      reason: error instanceof Error ? error.message : 'Backup inventory could not be listed.',
+    };
+  }
+}
+
 export async function createDatabaseBackup(): Promise<BackupResult> {
   const preflight = await backupPreflight();
   if (preflight.status !== 'ready') return { status: preflight.status === 'not_configured' ? 'not_configured' : 'failed', reason: preflight.reason };
