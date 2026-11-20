@@ -219,22 +219,42 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId = wo
   }
   const decision = evaluateRyanAIStudioTaskAdmission(task);
   if (!decision.allowed) {
-    await prisma.$transaction(async (tx) => {
-      const blocked = await tx.studioTask.updateMany({ where: { id: task.id, status: 'running', leaseOwner: workerId, leaseToken: task.leaseToken, leaseExpiresAt: { gt: new Date() } },
+    const blocked = await prisma.$transaction(async (tx) => {
+      const updated = await tx.studioTask.updateMany({ where: { id: task.id, status: 'running', leaseOwner: workerId, leaseToken: task.leaseToken, leaseExpiresAt: { gt: new Date() } },
         data: { status: 'blocked', leaseOwner: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null, approvalStatus: 'blocked' } });
-      if (blocked.count === 1) await tx.studioEvent.create({ data: { projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
+      if (updated.count !== 1) return false;
+      await tx.studioEvent.create({ data: { projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
         actorId: workerId, eventType: 'task.policy_blocked', payload: { decision: decision.decision ?? 'DENY_OR_REQUIRE_APPROVAL', ruleId: decision.ruleId ?? 'unknown', reason: decision.reason ?? 'RyanAI platform policy denied task admission.' } } });
+      return true;
     });
-    return { state: 'blocked' as const, taskId: task.id };
+    return blocked
+      ? { state: 'blocked' as const, taskId: task.id }
+      : { state: 'lease_lost' as const, taskId: task.id };
   }
-  await prisma.studioEvent.create({ data: {
-    projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
-    actorId: workerId, eventType: 'task.policy_authorized',
-    payload: {
-      decision: decision.decision ?? 'ALLOW',
-      ruleId: decision.ruleId ?? 'unspecified',
-    },
-  } });
+  // Re-check and lock the claimed row in the same transaction as the
+  // authorization event. A lease handoff cannot race an authorization receipt.
+  const authorized = await prisma.$transaction(async (tx) => {
+    const active = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+      `SELECT id FROM public.studio_tasks
+       WHERE id = $1 AND status = 'running' AND lease_owner = $2
+         AND lease_token = $3::uuid AND lease_expires_at > NOW()
+       FOR UPDATE`,
+      task.id,
+      workerId,
+      task.leaseToken,
+    );
+    if (active.length !== 1) return false;
+    await tx.studioEvent.create({ data: {
+      projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
+      actorId: workerId, eventType: 'task.policy_authorized',
+      payload: {
+        decision: decision.decision ?? 'ALLOW',
+        ruleId: decision.ruleId ?? 'unspecified',
+      },
+    } });
+    return true;
+  });
+  if (!authorized) return { state: 'lease_lost' as const, taskId: task.id };
   try {
     const output = await handler({ workerId, claimToken: task.leaseToken ?? '', task, heartbeat: () => heartbeatStudioTask(task.id, workerId, task.leaseToken ?? '') });
     await prisma.$transaction(async (tx) => {
@@ -423,7 +443,9 @@ export const STUDIO_WORKER_HEARTBEAT_STALE_AFTER_MS = 30_000;
 export function classifyStudioWorkerLiveness(status: string, lastSeenAt: Date, now = Date.now()): string {
   if (status === 'stopped') return 'stopped';
   if (status !== 'starting' && status !== 'healthy' && status !== 'degraded') return 'unknown';
-  return now - lastSeenAt.getTime() > STUDIO_WORKER_HEARTBEAT_STALE_AFTER_MS ? 'stale' : status;
+  const lastSeen = lastSeenAt instanceof Date ? lastSeenAt.getTime() : Number.NaN;
+  if (!Number.isFinite(lastSeen) || lastSeen > now + 60_000) return 'unknown';
+  return now - lastSeen > STUDIO_WORKER_HEARTBEAT_STALE_AFTER_MS ? 'stale' : status;
 }
 
 /** Reports durable worker heartbeat evidence; it does not infer process or deployment health. */
@@ -444,10 +466,13 @@ export async function listStudioWorkerHealth(now = Date.now()) {
     ...worker,
     liveness: classifyStudioWorkerLiveness(worker.status, worker.lastSeenAt, now),
   }));
-  const hasIssue = workers.some((worker) => worker.liveness === 'degraded' || worker.liveness === 'stale' || worker.liveness === 'unknown');
+  const hasIssue = workers.some((worker) => worker.liveness === 'degraded' || worker.liveness === 'stale');
+  const hasUnknown = workers.some((worker) => worker.liveness === 'unknown');
   const hasHealthy = workers.some((worker) => worker.liveness === 'healthy');
   const hasStarting = workers.some((worker) => worker.liveness === 'starting');
-  const state = hasIssue ? 'degraded' : hasHealthy ? 'running' : hasStarting ? 'starting' : workers.length ? 'stopped' : 'unknown';
+  const state = hasIssue || (hasUnknown && (hasHealthy || hasStarting))
+    ? 'degraded'
+    : hasHealthy ? 'running' : hasStarting ? 'starting' : hasUnknown ? 'unknown' : workers.length ? 'stopped' : 'unknown';
   return {
     state,
     source: 'studio_worker_heartbeats',
