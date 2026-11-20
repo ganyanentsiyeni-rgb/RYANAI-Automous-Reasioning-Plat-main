@@ -1,4 +1,5 @@
 import type { WebSocketMessage } from '../shared/types.js';
+import { EventReplayCursorStore } from '../shared/eventReplay.js';
 import { ref, type Ref } from 'vue';
 
 export type RyanAIConnectionState =
@@ -15,6 +16,7 @@ export interface ClientOptions {
   reconnectInterval?: number;
   maxReconnectAttempts?: number;
   maxReconnectDelay?: number;
+  eventCursorNamespace?: string;
 }
 
 interface Subscription {
@@ -69,6 +71,7 @@ export class RyanAIClient {
   private browserOnline = true;
   private readonly onlineListener: () => void;
   private readonly offlineListener: () => void;
+  private readonly eventCursor: EventReplayCursorStore;
 
   public connected: Ref<boolean> = ref(false);
   public authenticated: Ref<boolean> = ref(false);
@@ -80,6 +83,7 @@ export class RyanAIClient {
     this.reconnectInterval = Math.max(250, options.reconnectInterval ?? DEFAULT_RECONNECT_INTERVAL);
     this.maxReconnectAttempts = Math.max(0, options.maxReconnectAttempts ?? DEFAULT_MAX_RECONNECT_ATTEMPTS);
     this.maxReconnectDelay = Math.max(this.reconnectInterval, options.maxReconnectDelay ?? DEFAULT_MAX_RECONNECT_DELAY);
+    this.eventCursor = new EventReplayCursorStore(options.eventCursorNamespace ?? 'default');
 
     this.browserOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
     this.onlineListener = () => {
@@ -130,7 +134,7 @@ export class RyanAIClient {
               id: randomMessageId(),
               type: 'request',
               channel: 'subscribe',
-              data: { channel },
+              data: { channel, afterSequence: this.eventCursor.getCursor().sequence },
               timestamp: Date.now(),
             });
           }
@@ -316,8 +320,10 @@ export class RyanAIClient {
     }
 
     if (type === 'event' || type === 'stream') {
+      const accepted = this.eventCursor.accept(message);
+      if (!accepted) return;
       for (const subscription of this.subscriptions.get(channel) ?? []) {
-        subscription.handler(data);
+        subscription.handler(accepted.data);
       }
     }
 
