@@ -80,7 +80,10 @@ jobs:
                     { "context": "Issue 435 migrations and attachment security" },
                     { "context": "Analyze (javascript-typescript)" },
                     { "context": "Analyze (python)" },
-                    { "context": "TruffleHog secret audit" }
+                    { "context": "TruffleHog secret audit" },
+                    { "context": "Validate Docker Compose configuration" },
+                    { "context": "MCPJungle Enterprise runtime authentication" },
+                    { "context": "Audit GitHub workflows" }
                   ]
                 }
               }
@@ -147,6 +150,9 @@ jobs:
               "Analyze (javascript-typescript)",
               "Analyze (python)",
               "TruffleHog secret audit",
+              "Validate Docker Compose configuration",
+              "MCPJungle Enterprise runtime authentication",
+              "Audit GitHub workflows",
           }
           missing = required - contexts
           assert not missing, f"Required check contexts missing: {sorted(missing)}"
