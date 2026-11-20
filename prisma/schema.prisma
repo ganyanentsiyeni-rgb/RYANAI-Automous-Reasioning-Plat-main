@@ -1458,3 +1458,36 @@ model IntelligenceEventAttempt {
   @@map("intelligence_event_attempts")
   @@schema("public")
 }
+
+
+/// Monotonic sequence allocator for one trusted audience/channel pair.
+model RealtimeChannelSequence {
+  audienceType String   @map("audience_type") @db.VarChar(24)
+  audienceId   String   @map("audience_id") @db.VarChar(160)
+  channel      String   @db.VarChar(120)
+  nextSequence BigInt   @default(0) @map("next_sequence")
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@id([audienceType, audienceId, channel])
+  @@map("realtime_channel_sequences")
+  @@schema("public")
+}
+
+/// Durable UI event history. Audience values must be derived by trusted server code.
+model RealtimeEvent {
+  id           String   @id @default(uuid()) @db.Uuid
+  audienceType String   @map("audience_type") @db.VarChar(24)
+  audienceId   String   @map("audience_id") @db.VarChar(160)
+  channel      String   @db.VarChar(120)
+  sequence     BigInt
+  eventType    String   @map("event_type") @db.VarChar(160)
+  payload      Json
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt    DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@unique([audienceType, audienceId, channel, sequence], map: "realtime_events_audience_channel_sequence_key")
+  @@index([audienceType, audienceId, channel, expiresAt, sequence], map: "realtime_events_replay_idx")
+  @@index([expiresAt], map: "realtime_events_retention_idx")
+  @@map("realtime_events")
+  @@schema("public")
+}
