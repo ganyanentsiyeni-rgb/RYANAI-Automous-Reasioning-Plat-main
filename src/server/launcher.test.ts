@@ -24,6 +24,10 @@ vi.mock('fastify', async (importOriginal) => {
 });
 vi.mock('pg', () => {
   class MockPool {
+    on() {
+      return this;
+    }
+
     on = vi.fn().mockReturnThis();
     query = vi.fn().mockImplementation(async () => {
       state.events.push('database');
