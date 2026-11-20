@@ -155,3 +155,6 @@ export function subscribeRyanAiGitHubWorkerWake(
     });
   });
 }
+
+/** Shared channel identifier; safe to import from browser-side wake-listener contracts. */
+export const RYANAI_GITHUB_OWNER_EVENT_WAKE_CHANNEL = "ryanai_github_owner_events";
