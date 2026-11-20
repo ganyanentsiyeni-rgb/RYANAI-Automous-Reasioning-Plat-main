@@ -79,6 +79,7 @@ const runtime = createRyanAIStudioWorkerRuntime({
 
 let shutdownPromise: Promise<void> | null = null;
 let disabledStopResolver: (() => void) | null = null;
+let disabledKeepAlive: NodeJS.Timeout | null = null;
 async function shutdown(signal: string) {
   if (shutdownPromise) return shutdownPromise;
   shutdownPromise = (async () => {
@@ -114,6 +115,8 @@ async function shutdown(signal: string) {
         workerId: runtime.snapshot().workerId,
         shutdownErrors,
       });
+      disabledKeepAlive && clearInterval(disabledKeepAlive);
+      disabledKeepAlive = null;
       disabledStopResolver?.();
       disabledStopResolver = null;
     }
@@ -130,6 +133,10 @@ async function main() {
   try {
     if (process.env.STUDIO_WORKER_ENABLED !== 'true') {
       log('disabled', { workerId: runtime.snapshot().workerId, reason: 'STUDIO_WORKER_ENABLED is not true.' });
+      // A pending Promise alone does not keep a Node.js process alive. Keep
+      // the disabled worker resident so it can receive SIGTERM and emit the
+      // same observable shutdown sequence as an enabled worker.
+      disabledKeepAlive = setInterval(() => {}, 60_000);
       await new Promise<void>((resolve) => { disabledStopResolver = resolve; });
       return;
     }

@@ -82,6 +82,8 @@ Required operations:
 3. Owner-only self-patch UI integration and RYAN-RELAY shared skill/model-role contract (implemented in the preceding branch increment).
 4. Admin resilience status, owner-triggered PostgreSQL backup, read-only private-storage inventory, retention preview and route authorization tests (implementation present; runtime verification pending).
 5. Isolated restore-drill workflow and evidence report; no production target.
+3. Read-only Admin UI inventory and health contracts for backup, recovery and maintenance, with explicit unknown states.
+4. Backup job/inventory/integrity APIs and tests using existing private storage configuration.
 5. Isolated restore-drill workflow and evidence report; no production target.
 6. Maintenance request/window APIs and Admin UI, with optional existing PagerDuty integration.
 7. End-to-end failure/recovery, authorization, security and mobile usability tests.
