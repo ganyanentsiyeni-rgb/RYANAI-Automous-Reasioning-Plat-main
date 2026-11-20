@@ -1,7 +1,21 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@ui-sdk/react/agent", () => ({
+  createAgent: ({ allow }: {
+    allow: (step: { confirm?: string }, context: { signal: AbortSignal }) => boolean | Promise<boolean>;
+  }) => ({
+    act: async ({ steps }: { steps: Array<{ confirm?: string }> }) => {
+      for (const step of steps) {
+        if (step.confirm && !await allow(step, { signal: new AbortController().signal })) return false;
+      }
+      return true;
+    },
+  }),
+}));
+
 import { AgentUiApprovalController } from "./AgentUiApprovalController";
 
 describe("AgentUiApprovalController", () => {
@@ -18,25 +32,29 @@ describe("AgentUiApprovalController", () => {
     document.body.append(container);
     root = createRoot(container);
 
+    let requestAction: (() => Promise<unknown>) | undefined;
     let actPromise: Promise<unknown> | undefined;
 
     await act(async () => {
       root.render(
         <AgentUiApprovalController>
           {(agent) => {
-            actPromise = agent.act({
-              steps: [
-                {
-                  ref: "missing",
-                  action: "click",
-                  confirm: "Run the requested UI action?",
-                },
-              ],
+            requestAction = () => agent.act({
+              steps: [{
+                ref: "missing",
+                action: "click",
+                confirm: "Run the requested UI action?",
+              }],
             });
             return <button type="button">Agent host</button>;
           }}
         </AgentUiApprovalController>,
       );
+    });
+
+    await act(async () => {
+      actPromise = requestAction?.();
+      await Promise.resolve();
     });
 
     const dialog = container.querySelector('[role="dialog"]');
