@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { Prisma } from '@prisma/client';
 import { getWorkerProfile } from '../../agent/workerRegistry.js';
 import { recoverExpiredStudioLeases, runStudioWorkerOnce } from './studioNativeCore.js';
 import { prisma } from '../../lib/prisma.js';
@@ -24,7 +25,7 @@ export interface RyanAIStudioWorkerRuntimeOptions {
   recoveryIntervalMs?: number;
   leaseSeconds?: number;
   executeOnce?: (workerInstanceId: string, workerProfileId: string, leaseSeconds: number) => Promise<{ state: string; taskId?: string; error?: string }>;
-  heartbeat?: (workerInstanceId: string, status: RyanAIStudioWorkerStatus, metadata: Record<string, unknown>) => Promise<void>;
+  heartbeat?: (workerInstanceId: string, status: RyanAIStudioWorkerStatus, metadata: Prisma.InputJsonObject) => Promise<void>;
   recoverExpiredLeases?: () => Promise<{ inspected: number; recovered: number; failed: number }>;
 }
 
@@ -100,7 +101,7 @@ export function createRyanAIStudioWorkerRuntime(
 
   const recover = options.recoverExpiredLeases ?? recoverExpiredStudioLeases;
 
-  const metadata = () => ({
+  const metadata = (): Prisma.InputJsonObject => ({
     workerProfileId: profile.id,
     workerProfileName: profile.name,
     taskTypes: profile.taskTypes,
