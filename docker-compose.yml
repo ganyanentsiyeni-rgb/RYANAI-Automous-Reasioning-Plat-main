@@ -210,6 +210,28 @@ services:
     restart: unless-stopped
     stop_grace_period: 30s
 
+  # Private auth bridge for MCPJungle's static upstream registration.
+  # No host port is published; only containers on ryanai-net can reach this proxy.
+  mcp-proxy:
+    profiles: [mcp-gateway]
+    image: caddy:2-alpine
+    container_name: ryanai-mcp-proxy
+    environment:
+      MCP_PROXY_DELEGATION_TOKEN: ${MCP_PROXY_DELEGATION_TOKEN:?Set a short-lived RyanAI delegated token}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    networks: [ryanai-net]
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, caddy, validate, --config, /etc/caddy/Caddyfile, --adapter, caddyfile]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    stop_grace_period: 30s
+
   # Optional self-hosted MCP gateway. Enterprise mode is opt-in and uses its own DB.
   # Start with: docker compose --profile mcp-gateway up -d mcpjungle-db mcpjungle
   mcpjungle-db:
@@ -245,6 +267,8 @@ services:
       mcpjungle-db:
         condition: service_healthy
       mcp-server:
+        condition: service_healthy
+      mcp-proxy:
         condition: service_healthy
     restart: unless-stopped
     stop_grace_period: 30s
