@@ -1,9 +1,16 @@
 import { EventEmitter } from 'node:events';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { broadcast, registerWebSocketRoutes } from './websocket';
+import { broadcast, publishRealtimeEvent, registerWebSocketRoutes } from './websocket';
 
 vi.mock('../server/routes/auth.js', () => ({ requireAdmin: vi.fn() }));
+const appendRealtimeEvent = vi.fn();
+const replayRealtimeEvents = vi.fn();
+vi.mock('../lib/prisma.js', () => ({ prisma: {} }));
+vi.mock('../server/realtime/eventStore.js', () => ({
+  appendRealtimeEvent: (...args: unknown[]) => appendRealtimeEvent(...args),
+  replayRealtimeEvents: (...args: unknown[]) => replayRealtimeEvents(...args),
+}));
 vi.mock('../shared/logger.js', () => ({
   createLogger: () => ({ info: vi.fn(), debug: vi.fn(), error: vi.fn() }),
 }));
@@ -24,6 +31,9 @@ beforeEach(async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
   sockets = [];
+  appendRealtimeEvent.mockReset();
+  replayRealtimeEvents.mockReset();
+  replayRealtimeEvents.mockResolvedValue({ events: [], nextCursor: 0n, hasMore: false, cursorExpired: false, resyncRequired: false });
   const app = {
     rateLimit: vi.fn(() => vi.fn()),
     get: vi.fn((_path, _options, handler) => {
@@ -143,7 +153,7 @@ describe('WebSocket session and message boundaries', () => {
           message: 'A subscription channel is required',
         },
       });
-      broadcast('metrics', { cpu: 1 });
+      broadcast('system.metrics', { cpu: 1 });
       expect(socket.send).toHaveBeenCalledOnce();
       expect(socket.close).not.toHaveBeenCalled();
     },
@@ -152,14 +162,14 @@ describe('WebSocket session and message boundaries', () => {
   it('delivers broadcasts once to subscribers and removes disconnected subscriptions', async () => {
     const subscribed = await openSocket();
     const other = await openSocket();
-    await request(subscribed, 'subscribe', { channel: 'metrics' });
+    await request(subscribed, 'subscribe', { channel: 'system.metrics' });
     await request(subscribed, 'subscribe', { channel: 'metrics' });
     subscribed.send.mockClear();
-    broadcast('metrics', { cpu: 0 });
+    broadcast('system.metrics', { cpu: 0 });
     expect(subscribed.send).toHaveBeenCalledOnce();
     expect(JSON.parse(subscribed.send.mock.calls[0][0])).toMatchObject({
       type: 'event',
-      channel: 'metrics',
+      channel: 'system.metrics',
       data: { cpu: 0 },
     });
     expect(other.send).not.toHaveBeenCalled();
@@ -167,7 +177,7 @@ describe('WebSocket session and message boundaries', () => {
     // A late broadcast must not reach a removed connection, even if a stale
     // transport reference still reports OPEN.
     subscribed.readyState = subscribed.OPEN;
-    broadcast('metrics', { cpu: 1 });
+    broadcast('system.metrics', { cpu: 1 });
     expect(subscribed.send).toHaveBeenCalledOnce();
   });
 });
