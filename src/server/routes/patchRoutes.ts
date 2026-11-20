@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { SelfPatchSkill } from '../../engine/selfPatchSkill.js';
-import { requireAdmin } from './auth.js';
+import { requireOwner } from './auth.js';
 
 interface PatchApplyBody {
   filePath: string;
@@ -8,7 +8,7 @@ interface PatchApplyBody {
 }
 
 /**
- * Administrator-only production patch proposal endpoint.
+ * Owner-only production patch proposal endpoint.
  * Candidate code is committed to an isolated GitHub branch and opened as a PR.
  * Repository CI and branch protection gate merge and deployment.
  */
@@ -16,7 +16,7 @@ export const registerPatchRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Body: PatchApplyBody }>(
     '/api/patches/apply',
     {
-      preHandler: requireAdmin,
+      preHandler: requireOwner,
       schema: {
         body: {
           type: 'object',
