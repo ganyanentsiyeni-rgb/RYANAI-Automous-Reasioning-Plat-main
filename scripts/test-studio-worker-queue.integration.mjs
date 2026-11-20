@@ -49,6 +49,11 @@ async function withHandler(type, handler, run) {
 }
 
 try {
+  // Studio projects are owned by an application user (FK to users.id), so seed the owner in this disposable database first.
+  await prisma.user.create({
+    data: { id: ownerUserId, email: `studio-worker-queue-${suffix}@example.test` },
+  });
+
   const created = await createStudioProject({
     ownerUserId,
     title: 'Studio worker integration ' + suffix,
@@ -155,5 +160,6 @@ try {
   console.log('Studio worker PostgreSQL integration passed: competing claims, heartbeat, recovery, completion persistence, policy denial, retry, exhaustion and lease-loss fencing.');
 } finally {
   if (projectId) await prisma.studioProject.delete({ where: { id: projectId } }).catch(() => undefined);
+  await prisma.user.delete({ where: { id: ownerUserId } }).catch(() => undefined);
   await prisma.$disconnect();
 }
