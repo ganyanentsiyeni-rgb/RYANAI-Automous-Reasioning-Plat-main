@@ -1,12 +1,42 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { createRyanAiAgentUiBridge, type RyanAiAgentApprovalRequest } from "@/lib/agentUiBridge";
 
 interface PendingApproval {
   id: number;
   summary: string;
-  signal: AbortSignal;
+}
+
+/**
+ * Keeps promise resolvers outside React render state while exposing only
+ * methods to callbacks. Encapsulation avoids passing a ref-capturing callback
+ * into the UI SDK bridge during render.
+ */
+class ApprovalRequestStore {
+  private resolver: ((approved: boolean) => void) | null = null;
+  private requestId = 0;
+
+  begin(resolve: (approved: boolean) => void): number {
+    this.resolver?.(false);
+    const id = ++this.requestId;
+    this.resolver = resolve;
+    return id;
+  }
+
+  resolve(id: number, approved: boolean): void {
+    if (id !== this.requestId || !this.resolver) return;
+    const resolve = this.resolver;
+    this.resolver = null;
+    resolve(approved);
+  }
+
+  cancel(): void {
+    const resolve = this.resolver;
+    this.resolver = null;
+    this.requestId += 1;
+    resolve?.(false);
+  }
 }
 
 export function AgentUiApprovalController({
@@ -15,17 +45,12 @@ export function AgentUiApprovalController({
   children: (agent: ReturnType<typeof createRyanAiAgentUiBridge>) => ReactNode;
 }) {
   const [pending, setPending] = useState<PendingApproval | null>(null);
-  // Refs hold the single outstanding approval's bookkeeping. They are read and
-  // written only from callbacks and effects, never during render.
-  const resolverRef = useRef<((approved: boolean) => void) | null>(null);
-  const requestIdRef = useRef(0);
+  const [approvalStore] = useState(() => new ApprovalRequestStore());
 
-  const resolvePending = useCallback((approved: boolean) => {
-    const resolve = resolverRef.current;
-    resolverRef.current = null;
-    setPending(null);
-    resolve?.(approved);
-  }, []);
+  const resolvePending = useCallback((id: number, approved: boolean) => {
+    approvalStore.resolve(id, approved);
+    setPending((current) => current?.id === id ? null : current);
+  }, [approvalStore]);
 
   const requestApproval = useCallback(
     ({ summary, signal }: RyanAiAgentApprovalRequest) =>
@@ -35,34 +60,23 @@ export function AgentUiApprovalController({
           return;
         }
 
-        if (resolverRef.current) {
-          resolverRef.current(false);
-        }
-
-        const id = ++requestIdRef.current;
-        resolverRef.current = resolve;
-        setPending({ id, summary, signal });
+        const id = approvalStore.begin(resolve);
+        setPending({ id, summary });
 
         const abort = () => {
-          if (requestIdRef.current === id) resolvePending(false);
+          approvalStore.resolve(id, false);
+          setPending((current) => current?.id === id ? null : current);
         };
         signal.addEventListener("abort", abort, { once: true });
       }),
-    [resolvePending],
+    [approvalStore],
   );
 
-  // Unmount cleanup goes through a callback so the effect body does not read
-  // ref.current directly.
   const releasePending = useCallback(() => {
-    resolverRef.current?.(false);
-    resolverRef.current = null;
-  }, []);
+    approvalStore.cancel();
+  }, [approvalStore]);
 
-  useEffect(() => {
-    return () => {
-      releasePending();
-    };
-  }, [releasePending]);
+  useEffect(() => () => releasePending(), [releasePending]);
 
   const agent = createRyanAiAgentUiBridge({ requestApproval });
 
@@ -90,14 +104,14 @@ export function AgentUiApprovalController({
             <div className="mt-6 flex justify-end gap-3">
               <button
                 type="button"
-                onClick={() => resolvePending(false)}
+                onClick={() => resolvePending(pending.id, false)}
                 className="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5"
               >
                 Decline
               </button>
               <button
                 type="button"
-                onClick={() => resolvePending(true)}
+                onClick={() => resolvePending(pending.id, true)}
                 className="rounded-lg border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-sm font-medium text-cyan-100 hover:bg-cyan-300/20"
               >
                 Approve
