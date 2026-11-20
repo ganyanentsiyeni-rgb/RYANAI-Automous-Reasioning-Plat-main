@@ -111,6 +111,7 @@ async function runScript(
           SystemRoot: process.env.SystemRoot,
           E2E_TIMEOUT_MS: '1000',
           INTEGRATION_TIMEOUT_MS: '1000',
+          API_READINESS_TIMEOUT_MS: '1000',
           DATABASE_URL: 'postgresql://fixture@127.0.0.1:1/fixture',
           REDIS_URL: 'redis://127.0.0.1:1',
           ...(options.tokens
@@ -201,10 +202,11 @@ describe('live smoke script contracts', () => {
     );
     expect(result.stderr).toContain('FAIL PostgreSQL connection:');
     expect(result.stderr).toContain('FAIL Redis connection:');
+    expect(result.stderr).toContain('FAIL API readiness and required dependencies:');
     expect(result.stderr).toContain('FAIL Web document and built assets:');
     expect(result.stderr).toContain('FAIL MCP health endpoint:');
     expect(result.stdout).toContain(
-      'Integration checks: 3/7 passed; 0 skipped',
+      'Integration checks: 2/7 passed; 0 skipped',
     );
   });
 
