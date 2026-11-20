@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { DatabaseBackup, RefreshCw, ShieldAlert, Wrench } from 'lucide-react';
 import { authenticatedFetch } from '@/lib/authenticatedFetch';
 
-interface BackupInventory {\n  status: 'available' | 'not_configured' | 'unavailable';\n  bucket: string | null;\n  retentionDays: number;\n  listedAt: string;\n  hasMore: boolean;\n  reason?: string;\n  items: Array<{ backupId: string; prefix: string; createdAt: string | null; databaseBytes: number | null; databaseSha256: string | null; manifestPresent: boolean; retention: 'within_policy' | 'outside_policy' | 'unknown' }>;\n}\n\ninterface ResilienceStatus {
+interface ResilienceStatus {
   generatedAt: string;
   online: boolean;
   backup: {
@@ -110,7 +110,7 @@ export default function ResiliencePanel({ userId }: { userId: string }) {
             <ul className="mt-2 space-y-2">
               {inventory?.items.slice(0, 5).map((item) => (
                 <li key={item.backupId} className="text-xs text-slate-300">
-                  <span className={item.manifestValid ? 'text-emerald-300' : 'text-amber-200'}>
+                  <span className={item.manifestPresent ? 'text-emerald-300' : 'text-amber-200'}>
                     {item.manifestPresent ? 'Manifest present' : 'Manifest incomplete'}
                   </span>
                   {' · '}{item.createdAt ? new Date(item.createdAt).toLocaleString() : 'timestamp unavailable'}
