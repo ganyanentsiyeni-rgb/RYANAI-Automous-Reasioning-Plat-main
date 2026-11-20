@@ -347,8 +347,6 @@ export interface ConnectedGitHubWorkflowEvidence {
     status: string;
     conclusion: string | null;
     url: string | null;
-    jobs: Array<{ name: string; status: string; conclusion: string | null }>;
-  }>;
     jobs: Array<{ id: number; name: string; status: string; conclusion: string | null }>;
   }>;
   jobLogExcerpts: Array<{ runId: number; jobName: string; excerpt: string; lineCount: number }>;
