@@ -21,10 +21,10 @@ interface BackupInventory {\n  status: 'available' | 'not_configured' | 'unavail
 interface BackupInventory {
   status: string;
   bucket: string | null;
-  items: Array<{ backupId: string; createdAt: string; databaseBytes: number | null; databaseSha256: string | null; manifestValid: boolean }>;
-  retentionDays: number | null;
-  retentionMode: 'preview_only';
-  expiredCount: number | null;
+  items: Array<{ backupId: string; createdAt: string | null; databaseBytes: number | null; databaseSha256: string | null; manifestPresent: boolean; retention: 'within_policy' | 'outside_policy' | 'unknown' }>;
+  retentionDays: number;
+  listedAt: string;
+  hasMore: boolean;
   reason?: string;
 }
 
@@ -101,20 +101,21 @@ export default function ResiliencePanel({ userId }: { userId: string }) {
             <h4 className="text-sm font-medium">Backup inventory</h4>
             <p className="mt-1 text-xs text-slate-400">
               {inventory?.status || 'not checked'} · {inventory?.items.length ?? 0} recorded artifacts
-              · retention {inventory?.retentionDays ? inventory.retentionDays + ' days' : 'not configured'}
+              · retention window {inventory?.retentionDays ?? 'unknown'} days
             </p>
             <p className="mt-1 text-xs text-slate-400">
-              Expired candidates: {inventory?.expiredCount ?? 'unknown'} · preview only; no automatic deletion
+              Outside retention window: {inventory?.items.filter((item) => item.retention === 'outside_policy').length ?? 'unknown'} · preview only; no automatic deletion
             </p>
             {inventory?.reason && <p className="mt-1 text-xs text-amber-200">{inventory.reason}</p>}
             <ul className="mt-2 space-y-2">
               {inventory?.items.slice(0, 5).map((item) => (
                 <li key={item.backupId} className="text-xs text-slate-300">
                   <span className={item.manifestValid ? 'text-emerald-300' : 'text-amber-200'}>
-                    {item.manifestValid ? 'Manifest verified' : 'Manifest incomplete'}
+                    {item.manifestPresent ? 'Manifest present' : 'Manifest incomplete'}
                   </span>
                   {' · '}{item.createdAt ? new Date(item.createdAt).toLocaleString() : 'timestamp unavailable'}
                   {' · '}{item.databaseBytes === null ? 'size unknown' : item.databaseBytes.toLocaleString() + ' bytes'}
+                  {' · '}{item.retention.replace('_', ' ')}
                 </li>
               ))}
             </ul>
