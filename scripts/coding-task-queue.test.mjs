@@ -69,7 +69,7 @@ test('claim uses a dedicated atomic SKIP LOCKED coding queue, not agent_runs', a
   });
   const result = await queue.claimNext('worker-1', 30_000);
   assert.equal(result.id, 'coding-1');
-  assert.match(query, /UPDATE "coding_tasks"/);
+  assert.match(query, /UPDATE public\\.coding_tasks/);
   assert.match(query, /FOR UPDATE SKIP LOCKED/);
   assert.doesNotMatch(query, /agent_runs/);
   assert.deepEqual(params, ['worker-1', 30_000]);
