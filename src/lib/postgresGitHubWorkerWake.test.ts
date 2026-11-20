@@ -79,7 +79,7 @@ describe("PostgreSQL GitHub worker wake transport", () => {
     await subscribeRyanAiGitHubWorkerWake({ listen }, "ci", onWake);
 
     await expect(receive("{not-json")).rejects.toThrow("Invalid JSON");
-    await expect(receive(JSON.stringify({ ...signal, version: 1 })))
+    await expect(receive(JSON.stringify({ ...signal, target: 'review', version: 1 })))
       .rejects.toThrow("Invalid RyanAI GitHub worker wake envelope");
     expect(onWake).not.toHaveBeenCalled();
   });

@@ -628,6 +628,7 @@ jobs:
         run: |
           SUPABASE_DB_PORT="$(node -e 'console.log(new URL(process.env.DATABASE_URL).port || 5432)')"
           docker run --rm --network host -e PGPASSWORD postgres:16-alpine createdb -h 127.0.0.1 -p "$SUPABASE_DB_PORT" -U postgres ryanai_prisma_shadow
+          echo "SHADOW_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:${SUPABASE_DB_PORT}/ryanai_prisma_shadow" >> "$GITHUB_ENV"
 
       - name: Export isolated Prisma shadow database URL
         run: |
