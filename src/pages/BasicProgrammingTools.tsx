@@ -87,7 +87,6 @@ export default function BasicProgrammingToolsPage() {
   const visibleProjects = projects.filter(project => {
     const typeMatches = tab === 'research' ? project.projectType === 'research' : project.projectType !== 'research';
     const query = search.trim().toLowerCase();
-    const statusMatches = statusFilter === 'all' || project.status.toLowerCase() === statusFilter;
     const status = project.status.toLowerCase();
     const statusMatches = statusFilter === 'all'
       || (statusFilter === 'pending' && ['pending', 'queued'].includes(status))
