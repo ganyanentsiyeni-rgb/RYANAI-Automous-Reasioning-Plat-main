@@ -28,9 +28,9 @@ function childDiagnostics(processHandle) {
   return [
     'child exitCode=' + processHandle.exitCode,
     'signalCode=' + processHandle.signalCode,
-    'stdout tail:\\n' + diagnosticTail(output),
-    'stderr tail:\\n' + diagnosticTail(errorOutput),
-  ].join('\\n');
+    'stdout tail:\n' + diagnosticTail(output),
+    'stderr tail:\n' + diagnosticTail(errorOutput),
+  ].join('\n');
 }
 
 function waitForExit(processHandle, timeoutMs = 10000) {
@@ -118,9 +118,11 @@ try {
     output.includes('"event":"disabled"'),
     'worker must explicitly report its disabled state.\\n' + (child ? childDiagnostics(child) : ''),
   );
-  const workerIdMatch = output.match(/\\"workerId\\":\\"([^\\"]+)\\"/);
-  assert.ok(workerIdMatch, 'disabled worker log must identify the process instance.\\n' + diagnosticTail(output));
-  const workerId = workerIdMatch[1];
+  const disabledLogLine = output.split(/\r?\n/).find((line) => line.includes('"event":"disabled"'));
+  assert.ok(disabledLogLine, 'disabled worker log line must be present.\n' + diagnosticTail(output));
+  const disabledPayload = JSON.parse(disabledLogLine.slice(disabledLogLine.indexOf('{')));
+  assert.equal(typeof disabledPayload.workerId, 'string', 'disabled worker log must identify the process instance');
+  const workerId = disabledPayload.workerId;
   assert.ok(output.includes('STUDIO_WORKER_ENABLED is not true'), 'disabled reason must be explicit');
   assert.equal(output.includes('"event":"started"'), false, 'disabled worker must not enter its execution loop');
   assert.equal(output.includes('"event":"task-cycle"'), false, 'disabled worker must not run task cycles');
