@@ -61,7 +61,7 @@ beforeEach(() => {
     sourceBuckets: [],
     pgDumpAvailable: true,
   });
-  resilience.listDatabaseBackups.mockResolvedValue({ status: 'available', bucket: 'private-backups', items: [], retentionDays: null, retentionMode: 'preview_only', expiredCount: null });
+  resilience.listDatabaseBackups.mockResolvedValue({ status: 'available', bucket: 'private-backups', items: [], retentionDays: 30, listedAt: '2026-11-20T00:00:00.000Z', hasMore: false });
   resilience.recoveryPreflight.mockReturnValue({ status: 'not_configured', targetLabel: null, productionRestore: 'disabled', writesPerformed: false });
   resilience.createDatabaseBackup.mockResolvedValue({
     status: 'succeeded',
@@ -138,10 +138,10 @@ describe('Admin resilience routes', () => {
     resilience.listDatabaseBackups.mockResolvedValue({
       status: 'available',
       bucket: 'private-backups',
-      items: [{ backupId: 'backup-1', prefix: 'ryanai-admin/backup-1', createdAt: '2026-11-20T00:00:00.000Z', databaseBytes: 1234, databaseSha256: 'sha256-example', manifestValid: true }],
-      retentionDays: null,
-      retentionMode: 'preview_only',
-      expiredCount: null,
+      items: [{ backupId: 'backup-1', prefix: 'ryanai-admin/backup-1', createdAt: '2026-11-20T00:00:00.000Z', databaseBytes: 1234, databaseSha256: 'sha256-example', manifestPresent: true, retention: 'within_policy' }],
+      retentionDays: 30,
+      listedAt: '2026-11-20T00:00:00.000Z',
+      hasMore: false,
     });
     const response = await app.inject({
       method: 'GET',
@@ -149,8 +149,8 @@ describe('Admin resilience routes', () => {
       headers: { 'x-test-user': 'admin-1', 'x-test-role': 'admin' },
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json().items[0].manifestValid).toBe(true);
-    expect(response.json().retentionMode).toBe('preview_only');
+    expect(response.json().items[0].manifestPresent).toBe(true);
+    expect(response.json().items[0].retention).toBe('within_policy');
   });
 
   it('rejects backup execution for administrators who are not the owner', async () => {
