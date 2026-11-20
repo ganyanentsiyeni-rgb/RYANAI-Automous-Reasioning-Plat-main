@@ -17,7 +17,7 @@ export const adminResilienceRoutes: FastifyPluginAsync = async (fastify) => {
         mode: 'isolated-github-pr',
       },
       maintenance: {
-        status: 'request_only',
+        status: 'audited_lifecycle',
         automation: 'disabled',
       },
     };
