@@ -38,6 +38,10 @@ try {
   const claimEvent = await enqueue('competing-claims');
   // availableAt is assigned by PostgreSQL at insert time. Use the persisted
   // timestamp plus a small margin rather than a clock captured before enqueue.
+  const claimNow = new Date(claimEvent.availableAt.getTime() + 1_000);
+  const claims = await Promise.all([
+    inbox.claimNext('concurrent-a', claimNow, ['integration.lifecycle.test']),
+    inbox.claimNext('concurrent-b', claimNow, ['integration.lifecycle.test']),
   // availableAt is assigned by PostgreSQL at insert time. Base both
   // competing claims on the persisted timestamp, not a pre-insert JS clock.
   const claimAt = new Date(claimEvent.availableAt.getTime() + 1_000);
@@ -162,6 +166,8 @@ try {
   ids.push(githubEvent.event.id);
   assert.equal(await inbox.claimNext('generic-worker', now, ['github.pull_request']), null,
     'generic workers must not claim GitHub Event Streams events');
+  const ownerClaimNow = new Date(githubEvent.event.availableAt.getTime() + 1_000);
+  const ownerClaim = await inbox.claimNextForOwner('github-owner-worker', githubOwner, ownerClaimNow, ['github.pull_request']);
   const ownerClaimAt = new Date(githubEvent.event.availableAt.getTime() + 1_000);
   const ownerClaim = await inbox.claimNextForOwner('github-owner-worker', githubOwner, ownerClaimAt, ['github.pull_request']);
   assert.equal(ownerClaim?.id, githubEvent.event.id,
