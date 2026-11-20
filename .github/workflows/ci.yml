@@ -376,9 +376,9 @@ jobs:
           RETURNS uuid
           LANGUAGE sql
           STABLE
-          AS $
+          AS $function$
             SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid;
-          $;
+          $function$;
           CREATE EXTENSION IF NOT EXISTS vector;
           SQL
 
