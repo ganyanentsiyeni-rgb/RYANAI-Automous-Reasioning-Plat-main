@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { requireAdmin, requireOwner } from './auth.js';
-import { backupPreflight, createDatabaseBackup, listDatabaseBackups } from '../../services/adminResilience.js';
+import { backupPreflight, createDatabaseBackup, listDatabaseBackups, recoveryPreflight } from '../../services/adminResilience.js';
 
 export const adminResilienceRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/api/admin/resilience/status', { preHandler: requireAdmin }, async () => {
@@ -10,11 +10,7 @@ export const adminResilienceRoutes: FastifyPluginAsync = async (fastify) => {
       generatedAt: new Date().toISOString(),
       online: true,
       backup,
-      recovery: {
-        status: process.env.RYANAI_RECOVERY_DATABASE_URL ? 'configured' : 'not_configured',
-        productionRestore: 'disabled',
-        drillTarget: process.env.RYANAI_RECOVERY_TARGET_LABEL || null,
-      },
+      recovery: recoveryPreflight(),
       selfPatch: {
         status: process.env.RYANAI_GITHUB_TOKEN && process.env.RYANAI_GITHUB_REPOSITORY ? 'configured' : 'not_configured',
         mode: 'isolated-github-pr',
