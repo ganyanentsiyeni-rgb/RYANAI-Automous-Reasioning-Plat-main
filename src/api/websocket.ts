@@ -5,7 +5,7 @@ import { v4 as uuid } from 'uuid';
 import { WebSocketMessage, AuthContext, ReasoningRequest } from '../shared/types.js';
 import { createLogger } from '../shared/logger.js';
 import { requireAdmin } from '../server/routes/auth.js';
-import { prisma } from '../server/lib/prisma.js';
+import { prisma } from '../lib/prisma.js';
 import { appendRealtimeEvent, replayRealtimeEvents } from '../server/realtime/eventStore.js';
 
 const logger = createLogger('websocket');
@@ -173,6 +173,11 @@ async function handleMessage(context: ConnectionContext, message: WebSocketMessa
           const cursorValue = 'afterSequence' in data ? data.afterSequence : '0';
           const cursorText = typeof cursorValue === 'number' ? String(cursorValue) : cursorValue;
           if (typeof cursorText !== 'string' || !/^(0|[1-9][0-9]*)$/.test(cursorText)) throw new Error('Replay cursor must be a non-negative integer string');
+          // Register before reading history so events published during replay
+          // are not lost. Clients deduplicate by the durable sequence cursor.
+          context.subscriptions.add(data.channel);
+          if (!channels.has(key)) channels.set(key, new Set());
+          channels.get(key)!.add(context.id);
           const replay = await replayRealtimeEvents(prisma, {
             audience: { type: 'user', id: context.auth.userId },
             channel: data.channel,
@@ -185,9 +190,7 @@ async function handleMessage(context: ConnectionContext, message: WebSocketMessa
             for (const event of replay.events) sendDurableEvent(context, data.channel, event);
             response.data = { subscribed: data.channel, replayed: replay.events.length, hasMore: replay.hasMore, nextCursor: replay.nextCursor.toString() };
           }
-          context.subscriptions.add(data.channel);
-          if (!channels.has(key)) channels.set(key, new Set());
-          channels.get(key)!.add(context.id);
+
         } else {
           response.error = { code: 'UNKNOWN_CHANNEL', message: 'Unknown channel' };
         }
