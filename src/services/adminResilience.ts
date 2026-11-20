@@ -310,3 +310,68 @@ export async function createDatabaseBackup(): Promise<BackupResult> {
     await rm(temp, { recursive: true, force: true });
   }
 }
+
+export interface RecoveryPreflight {
+  status: 'not_configured' | 'invalid_target' | 'blocked_same_as_source' | 'isolated_target_configured';
+  targetLabel: string | null;
+  productionRestore: 'disabled';
+  writesPerformed: false;
+  reason?: string;
+}
+
+export function recoveryPreflight(): RecoveryPreflight {
+  const target = process.env.RYANAI_RECOVERY_DATABASE_URL?.trim();
+  const targetLabel = process.env.RYANAI_RECOVERY_TARGET_LABEL?.trim() || null;
+  if (!target || !targetLabel) {
+    return {
+      status: 'not_configured',
+      targetLabel,
+      productionRestore: 'disabled',
+      writesPerformed: false,
+      reason: 'A separately labelled recovery database target is required.',
+    };
+  }
+
+  try {
+    const targetUrl = new URL(target);
+    const sourceValue = process.env.DATABASE_URL?.trim();
+    if (!sourceValue) {
+      return {
+        status: 'not_configured',
+        targetLabel,
+        productionRestore: 'disabled',
+        writesPerformed: false,
+        reason: 'The source database identity is unavailable for safe target comparison.',
+      };
+    }
+    const sourceUrl = new URL(sourceValue);
+    const sameHost = targetUrl.hostname.toLowerCase() === sourceUrl.hostname.toLowerCase();
+    const sameDatabase = decodeURIComponent(targetUrl.pathname) === decodeURIComponent(sourceUrl.pathname);
+    if (sameHost && sameDatabase) {
+      return {
+        status: 'blocked_same_as_source',
+        targetLabel,
+        productionRestore: 'disabled',
+        writesPerformed: false,
+        reason: 'Recovery target resolves to the source database; isolated recovery is blocked.',
+      };
+    }
+    if (targetUrl.protocol !== 'postgres:' && targetUrl.protocol !== 'postgresql:') {
+      throw new Error('Unsupported recovery database protocol.');
+    }
+    return {
+      status: 'isolated_target_configured',
+      targetLabel,
+      productionRestore: 'disabled',
+      writesPerformed: false,
+    };
+  } catch {
+    return {
+      status: 'invalid_target',
+      targetLabel,
+      productionRestore: 'disabled',
+      writesPerformed: false,
+      reason: 'Recovery target is invalid or cannot be safely validated.',
+    };
+  }
+}
