@@ -54,6 +54,9 @@ describe('Studio Gen-X policy adapter', () => {
   it('satisfies REQUIRE_APPROVAL only with an owner approval event', async () => {
     mocks.findFirst.mockResolvedValue({ id: 'approval-event-123' });
     const result = await authorizeStudioTaskWithGenX(task(), 'studio-worker-test');
+    expect(mocks.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { taskId: 'task-123', ownerUserId: 'owner-123', actorId: 'owner-123', eventType: 'task.human_approved' },
+    }));
     expect(result).toMatchObject({
       allowed: true,
       decision: 'REQUIRE_APPROVAL',
