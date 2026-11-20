@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 import { Resolver, lookup } from 'node:dns/promises';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_DOMAIN = 'ryanai.eu.org';
 export const EXPECTED_NAMESERVERS = ['ns1.desec.io', 'ns2.desec.org'];
 
 function normalizeName(value) {
-  return String(value ?? '').trim().replace(/\\.$/, '').toLowerCase();
+  return String(value ?? '').trim().replace(/\.$/, '').toLowerCase();
 }
 
 export async function verifyAuthoritativeDns({
@@ -56,12 +58,12 @@ export async function verifyAuthoritativeDns({
 async function main() {
   const domain = process.argv[2] || DEFAULT_DOMAIN;
   const report = await verifyAuthoritativeDns({ domain });
-  process.stdout.write(`${JSON.stringify(report, null, 2)}\\n`);
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   main().catch((error) => {
-    process.stderr.write(`DNS verification failed: ${error.message}\\n`);
+    process.stderr.write(`DNS verification failed: ${error.message}\n`);
     process.exitCode = 1;
   });
 }
