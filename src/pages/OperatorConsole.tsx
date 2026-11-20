@@ -11,6 +11,7 @@ import {
 import { replayOfflineTaskBatch } from '@/lib/offlineTaskSyncClient';
 import OperationalAwarenessPanel from '@/components/OperationalAwarenessPanel';
 import { AgentReadyTaskFilter, type AgentReadyTaskFilterValue } from '@/components/agent-ui/AgentReadyTaskFilter';
+import { AgentUiApprovalController } from '@/components/agent-ui/AgentUiApprovalController';
 
 interface Handoff {
   fromAgent: string;

@@ -3,8 +3,9 @@ import type { RyanAiPostgresQuery } from '../lib/postgresGitHubEventIdempotencyS
 import { startGitHubOwnerEventWorker, type AuthorizedGitHubOwnerLister, type GitHubOwnerEventWorkerOptions } from './githubOwnerEventDispatcher.js';
 import type { EventHandlerRegistry } from './eventHandlerRegistry.js';
 import type { IntelligenceEventInbox } from './intelligenceEventInbox.js';
+import { RYANAI_GITHUB_OWNER_EVENT_WAKE_CHANNEL } from '../shared/events/githubOwnerEventChannels.js';
 
-export const RYANAI_GITHUB_OWNER_EVENT_WAKE_CHANNEL = 'ryanai_github_owner_events';
+export { RYANAI_GITHUB_OWNER_EVENT_WAKE_CHANNEL } from '../shared/events/githubOwnerEventChannels.js';
 
 export interface GitHubOwnerEventWakeSource {
   subscribe(onWake: () => void): () => void;
