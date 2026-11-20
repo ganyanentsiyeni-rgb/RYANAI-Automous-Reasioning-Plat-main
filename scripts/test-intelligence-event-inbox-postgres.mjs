@@ -36,9 +36,12 @@ async function enqueue(label) {
 
 try {
   const claimEvent = await enqueue('competing-claims');
+  // availableAt is assigned by PostgreSQL at insert time. Use the persisted
+  // timestamp plus a small margin rather than a clock captured before enqueue.
+  const claimNow = new Date(claimEvent.availableAt.getTime() + 1_000);
   const claims = await Promise.all([
-    inbox.claimNext('concurrent-a', now, ['integration.lifecycle.test']),
-    inbox.claimNext('concurrent-b', now, ['integration.lifecycle.test']),
+    inbox.claimNext('concurrent-a', claimNow, ['integration.lifecycle.test']),
+    inbox.claimNext('concurrent-b', claimNow, ['integration.lifecycle.test']),
   ]);
   const winners = claims.filter(Boolean);
   assert.equal(winners.length, 1, 'only one concurrent claimant may own the event');
