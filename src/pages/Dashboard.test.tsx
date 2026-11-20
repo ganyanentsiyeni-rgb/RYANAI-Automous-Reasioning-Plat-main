@@ -52,7 +52,7 @@ describe('System Dashboard workspace launcher', () => {
       ['#/operator', 'Operator Console'],
       ['#/operations', 'Operations Center'],
       ['#/settings', 'Settings'],
-      ['#/calculator', 'Calculator'],
+      ['#/programming', 'Basic Programming Tools'],
       ['#/quant', 'Quant Lab'],
       ['#/trading', 'Trading Terminal'],
       ['#/workspace', 'Reasoning Workspace'],
