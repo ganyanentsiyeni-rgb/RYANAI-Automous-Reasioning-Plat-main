@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import { requireAdmin, requireOwner } from './auth.js';
 import { backupPreflight, createDatabaseBackup, listDatabaseBackups, recoveryPreflight } from '../../services/adminResilience.js';
@@ -53,7 +54,7 @@ export const adminResilienceRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     const startsAt = Date.parse(request.body.startsAt); const endsAt = Date.parse(request.body.endsAt); const now = Date.now();
     if (!Number.isFinite(startsAt) || !Number.isFinite(endsAt) || startsAt <= now || endsAt <= startsAt || endsAt - startsAt > 30 * 24 * 60 * 60 * 1000) return reply.code(400).send({ error: 'Maintenance window must be in the future and no longer than 30 days.' });
-    const id = crypto.randomUUID(); const requestedAt = new Date().toISOString();
+    const id = randomUUID(); const requestedAt = new Date().toISOString();
     await fastify.prisma.jarvisAuditEvent.create({ data: { actorId: request.authUser?.id || 'unknown', eventType: 'admin.resilience.maintenance.requested', resourceId: id, details: { maintenanceId: id, reason: request.body.reason.trim(), startsAt: new Date(startsAt).toISOString(), endsAt: new Date(endsAt).toISOString(), requestedAt, infrastructureChanged: false } } });
     return reply.code(201).send({ success: true, id, status: 'requested', requestedAt });
   });
