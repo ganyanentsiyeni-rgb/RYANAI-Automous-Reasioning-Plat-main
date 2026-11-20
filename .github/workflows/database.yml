@@ -630,7 +630,8 @@ jobs:
           SUPABASE_DB_PORT="$(node -e 'const u = new URL(process.env.DATABASE_URL); if (!["postgres:", "postgresql:"].includes(u.protocol)) throw new Error("DATABASE_URL must be PostgreSQL"); process.stdout.write(u.port || "5432")')"
           docker run --rm --network host -e PGPASSWORD postgres:16-alpine createdb -h 127.0.0.1 -p "$SUPABASE_DB_PORT" -U postgres ryanai_prisma_shadow
           SHADOW_DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:${SUPABASE_DB_PORT}/ryanai_prisma_shadow"
-          node --input-type=module -e 'const u = new URL(process.env.SHADOW_DATABASE_URL); if (!["postgres:", "postgresql:"].includes(u.protocol) || u.hostname !== "127.0.0.1" || u.pathname !== "/ryanai_prisma_shadow") throw new Error("Invalid disposable Prisma shadow URL")' 
+          SHADOW_DATABASE_URL="$SHADOW_DATABASE_URL" node --input-type=module -e 'const u = new URL(process.env.SHADOW_DATABASE_URL); if (!["postgres:", "postgresql:"].includes(u.protocol) || u.hostname !== "127.0.0.1" || u.pathname !== "/ryanai_prisma_shadow") throw new Error("Invalid disposable Prisma shadow URL")'
+
           echo "SHADOW_DATABASE_URL=$SHADOW_DATABASE_URL" >> "$GITHUB_ENV"
 
       - name: Provision Supabase Auth objects in Prisma shadow database
