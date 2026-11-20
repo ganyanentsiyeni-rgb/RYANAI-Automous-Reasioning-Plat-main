@@ -32,6 +32,8 @@ let app: FastifyInstance;
 const auditCreate = vi.fn();
 const auditFindMany = vi.fn();
 const auditFindFirst = vi.fn();
+const auditFindMany = vi.fn();
+const auditFindFirst = vi.fn();
 
 beforeAll(async () => {
   app = Fastify();
@@ -54,6 +56,8 @@ beforeAll(async () => {
 afterAll(async () => app.close());
 beforeEach(() => {
   vi.clearAllMocks();
+  auditFindMany.mockResolvedValue([]);
+  auditFindFirst.mockResolvedValue(null);
   auditFindMany.mockResolvedValue([]);
   auditFindFirst.mockResolvedValue(null);
   resilience.backupPreflight.mockResolvedValue({
@@ -190,6 +194,45 @@ describe('Admin resilience routes', () => {
     expect(auditCreate).not.toHaveBeenCalled();
   });
 
+  it('records a future maintenance request as an audited owner action', async () => {
+    const startsAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const endsAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    const response = await app.inject({
+      method: 'POST', url: '/api/admin/resilience/maintenance',
+      headers: { 'x-test-user': 'owner-1', 'x-test-role': 'admin', 'x-test-owner': 'true' },
+      payload: { reason: 'Planned database maintenance', startsAt, endsAt },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json().status).toBe('requested');
+    expect(auditCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: 'admin.resilience.maintenance.requested', details: expect.objectContaining({ infrastructureChanged: false }) }) }));
+  });
+
+  it('rejects maintenance requests from non-owner administrators', async () => {
+    const response = await app.inject({
+      method: 'POST', url: '/api/admin/resilience/maintenance',
+      headers: { 'x-test-user': 'admin-2', 'x-test-role': 'admin', 'x-test-owner': 'false' },
+      payload: { reason: 'Planned database maintenance', startsAt: new Date(Date.now() + 3600000).toISOString(), endsAt: new Date(Date.now() + 7200000).toISOString() },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(auditCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects maintenance windows that are in the past or exceed the maximum duration', async () => {
+    const response = await app.inject({
+      method: 'POST', url: '/api/admin/resilience/maintenance',
+      headers: { 'x-test-user': 'owner-1', 'x-test-role': 'admin', 'x-test-owner': 'true' },
+      payload: { reason: 'Invalid maintenance window', startsAt: new Date(Date.now() - 3600000).toISOString(), endsAt: new Date(Date.now() + 3600000).toISOString() },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(auditCreate).not.toHaveBeenCalled();
+  });
+
+  it('lists maintenance history from durable audit events', async () => {
+    auditFindMany.mockResolvedValue([{ id: 'audit-1', actorId: 'owner-1', eventType: 'admin.resilience.maintenance.requested', resourceId: 'maint-1', createdAt: new Date('2026-11-20T00:00:00.000Z'), details: { maintenanceId: 'maint-1', reason: 'Planned database maintenance', startsAt: '2026-11-21T00:00:00.000Z', endsAt: '2026-11-21T01:00:00.000Z', requestedAt: '2026-11-20T00:00:00.000Z' } }]);
+    const response = await app.inject({ method: 'GET', url: '/api/admin/resilience/maintenance', headers: { 'x-test-user': 'admin-1', 'x-test-role': 'admin' } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().records[0].id).toBe('maint-1');
+  });
   it('rejects backup execution for administrators who are not the owner', async () => {
     const response = await app.inject({
       method: 'POST',
