@@ -53,6 +53,7 @@ import { internalJarvisRoutes } from './routes/internalJarvisRoutes.js';
 import { mcpDelegationRoutes } from './routes/mcpDelegation.js';
 import { providerGatewayRoutes } from './routes/providerGateway.js';
 import { registerPatchRoutes } from './routes/patchRoutes.js';
+import { adminResilienceRoutes } from './routes/adminResilience.js';
 import { inspectDatabaseSchema } from './databaseSchema.js';
 import { agentOperationsRoutes } from './routes/agentOperations.js';
 import { memoryRoutes } from './routes/memory.js';
@@ -836,6 +837,7 @@ async function registerPlugins() {
   await fastify.register(mcpDelegationRoutes);
   await fastify.register(providerGatewayRoutes);
   await fastify.register(registerPatchRoutes);
+  await fastify.register(adminResilienceRoutes);
 }
 
 // ============================================================================
