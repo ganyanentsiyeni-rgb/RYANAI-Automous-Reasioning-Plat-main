@@ -84,7 +84,7 @@ if (process.env.DATABASE_URL) {
 }
 
 if (process.env.REDIS_URL) {
-  await check('Redis connection', () => redisPing(process.env.REDIS_URL));
+  await check('Redis connection', () => redisPing(process.env.REDIS_URL, { timeoutMs }));
 } else {
   await check('Redis connection', () =>
     compose('redis', ['redis-cli', '--no-auth-warning', 'ping']),
