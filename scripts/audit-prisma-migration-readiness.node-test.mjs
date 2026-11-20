@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compareMigrationState, assessSchema } from './audit-prisma-migration-readiness.mjs';
+import { compareMigrationState, assessMigrationLedger, assessSchema } from './audit-prisma-migration-readiness.mjs';
 
 const memoryColumns = new Set(['session_id', 'role', 'content', 'timestamp']);
 const cacheColumns = new Set(['id', 'prompt', 'response', 'embedding', 'created_at']);
@@ -22,6 +22,54 @@ test('ignores rolled-back and unfinished ledger entries', () => {
   ]);
   assert.deepEqual(result.pending, ['20261102150000_agent_run_execution_scope']);
   assert.deepEqual(result.databaseOnly, []);
+});
+
+test('reconciles exact SHA-256 checksums and reports unfinished, rolled-back, and duplicate ledger records', () => {
+  const local = [
+    { name: '20261101000000_first', checksum: 'sha-first' },
+    { name: '20261102000000_second', checksum: 'sha-second' },
+  ];
+  const rows = [
+    { migration_name: '20261101000000_first', checksum: 'sha-first', started_at: '2026-11-01T00:00:00Z', finished_at: '2026-11-01T00:00:01Z', rolled_back_at: null, logs: null, applied_steps_count: 1 },
+    { migration_name: '20261102000000_second', checksum: 'old-checksum', started_at: '2026-11-02T00:00:00Z', finished_at: '2026-11-02T00:00:01Z', rolled_back_at: null, logs: null, applied_steps_count: 2 },
+    { migration_name: '20261103000000_unfinished', checksum: 'failed-checksum', started_at: '2026-11-03T00:00:00Z', finished_at: null, rolled_back_at: null, logs: 'sensitive SQL error text', applied_steps_count: 0 },
+    { migration_name: '20261104000000_rolled_back', checksum: 'rolled-checksum', started_at: '2026-11-04T00:00:00Z', finished_at: null, rolled_back_at: '2026-11-04T00:01:00Z', logs: 'historical failure', applied_steps_count: 0 },
+    { migration_name: '20261101000000_first', checksum: 'sha-first', started_at: '2026-11-01T00:02:00Z', finished_at: '2026-11-01T00:02:01Z', rolled_back_at: null, logs: null, applied_steps_count: 1 },
+    { migration_name: '20261105000000_database_only', checksum: 'unknown', started_at: '2026-11-05T00:00:00Z', finished_at: '2026-11-05T00:00:01Z', rolled_back_at: null, logs: null, applied_steps_count: 1 },
+  ];
+  const result = assessMigrationLedger(local, rows);
+  assert.deepEqual(result.pending, []);
+  assert.deepEqual(result.databaseOnly, ['20261105000000_database_only']);
+  assert.deepEqual(result.checksumMismatches, [{
+    migration: '20261102000000_second', localChecksum: 'sha-second', databaseChecksum: 'old-checksum',
+  }]);
+  assert.deepEqual(result.unresolved, [{
+    migration: '20261103000000_unfinished',
+    startedAt: '2026-11-03T00:00:00Z',
+    hasErrorLog: true,
+    appliedStepsCount: 0,
+  }]);
+  assert.deepEqual(result.rolledBack, [{
+    migration: '20261104000000_rolled_back',
+    rolledBackAt: '2026-11-04T00:01:00Z',
+    startedAt: '2026-11-04T00:00:00Z',
+  }]);
+  assert.deepEqual(result.duplicateCompleted, [{
+    migration: '20261101000000_first', completedRecords: 2,
+  }]);
+  assert.equal(JSON.stringify(result).includes('sensitive SQL error text'), false);
+  assert.equal(JSON.stringify(result).includes('historical failure'), false);
+});
+
+test('keeps rolled-back historical rows visible without treating them as applied', () => {
+  const result = assessMigrationLedger(
+    [{ name: '20261101000000_first', checksum: 'same' }],
+    [{ migration_name: '20261101000000_first', checksum: 'same', started_at: '2026-11-01', finished_at: null, rolled_back_at: '2026-11-02', logs: null, applied_steps_count: 0 }],
+  );
+  assert.deepEqual(result.applied, []);
+  assert.deepEqual(result.pending, ['20261101000000_first']);
+  assert.equal(result.rolledBack.length, 1);
+  assert.deepEqual(result.unresolved, []);
 });
 
 test('detects schema and vector-memory drift, including runtime columns and indexes', () => {
