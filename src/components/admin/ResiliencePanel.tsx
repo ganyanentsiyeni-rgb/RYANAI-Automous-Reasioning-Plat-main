@@ -29,7 +29,7 @@ interface BackupInventory {
 }
 
 export default function ResiliencePanel({ userId }: { userId: string }) {
-  const [status, setStatus] = useState<ResilienceStatus | null>(null);\n  const [inventory, setInventory] = useState<BackupInventory | null>(null);
+  const [status, setStatus] = useState<ResilienceStatus | null>(null);
   const [error, setError] = useState('');
   const [inventory, setInventory] = useState<BackupInventory | null>(null);
   const [notice, setNotice] = useState('');
