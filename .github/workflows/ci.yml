@@ -309,6 +309,100 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+
+  postgres19-compatibility:
+    name: PostgreSQL 19 compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: validate
+    services:
+      postgres:
+        image: pgvector/pgvector:pg19
+        env:
+          POSTGRES_USER: ryanai
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: ryanai_pg19
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ryanai -d ryanai_pg19"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://ryanai:ci_password@127.0.0.1:5432/ryanai_pg19
+      AUDIOBOOK_DATABASE_URL: postgresql://ryanai:ci_password@127.0.0.1:5432/ryanai_pg19
+      AUDIOBOOK_DATABASE_URL_UNPOOLED: postgresql://ryanai:ci_password@127.0.0.1:5432/ryanai_pg19
+      NODE_ENV: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --include=dev --legacy-peer-deps
+
+      - name: Prepare PostgreSQL 19 compatibility fixture
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+              CREATE ROLE anon NOLOGIN;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+              CREATE ROLE authenticated NOLOGIN;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+              CREATE ROLE service_role NOLOGIN BYPASSRLS;
+            END IF;
+          END $;
+          CREATE SCHEMA IF NOT EXISTS auth;
+          CREATE TABLE IF NOT EXISTS auth.users (
+            id uuid PRIMARY KEY,
+            email text,
+            raw_user_meta_data jsonb NOT NULL DEFAULT '{}'::jsonb,
+            created_at timestamptz DEFAULT now(),
+            updated_at timestamptz DEFAULT now()
+          );
+          CREATE EXTENSION IF NOT EXISTS vector;
+          SQL
+
+      - name: Verify PostgreSQL 19 server and required extension
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT current_setting('server_version') AS server_version;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT extname, extversion FROM pg_extension WHERE extname = 'vector';"
+
+      - name: Validate Prisma schemas against PostgreSQL 19
+        run: |
+          set -euo pipefail
+          npx prisma validate --schema=prisma/schema.prisma
+          npx prisma validate --schema=prisma/audiobook/schema.prisma
+
+      - name: Apply RyanAI Prisma migrations to PostgreSQL 19
+        run: |
+          set -euo pipefail
+          npx prisma migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
+          npx prisma migrate deploy --schema=prisma/schema.prisma
+
+      - name: Validate PostgreSQL 19 migration result
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          SELECT current_setting('server_version_num')::int >= 190000 AS postgres_19;
+          SELECT count(*) > 0 AS users_table_present
+            FROM information_schema.tables
+           WHERE table_schema = 'public' AND table_name = 'users';
+          SELECT extversion FROM pg_extension WHERE extname = 'vector';
+          SQL
+
   issue-435-supabase:
     name: Issue 435 migrations and attachment security
     runs-on: ubuntu-latest
