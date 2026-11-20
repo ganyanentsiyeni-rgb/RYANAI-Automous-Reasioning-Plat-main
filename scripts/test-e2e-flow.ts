@@ -24,14 +24,14 @@ async function test(name: string, run: () => Promise<void>): Promise<void> {
  * Report the results and set a failing exit code if any executed check fails.
  */
 async function main(): Promise<void> {
-  await test('API health endpoint', async () => {
+  await test('API liveness endpoint', async () => {
     const response = await fetch(apiHealthUrl, {
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const health = await response.json();
-    if (health.status !== 'online')
-      throw new Error('API did not report online');
+    if (health.status !== 'alive')
+      throw new Error('API liveness endpoint did not report alive');
   });
 
   await test('Frontend is served', async () => {
