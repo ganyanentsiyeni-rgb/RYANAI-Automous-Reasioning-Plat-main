@@ -16,6 +16,7 @@ const suffix = randomUUID();
 const ownerUserId = randomUUID();
 let projectId;
 let child;
+let childExitObserved = false;
 let output = '';
 let errorOutput = '';
 
@@ -24,6 +25,7 @@ function waitForExit(processHandle, timeoutMs = 10000) {
     // Listen for the actual exit event. exitCode/signalCode may be updated
     // before this event is delivered, so they are not an exit-event substitute.
     const onExit = (code, signal) => {
+      childExitObserved = true;
       clearTimeout(timer);
       resolve({ code, signal });
     };
@@ -123,10 +125,12 @@ try {
 
   console.log('Studio worker disabled-gate integration passed: real entrypoint stayed idle, left PostgreSQL task queued, and shut down cleanly.');
 } finally {
-  if (child && child.exitCode === null && child.signalCode === null) {
-    const exitPromise = waitForExit(child);
+  if (child && !childExitObserved) {
+    // The graceful-shutdown assertion window has ended. If no exit event was
+    // observed (even when signalCode is already populated), force cleanup now.
+    const exitPromise = waitForExit(child, 5000);
     child.kill('SIGKILL');
-    await exitPromise;
+    await exitPromise.catch(() => undefined);
   }
   if (projectId) await prisma.studioProject.delete({ where: { id: projectId } }).catch(() => undefined);
   await prisma.user.delete({ where: { id: ownerUserId } }).catch(() => undefined);
