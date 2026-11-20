@@ -11,6 +11,7 @@ import { RYANAI_WORKER_ROSTER } from '../../agent/workerRegistry.js';
 import { findModuleAgentForTask } from '../../agent/moduleAgentRegistry.js';
 import { evaluateRyanAIStudioTaskAdmission } from './ryanaiStudioTaskAdmission.js';
 import { evaluateRyanAIToolCapabilityPolicy } from './ryanaiToolCapabilityPolicy.js';
+import { authorizeStudioTaskWithGenX } from './studioGenXPolicy.js';
 
 export type StudioProjectType = 'engineering' | 'research' | 'design' | 'data' | 'automation';
 export interface CreateStudioProjectInput {
@@ -213,26 +214,37 @@ export type StudioTaskAuthorizer = (task: StudioTask) => Promise<void>;
 async function releaseStudioTaskAfterAuthorizationFailure(task: StudioTask, workerId: string, error: unknown) {
   const message = error instanceof Error ? error.message : 'Studio task authorization failed.';
   const exhausted = task.attempts >= task.maxAttempts;
-  await prisma.$transaction(async (tx) => {
-    const released = await tx.studioTask.updateMany({
-      where: { id: task.id, status: 'running', leaseOwner: workerId, leaseExpiresAt: { gt: new Date() } },
+  const released = await prisma.$transaction(async (tx) => {
+    const result = await tx.studioTask.updateMany({
+      where: {
+        id: task.id,
+        status: 'running',
+        leaseOwner: workerId,
+        leaseToken: task.leaseToken,
+        leaseExpiresAt: { gt: new Date() },
+      },
       data: {
         status: exhausted ? 'failed' : 'queued',
         leaseOwner: null,
+        leaseToken: null,
         leaseExpiresAt: null,
         heartbeatAt: null,
         availableAt: new Date(Date.now() + Math.min(300000, 1000 * 2 ** task.attempts)),
         completedAt: exhausted ? new Date() : null,
       },
     });
-    if (released.count === 1) await tx.studioEvent.create({ data: {
+    if (result.count !== 1) return false;
+    await tx.studioEvent.create({ data: {
       projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
       actorId: workerId,
       eventType: exhausted ? 'task.authorization_exhausted' : 'task.authorization_failed',
       payload: { attempt: task.attempts, maxAttempts: task.maxAttempts, error: message.slice(0, 1000) },
     } });
+    return true;
   });
-  return { state: 'failed' as const, taskId: task.id, error: message };
+  return released
+    ? { state: 'failed' as const, taskId: task.id, error: message }
+    : { state: 'lease_lost' as const, taskId: task.id };
 }
 
 /** Reports whether this worker profile has at least one real task handler registered in this process. */
@@ -291,6 +303,54 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId: str
       ? { state: 'blocked' as const, taskId: task.id }
       : { state: 'lease_lost' as const, taskId: task.id };
   }
+  // Gen-X is the execution authority, not an optional observer. It runs for
+  // every production worker path before any task handler can perform effects.
+  let genxDecision: Awaited<ReturnType<typeof authorizeStudioTaskWithGenX>>;
+  try {
+    genxDecision = await authorizeStudioTaskWithGenX(task, workerId);
+  } catch (error) {
+    return releaseStudioTaskAfterAuthorizationFailure(task, workerId, error);
+  }
+  if (!genxDecision.allowed) {
+    const blocked = await prisma.$transaction(async (tx) => {
+      const updated = await tx.studioTask.updateMany({
+        where: {
+          id: task.id,
+          status: 'running',
+          leaseOwner: workerId,
+          leaseToken: task.leaseToken,
+          leaseExpiresAt: { gt: new Date() },
+        },
+        data: {
+          status: 'blocked',
+          leaseOwner: null,
+          leaseToken: null,
+          leaseExpiresAt: null,
+          heartbeatAt: null,
+          approvalRequired: genxDecision.decision === 'REQUIRE_APPROVAL' ? true : task.approvalRequired,
+          approvalStatus: 'blocked',
+        },
+      });
+      if (updated.count !== 1) return false;
+      await tx.studioEvent.create({ data: {
+        projectId: task.projectId,
+        taskId: task.id,
+        ownerUserId: task.ownerUserId,
+        actorId: workerId,
+        eventType: 'task.genx_policy_blocked',
+        payload: {
+          decision: genxDecision.decision,
+          ruleId: genxDecision.ruleId,
+          reason: genxDecision.reason,
+        },
+      } });
+      return true;
+    });
+    return blocked
+      ? { state: 'blocked' as const, taskId: task.id }
+      : { state: 'lease_lost' as const, taskId: task.id };
+  }
+
   // Re-check and lock the claimed row in the same transaction as the
   // authorization event. A lease handoff cannot race an authorization receipt.
 
@@ -298,32 +358,7 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId: str
     try {
       await authorize(task);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Studio task authorization failed.';
-      const exhausted = task.attempts >= task.maxAttempts;
-      const released = await prisma.$transaction(async (tx) => {
-        const result = await tx.studioTask.updateMany({
-          where: { id: task.id, status: 'running', leaseOwner: workerId, leaseToken: task.leaseToken, leaseExpiresAt: { gt: new Date() } },
-          data: {
-            status: exhausted ? 'failed' : 'queued',
-            leaseOwner: null,
-            leaseToken: null,
-            leaseExpiresAt: null,
-            heartbeatAt: null,
-            availableAt: new Date(Date.now() + Math.min(300000, 1000 * 2 ** task.attempts)),
-            completedAt: exhausted ? new Date() : null,
-          },
-        });
-        if (result.count === 1) await tx.studioEvent.create({ data: {
-          projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
-          actorId: workerId,
-          eventType: exhausted ? 'task.authorization_exhausted' : 'task.authorization_failed',
-          payload: { attempt: task.attempts, maxAttempts: task.maxAttempts, error: message.slice(0, 1000) },
-        } });
-        return result.count === 1;
-      });
-      return released
-        ? { state: 'failed' as const, taskId: task.id, error: message }
-        : { state: 'lease_lost' as const, taskId: task.id };
+      return releaseStudioTaskAfterAuthorizationFailure(task, workerId, error);
     }
 
     // Authorization may take long enough for the lease to expire. Renew with
@@ -347,7 +382,7 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId: str
     await tx.studioEvent.create({ data: {
       projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
       actorId: workerId, eventType: 'task.policy_authorized',
-      payload: { decision: decision.decision ?? 'ALLOW', ruleId: decision.ruleId ?? 'unspecified' },
+      payload: { decision: decision.decision ?? 'ALLOW', ruleId: decision.ruleId ?? 'unspecified', genxDecision: genxDecision.decision, genxRuleId: genxDecision.ruleId, approvalReference: genxDecision.approvalReference ?? null },
     } });
     return true;
   });

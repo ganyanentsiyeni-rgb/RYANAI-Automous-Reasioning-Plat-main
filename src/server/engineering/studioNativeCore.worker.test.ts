@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   eventCreate: vi.fn(),
   directTaskUpdateMany: vi.fn(),
   transaction: vi.fn(),
+  genxAuthorize: vi.fn(),
 }));
 
 vi.mock('../../lib/prisma.js', () => ({
@@ -18,6 +19,8 @@ vi.mock('../../lib/prisma.js', () => ({
     studioEvent: { create: mocks.eventCreate },
   },
 }));
+
+vi.mock('./studioGenXPolicy.js', () => ({ authorizeStudioTaskWithGenX: mocks.genxAuthorize }));
 
 import { recoverExpiredStudioLeases, registerStudioTaskHandler, runStudioWorkerOnce } from './studioNativeCore.js';
 import { createRyanAICiDiagnosticsTaskHandler } from './ryanaiCiDiagnosticsWorker.js';
@@ -54,6 +57,62 @@ describe('Studio worker queue lifecycle', () => {
     mocks.taskUpdateMany.mockResolvedValue({ count: 1 });
     mocks.directTaskUpdateMany.mockResolvedValue({ count: 1 });
     mocks.eventCreate.mockResolvedValue({});
+    mocks.genxAuthorize.mockResolvedValue({
+      allowed: true,
+      decision: 'ALLOW',
+      ruleId: 'GX-STUDIO-TEST-ALLOW',
+      reason: 'Test authorization accepted.',
+    });
+  });
+
+  it('blocks execution on a Gen-X DENY and records the policy decision', async () => {
+    mocks.genxAuthorize.mockResolvedValue({
+      allowed: false,
+      decision: 'DENY',
+      ruleId: 'GX-EXEC-001',
+      reason: 'Execution is prohibited.',
+    });
+    const handler = vi.fn().mockResolvedValue({ ok: true });
+    const unregister = registerStudioTaskHandler('ci-failure', handler);
+    try {
+      const result = await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
+      expect(result).toMatchObject({ state: 'blocked', taskId: 'task-1' });
+      expect(mocks.genxAuthorize).toHaveBeenCalledWith(expect.objectContaining({ id: 'task-1' }), 'worker-1');
+      expect(handler).not.toHaveBeenCalled();
+      expect(mocks.taskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ leaseToken: 'lease-token-1' }),
+        data: expect.objectContaining({ status: 'blocked', approvalStatus: 'blocked' }),
+      }));
+      expect(mocks.eventCreate).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({
+          eventType: 'task.genx_policy_blocked',
+          payload: expect.objectContaining({ decision: 'DENY', ruleId: 'GX-EXEC-001' }),
+        }),
+      }));
+    } finally {
+      unregister();
+    }
+  });
+
+  it('converts Gen-X REQUIRE_APPROVAL into an owner-approvable blocked task', async () => {
+    mocks.genxAuthorize.mockResolvedValue({
+      allowed: false,
+      decision: 'REQUIRE_APPROVAL',
+      ruleId: 'GX-HIL-001',
+      reason: 'Owner approval is required.',
+    });
+    const handler = vi.fn().mockResolvedValue({ ok: true });
+    const unregister = registerStudioTaskHandler('ci-failure', handler);
+    try {
+      const result = await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
+      expect(result).toMatchObject({ state: 'blocked', taskId: 'task-1' });
+      expect(handler).not.toHaveBeenCalled();
+      expect(mocks.taskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ status: 'blocked', approvalRequired: true, approvalStatus: 'blocked' }),
+      }));
+    } finally {
+      unregister();
+    }
   });
 
   it('releases a token-fenced lease when the optional authorizer fails', async () => {
