@@ -4,8 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { broadcast, publishRealtimeEvent, registerWebSocketRoutes } from './websocket';
 
 vi.mock('../server/routes/auth.js', () => ({ requireAdmin: vi.fn() }));
-const appendRealtimeEvent = vi.fn();
-const replayRealtimeEvents = vi.fn();
+const { appendRealtimeEvent, replayRealtimeEvents } = vi.hoisted(() => ({ appendRealtimeEvent: vi.fn(), replayRealtimeEvents: vi.fn() }));
 vi.mock('../lib/prisma.js', () => ({ prisma: {} }));
 vi.mock('../server/realtime/eventStore.js', () => ({
   appendRealtimeEvent: (...args: unknown[]) => appendRealtimeEvent(...args),
@@ -180,4 +179,42 @@ describe('WebSocket session and message boundaries', () => {
     broadcast('system.metrics', { cpu: 1 });
     expect(subscribed.send).toHaveBeenCalledOnce();
   });
+
+  it('replays only the authenticated user audience and returns a string cursor', async () => {
+    replayRealtimeEvents.mockResolvedValue({
+      events: [{ id: 'event-1', sequence: 7n, eventType: 'task.updated', payload: { taskId: 'task-1' }, createdAt: new Date('2026-01-01T00:00:00Z') }],
+      nextCursor: 7n, hasMore: false, cursorExpired: false, resyncRequired: false,
+    });
+    const socket = await openSocket();
+    await request(socket, 'subscribe', { channel: 'tasks.updates', afterSequence: '6' });
+    expect(replayRealtimeEvents).toHaveBeenCalledWith({}, {
+      audience: { type: 'user', id: 'verified-admin' }, channel: 'tasks.updates', afterSequence: 6n, limit: 50,
+    });
+    const replayed = socket.send.mock.calls.map(call => JSON.parse(call[0]));
+    expect(replayed).toContainEqual(expect.objectContaining({ type: 'event', channel: 'tasks.updates', data: expect.objectContaining({ sequence: '7', eventType: 'task.updated' }) }));
+    expect(replayed.at(-1)).toMatchObject({ type: 'response', data: { subscribed: 'tasks.updates', replayed: 1, nextCursor: '7' } });
+  });
+
+  it('persists a user event before delivering it to that user subscribers', async () => {
+    const socket = await openSocket();
+    await request(socket, 'subscribe', { channel: 'tasks.updates' });
+    socket.send.mockClear();
+    appendRealtimeEvent.mockResolvedValue({
+      id: 'event-2', sequence: 1n, eventType: 'task.created', payload: { taskId: 'task-2' }, createdAt: new Date('2026-01-01T00:00:01Z'),
+    });
+    const result = await publishRealtimeEvent({ userId: 'verified-admin', channel: 'tasks.updates', eventType: 'task.created', payload: { taskId: 'task-2' } });
+    expect(appendRealtimeEvent).toHaveBeenCalledWith({}, {
+      audience: { type: 'user', id: 'verified-admin' }, channel: 'tasks.updates', eventType: 'task.created', payload: { taskId: 'task-2' },
+    });
+    expect(result).toEqual({ id: 'event-2', sequence: '1' });
+    expect(JSON.parse(socket.send.mock.calls[0][0])).toMatchObject({ type: 'event', data: { sequence: '1', eventType: 'task.created' } });
+  });
+
+  it('requests full resynchronization when the replay cursor has expired', async () => {
+    replayRealtimeEvents.mockResolvedValue({ events: [], nextCursor: 3n, hasMore: false, cursorExpired: true, resyncRequired: true });
+    const socket = await openSocket();
+    await request(socket, 'subscribe', { channel: 'tasks.updates', afterSequence: '0' });
+    expect(JSON.parse(socket.send.mock.calls.at(-1)![0])).toMatchObject({ type: 'response', data: { cursorExpired: true, resyncRequired: true, nextCursor: '3' } });
+  });
+
 });
