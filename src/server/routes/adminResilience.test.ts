@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 const resilience = vi.hoisted(() => ({
   backupPreflight: vi.fn(),
   createDatabaseBackup: vi.fn(),
+  listDatabaseBackups: vi.fn(),
 }));
 
 vi.mock('../../services/adminResilience.js', () => resilience);
@@ -64,6 +65,14 @@ beforeEach(() => {
     prefix: 'ryanai-admin/example-backup-1',
     databaseBytes: 1234,
     databaseSha256: 'sha256-example',
+  });
+  resilience.listDatabaseBackups.mockResolvedValue({
+    status: 'available',
+    bucket: 'private-backups',
+    retentionDays: 30,
+    listedAt: '2026-11-20T00:00:00.000Z',
+    items: [],
+    hasMore: false,
   });
   resilience.listDatabaseBackups.mockResolvedValue({
     status: 'available',
