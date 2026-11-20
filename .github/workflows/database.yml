@@ -602,6 +602,8 @@ jobs:
         # The Supabase-owned objects were asserted immediately above. Remove
         # only those separate-ownership tables from this disposable CI stack;
         # do not weaken the Prisma comparison or alter any hosted database.
+        # CASCADE also drops Supabase storage policies that reference the
+        # attachment scan tables (for example ryanai_attachment_read_clean_own_conversation).
         run: |
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
           DROP TABLE
@@ -612,7 +614,8 @@ jobs:
             public.community_feedback_submissions,
             public.community_beta_interest,
             public.ryanai_attachment_scans,
-            public.ryanai_attachment_upload_events;
+            public.ryanai_attachment_upload_events
+          CASCADE;
           SQL
 
       - name: Compare the migrated Supabase and Prisma database with the Prisma data model

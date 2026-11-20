@@ -84,38 +84,6 @@ export async function createStudioProject(input: CreateStudioProjectInput) {
   });
 }
 
-export function classifyStudioWorkerLiveness(status: string, lastSeenAt: Date, now = Date.now()): string {
-  if (status === 'stopped') return 'stopped';
-  if (!['starting', 'healthy', 'degraded'].includes(status)) return 'unknown';
-  const lastSeen = lastSeenAt instanceof Date ? lastSeenAt.getTime() : Number.NaN;
-  if (!Number.isFinite(lastSeen) || lastSeen > now + 60_000) return 'unknown';
-  return now - lastSeen > 30_000 ? 'stale' : status;
-}
-
-export async function listStudioWorkerHealth() {
-  const heartbeats = await prisma.studioWorkerHeartbeat.findMany({
-    orderBy: { lastSeenAt: 'desc' },
-    take: 100,
-    select: { workerId: true, status: true, startedAt: true, lastSeenAt: true, stoppedAt: true, metadata: true },
-  });
-  const workers = heartbeats.map((worker) => ({
-    ...worker,
-    liveness: classifyStudioWorkerLiveness(worker.status, worker.lastSeenAt),
-  }));
-  const hasIssue = workers.some((worker) => worker.liveness === 'degraded' || worker.liveness === 'stale');
-  const hasHealthy = workers.some((worker) => worker.liveness === 'healthy');
-  const hasStarting = workers.some((worker) => worker.liveness === 'starting');
-  const hasUnknown = workers.some((worker) => worker.liveness === 'unknown');
-  const state = hasIssue ? 'degraded' : hasHealthy ? 'running' : hasStarting ? 'starting' : hasUnknown ? 'unknown' : workers.length ? 'stopped' : 'unknown';
-  return {
-    state,
-    source: 'studio_worker_heartbeats',
-    staleAfterMs: 30_000,
-    workers,
-    note: 'This reports persisted Studio worker heartbeats, not deployment or provider readiness.',
-  };
-}
-
 export async function listStudioProjects(ownerUserId: string) {
   return prisma.studioProject.findMany({
     where: { ownerUserId }, orderBy: { updatedAt: 'desc' }, take: 50,
@@ -389,6 +357,65 @@ export async function getStudioDeliveryReadiness(projectId: string, ownerUserId:
     humanReviewRequired: true,
     note: 'Worker completion or artifact upload is not release approval. Delivery requires independently verifiable quality evidence and human review.',
   };
+}
+
+export function isStudioTaskCancellableStatus(status: string): boolean {
+  return status === 'queued' || status === 'running';
+}
+
+export class StudioTaskCancelledError extends Error {
+  constructor() {
+    super('Studio task was cancelled or its worker lease was lost.');
+    this.name = 'StudioTaskCancelledError';
+  }
+}
+
+/** Owner-scoped cancellation; the conditional update prevents racing completion or another cancel. */
+export async function cancelStudioTask(taskId: string, ownerUserId: string, reason?: string) {
+  return prisma.$transaction(async (tx) => {
+    const task = await tx.studioTask.findFirst({
+      where: { id: taskId, ownerUserId },
+      select: { id: true, projectId: true, status: true },
+    });
+    if (!task) throw new Error('Studio task not found for this owner.');
+    if (task.status === 'cancelled') return { cancelled: true, alreadyCancelled: true, status: 'cancelled' };
+    if (!isStudioTaskCancellableStatus(task.status)) {
+      return { cancelled: false, alreadyCancelled: false, status: task.status };
+    }
+
+    const now = new Date();
+    const updated = await tx.studioTask.updateMany({
+      where: { id: task.id, ownerUserId, status: task.status },
+      data: {
+        status: 'cancelled',
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        heartbeatAt: null,
+        completedAt: now,
+      },
+    });
+    if (updated.count !== 1) return { cancelled: false, alreadyCancelled: false, status: 'changed' };
+
+    await tx.studioEvent.create({
+      data: {
+        projectId: task.projectId,
+        taskId: task.id,
+        ownerUserId,
+        actorId: ownerUserId,
+        eventType: 'task.cancelled',
+        payload: { previousStatus: task.status, reason: reason?.trim().slice(0, 500) || 'Cancelled by owner.' },
+      },
+    });
+    return { cancelled: true, alreadyCancelled: false, status: 'cancelled' };
+  });
+}
+
+export async function isStudioTaskCancellationRequested(taskId: string, workerId: string): Promise<boolean> {
+  const task = await prisma.studioTask.findFirst({
+    where: { id: taskId },
+    select: { status: true, leaseOwner: true },
+  });
+  return task?.status === 'cancelled' || (task?.status === 'running' && task.leaseOwner !== workerId);
 }
 
 export const STUDIO_WORKER_HEARTBEAT_STALE_AFTER_MS = 30_000;

@@ -163,6 +163,7 @@ export function createRyanAiGitHubEventWorker(
           throw new AggregateError(
             [error, ...cleanupErrors],
             "GitHub event subscription startup failed and cleanup was incomplete.",
+            { cause: error },
           );
         }
         throw error;

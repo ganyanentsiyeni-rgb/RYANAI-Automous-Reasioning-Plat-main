@@ -139,6 +139,21 @@ export const engineeringEvidenceRoutes: FastifyPluginAsync = async (fastify) => 
     }
   });
 
+  fastify.post<{ Params: { taskId: string }; Body: { reason?: string } }>('/api/engineering/studio/native/tasks/:taskId/cancel', {
+    schema: {
+      params: { type: 'object', required: ['taskId'], additionalProperties: false, properties: { taskId: { type: 'string', minLength: 1, maxLength: 64 } } },
+      body: { type: 'object', additionalProperties: false, properties: { reason: { type: 'string', maxLength: 500 } } },
+    },
+  }, async (request, reply) => {
+    try {
+      const result = await cancelStudioTask(request.params.taskId, request.authUser!.id, request.body?.reason);
+      return reply.code(200).send({ success: true, ...result });
+    } catch (error) {
+      request.log.warn({ err: error }, 'Studio task cancellation was rejected');
+      return reply.code(404).send({ error: error instanceof Error ? error.message : 'Studio task was not found for this owner.' });
+    }
+  });
+
   fastify.post<{ Params: { taskId: string } }>('/api/engineering/studio/native/tasks/:taskId/approve', {
     schema: { params: { type: 'object', required: ['taskId'], properties: { taskId: { type: 'string', minLength: 1, maxLength: 64 } } } },
   }, async (request, reply) => {

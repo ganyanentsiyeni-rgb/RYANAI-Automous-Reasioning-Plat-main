@@ -157,7 +157,7 @@ export const RYANAI_MODULE_AGENT_ROSTER: readonly ModuleAgentDefinition[] = Obje
     moduleId: 'operations',
     moduleName: 'Operations Center',
     name: 'Reliability Coordinator',
-    responsibility: 'Correlate operational incidents, service readiness, queues, retries, and recovery evidence across modules; escalate systemic risks through RyanAI's approval and incident workflow.',
+    responsibility: 'Correlate operational incidents, service readiness, queues, retries, and recovery evidence across modules; escalate systemic risks through RyanAI\'s approval and incident workflow.',
     taskTypes: ['operations-health-audit', 'incident-review', 'queue-reliability-audit'],
     allowedActions: SAFE_MODULE_ACTIONS,
     kpis: ['incident triage accuracy', 'recovery evidence completeness', 'repeat incident reduction'],

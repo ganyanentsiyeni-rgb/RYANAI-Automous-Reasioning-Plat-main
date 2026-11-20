@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { createRyanAiAgentUiBridge, type RyanAiAgentApprovalRequest } from "@/lib/agentUiBridge";
 
 interface PendingApproval {
@@ -9,21 +9,27 @@ interface PendingApproval {
   signal: AbortSignal;
 }
 
+interface ApprovalStore {
+  resolver: ((approved: boolean) => void) | null;
+  requestId: number;
+}
+
 export function AgentUiApprovalController({
   children,
 }: {
   children: (agent: ReturnType<typeof createRyanAiAgentUiBridge>) => ReactNode;
 }) {
   const [pending, setPending] = useState<PendingApproval | null>(null);
-  const resolverRef = useRef<((approved: boolean) => void) | null>(null);
-  const requestIdRef = useRef(0);
+  // Stable, mutable bookkeeping for the single outstanding approval. It is only
+  // read and written from callbacks and effects, never during render.
+  const [store] = useState<ApprovalStore>(() => ({ resolver: null, requestId: 0 }));
 
   const resolvePending = useCallback((approved: boolean) => {
-    const resolve = resolverRef.current;
-    resolverRef.current = null;
+    const resolve = store.resolver;
+    store.resolver = null;
     setPending(null);
     resolve?.(approved);
-  }, []);
+  }, [store]);
 
   const requestApproval = useCallback(
     ({ summary, signal }: RyanAiAgentApprovalRequest) =>
@@ -33,28 +39,28 @@ export function AgentUiApprovalController({
           return;
         }
 
-        if (resolverRef.current) {
-          resolverRef.current(false);
+        if (store.resolver) {
+          store.resolver(false);
         }
 
-        const id = ++requestIdRef.current;
-        resolverRef.current = resolve;
+        const id = ++store.requestId;
+        store.resolver = resolve;
         setPending({ id, summary, signal });
 
         const abort = () => {
-          if (requestIdRef.current === id) resolvePending(false);
+          if (store.requestId === id) resolvePending(false);
         };
         signal.addEventListener("abort", abort, { once: true });
       }),
-    [resolvePending],
+    [resolvePending, store],
   );
 
   useEffect(() => {
     return () => {
-      resolverRef.current?.(false);
-      resolverRef.current = null;
+      store.resolver?.(false);
+      store.resolver = null;
     };
-  }, []);
+  }, [store]);
 
   const agent = createRyanAiAgentUiBridge({ requestApproval });
 

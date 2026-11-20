@@ -94,6 +94,8 @@ export function extractRyanAIGitHubJobLogExcerpts(archive: Uint8Array): RyanAIGi
       throw new Error('github_job_log_archive_invalid');
     }
     if (decoded.length !== uncompressedSize) throw new Error('github_job_log_archive_invalid');
+    // Stripping terminal escape sequences from job logs is intentional.
+    // eslint-disable-next-line no-control-regex
     const text = decoded.toString('utf8').replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '');
     const lines = text.split(/\r?\n/);
     const selected = lines
