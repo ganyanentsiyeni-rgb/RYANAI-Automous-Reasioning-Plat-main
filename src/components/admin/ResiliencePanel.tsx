@@ -13,7 +13,7 @@ interface BackupInventory {\n  status: 'available' | 'not_configured' | 'unavail
     pgDumpAvailable: boolean;
     reason?: string;
   };
-  recovery: { status: string; productionRestore: string; drillTarget: string | null };
+  recovery: { status: string; productionRestore: string; targetLabel: string | null; writesPerformed: false; reason?: string };
   selfPatch: { status: string; mode: string };
   maintenance: { status: string; automation: string };
 }
@@ -149,8 +149,10 @@ export default function ResiliencePanel({ userId }: { userId: string }) {
 
         <article className="rounded-xl border border-slate-800 bg-slate-900 p-4">
           <div className="flex items-center gap-2"><ShieldAlert className="h-5 w-5" /><h3 className="font-medium">Disaster recovery</h3></div>
-          <p className="mt-2 text-sm">Recovery drill target: {status?.recovery.drillTarget || 'not configured'}</p>
-          <p className="mt-1 text-xs text-slate-400">Production restore: {status?.recovery.productionRestore}</p>
+          <p className="mt-2 text-sm">Recovery drill target: {status?.recovery.targetLabel || 'not configured'}</p>
+          <p className="mt-1 text-xs text-slate-400">Production restore: {status?.recovery.productionRestore} · writes performed: {String(status?.recovery.writesPerformed ?? false)}</p>
+          <p className="mt-1 text-xs text-slate-400">Target validation: {status?.recovery.status || 'unknown'}</p>
+          {status?.recovery.reason && <p className="mt-1 text-xs text-amber-200">{status.recovery.reason}</p>}
           <p className="mt-2 text-xs text-amber-200">Restore drills remain isolated and require an explicitly configured recovery target.</p>
         </article>
 
