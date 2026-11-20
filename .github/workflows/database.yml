@@ -630,8 +630,6 @@ jobs:
           docker run --rm --network host -e PGPASSWORD postgres:16-alpine createdb -h 127.0.0.1 -p "$SUPABASE_DB_PORT" -U postgres ryanai_prisma_shadow
 
       - name: Export isolated Prisma shadow database URL
-        env:
-          DATABASE_URL: ${{ env.DATABASE_URL }}
         run: |
           set -euo pipefail
           SHADOW_DATABASE_URL="$(node --input-type=module <<'NODE'
