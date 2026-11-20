@@ -544,7 +544,7 @@ export async function inspectConnectedGitHubWorkflowEvidence(
     workflowRuns,
     jobLogExcerpts,
     jobLogStatus,
-    complete: runsComplete && jobsComplete && exactRuns.length === rawRuns.length,
+    complete: runsComplete && jobsComplete,
   };
 }
 
