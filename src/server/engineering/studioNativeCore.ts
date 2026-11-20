@@ -116,6 +116,13 @@ FROM candidate WHERE task.id = candidate.id
 RETURNING task.*;
 `;
 
+// Raw SQL returns snake_case columns (project_id, lease_token, ...); Prisma's StudioTask is camelCase.
+function toCamelCaseRow<T>(row: Record<string, unknown>): T {
+  return Object.fromEntries(
+    Object.entries(row).map(([key, value]) => [key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase()), value]),
+  ) as T;
+}
+
 export async function claimStudioTask(workerId: string, supportedTaskTypes: readonly string[], leaseSeconds = 90, workerProfileId?: string) {
   if (!workerId.trim() || supportedTaskTypes.length === 0) return null;
   const safeLease = Math.max(15, Math.min(leaseSeconds, 600));
@@ -137,6 +144,12 @@ export async function claimStudioTask(workerId: string, supportedTaskTypes: read
         actorId: workerId, eventType: 'task.leased', payload: { attempt: leasedTask.attempts, leaseSeconds: safeLease },
       } });
     }
+    const rows = await tx.$queryRawUnsafe<Record<string, unknown>[]>(CLAIM_STUDIO_TASK_SQL, [...supportedTaskTypes], workerId, safeLease, workerProfileId ?? null, claimToken);
+    const claimed = rows.map((row) => toCamelCaseRow<StudioTask>(row));
+    if (claimed[0]) await tx.studioEvent.create({ data: {
+      projectId: claimed[0].projectId, taskId: claimed[0].id, ownerUserId: claimed[0].ownerUserId,
+      actorId: workerId, eventType: 'task.leased', payload: { attempt: claimed[0].attempts, leaseSeconds: safeLease },
+    } });
     return claimed[0] ?? null;
   });
 }
