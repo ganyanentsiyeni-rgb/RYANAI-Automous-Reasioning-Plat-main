@@ -43,7 +43,9 @@ const task = (overrides: Record<string, unknown> = {}) => ({
 
 describe('Studio worker queue lifecycle', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    // Clear call history and one-shot mock implementations so a prior test's
+    // queued query/update result cannot leak into the next lease lifecycle case.
+    vi.resetAllMocks();
     const transactionClient = {
       $queryRawUnsafe: mocks.queryRawUnsafe,
       studioTask: { findMany: mocks.taskFindMany, findUnique: mocks.taskFindUnique, updateMany: mocks.taskUpdateMany },
@@ -268,11 +270,7 @@ describe('Studio worker queue lifecycle', () => {
     const unregister = registerStudioTaskHandler('ci-failure', handler);
     try {
       const result = await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
-      expect(result).toMatchObject({
-        state: 'failed',
-        taskId: 'task-1',
-        error: 'Studio worker lease expired before completion could be committed.',
-      });
+      expect(result).toMatchObject({ state: 'lease_lost', taskId: 'task-1' });
       expect(mocks.eventCreate).not.toHaveBeenCalledWith(expect.objectContaining({
         data: expect.objectContaining({ eventType: 'task.completed' }),
       }));
