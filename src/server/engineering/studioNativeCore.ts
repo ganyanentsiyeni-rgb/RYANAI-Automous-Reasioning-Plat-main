@@ -244,7 +244,34 @@ export function registerStudioTaskHandler(taskType: string, handler: StudioTaskH
   return () => { if (taskHandlers.get(taskType) === handler) taskHandlers.delete(taskType); };
 }
 
-export async function runStudioWorkerOnce(workerId: string, workerProfileId = workerId, leaseSeconds = 90) {
+export type StudioTaskAuthorizer = (task: StudioTask) => Promise<void>;
+
+async function releaseStudioTaskAfterAuthorizationFailure(task: StudioTask, workerId: string, error: unknown) {
+  const message = error instanceof Error ? error.message : 'Studio task authorization failed.';
+  const exhausted = task.attempts >= task.maxAttempts;
+  await prisma.$transaction(async (tx) => {
+    const released = await tx.studioTask.updateMany({
+      where: { id: task.id, status: 'running', leaseOwner: workerId, leaseExpiresAt: { gt: new Date() } },
+      data: {
+        status: exhausted ? 'failed' : 'queued',
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        heartbeatAt: null,
+        availableAt: new Date(Date.now() + Math.min(300000, 1000 * 2 ** task.attempts)),
+        completedAt: exhausted ? new Date() : null,
+      },
+    });
+    if (released.count === 1) await tx.studioEvent.create({ data: {
+      projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
+      actorId: workerId,
+      eventType: exhausted ? 'task.authorization_exhausted' : 'task.authorization_failed',
+      payload: { attempt: task.attempts, maxAttempts: task.maxAttempts, error: message.slice(0, 1000) },
+    } });
+  });
+  return { state: 'failed' as const, taskId: task.id, error: message };
+}
+
+export async function runStudioWorkerOnce(workerId: string, workerProfileId: string | null = workerId, leaseSeconds = 90, authorize?: StudioTaskAuthorizer) {
   const task = await claimStudioTask(workerId, [...taskHandlers.keys()], leaseSeconds, workerProfileId);
   if (!task) return { state: 'idle' as const };
   const handler = taskHandlers.get(task.taskType);
@@ -264,6 +291,13 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId = wo
         actorId: workerId, eventType: 'task.policy_blocked', payload: { decision: decision.decision ?? 'DENY_OR_REQUIRE_APPROVAL', ruleId: decision.ruleId ?? 'unknown', reason: decision.reason ?? 'RyanAI platform policy denied task admission.' } } });
     });
     return { state: 'blocked' as const, taskId: task.id };
+  }
+  if (authorize) {
+    try {
+      await authorize(task);
+    } catch (error) {
+      return releaseStudioTaskAfterAuthorizationFailure(task, workerId, error);
+    }
   }
   await prisma.studioEvent.create({ data: {
     projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
