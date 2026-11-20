@@ -43,6 +43,8 @@ function fakeRunner({ code = 0, output = '{"type":"message","text":"safe result"
       child.stdin = new PassThrough();
       child.kill = () => true;
       onLaunch?.({ ...launch, child });
+      // Defer completion until runGenAICodeTask has attached its stream and
+      // lifecycle listeners after awaiting this async runner.
       setImmediate(() => {
         child.stdout.write(output);
         child.stdout.end();
