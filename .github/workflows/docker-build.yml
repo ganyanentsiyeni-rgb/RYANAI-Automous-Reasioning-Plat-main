@@ -124,6 +124,7 @@ jobs:
           REDIS_PASSWORD=ci_redis_password_1234567890
           JWT_SECRET=ci_only_jwt_secret_1234567890_abcdefgh
           MCP_AUTH_TOKEN=ci_only_mcp_token_1234567890_abcdefgh
+          MCP_PROXY_DELEGATION_TOKEN=ci_only_negative_test_placeholder
           EOF
           docker compose --project-name mcpjungle-negative --env-file "$negative_env" --profile mcp-gateway up -d mcpjungle-db
           for attempt in $(seq 1 30); do
