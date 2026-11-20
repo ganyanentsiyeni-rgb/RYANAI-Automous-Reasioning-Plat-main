@@ -59,6 +59,7 @@ jobs:
           docker compose config --quiet
           # The optional profiles must also validate when explicitly configured.
           export MCPJUNGLE_DB_PASSWORD=ci_only_mcpjungle_db_password_1234567890
+          export MCP_PROXY_DELEGATION_TOKEN=ci_only_compose_validation_placeholder
           docker compose --profile mcp-gateway --profile cloudflare-edge config --quiet
 
   build:
