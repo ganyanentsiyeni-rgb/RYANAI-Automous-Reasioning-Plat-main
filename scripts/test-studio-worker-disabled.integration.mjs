@@ -20,6 +20,19 @@ let childExitObserved = false;
 let output = '';
 let errorOutput = '';
 
+function diagnosticTail(value, limit = 8000) {
+  return value.length > limit ? value.slice(-limit) : value || '<no output>';
+}
+
+function childDiagnostics(processHandle) {
+  return [
+    'child exitCode=' + processHandle.exitCode,
+    'signalCode=' + processHandle.signalCode,
+    'stdout tail:\n' + diagnosticTail(output),
+    'stderr tail:\n' + diagnosticTail(errorOutput),
+  ].join('\n');
+}
+
 function waitForExit(processHandle, timeoutMs = 10000) {
   return new Promise((resolve, reject) => {
     // Listen for the actual exit event. exitCode/signalCode may be updated
@@ -31,13 +44,13 @@ function waitForExit(processHandle, timeoutMs = 10000) {
     };
     const timer = setTimeout(() => {
       processHandle.removeListener('exit', onExit);
-      reject(new Error('Studio worker did not exit after SIGTERM.'));
+      reject(new Error('Studio worker did not exit after SIGTERM.\\n' + childDiagnostics(processHandle)));
     }, timeoutMs);
     processHandle.once('exit', onExit);
   });
 }
 
-function waitForOutput(stream, getOutput, marker, timeoutMs = 10000) {
+function waitForOutput(stream, getOutput, marker, processHandle, timeoutMs = 10000) {
   if (getOutput().includes(marker)) return Promise.resolve();
   return new Promise((resolve, reject) => {
     const onData = () => {
@@ -48,7 +61,9 @@ function waitForOutput(stream, getOutput, marker, timeoutMs = 10000) {
     };
     const timer = setTimeout(() => {
       stream.removeListener('data', onData);
-      reject(new Error(`Studio worker did not emit expected log: ${marker}`));
+      reject(new Error(
+        'Studio worker did not emit expected log: ' + marker + '\\n' + childDiagnostics(processHandle),
+      ));
     }, timeoutMs);
     stream.on('data', onData);
   });
@@ -94,20 +109,27 @@ try {
 
   const deadline = Date.now() + 10000;
   while (!output.includes('"event":"disabled"') && Date.now() < deadline) {
-    if (child.exitCode !== null || child.signalCode !== null) throw new Error('Worker exited before reporting disabled state: ' + errorOutput);
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw new Error('Worker exited before reporting disabled state.\\n' + childDiagnostics(child));
+    }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  assert.ok(output.includes('"event":"disabled"'), 'worker must explicitly report its disabled state');
-  const workerIdMatch = output.match(/\"workerId\":\"([^\"]+)\"/);
-  assert.ok(workerIdMatch, 'disabled worker log must identify the process instance');
-  const workerId = workerIdMatch[1];
+  assert.ok(
+    output.includes('"event":"disabled"'),
+    'worker must explicitly report its disabled state.\\n' + (child ? childDiagnostics(child) : ''),
+  );
+  const disabledLogLine = output.split(/\r?\n/).find((line) => line.includes('"event":"disabled"'));
+  assert.ok(disabledLogLine, 'disabled worker log line must be present.\n' + diagnosticTail(output));
+  const disabledPayload = JSON.parse(disabledLogLine.slice(disabledLogLine.indexOf('{')));
+  assert.equal(typeof disabledPayload.workerId, 'string', 'disabled worker log must identify the process instance');
+  const workerId = disabledPayload.workerId;
   assert.ok(output.includes('STUDIO_WORKER_ENABLED is not true'), 'disabled reason must be explicit');
   assert.equal(output.includes('"event":"started"'), false, 'disabled worker must not enter its execution loop');
   assert.equal(output.includes('"event":"task-cycle"'), false, 'disabled worker must not run task cycles');
 
   // Register both observers before SIGTERM so neither the log nor the exit
-  // event can be missed during shutdown.
-  const stoppedLog = waitForOutput(child.stdout, () => output, '"event":"stopped"');
+  // event can be missed during shutdown. Timeout errors include both streams.
+  const stoppedLog = waitForOutput(child.stdout, () => output, '"event":"stopped"', child);
   const exitEvent = waitForExit(child);
   child.kill('SIGTERM');
   await stoppedLog;

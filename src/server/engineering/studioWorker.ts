@@ -10,6 +10,10 @@ function log(event: string, detail: Record<string, unknown> = {}) {
   console.info('[studio-worker]', JSON.stringify({ event, ...detail }));
 }
 
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 const unregister = registerStudioTaskHandler('coordination', async ({ task, workerId, claimToken }) => {
   const plan = {
     schemaVersion: 1,
@@ -57,7 +61,7 @@ const unregister = registerStudioTaskHandler('coordination', async ({ task, work
     await removeStoredStudioArtifact(stored.storageKey).catch((cleanupError) => {
       log('artifact-orphan-cleanup-failed', {
         taskId: task.id,
-        error: cleanupError instanceof Error ? cleanupError.message : 'Unknown cleanup error',
+        error: errorMessage(cleanupError),
       });
     });
     throw error;
@@ -78,16 +82,43 @@ let disabledStopResolver: (() => void) | null = null;
 async function shutdown(signal: string) {
   if (shutdownPromise) return shutdownPromise;
   shutdownPromise = (async () => {
+    const shutdownErrors: string[] = [];
     log('stopping', { signal, workerId: runtime.snapshot().workerId });
     try {
       await runtime.stop();
-    } finally {
+      log('runtime-stopped', { signal, workerId: runtime.snapshot().workerId });
+    } catch (error) {
+      shutdownErrors.push('runtime.stop: ' + errorMessage(error));
+      log('runtime-stop-failed', { signal, error: errorMessage(error) });
+    }
+
+    try {
       unregister();
+    } catch (error) {
+      shutdownErrors.push('handler-unregister: ' + errorMessage(error));
+      log('handler-unregister-failed', { signal, error: errorMessage(error) });
+    }
+
+    try {
       await prisma.$disconnect();
-      log('stopped', { signal, workerId: runtime.snapshot().workerId });
+      log('database-disconnected', { signal, workerId: runtime.snapshot().workerId });
+    } catch (error) {
+      shutdownErrors.push('prisma.$disconnect: ' + errorMessage(error));
+      log('database-disconnect-failed', { signal, error: errorMessage(error) });
+    } finally {
+      // The disabled entrypoint waits on this resolver. Always release it,
+      // even when runtime shutdown or Prisma cleanup fails, so SIGTERM cannot
+      // strand the process indefinitely without a terminal diagnostic.
+      log('stopped', {
+        signal,
+        workerId: runtime.snapshot().workerId,
+        shutdownErrors,
+      });
       disabledStopResolver?.();
       disabledStopResolver = null;
     }
+
+    if (shutdownErrors.length > 0) process.exitCode = 1;
   })();
   return shutdownPromise;
 }
