@@ -23,13 +23,14 @@ if (!process.env.DATABASE_URL) {
 const suffix = randomUUID();
 const ownerUserId = randomUUID();
 const taskType = {
-  claim: 'studio.integration.claim',
-  success: 'studio.integration.success',
-  denied: 'studio.integration.denied',
-  retry: 'studio.integration.retry',
-  exhausted: 'studio.integration.exhausted',
-  handlerFailure: 'studio.integration.handler-failure',
-  leaseLost: 'studio.integration.lease-lost',
+  claimA: 'database-audit',
+  claimB: 'queue-audit',
+  success: 'ci-failure',
+  denied: 'security-audit',
+  retry: 'worker-recovery',
+  exhausted: 'infrastructure-audit',
+  handlerFailure: 'build-failure',
+  leaseLost: 'test-failure',
 };
 let projectId;
 
@@ -48,6 +49,10 @@ async function withHandler(type, handler, run) {
   }
 }
 
+async function runWorker(workerId, authorize) {
+  return runStudioWorkerOnce(workerId, null, 60, authorize);
+}
+
 try {
   const created = await createStudioProject({
     ownerUserId,
@@ -55,8 +60,8 @@ try {
     objective: 'Disposable PostgreSQL queue lifecycle verification.',
     projectType: 'engineering',
     initialTasks: [
-      { title: 'Concurrent claim A', objective: 'Claim exactly once.', taskType: taskType.claim, priority: 20 },
-      { title: 'Concurrent claim B', objective: 'Claim exactly once.', taskType: taskType.claim, priority: 19 },
+      { title: 'Concurrent claim A', objective: 'Claim exactly once.', taskType: taskType.claimA, priority: 20 },
+      { title: 'Concurrent claim B', objective: 'Claim exactly once.', taskType: taskType.claimB, priority: 19 },
       { title: 'Successful handler', objective: 'Persist output and completion evidence.', taskType: taskType.success, priority: 18 },
       { title: 'Policy denial', objective: 'Remain blocked without executing handler.', taskType: taskType.denied, priority: 17 },
       { title: 'Authorization retry', objective: 'Release lease for retry.', taskType: taskType.retry, priority: 16 },
@@ -67,8 +72,8 @@ try {
   });
   projectId = created.project.id;
   const [claimA, claimB] = await Promise.all([
-    claimStudioTask('studio-ci-a-' + suffix, [taskType.claim], 60),
-    claimStudioTask('studio-ci-b-' + suffix, [taskType.claim], 60),
+    claimStudioTask('studio-ci-a-' + suffix, [taskType.claimA, taskType.claimB], 60),
+    claimStudioTask('studio-ci-b-' + suffix, [taskType.claimA, taskType.claimB], 60),
   ]);
   assert.ok(claimA && claimB, 'two concurrent workers should each claim one task');
   assert.notEqual(claimA.id, claimB.id, 'concurrent workers must never claim the same task');
@@ -95,7 +100,7 @@ try {
   const success = await withHandler(taskType.success, async ({ heartbeat }) => {
     assert.equal(await heartbeat(), true, 'handler heartbeat should renew its active lease');
     return { result: 'persisted', fixture: suffix };
-  }, () => runStudioWorkerOnce('studio-ci-success-' + suffix, async () => ({ allowed: true, decision: 'ALLOW', ruleId: 'ci-studio-worker' })));
+  }, () => runWorker('studio-ci-success-' + suffix, async () => undefined));
   assert.equal(success.state, 'completed');
   const completed = await taskById(successTask.id);
   assert.equal(completed.status, 'completed');
@@ -106,7 +111,7 @@ try {
   assert.ok(deniedTask);
   let deniedHandlerCalled = false;
   const denied = await withHandler(taskType.denied, async () => { deniedHandlerCalled = true; return {}; },
-    () => runStudioWorkerOnce('studio-ci-denied-' + suffix, async () => ({ allowed: false, decision: 'DENY', ruleId: 'ci-deny', reason: 'CI policy denial fixture' })));
+    () => runWorker('studio-ci-denied-' + suffix));
   assert.equal(denied.state, 'blocked');
   assert.equal(deniedHandlerCalled, false);
   assert.equal((await taskById(deniedTask.id)).approvalStatus, 'blocked');
@@ -115,7 +120,7 @@ try {
   const retryTask = created.tasks.find((item) => item.taskType === taskType.retry);
   assert.ok(retryTask);
   const retry = await withHandler(taskType.retry, async () => { throw new Error('must not execute after auth exception'); },
-    () => runStudioWorkerOnce('studio-ci-retry-' + suffix, async () => { throw new Error('temporary Gen-X timeout'); }));
+    () => runWorker('studio-ci-retry-' + suffix, async () => { throw new Error('temporary authorization timeout'); }));
   assert.equal(retry.state, 'failed');
   const retried = await taskById(retryTask.id);
   assert.equal(retried.status, 'queued');
@@ -127,7 +132,7 @@ try {
   assert.ok(exhaustedTask);
   await prisma.studioTask.update({ where: { id: exhaustedTask.id }, data: { maxAttempts: 1 } });
   const exhausted = await withHandler(taskType.exhausted, async () => ({}),
-    () => runStudioWorkerOnce('studio-ci-exhausted-' + suffix, async () => { throw new Error('final authorization timeout'); }));
+    () => runWorker('studio-ci-exhausted-' + suffix, async () => { throw new Error('final authorization timeout'); }));
   assert.equal(exhausted.state, 'failed');
   assert.equal((await taskById(exhaustedTask.id)).status, 'failed');
   assert.ok(await prisma.studioEvent.findFirst({ where: { taskId: exhaustedTask.id, eventType: 'task.authorization_exhausted' } }));
@@ -135,7 +140,7 @@ try {
   const handlerFailureTask = created.tasks.find((item) => item.taskType === taskType.handlerFailure);
   assert.ok(handlerFailureTask);
   const handlerFailure = await withHandler(taskType.handlerFailure, async () => { throw new Error('temporary handler failure'); },
-    () => runStudioWorkerOnce('studio-ci-handler-failure-' + suffix, async () => ({ allowed: true })));
+    () => runWorker('studio-ci-handler-failure-' + suffix));
   assert.equal(handlerFailure.state, 'failed');
   assert.equal((await taskById(handlerFailureTask.id)).status, 'queued');
   assert.ok(await prisma.studioEvent.findFirst({ where: { taskId: handlerFailureTask.id, eventType: 'task.execution_failed' } }));
@@ -145,7 +150,7 @@ try {
   const leaseLost = await withHandler(taskType.leaseLost, async ({ task }) => {
     await prisma.studioTask.update({ where: { id: task.id }, data: { leaseExpiresAt: new Date(Date.now() - 1000) } });
     return { result: 'must-not-complete' };
-  }, () => runStudioWorkerOnce('studio-ci-lease-lost-' + suffix, async () => ({ allowed: true })));
+  }, () => runWorker('studio-ci-lease-lost-' + suffix));
   assert.equal(leaseLost.state, 'failed');
   const stale = await taskById(leaseLostTask.id);
   assert.equal(stale.status, 'running');
