@@ -302,7 +302,8 @@
     },
     "concurrently": {
       "shell-quote": "1.12.0"
-    }
+    },
+    "effect": "3.22.1"
   },
   "allowScripts": {
     "@prisma/client@6.19.3": true,
