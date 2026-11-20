@@ -331,6 +331,9 @@ export async function createStudioArtifact(input: {
   const project = await prisma.studioProject.findFirst({ where: { id: input.projectId, ownerUserId: input.ownerUserId }, select: { id: true } });
   if (!project) throw new Error('Studio project not found for this owner.');
   if (input.leaseFence && !input.taskId) throw new Error('A fenced artifact must be associated with its Studio task.');
+  if (input.taskId && !input.leaseFence) {
+    throw new Error('Task-bound artifact registration requires the active worker lease.');
+  }
   return prisma.$transaction(async (tx) => {
     if (input.taskId && input.leaseFence) {
       const owned = await tx.$queryRaw<Array<{ id: string }>>`
@@ -342,7 +345,7 @@ export async function createStudioArtifact(input: {
           AND lease_expires_at > NOW()
         FOR UPDATE
       `;
-      if (owned.length !== 1) throw new Error('Studio worker lease expired before artifact registration.');
+      if (owned.length !== 1) throw new Error('Studio task lease is no longer active; artifact registration was rejected.');
     } else if (input.taskId) {
       const task = await tx.studioTask.findFirst({ where: { id: input.taskId, projectId: input.projectId, ownerUserId: input.ownerUserId }, select: { id: true } });
       if (!task) throw new Error('Studio task not found for this owner and project.');
