@@ -4,7 +4,7 @@ import { startGitHubOwnerEventWorker, type AuthorizedGitHubOwnerLister, type Git
 import type { EventHandlerRegistry } from './eventHandlerRegistry.js';
 import type { IntelligenceEventInbox } from './intelligenceEventInbox.js';
 
-export const RYANAI_GITHUB_OWNER_EVENT_WAKE_CHANNEL = 'ryanai_github_owner_events';
+export { RYANAI_GITHUB_OWNER_EVENT_WAKE_CHANNEL } from '../lib/postgresGitHubWorkerWake.js';
 
 export interface GitHubOwnerEventWakeSource {
   subscribe(onWake: () => void): () => void;
