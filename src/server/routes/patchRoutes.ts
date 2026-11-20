@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { SelfPatchSkill } from '../../engine/selfPatchSkill.js';
-import { requireAdmin } from './auth.js';
+import { requireOwner } from './auth.js';
 
 interface PatchApplyBody {
   filePath: string;
@@ -16,7 +16,7 @@ export const registerPatchRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post<{ Body: PatchApplyBody }>(
     '/api/patches/apply',
     {
-      preHandler: requireAdmin,
+      preHandler: requireOwner,
       schema: {
         body: {
           type: 'object',
