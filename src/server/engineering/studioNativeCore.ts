@@ -127,7 +127,7 @@ function toCamelCaseRow<T>(row: Record<string, unknown>): T {
   ) as T;
 }
 
-export async function claimStudioTask(workerId: string, supportedTaskTypes: readonly string[], leaseSeconds = 90, workerProfileId?: string) {
+export async function claimStudioTask(workerId: string, supportedTaskTypes: readonly string[], leaseSeconds = 90, workerProfileId?: string | null) {
   if (!workerId.trim() || supportedTaskTypes.length === 0) return null;
   const safeLease = Math.max(15, Math.min(leaseSeconds, 600));
   return prisma.$transaction(async (tx) => {
@@ -225,7 +225,35 @@ export function getStudioWorkerHandlerReadiness(workerProfileId: string) {
   };
 }
 
-export async function runStudioWorkerOnce(workerId: string, workerProfileId = workerId, leaseSeconds = 90) {
+export type StudioTaskAuthorizer = (task: StudioTask) => Promise<void>;
+
+async function releaseStudioTaskAfterAuthorizationFailure(task: StudioTask, workerId: string, error: unknown) {
+  const message = error instanceof Error ? error.message : 'Studio task authorization failed.';
+  const exhausted = task.attempts >= task.maxAttempts;
+  await prisma.$transaction(async (tx) => {
+    const released = await tx.studioTask.updateMany({
+      where: { id: task.id, status: 'running', leaseOwner: workerId, leaseToken: task.leaseToken, leaseExpiresAt: { gt: new Date() } },
+      data: {
+        status: exhausted ? 'failed' : 'queued',
+        leaseOwner: null,
+        leaseToken: null,
+        leaseExpiresAt: null,
+        heartbeatAt: null,
+        availableAt: new Date(Date.now() + Math.min(300000, 1000 * 2 ** task.attempts)),
+        completedAt: exhausted ? new Date() : null,
+      },
+    });
+    if (released.count === 1) await tx.studioEvent.create({ data: {
+      projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
+      actorId: workerId,
+      eventType: exhausted ? 'task.authorization_exhausted' : 'task.authorization_failed',
+      payload: { attempt: task.attempts, maxAttempts: task.maxAttempts, error: message.slice(0, 1000) },
+    } });
+  });
+  return { state: 'failed' as const, taskId: task.id, error: message };
+}
+
+export async function runStudioWorkerOnce(workerId: string, workerProfileId: string | null = workerId, leaseSeconds = 90, authorize?: StudioTaskAuthorizer) {
   const task = await claimStudioTask(workerId, [...taskHandlers.keys()], leaseSeconds, workerProfileId);
   if (!task) return { state: 'idle' as const };
   const handler = taskHandlers.get(task.taskType);
@@ -274,6 +302,13 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId = wo
     return true;
   });
   if (!authorized) return { state: 'lease_lost' as const, taskId: task.id };
+  if (authorize) {
+    try {
+      await authorize(task);
+    } catch (error) {
+      return releaseStudioTaskAfterAuthorizationFailure(task, workerId, error);
+    }
+  }
   try {
     const output = await handler({ workerId, claimToken: task.leaseToken ?? '', task, heartbeat: () => heartbeatStudioTask(task.id, workerId, task.leaseToken ?? '') });
     await prisma.$transaction(async (tx) => {
