@@ -120,6 +120,13 @@ FROM candidate WHERE task.id = candidate.id
 RETURNING task.*;
 `;
 
+// Raw SQL returns snake_case columns; Prisma's StudioTask uses camelCase.
+function toCamelCaseRow<T>(row: Record<string, unknown>): T {
+  return Object.fromEntries(
+    Object.entries(row).map(([key, value]) => [key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase()), value]),
+  ) as T;
+}
+
 export async function claimStudioTask(workerId: string, supportedTaskTypes: readonly string[], leaseSeconds = 90, workerProfileId?: string | null) {
   if (!workerId.trim() || supportedTaskTypes.length === 0) return null;
   const safeLease = Math.max(15, Math.min(leaseSeconds, 600));
