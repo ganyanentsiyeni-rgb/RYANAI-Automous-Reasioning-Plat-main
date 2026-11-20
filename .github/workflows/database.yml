@@ -671,6 +671,5 @@ jobs:
 
       - name: Run disposable PostgreSQL queue and migration dry-run
         env:
-          POSTGRES_TEST_PORT: '55432'
           POSTGRES_TEST_IMAGE: pgvector/pgvector:pg15
         run: npm run test:docker:postgres

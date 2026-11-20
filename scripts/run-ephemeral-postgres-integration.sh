@@ -2,12 +2,12 @@
 set -euo pipefail
 
 CONTAINER_NAME="${POSTGRES_TEST_CONTAINER:-ryan-postgres-test-ephemeral}"
-DB_PORT="${POSTGRES_TEST_PORT:-5432}"
+DB_PORT="${POSTGRES_TEST_PORT:-}"
 DB_NAME="${POSTGRES_TEST_DB:-ryanai_disposable_postgres}"
 DB_USER="${POSTGRES_TEST_USER:-postgres}"
 DB_PASSWORD="${POSTGRES_TEST_PASSWORD:-postgres}"
 POSTGRES_IMAGE="${POSTGRES_TEST_IMAGE:-pgvector/pgvector:pg15}"
-DB_URL="postgresql://${DB_USER}:${DB_PASSWORD}@127.0.0.1:${DB_PORT}/${DB_NAME}?schema=public"
+DB_URL=""
 
 log() {
   printf '\n[%s] %s\n' "ephemeral-postgres" "$1"
@@ -42,8 +42,17 @@ docker run --detach \
   --env POSTGRES_USER="${DB_USER}" \
   --env POSTGRES_PASSWORD="${DB_PASSWORD}" \
   --env POSTGRES_DB="${DB_NAME}" \
-  --publish "${DB_PORT}:5432" \
+  --publish "127.0.0.1:${DB_PORT}:5432" \
   "${POSTGRES_IMAGE}" >/dev/null
+
+if [ -z "${DB_PORT}" ]; then
+  DB_PORT="$(docker port "${CONTAINER_NAME}" 5432/tcp | awk -F: '{print $NF}')"
+fi
+if ! [[ "${DB_PORT}" =~ ^[0-9]+$ ]]; then
+  echo "Docker did not report a valid mapped PostgreSQL host port." >&2
+  exit 1
+fi
+DB_URL="postgresql://${DB_USER}:${DB_PASSWORD}@127.0.0.1:${DB_PORT}/${DB_NAME}?schema=public"
 
 log "Waiting for PostgreSQL to accept connections"
 max_retries="${POSTGRES_TEST_MAX_RETRIES:-30}"
