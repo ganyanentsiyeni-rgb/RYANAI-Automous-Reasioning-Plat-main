@@ -114,13 +114,11 @@ function pgDump(file: string): Promise<void> {
       file,
       databaseUrl,
     ], {
-      stdio: ['ignore', 'ignore', 'pipe'],
+      stdio: ['ignore', 'ignore', 'ignore'],
       env: process.env,
     });
-    let stderr = '';
-    child.stderr?.on('data', (chunk) => { stderr += String(chunk).slice(-4000); });
-    child.once('error', reject);
-    child.once('close', (code) => code === 0 ? resolve() : reject(new Error('pg_dump failed with exit code ' + code + (stderr ? ': ' + stderr : '.'))));
+    child.once('error', () => reject(new Error('pg_dump could not be started.')));
+    child.once('close', (code) => code === 0 ? resolve() : reject(new Error('pg_dump failed with exit code ' + String(code) + '.')));
   });
 }
 
