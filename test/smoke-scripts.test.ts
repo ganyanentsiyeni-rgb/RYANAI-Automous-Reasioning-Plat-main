@@ -56,7 +56,7 @@ async function fixture(protectedRoutes = true) {
   if (protectedRoutes) installAuthentication(app);
   await app.register(websocket);
   app.get('/health', async () => ({
-    status: 'online',
+    status: 'alive',
     services: { database: true, redis: true },
   }));
   app.get('/', async (_request, reply) =>
