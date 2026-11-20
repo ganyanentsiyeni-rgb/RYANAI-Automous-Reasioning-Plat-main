@@ -217,4 +217,26 @@ describe('WebSocket session and message boundaries', () => {
     expect(JSON.parse(socket.send.mock.calls.at(-1)![0])).toMatchObject({ type: 'response', data: { cursorExpired: true, resyncRequired: true, nextCursor: '3' } });
   });
 
+
+  it('buffers live delivery until older replay events have been sent', async () => {
+    let resolveReplay!: (value: unknown) => void;
+    replayRealtimeEvents.mockImplementationOnce(() => new Promise((resolve) => { resolveReplay = resolve; }));
+    const socket = await openSocket();
+    const subscribeRequest = request(socket, 'subscribe', { channel: 'tasks.updates', afterSequence: '6' });
+    await Promise.resolve();
+
+    appendRealtimeEvent.mockResolvedValue({
+      id: 'event-8', sequence: 8n, eventType: 'task.created', payload: { taskId: 'task-8' }, createdAt: new Date('2026-01-01T00:00:08Z'),
+    });
+    await publishRealtimeEvent({ userId: 'verified-admin', channel: 'tasks.updates', eventType: 'task.created', payload: { taskId: 'task-8' } });
+    expect(socket.send).not.toHaveBeenCalled();
+
+    resolveReplay({
+      events: [{ id: 'event-7', sequence: 7n, eventType: 'task.updated', payload: { taskId: 'task-7' }, createdAt: new Date('2026-01-01T00:00:07Z') }],
+      nextCursor: 7n, hasMore: false, cursorExpired: false, resyncRequired: false,
+    });
+    await subscribeRequest;
+    const delivered = socket.send.mock.calls.map((call) => JSON.parse(call[0])).filter((message) => message.type === 'event');
+    expect(delivered.map((message) => message.data.sequence)).toEqual(['7', '8']);
+  });
 });
