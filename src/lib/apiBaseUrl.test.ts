@@ -69,9 +69,11 @@ describe('development API proxy resolution', () => {
     ).toBe('http://127.0.0.1:3001');
   });
 
-  it('normalizes a host-only local target for Vite proxy configuration', () => {
-    expect(normalizeApiBaseUrl('localhost:3001')).toBe(
-      'https://localhost:3001',
-    );
+  it.each([
+    ['localhost:3001', 'http://localhost:3001'],
+    ['127.0.0.1:3001', 'http://127.0.0.1:3001'],
+    ['ryanai-api.onrender.com', 'https://ryanai-api.onrender.com'],
+  ])('normalizes host-only API target %s', (target, expected) => {
+    expect(normalizeApiBaseUrl(target)).toBe(expected);
   });
 });
