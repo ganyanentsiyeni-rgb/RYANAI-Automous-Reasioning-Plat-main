@@ -131,7 +131,7 @@ async function mount(hash: string) {
 }
 
 describe('application authentication boundary', () => {
-  it.each(['dashboard', 'calculator', 'cockpit', 'workspace', 'operator', 'operations', 'settings', 'admin', 'studio', 'music', 'phonelink'])(
+  it.each(['dashboard', 'programming', 'cockpit', 'workspace', 'operator', 'operations', 'settings', 'admin', 'studio', 'music', 'phonelink'])(
     'blocks anonymous direct access to %s',
     async (route) => {
       await mount(`/${route}`);
