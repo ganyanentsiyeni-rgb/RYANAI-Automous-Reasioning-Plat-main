@@ -44,6 +44,8 @@ afterAll(async () => app.close());
 
 beforeEach(() => {
   vi.clearAllMocks();
+  auditFindMany.mockResolvedValue([]);
+  auditFindFirst.mockResolvedValue(null);
   resilience.backupPreflight.mockResolvedValue({
     status: 'ready', databaseConfigured: true, storageConfigured: true,
     destinationBucket: 'private-backups', sourceBuckets: [], pgDumpAvailable: true,
@@ -63,6 +65,11 @@ beforeEach(() => {
   auditFindFirst.mockResolvedValue(null);
 });
 
+const ownerHeaders = { 'x-test-user': 'owner-1', 'x-test-role': 'admin', 'x-test-owner': 'true' };
+const adminHeaders = { 'x-test-user': 'admin-1', 'x-test-role': 'admin' };
+
+describe('Admin resilience routes', () => {
+  it('exposes resilience status to administrators', async () => {
 const adminHeaders = { 'x-test-user': 'admin-1', 'x-test-role': 'admin' };
 const ownerHeaders = { 'x-test-user': 'owner-1', 'x-test-role': 'admin', 'x-test-owner': 'true' };
 
@@ -75,6 +82,36 @@ describe('Admin resilience routes', () => {
     expect(response.json().maintenance.status).toBe('audited_lifecycle');
   });
 
+  it('exposes read-only backup inventory', async () => {
+    resilience.listDatabaseBackups.mockResolvedValue({
+      status: 'available', bucket: 'private-backups', retentionDays: 30,
+      listedAt: '2026-11-20T00:00:00.000Z', hasMore: false,
+      items: [{ backupId: 'backup-1', prefix: 'ryanai-admin/backup-1', createdAt: '2026-11-20T00:00:00.000Z', databaseBytes: 1234, databaseSha256: 'sha256-example', manifestPresent: true, retention: 'within_policy' }],
+    });
+    const response = await app.inject({ method: 'GET', url: '/api/admin/resilience/backups', headers: adminHeaders });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().items[0].manifestPresent).toBe(true);
+    expect(response.json().items[0].retention).toBe('within_policy');
+  });
+
+  it('reports a same-as-source recovery target as blocked without writes', async () => {
+    resilience.recoveryPreflight.mockReturnValue({
+      status: 'blocked_same_as_source', targetLabel: 'candidate-target',
+      productionRestore: 'disabled', writesPerformed: false,
+    });
+    const response = await app.inject({ method: 'GET', url: '/api/admin/resilience/status', headers: adminHeaders });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().recovery.status).toBe('blocked_same_as_source');
+    expect(response.json().recovery.writesPerformed).toBe(false);
+  });
+
+  it('rejects backup execution for a non-owner administrator', async () => {
+    const response = await app.inject({ method: 'POST', url: '/api/admin/resilience/backups', headers: { ...adminHeaders, 'x-test-owner': 'false' } });
+    expect(response.statusCode).toBe(403);
+    expect(resilience.createDatabaseBackup).not.toHaveBeenCalled();
+  });
+
+  it('allows the owner to execute a backup and records redacted audit evidence', async () => {
   it('exposes read-only backup inventory to administrators', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/admin/resilience/backups', headers: adminHeaders });
     expect(response.statusCode).toBe(200);
@@ -96,6 +133,28 @@ describe('Admin resilience routes', () => {
     expect(response.statusCode).toBe(202);
     expect(response.json().result.backupId).toBe('backup-1');
     expect(auditCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ eventType: 'admin.resilience.backup.succeeded', details: expect.objectContaining({ secretsIncluded: false }) }),
+    }));
+  });
+
+  it('records a future maintenance request as an owner-only audited action', async () => {
+    const startsAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const endsAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    const response = await app.inject({
+      method: 'POST', url: '/api/admin/resilience/maintenance', headers: ownerHeaders,
+      payload: { reason: 'Planned database maintenance', startsAt, endsAt },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json().status).toBe('requested');
+    expect(auditCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ eventType: 'admin.resilience.maintenance.requested', details: expect.objectContaining({ infrastructureChanged: false }) }),
+    }));
+  });
+
+  it('rejects maintenance requests from non-owner administrators', async () => {
+    const response = await app.inject({
+      method: 'POST', url: '/api/admin/resilience/maintenance', headers: { ...adminHeaders, 'x-test-owner': 'false' },
+      payload: { reason: 'Planned database maintenance', startsAt: new Date(Date.now() + 3600000).toISOString(), endsAt: new Date(Date.now() + 7200000).toISOString() },
       data: expect.objectContaining({ actorId: 'owner-1', eventType: 'admin.resilience.backup.succeeded' }),
     }));
   });
@@ -110,6 +169,34 @@ describe('Admin resilience routes', () => {
     expect(auditCreate).not.toHaveBeenCalled();
   });
 
+  it('rejects past or invalid maintenance windows', async () => {
+    const response = await app.inject({
+      method: 'POST', url: '/api/admin/resilience/maintenance', headers: ownerHeaders,
+      payload: { reason: 'Invalid maintenance window', startsAt: new Date(Date.now() - 3600000).toISOString(), endsAt: new Date(Date.now() + 3600000).toISOString() },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(auditCreate).not.toHaveBeenCalled();
+  });
+
+  it('lists maintenance requests from the durable audit ledger', async () => {
+    auditFindMany.mockResolvedValue([{
+      id: 'audit-1', actorId: 'owner-1', eventType: 'admin.resilience.maintenance.requested',
+      resourceId: 'maint-1', createdAt: new Date('2026-11-20T00:00:00.000Z'),
+      details: { maintenanceId: 'maint-1', reason: 'Planned database maintenance', startsAt: '2026-11-21T00:00:00.000Z', endsAt: '2026-11-21T01:00:00.000Z', requestedAt: '2026-11-20T00:00:00.000Z' },
+    }]);
+    const response = await app.inject({ method: 'GET', url: '/api/admin/resilience/maintenance', headers: adminHeaders });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().records[0].id).toBe('maint-1');
+  });
+
+  it('closes a maintenance record by appending a lifecycle audit event', async () => {
+    auditFindFirst.mockResolvedValueOnce({ id: 'request-event', resourceId: 'maint-1' }).mockResolvedValueOnce(null);
+    const response = await app.inject({ method: 'POST', url: '/api/admin/resilience/maintenance/maint-1/close', headers: ownerHeaders });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().status).toBe('closed');
+    expect(auditCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ eventType: 'admin.resilience.maintenance.closed', resourceId: 'maint-1' }),
+    }));
   it('schedules a future maintenance window and persists an audit event', async () => {
     const response = await app.inject({
       method: 'POST', url: '/api/admin/resilience/maintenance', headers: ownerHeaders,
