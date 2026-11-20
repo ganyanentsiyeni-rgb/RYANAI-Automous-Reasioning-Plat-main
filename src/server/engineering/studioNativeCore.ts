@@ -61,7 +61,9 @@ export async function createStudioProject(input: CreateStudioProjectInput) {
       } });
       createdTasks.push(created);
       await tx.studioEvent.create({ data: {
-        projectId: project.id, taskId: created.id, ownerUserId: input.ownerUserId,
+        project: { connect: { id: project.id } },
+        task: { connect: { id: created.id } },
+        owner: { connect: { id: input.ownerUserId } },
         actorId: input.ownerUserId,
         eventType: moduleOwner ? 'task.module_agent_assigned' : 'task.module_agent_unassigned',
         payload: {
@@ -77,7 +79,9 @@ export async function createStudioProject(input: CreateStudioProjectInput) {
       if (dependencies.length) await tx.studioTask.update({ where: { id: createdTasks[index].id }, data: { dependsOnIds: dependencies } });
     }
     await tx.studioEvent.create({ data: {
-      projectId: project.id, ownerUserId: input.ownerUserId, actorId: input.ownerUserId,
+      project: { connect: { id: project.id } },
+      owner: { connect: { id: input.ownerUserId } },
+      actorId: input.ownerUserId,
       eventType: 'project.created', payload: { taskCount: createdTasks.length, projectType: input.projectType },
     } });
     return { project, tasks: createdTasks };
@@ -128,29 +132,20 @@ export async function claimStudioTask(workerId: string, supportedTaskTypes: read
   const safeLease = Math.max(15, Math.min(leaseSeconds, 600));
   return prisma.$transaction(async (tx) => {
     const claimToken = randomUUID();
-    const claimed = await tx.$queryRawUnsafe<StudioTask[]>(CLAIM_STUDIO_TASK_SQL, [...supportedTaskTypes], workerId, safeLease, workerProfileId ?? null, claimToken);
-    if (claimed[0]) {
-      // Re-read through Prisma after the raw SQL lease update so mapped relation
-      // fields are hydrated before persisting the lease audit event.
-      const leasedTask = await tx.studioTask.findUnique({
-        where: { id: claimed[0].id },
-        select: { id: true, projectId: true, ownerUserId: true, attempts: true },
-      });
-      if (!leasedTask) throw new Error('Claimed Studio task could not be reloaded for lease evidence.');
-      await tx.studioEvent.create({ data: {
-        project: { connect: { id: leasedTask.projectId } },
-        task: { connect: { id: leasedTask.id } },
-        owner: { connect: { id: leasedTask.ownerUserId } },
-        actorId: workerId, eventType: 'task.leased', payload: { attempt: leasedTask.attempts, leaseSeconds: safeLease },
-      } });
-    }
     const rows = await tx.$queryRawUnsafe<Record<string, unknown>[]>(CLAIM_STUDIO_TASK_SQL, [...supportedTaskTypes], workerId, safeLease, workerProfileId ?? null, claimToken);
-    const claimed = rows.map((row) => toCamelCaseRow<StudioTask>(row));
-    if (claimed[0]) await tx.studioEvent.create({ data: {
-      projectId: claimed[0].projectId, taskId: claimed[0].id, ownerUserId: claimed[0].ownerUserId,
-      actorId: workerId, eventType: 'task.leased', payload: { attempt: claimed[0].attempts, leaseSeconds: safeLease },
+    if (!rows[0]) return null;
+    const claimed = toCamelCaseRow<StudioTask>(rows[0]);
+    const leasedTask = await tx.studioTask.findUnique({
+      where: { id: claimed.id },
+    });
+    if (!leasedTask) throw new Error('Claimed Studio task could not be reloaded for lease evidence.');
+    await tx.studioEvent.create({ data: {
+      project: { connect: { id: leasedTask.projectId } },
+      task: { connect: { id: leasedTask.id } },
+      owner: { connect: { id: leasedTask.ownerUserId } },
+      actorId: workerId, eventType: 'task.leased', payload: { attempt: leasedTask.attempts, leaseSeconds: safeLease },
     } });
-    return claimed[0] ?? null;
+    return leasedTask;
   });
 }
 
