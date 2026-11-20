@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeRyanAICiEvidence } from './ryanaiCiDiagnostics.js';
 import { analyzeRyanAICiEvidence, createRyanAICiProviderBlockedReport, createRyanAIVerifiedCiReport } from './ryanaiCiDiagnostics.js';
 
 describe('RyanAI CI evidence diagnostics', () => {
