@@ -308,6 +308,10 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId: str
     } catch (error) {
       return releaseStudioTaskAfterAuthorizationFailure(task, workerId, error);
     }
+    // Authorization may take long enough for the lease to expire. Renew with
+    // the original claim token before allowing the handler to perform effects.
+    const renewed = await heartbeatStudioTask(task.id, workerId, task.leaseToken ?? '');
+    if (!renewed) return { state: 'lease_lost' as const, taskId: task.id };
   }
   try {
     const output = await handler({ workerId, claimToken: task.leaseToken ?? '', task, heartbeat: () => heartbeatStudioTask(task.id, workerId, task.leaseToken ?? '') });
