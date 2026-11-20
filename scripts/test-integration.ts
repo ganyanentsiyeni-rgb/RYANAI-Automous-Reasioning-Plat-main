@@ -91,12 +91,64 @@ if (process.env.REDIS_URL) {
   );
 }
 
-await check('API health and dependency status', async () => {
-  const body = await json(`${apiBase}/health`);
-  if (body?.status !== 'online') throw new Error('API is not online');
-  if (!body?.services?.database || !body?.services?.redis) {
-    throw new Error('API dependencies are unhealthy');
+await check('API readiness and required dependencies', async () => {
+  const configuredReadinessTimeoutMs = Number(
+    process.env.API_READINESS_TIMEOUT_MS || 30000,
+  );
+  const readinessTimeoutMs = Number.isFinite(configuredReadinessTimeoutMs)
+    ? Math.max(1000, Math.min(configuredReadinessTimeoutMs, 120000))
+    : 30000;
+  const readinessIntervalMs = 500;
+  const requiredStableSamples = 3;
+  const requiredServices = [
+    'api',
+    'database',
+    'redis',
+    'agentCheckpointer',
+    'agentQueueListener',
+  ];
+  const deadline = Date.now() + readinessTimeoutMs;
+  let consecutiveHealthySamples = 0;
+  let lastFailure = 'No readiness response received';
+
+  while (Date.now() < deadline) {
+    const remainingMs = deadline - Date.now();
+    try {
+      const response = await fetch(`${apiBase}/readyz`, {
+        signal: AbortSignal.timeout(Math.max(1, Math.min(timeoutMs, remainingMs))),
+      });
+      const body = await response.json().catch(() => null);
+      const services = body?.services ?? {};
+      const missingServices = requiredServices.filter(
+        (service) => services[service] !== true,
+      );
+
+      if (
+        response.ok
+        && body?.status === 'online'
+        && missingServices.length === 0
+      ) {
+        consecutiveHealthySamples += 1;
+        if (consecutiveHealthySamples >= requiredStableSamples) return;
+        lastFailure = `healthy sample ${consecutiveHealthySamples}/${requiredStableSamples}`;
+      } else {
+        consecutiveHealthySamples = 0;
+        lastFailure = `HTTP ${response.status}; status=${body?.status ?? 'missing'}; unhealthy services=${missingServices.join(', ') || 'readiness status mismatch'}`;
+      }
+    } catch (error) {
+      consecutiveHealthySamples = 0;
+      lastFailure = error instanceof Error ? error.message : String(error);
+    }
+
+    const sleepMs = Math.min(readinessIntervalMs, Math.max(0, deadline - Date.now()));
+    if (sleepMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, sleepMs));
+    }
   }
+
+  throw new Error(
+    `API did not remain ready for ${requiredStableSamples} consecutive /readyz samples within ${readinessTimeoutMs}ms: ${lastFailure}`,
+  );
 });
 
 await check('Web document and built assets', async () => {
