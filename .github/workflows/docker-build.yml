@@ -163,26 +163,36 @@ jobs:
           MCPJUNGLE_DB_PASSWORD=ci_only_mcpjungle_db_password_1234567890
           MCPJUNGLE_IMAGE_TAG=0.4.6
           EOF
-          # Issue a CI-only delegated JWT (maximum 120-second lifetime); never print or persist it.
           export RYANAI_MCP_DELEGATION_SECRET=ci_only_mcp_delegation_secret_1234567890_abcdefgh
           export RYANAI_MCP_SERVICE_TOKEN=ci_only_mcp_service_token_1234567890_abcdefgh
+          # Start the API, MCP server, and gateway database before minting the short-lived test identity.
+          if ! docker compose --profile mcp-gateway up --build -d --wait api mcp-server mcpjungle-db; then
+            echo "::group::Compose service state after startup failure"
+            docker compose --profile mcp-gateway ps -a || true
+            echo "::endgroup::"
+            echo "::group::Startup logs"
+            docker compose --profile mcp-gateway logs --no-color --tail=200 postgres redis api mcp-server mcpjungle-db || true
+            echo "::endgroup::"
+            exit 1
+          fi
+          # CI-only read capability; Gen-X still evaluates every platform_health call.
           export MCP_PROXY_DELEGATION_TOKEN="$(node --input-type=module -e '
             import { createHmac, randomUUID } from "node:crypto";
             const now = Math.floor(Date.now() / 1000);
             const enc = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
             const header = enc({ alg: "HS256", typ: "JWT" });
-            const claims = enc({ iss: "ryanai-api", aud: "ryanai-mcp", sub: "ci-mcpjungle-proxy", role: "admin", scope: ["platform_health"], iat: now, exp: now + 110, jti: randomUUID() });
+            const claims = enc({ iss: "ryanai-api", aud: "ryanai-mcp", sub: "ci-mcpjungle-proxy", role: "user", scope: ["platform_health"], iat: now, exp: now + 110, jti: randomUUID() });
             const input = header + "." + claims;
             const signature = createHmac("sha256", process.env.RYANAI_MCP_DELEGATION_SECRET).update(input).digest("base64url");
             process.stdout.write(input + "." + signature);
           ')"
           printf '\nMCP_PROXY_DELEGATION_TOKEN=%s\n' "$MCP_PROXY_DELEGATION_TOKEN" >> .env
-          if ! docker compose --profile mcp-gateway up --build -d --wait api mcp-server mcp-proxy mcpjungle; then
+          if ! docker compose --profile mcp-gateway up -d --wait mcp-proxy mcpjungle; then
             echo "::group::Compose service state after startup failure"
             docker compose --profile mcp-gateway ps -a || true
             echo "::endgroup::"
-            echo "::group::PostgreSQL and migration service logs"
-            docker compose --profile mcp-gateway logs --no-color --tail=200 postgres migrate api mcp-server mcp-proxy mcpjungle || true
+            echo "::group::Proxy and gateway startup logs"
+            docker compose --profile mcp-gateway logs --no-color --tail=200 mcp-proxy mcpjungle || true
             echo "::endgroup::"
             exit 1
           fi
