@@ -190,7 +190,7 @@ jobs:
             const signature = createHmac("sha256", process.env.RYANAI_MCP_DELEGATION_SECRET).update(input).digest("base64url");
             process.stdout.write(input + "." + signature);
           ')"
-          ')"
+          sed -i "s|^MCP_PROXY_DELEGATION_TOKEN=.*$|MCP_PROXY_DELEGATION_TOKEN=$MCP_PROXY_DELEGATION_TOKEN|" .env
           if ! docker compose --profile mcp-gateway up -d --wait mcp-proxy mcpjungle; then
             echo "::group::Compose service state after startup failure"
             docker compose --profile mcp-gateway ps -a || true
