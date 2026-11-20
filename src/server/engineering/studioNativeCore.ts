@@ -143,6 +143,7 @@ export async function claimStudioTask(workerId: string, supportedTaskTypes: read
       claimToken,
     );
     if (!rows[0]) return null;
+    // PostgreSQL returns snake_case columns; normalize once before Prisma-facing use.
     const claimed = toCamelCaseRow<StudioTask>(rows[0]);
     await tx.studioEvent.create({ data: {
       projectId: claimed.projectId,
