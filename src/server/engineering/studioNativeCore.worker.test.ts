@@ -524,11 +524,7 @@ describe('Studio worker queue lifecycle', () => {
 
       finishFirstAttempt({ result: 'stale-attempt-output', attempt: 1 });
       const stale = await oldAttempt;
-      expect(stale).toMatchObject({
-        state: 'failed',
-        taskId: 'task-1',
-        error: 'Studio worker lease expired before completion could be committed.',
-      });
+      expect(stale).toMatchObject({ state: 'lease_lost', taskId: 'task-1' });
 
       expect(mocks.taskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
         where: expect.objectContaining({ id: 'task-1', leaseToken: 'old-lease-token', status: 'running' }),
