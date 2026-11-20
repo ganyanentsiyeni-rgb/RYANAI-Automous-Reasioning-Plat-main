@@ -155,6 +155,8 @@ jobs:
           REDIS_PASSWORD=ci_redis_password_1234567890
           JWT_SECRET=ci_only_jwt_secret_1234567890_abcdefgh
           MCP_AUTH_TOKEN=ci_only_mcp_server_token_1234567890_abcdefgh
+          RYANAI_MCP_SERVICE_TOKEN=ci_only_mcp_service_token_1234567890_abcdefgh
+          RYANAI_MCP_DELEGATION_SECRET=ci_only_mcp_delegation_secret_1234567890_abcdefgh
           MCP_ALLOWED_HOSTS=localhost,127.0.0.1,[::1],mcp-server
           RYANAI_MCP_ENABLED_TOOLS=platform_health
           MCPJUNGLE_DB_PASSWORD=ci_only_mcpjungle_db_password_1234567890
@@ -165,7 +167,7 @@ jobs:
             docker compose --profile mcp-gateway ps -a || true
             echo "::endgroup::"
             echo "::group::PostgreSQL and migration service logs"
-            docker compose --profile mcp-gateway logs --no-color --tail=200 postgres migrate api || true
+            docker compose --profile mcp-gateway logs --no-color --tail=200 postgres migrate api mcp-server mcpjungle || true
             echo "::endgroup::"
             exit 1
           fi
