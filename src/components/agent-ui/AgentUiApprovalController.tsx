@@ -1,29 +1,79 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createRyanAiAgentUiBridge, type RyanAiAgentApprovalRequest } from "@/lib/agentUiBridge";
 
 interface PendingApproval {
   id: number;
   summary: string;
-  signal: AbortSignal;
+}
+
+/**
+ * Keeps promise resolvers outside React render state while exposing only
+ * methods to callbacks. Encapsulation avoids passing a ref-capturing callback
+ * into the UI SDK bridge during render.
+ */
+class ApprovalRequestStore {
+  private resolver: ((approved: boolean) => void) | null = null;
+  private requestId = 0;
+
+  begin(resolve: (approved: boolean) => void): number {
+    this.resolver?.(false);
+    const id = ++this.requestId;
+    this.resolver = resolve;
+    return id;
+  }
+
+  resolve(id: number, approved: boolean): void {
+    if (id !== this.requestId || !this.resolver) return;
+    const resolve = this.resolver;
+    this.resolver = null;
+    resolve(approved);
+  }
+
+  cancel(): void {
+    const resolve = this.resolver;
+    this.resolver = null;
+    this.requestId += 1;
+    resolve?.(false);
+  }
+}
+
+type AgentUiBridge = ReturnType<typeof createRyanAiAgentUiBridge>;
+
+/** External-store adapter lets the bridge be created in an effect without
+ * scheduling React state updates directly from that effect. */
+class AgentUiBridgeStore {
+  private agent: AgentUiBridge | null = null;
+  private listeners = new Set<() => void>();
+
+  subscribe = (listener: () => void) => {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  };
+
+  getSnapshot = () => this.agent;
+
+  publish(agent: AgentUiBridge | null): void {
+    this.agent = agent;
+    this.listeners.forEach((listener) => listener());
+  }
 }
 
 export function AgentUiApprovalController({
   children,
 }: {
-  children: (agent: ReturnType<typeof createRyanAiAgentUiBridge>) => ReactNode;
+  children: (agent: AgentUiBridge) => ReactNode;
 }) {
   const [pending, setPending] = useState<PendingApproval | null>(null);
-  const resolverRef = useRef<((approved: boolean) => void) | null>(null);
-  const requestIdRef = useRef(0);
+  const [approvalStore] = useState(() => new ApprovalRequestStore());
+  const [bridgeStore] = useState(() => new AgentUiBridgeStore());
+  const agent = useSyncExternalStore(bridgeStore.subscribe, bridgeStore.getSnapshot, bridgeStore.getSnapshot);
 
-  const resolvePending = useCallback((approved: boolean) => {
-    const resolve = resolverRef.current;
-    resolverRef.current = null;
-    setPending(null);
-    resolve?.(approved);
-  }, []);
+  const resolvePending = useCallback((id: number, approved: boolean) => {
+    approvalStore.resolve(id, approved);
+    setPending((current) => current?.id === id ? null : current);
+  }, [approvalStore]);
 
   const requestApproval = useCallback(
     ({ summary, signal }: RyanAiAgentApprovalRequest) =>
@@ -33,34 +83,33 @@ export function AgentUiApprovalController({
           return;
         }
 
-        if (resolverRef.current) {
-          resolverRef.current(false);
-        }
-
-        const id = ++requestIdRef.current;
-        resolverRef.current = resolve;
-        setPending({ id, summary, signal });
+        const id = approvalStore.begin(resolve);
+        setPending({ id, summary });
 
         const abort = () => {
-          if (requestIdRef.current === id) resolvePending(false);
+          approvalStore.resolve(id, false);
+          setPending((current) => current?.id === id ? null : current);
         };
         signal.addEventListener("abort", abort, { once: true });
       }),
-    [resolvePending],
+    [approvalStore],
   );
 
-  useEffect(() => {
-    return () => {
-      resolverRef.current?.(false);
-      resolverRef.current = null;
-    };
-  }, []);
+  const releasePending = useCallback(() => {
+    approvalStore.cancel();
+  }, [approvalStore]);
 
-  const agent = createRyanAiAgentUiBridge({ requestApproval });
+  useEffect(() => {
+    bridgeStore.publish(createRyanAiAgentUiBridge({ requestApproval }));
+    return () => {
+      bridgeStore.publish(null);
+      releasePending();
+    };
+  }, [bridgeStore, requestApproval, releasePending]);
 
   return (
     <>
-      {children(agent)}
+      {agent ? children(agent) : null}
       {pending && (
         <div
           role="dialog"
@@ -82,14 +131,14 @@ export function AgentUiApprovalController({
             <div className="mt-6 flex justify-end gap-3">
               <button
                 type="button"
-                onClick={() => resolvePending(false)}
+                onClick={() => resolvePending(pending.id, false)}
                 className="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5"
               >
                 Decline
               </button>
               <button
                 type="button"
-                onClick={() => resolvePending(true)}
+                onClick={() => resolvePending(pending.id, true)}
                 className="rounded-lg border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-sm font-medium text-cyan-100 hover:bg-cyan-300/20"
               >
                 Approve

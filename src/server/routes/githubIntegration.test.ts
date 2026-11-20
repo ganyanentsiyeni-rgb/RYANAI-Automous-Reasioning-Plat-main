@@ -6,7 +6,7 @@ import {
   encryptGitHubSecret,
   GITHUB_APP_REPOSITORY,
 } from '../githubAppOAuth.js';
-import { githubIntegrationRoutes } from './githubIntegration.js';
+import { githubIntegrationRoutes, inspectConnectedGitHubRepository, inspectConnectedGitHubWorkflowEvidence } from './githubIntegration.js';
 import { installAuthentication } from './auth.js';
 
 const store = vi.hoisted(() => ({
@@ -24,6 +24,25 @@ function mockResponse(payload: unknown, status = 200) {
     status,
     headers: { 'content-type': 'application/json' },
   });
+}
+
+function makeJobLogZip(): Buffer {
+  const filename = Buffer.from('1_build.txt');
+  const raw = Buffer.from('error TS2322: synthetic failure\\nAuthorization: Bearer secret-value');
+  const compressed = raw;
+  const local = Buffer.alloc(30 + filename.length);
+  local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4);
+  local.writeUInt32LE(compressed.length, 18); local.writeUInt32LE(raw.length, 22);
+  local.writeUInt16LE(filename.length, 26); filename.copy(local, 30);
+  const central = Buffer.alloc(46 + filename.length);
+  central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(20, 4);
+  central.writeUInt16LE(20, 6); central.writeUInt32LE(compressed.length, 20);
+  central.writeUInt32LE(raw.length, 24); central.writeUInt16LE(filename.length, 28);
+  filename.copy(central, 46);
+  const end = Buffer.alloc(22); end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(1, 8); end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(central.length, 12); end.writeUInt32LE(local.length + compressed.length, 16);
+  return Buffer.concat([local, compressed, central, end]);
 }
 
 function storedConnection(overrides: Record<string, unknown> = {}) {
@@ -85,6 +104,81 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+});
+
+
+describe('owner-bound read-only repository inspection', () => {
+  it('returns the pinned repository and exact default-branch commit for its connected owner', async () => {
+    const app = await createApp();
+    store.connection.findUnique.mockResolvedValue(storedConnection());
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(mockResponse({ id: 123456, login: 'synthetic-owner' }))
+      .mockResolvedValueOnce(mockResponse({
+        id: 1361308785,
+        name: 'RYANAI-Automous-Reasioning-Plat-main',
+        full_name: GITHUB_APP_REPOSITORY,
+        html_url: 'https://github.com/' + GITHUB_APP_REPOSITORY,
+        default_branch: 'main',
+        permissions: { pull: true, push: false, admin: false },
+      }))
+      .mockResolvedValueOnce(mockResponse({
+        sha: 'a'.repeat(40),
+        html_url: 'https://github.com/' + GITHUB_APP_REPOSITORY + '/commit/' + 'a'.repeat(40),
+      }));
+    const snapshot = await inspectConnectedGitHubRepository(app, userId);
+    expect(snapshot.repositoryFullName).toBe(GITHUB_APP_REPOSITORY);
+    expect(snapshot.accountLogin).toBe('synthetic-owner');
+    expect(snapshot.defaultBranch).toBe('main');
+    expect(snapshot.commitSha).toBe('a'.repeat(40));
+    expect(snapshot.source).toBe('github-oauth-read-only');
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(vi.mocked(fetch).mock.calls.every(([url, init]) =>
+      String(url).startsWith('https://api.github.com/') &&
+      (init as RequestInit | undefined)?.method === undefined,
+    )).toBe(true);
+  });
+
+  it('rejects a missing owner connection without making a provider request', async () => {
+    const app = await createApp();
+    store.connection.findUnique.mockResolvedValue(null);
+    await expect(inspectConnectedGitHubRepository(app, userId)).rejects.toThrow('github_owner_connection_missing_or_wrong_repository');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('rejects a repository recreated under the same name with a different immutable ID', async () => {
+    const app = await createApp();
+    store.connection.findUnique.mockResolvedValue(storedConnection());
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(mockResponse({ id: 123456, login: 'synthetic-owner' }))
+      .mockResolvedValueOnce(mockResponse({
+        id: 999999999,
+        full_name: GITHUB_APP_REPOSITORY,
+        default_branch: 'main',
+        permissions: { pull: true },
+      }));
+    await expect(inspectConnectedGitHubRepository(app, userId)).rejects.toThrow('github_owner_or_repository_verification_failed');
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('requires owner reauthorization instead of refreshing or rotating an expired token', async () => {
+    const app = await createApp();
+    store.connection.findUnique.mockResolvedValue(storedConnection({
+      accessTokenExpiresAt: new Date(Date.now() - 60_000),
+    }));
+    await expect(inspectConnectedGitHubRepository(app, userId)).rejects.toThrow('github_owner_reauthorization_required');
+    expect(fetch).not.toHaveBeenCalled();
+    expect(store.connection.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects a GitHub identity mismatch before reading repository state', async () => {
+    const app = await createApp();
+    store.connection.findUnique.mockResolvedValue(storedConnection());
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(mockResponse({ id: 999999, login: 'different-owner' }))
+      .mockResolvedValueOnce(mockResponse({ full_name: GITHUB_APP_REPOSITORY, default_branch: 'main', permissions: { pull: true } }));
+    await expect(inspectConnectedGitHubRepository(app, userId)).rejects.toThrow('github_owner_or_repository_verification_failed');
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('GitHub App in-app authorization lifecycle', () => {
@@ -400,5 +494,202 @@ describe('GitHub App in-app authorization lifecycle', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ disconnected: true, remoteRevocation: 'unconfirmed' });
     expect(store.connection.deleteMany).toHaveBeenCalledWith({ where: { userId } });
+  });
+});
+
+
+describe('owner-bound exact-head GitHub workflow evidence', () => {
+  it('returns only workflow and job metadata for the verified requested commit', async () => {
+    const app = await createApp();
+    store.connection.findUnique.mockResolvedValue(storedConnection());
+    const headSha = 'b'.repeat(40);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(mockResponse({ id: 123456, login: 'synthetic-owner' }))
+      .mockResolvedValueOnce(mockResponse({
+        id: 1361308785, full_name: GITHUB_APP_REPOSITORY,
+        permissions: { pull: true, push: false },
+      }))
+      .mockResolvedValueOnce(mockResponse({ sha: headSha }))
+      .mockResolvedValueOnce(mockResponse({
+        total_count: 1,
+        workflow_runs: [{
+          id: 991, name: 'CI', head_sha: headSha, status: 'completed',
+          conclusion: 'success', html_url: 'https://github.com/example/run/991',
+        }],
+      }))
+      .mockResolvedValueOnce(mockResponse({
+        total_count: 1,
+        jobs: [{ name: 'typecheck', status: 'completed', conclusion: 'success' }],
+      }));
+
+    const evidence = await inspectConnectedGitHubWorkflowEvidence(app, userId, headSha);
+    expect(evidence.verifiedHeadSha).toBe(headSha);
+    expect(evidence.workflowRuns).toHaveLength(1);
+    expect(evidence.workflowRuns[0].jobs[0]).toEqual({
+      name: 'typecheck', status: 'completed', conclusion: 'success',
+      id: 0, name: 'typecheck', status: 'completed', conclusion: 'success',
+    });
+    expect(JSON.stringify(evidence)).not.toContain(rawAccessToken);
+    expect(fetch).toHaveBeenCalledTimes(5);
+    expect(vi.mocked(fetch).mock.calls.every(([url, init]) =>
+      String(url).startsWith('https://api.github.com/') &&
+      (init as RequestInit | undefined)?.method === undefined,
+    )).toBe(true);
+  });
+
+  it('rejects a non-full commit SHA before any GitHub request', async () => {
+    const app = await createApp();
+    await expect(inspectConnectedGitHubWorkflowEvidence(app, userId, 'main'))
+      .rejects.toThrow('github_workflow_head_sha_invalid');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('rejects a response whose commit SHA does not match the requested SHA', async () => {
+    const app = await createApp();
+    store.connection.findUnique.mockResolvedValue(storedConnection());
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(mockResponse({ id: 123456, login: 'synthetic-owner' }))
+      .mockResolvedValueOnce(mockResponse({
+        id: 1361308785, full_name: GITHUB_APP_REPOSITORY,
+        permissions: { pull: true },
+      }))
+      .mockResolvedValueOnce(mockResponse({ sha: 'c'.repeat(40) }));
+    await expect(inspectConnectedGitHubWorkflowEvidence(app, userId, 'b'.repeat(40)))
+      .rejects.toThrow('github_workflow_commit_sha_mismatch');
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+});
+
+
+describe('bounded GitHub workflow evidence pagination', () => {
+  it('fetches a second page when GitHub reports more than 50 workflow runs', async () => {
+    const app = await createApp();
+    store.connection.findUnique.mockResolvedValue(storedConnection());
+    const headSha = 'd'.repeat(40);
+    const firstPage = Array.from({ length: 50 }, (_, index) => ({
+      id: index + 1, name: 'other workflow', head_sha: 'e'.repeat(40),
+      status: 'completed', conclusion: 'success',
+    }));
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(mockResponse({ id: 123456, login: 'synthetic-owner' }))
+      .mockResolvedValueOnce(mockResponse({
+        id: 1361308785, full_name: GITHUB_APP_REPOSITORY, permissions: { pull: true },
+      }))
+      .mockResolvedValueOnce(mockResponse({ sha: headSha }))
+      .mockResolvedValueOnce(mockResponse({ total_count: 51, workflow_runs: firstPage }))
+      .mockResolvedValueOnce(mockResponse({
+        total_count: 51,
+        workflow_runs: [{
+          id: 991, name: 'exact-head workflow', head_sha: headSha,
+          status: 'completed', conclusion: 'success',
+        }],
+      }))
+      .mockResolvedValueOnce(mockResponse({
+        total_count: 1, jobs: [{ name: 'typecheck', status: 'completed', conclusion: 'success' }],
+      }));
+
+    const evidence = await inspectConnectedGitHubWorkflowEvidence(app, userId, headSha);
+    expect(evidence.workflowRuns).toHaveLength(1);
+    expect(evidence.workflowRuns[0].headSha).toBe(headSha);
+    expect(evidence.complete).toBe(true);
+    const urls = vi.mocked(fetch).mock.calls.map(([url]) => String(url));
+    expect(urls.some((url) => url.includes('/actions/runs?') && url.includes('page=2'))).toBe(true);
+  });
+});
+
+
+describe('capability-gated GitHub Actions job log retrieval', () => {
+
+  it('enforces the archive byte limit while streaming when Content-Length is absent', async () => {
+    const app = await createApp();
+    store.connection.findUnique.mockResolvedValue(storedConnection());
+    const headSha = 'e'.repeat(40);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(mockResponse({ id: 123456, login: 'synthetic-owner' }))
+      .mockResolvedValueOnce(mockResponse({ id: 1361308785, full_name: GITHUB_APP_REPOSITORY, permissions: { pull: true } }))
+      .mockResolvedValueOnce(mockResponse({ sha: headSha }))
+      .mockResolvedValueOnce(mockResponse({ total_count: 1, workflow_runs: [{
+        id: 94, name: 'build', head_sha: headSha, status: 'completed', conclusion: 'failure',
+      }] }))
+      .mockResolvedValueOnce(mockResponse({ total_count: 1, jobs: [{
+        id: 504, name: 'build', status: 'completed', conclusion: 'failure',
+      }] }))
+      .mockResolvedValueOnce(new Response(null, {
+        status: 302, headers: { location: 'https://productionresultssa1.blob.core.windows.net/logs/signed.zip?sig=synthetic' },
+      }))
+      .mockResolvedValueOnce(new Response(new Uint8Array(2 * 1024 * 1024 + 1), { status: 200 }));
+    const evidence = await inspectConnectedGitHubWorkflowEvidence(app, userId, headSha, { includeJobLogs: true });
+    expect(evidence.jobLogStatus).toBe('partial');
+    expect(evidence.jobLogExcerpts).toEqual([]);
+    expect(fetch).toHaveBeenCalledTimes(7);
+  });
+
+  it('does not request job logs unless explicitly enabled', async () => {
+    const app = await createApp();
+    store.connection.findUnique.mockResolvedValue(storedConnection());
+    const headSha = 'b'.repeat(40);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(mockResponse({ id: 123456, login: 'synthetic-owner' }))
+      .mockResolvedValueOnce(mockResponse({ id: 1361308785, full_name: GITHUB_APP_REPOSITORY, permissions: { pull: true } }))
+      .mockResolvedValueOnce(mockResponse({ sha: headSha }))
+      .mockResolvedValueOnce(mockResponse({ total_count: 1, workflow_runs: [{
+        id: 91, name: 'build', head_sha: headSha, status: 'completed', conclusion: 'failure',
+      }] }))
+      .mockResolvedValueOnce(mockResponse({ total_count: 1, jobs: [{
+        id: 501, name: 'build', status: 'completed', conclusion: 'failure',
+      }] }));
+    const evidence = await inspectConnectedGitHubWorkflowEvidence(app, userId, headSha);
+    expect(evidence.jobLogStatus).toBe('not_requested');
+    expect(fetch).toHaveBeenCalledTimes(5);
+  });
+
+  it('rejects an untrusted redirect host without forwarding authorization', async () => {
+    const app = await createApp();
+    store.connection.findUnique.mockResolvedValue(storedConnection());
+    const headSha = 'c'.repeat(40);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(mockResponse({ id: 123456, login: 'synthetic-owner' }))
+      .mockResolvedValueOnce(mockResponse({ id: 1361308785, full_name: GITHUB_APP_REPOSITORY, permissions: { pull: true } }))
+      .mockResolvedValueOnce(mockResponse({ sha: headSha }))
+      .mockResolvedValueOnce(mockResponse({ total_count: 1, workflow_runs: [{
+        id: 92, name: 'build', head_sha: headSha, status: 'completed', conclusion: 'failure',
+      }] }))
+      .mockResolvedValueOnce(mockResponse({ total_count: 1, jobs: [{
+        id: 502, name: 'build', status: 'completed', conclusion: 'failure',
+      }] }))
+      .mockResolvedValueOnce(new Response(null, {
+        status: 302, headers: { location: 'https://attacker.example/logs.zip' },
+      }));
+    const evidence = await inspectConnectedGitHubWorkflowEvidence(app, userId, headSha, { includeJobLogs: true });
+    expect(evidence.jobLogStatus).toBe('partial');
+    expect(evidence.jobLogExcerpts).toEqual([]);
+    expect(fetch).toHaveBeenCalledTimes(6);
+    expect((vi.mocked(fetch).mock.calls[5][1] as RequestInit).redirect).toBe('manual');
+  });
+
+  it('downloads only from the approved GitHub log host and returns sanitized signature evidence', async () => {
+    const app = await createApp();
+    store.connection.findUnique.mockResolvedValue(storedConnection());
+    const headSha = 'd'.repeat(40);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(mockResponse({ id: 123456, login: 'synthetic-owner' }))
+      .mockResolvedValueOnce(mockResponse({ id: 1361308785, full_name: GITHUB_APP_REPOSITORY, permissions: { pull: true } }))
+      .mockResolvedValueOnce(mockResponse({ sha: headSha }))
+      .mockResolvedValueOnce(mockResponse({ total_count: 1, workflow_runs: [{
+        id: 93, name: 'build', head_sha: headSha, status: 'completed', conclusion: 'failure',
+      }] }))
+      .mockResolvedValueOnce(mockResponse({ total_count: 1, jobs: [{
+        id: 503, name: 'build', status: 'completed', conclusion: 'failure',
+      }] }))
+      .mockResolvedValueOnce(new Response(null, {
+        status: 302, headers: { location: 'https://productionresultssa1.blob.core.windows.net/logs/signed.zip?sig=synthetic' },
+      }))
+      .mockResolvedValueOnce(new Response(makeJobLogZip(), { status: 200 }));
+    const evidence = await inspectConnectedGitHubWorkflowEvidence(app, userId, headSha, { includeJobLogs: true });
+    expect(evidence.jobLogStatus).toBe('complete');
+    expect(evidence.jobLogExcerpts).toHaveLength(1);
+    expect(evidence.jobLogExcerpts[0].excerpt).toContain('error TS2322');
+    expect(evidence.jobLogExcerpts[0].excerpt).not.toContain('secret-value');
+    expect((vi.mocked(fetch).mock.calls[6][1] as RequestInit).headers).toBeUndefined();
   });
 });

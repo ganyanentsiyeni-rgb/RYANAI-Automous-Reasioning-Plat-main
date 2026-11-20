@@ -27,6 +27,13 @@ export class EventLeaseLostError extends Error {
   }
 }
 
+export class EventAttemptAuditError extends Error {
+  constructor(count: number) {
+    super(`Expected exactly one started attempt audit record to transition; updated ${count}.`);
+    this.name = 'EventAttemptAuditError';
+  }
+}
+
 export interface EventInboxOptions {
   maxAttempts?: number;
   leaseMs?: number;
@@ -66,6 +73,10 @@ function errorMessage(error: unknown): string {
 function isUniqueConstraintError(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error
     && (error as { code?: unknown }).code === 'P2002';
+}
+
+function assertSingleAttemptAuditTransition(count: number): void {
+  if (count !== 1) throw new EventAttemptAuditError(count);
 }
 
 function toEnvelope(row: Prisma.IntelligenceEventInboxGetPayload<true>): RyanAIEventEnvelope {
@@ -143,15 +154,56 @@ export class IntelligenceEventInbox {
     }
   }
 
-  /** Atomically claims the oldest due event; expired leases can be reclaimed. */
+  /**
+   * Generic workers are deliberately excluded from the GitHub Event Streams
+   * lane. GitHub events may only be claimed through claimNextForOwner().
+   */
   async claimNext(workerId: string, now = new Date(), eventTypes?: string[]) {
-    const owner = workerId.trim();
-    if (!owner || owner.length > 128) throw new RangeError('workerId must contain 1-128 characters.');
+    return this.claimNextInternal(workerId, now, eventTypes, null);
+  }
+
+  /**
+   * Claim a GitHub event only for the authenticated RyanAI owner supplied by
+   * trusted server context. The JSON owner filter is applied in the database
+   * query, before a lease can be acquired; event payload fields never select
+   * or override this identity.
+   */
+  async claimNextForOwner(
+    workerId: string,
+    authenticatedOwnerUserId: string,
+    now = new Date(),
+    eventTypes?: string[],
+  ) {
+    const ownerUserId = authenticatedOwnerUserId.trim();
+    if (!ownerUserId || ownerUserId.length > 128) {
+      throw new RangeError('authenticatedOwnerUserId must contain 1-128 characters.');
+    }
+    return this.claimNextInternal(workerId, now, eventTypes, ownerUserId);
+  }
+
+  private async claimNextInternal(
+    workerId: string,
+    now: Date,
+    eventTypes: string[] | undefined,
+    authenticatedOwnerUserId: string | null,
+  ) {
+    const worker = workerId.trim();
+    if (!worker || worker.length > 128) throw new RangeError('workerId must contain 1-128 characters.');
     const allowedTypes = eventTypes?.filter((value) => typeof value === 'string' && value.length > 0);
     if (eventTypes && (!allowedTypes || allowedTypes.length === 0)) return null;
+
+    const githubLane = { sourceProvider: 'github', sourceService: 'event-streams' };
+    const ownerScope = authenticatedOwnerUserId
+      ? {
+          ...githubLane,
+          payload: { path: ['owner', 'userId'], equals: authenticatedOwnerUserId },
+        }
+      : { NOT: githubLane };
+
     return this.db.$transaction(async (tx) => {
       const candidate = await tx.intelligenceEventInbox.findFirst({
         where: {
+          ...ownerScope,
           ...(allowedTypes ? { eventType: { in: allowedTypes } } : {}),
           OR: [
             { status: 'pending', availableAt: { lte: now } },
@@ -167,56 +219,60 @@ export class IntelligenceEventInbox {
         ? { leaseExpiresAt: candidate.leaseExpiresAt }
         : { availableAt: { lte: now } };
       const claimed = await tx.intelligenceEventInbox.updateMany({
-        where: { id: candidate.id, status: candidate.status, ...leaseCondition },
+        where: { ...ownerScope, id: candidate.id, status: candidate.status, attempts: candidate.attempts, ...leaseCondition },
         data: {
           status: 'processing',
           attempts: { increment: 1 },
-          leaseOwner: owner,
+          leaseOwner: worker,
           leaseExpiresAt: new Date(now.getTime() + this.leaseMs),
           lastError: null,
         },
       });
       if (claimed.count !== 1) return null;
       await tx.intelligenceEventAttempt.create({
-        data: { eventInboxId: candidate.id, attempt: candidate.attempts + 1, workerId: owner, status: 'started' },
+        data: { eventInboxId: candidate.id, attempt: candidate.attempts + 1, workerId: worker, status: 'started' },
       });
       return tx.intelligenceEventInbox.findUnique({ where: { id: candidate.id } });
     });
   }
 
-  async renewLease(eventId: string, workerId: string, now = new Date()): Promise<boolean> {
+  async renewLease(eventId: string, workerId: string, attempt: number, now = new Date()): Promise<boolean> {
+    positiveInteger(attempt, 'attempt');
     const result = await this.db.intelligenceEventInbox.updateMany({
-      where: { id: eventId, status: 'processing', leaseOwner: workerId, leaseExpiresAt: { gt: now } },
+      where: { id: eventId, status: 'processing', leaseOwner: workerId, attempts: attempt, leaseExpiresAt: { gt: now } },
       data: { leaseExpiresAt: new Date(now.getTime() + this.leaseMs) },
     });
     return result.count === 1;
   }
 
-  async acknowledge(eventId: string, workerId: string, now = new Date()): Promise<void> {
+  async acknowledge(eventId: string, workerId: string, attempt: number, now = new Date()): Promise<void> {
+    positiveInteger(attempt, 'attempt');
     await this.db.$transaction(async (tx) => {
       const result = await tx.intelligenceEventInbox.updateMany({
-        where: { id: eventId, status: 'processing', leaseOwner: workerId, leaseExpiresAt: { gt: now } },
+        where: { id: eventId, status: 'processing', leaseOwner: workerId, attempts: attempt, leaseExpiresAt: { gt: now } },
         data: { status: 'processed', processedAt: now, leaseOwner: null, leaseExpiresAt: null, lastError: null },
       });
       if (result.count !== 1) throw new EventLeaseLostError();
-      await tx.intelligenceEventAttempt.updateMany({
-        where: { eventInboxId: eventId, workerId, status: 'started' },
+      const audited = await tx.intelligenceEventAttempt.updateMany({
+        where: { eventInboxId: eventId, attempt, workerId, status: 'started' },
         data: { status: 'succeeded', finishedAt: now },
       });
+      assertSingleAttemptAuditTransition(audited.count);
     });
   }
 
-  async fail(eventId: string, workerId: string, error: unknown, now = new Date()) {
+  async fail(eventId: string, workerId: string, attempt: number, error: unknown, now = new Date()) {
+    positiveInteger(attempt, 'attempt');
     return this.db.$transaction(async (tx) => {
       const current = await tx.intelligenceEventInbox.findFirst({
-        where: { id: eventId, status: 'processing', leaseOwner: workerId, leaseExpiresAt: { gt: now } },
+        where: { id: eventId, status: 'processing', leaseOwner: workerId, attempts: attempt, leaseExpiresAt: { gt: now } },
       });
       if (!current) throw new EventLeaseLostError();
       const deadLetter = current.attempts >= current.maxAttempts;
       const delay = Math.min(this.baseRetryMs * (2 ** Math.max(0, current.attempts - 1)), this.maxRetryMs);
       const retryAt = deadLetter ? null : new Date(now.getTime() + delay);
       const result = await tx.intelligenceEventInbox.updateMany({
-        where: { id: current.id, status: 'processing', leaseOwner: workerId, leaseExpiresAt: current.leaseExpiresAt },
+        where: { id: current.id, status: 'processing', leaseOwner: workerId, attempts: attempt, leaseExpiresAt: { equals: current.leaseExpiresAt, gt: now } },
         data: {
           status: deadLetter ? 'dead_letter' : 'retry',
           ...(retryAt ? { availableAt: retryAt } : {}),
@@ -226,10 +282,11 @@ export class IntelligenceEventInbox {
         },
       });
       if (result.count !== 1) throw new EventLeaseLostError();
-      await tx.intelligenceEventAttempt.updateMany({
-        where: { eventInboxId: eventId, workerId, status: 'started' },
+      const audited = await tx.intelligenceEventAttempt.updateMany({
+        where: { eventInboxId: eventId, attempt, workerId, status: 'started' },
         data: { status: deadLetter ? 'dead_letter' : 'retry', error: errorMessage(error), finishedAt: now },
       });
+      assertSingleAttemptAuditTransition(audited.count);
       return { status: deadLetter ? 'dead_letter' as const : 'retry' as const, retryAt };
     });
   }
@@ -246,7 +303,7 @@ export class IntelligenceEventInbox {
       const deadLetter = event.attempts >= event.maxAttempts;
       const result = await this.db.$transaction(async (tx) => {
         const moved = await tx.intelligenceEventInbox.updateMany({
-          where: { id: event.id, status: 'processing', leaseExpiresAt: event.leaseExpiresAt },
+          where: { id: event.id, status: 'processing', attempts: event.attempts, leaseOwner: event.leaseOwner, leaseExpiresAt: event.leaseExpiresAt },
           data: {
             status: deadLetter ? 'dead_letter' : 'retry',
             availableAt: now,
@@ -256,10 +313,11 @@ export class IntelligenceEventInbox {
           },
         });
         if (moved.count === 1) {
-          await tx.intelligenceEventAttempt.updateMany({
-            where: { eventInboxId: event.id, status: 'started' },
+          const audited = await tx.intelligenceEventAttempt.updateMany({
+            where: { eventInboxId: event.id, attempt: event.attempts, workerId: event.leaseOwner ?? undefined, status: 'started' },
             data: { status: 'lease_expired', error: 'Worker lease expired before acknowledgement.', finishedAt: now },
           });
+          assertSingleAttemptAuditTransition(audited.count);
         }
         return moved.count;
       });
@@ -295,6 +353,49 @@ export class IntelligenceEventInbox {
     return Object.fromEntries(counts) as Record<IntelligenceEventStatus, number>;
   }
 
+  /** Owner-scoped GitHub processing; owner identity comes from authenticated server context. */
+  async processNextForOwner(
+    workerId: string,
+    authenticatedOwnerUserId: string,
+    handler: EventHandler,
+    now = new Date(),
+    eventTypes?: string[],
+  ) {
+    const claimed = await this.claimNextForOwner(workerId, authenticatedOwnerUserId, now, eventTypes);
+    if (!claimed) return { status: 'idle' as const };
+    const payload = claimed.payload as Record<string, unknown>;
+    const owner = payload.owner as Record<string, unknown> | undefined;
+    if (!owner || owner.userId !== authenticatedOwnerUserId) {
+      const outcome = await this.fail(
+        claimed.id,
+        workerId,
+        claimed.attempts,
+        new Error('Claimed GitHub event owner does not match authenticated worker context.'),
+        new Date(),
+      );
+      return { ...outcome, eventId: claimed.eventId };
+    }
+    let leaseLost = false;
+    const heartbeat = setInterval(() => {
+      void this.renewLease(claimed.id, workerId, claimed.attempts)
+        .then((renewed) => { if (!renewed) leaseLost = true; })
+        .catch(() => { leaseLost = true; });
+    }, Math.max(50, Math.floor(this.leaseMs / 3)));
+    heartbeat.unref?.();
+    try {
+      await handler(toEnvelope(claimed));
+      if (leaseLost) throw new EventLeaseLostError();
+      await this.acknowledge(claimed.id, workerId, claimed.attempts, new Date());
+      return { status: 'processed' as const, eventId: claimed.eventId };
+    } catch (error) {
+      if (leaseLost) throw new EventLeaseLostError();
+      const outcome = await this.fail(claimed.id, workerId, claimed.attempts, error, new Date());
+      return { ...outcome, eventId: claimed.eventId };
+    } finally {
+      clearInterval(heartbeat);
+    }
+  }
+
   /** Runs one event through a trusted handler. Handler failures are retried or dead-lettered. */
   async processNext(workerId: string, handler: EventHandler, now = new Date(), eventTypes?: string[]) {
     const claimed = await this.claimNext(workerId, now, eventTypes);
@@ -302,7 +403,7 @@ export class IntelligenceEventInbox {
     // Keep long-running handlers from losing their lease while work is in flight.
     let leaseLost = false;
     const heartbeat = setInterval(() => {
-      void this.renewLease(claimed.id, workerId)
+      void this.renewLease(claimed.id, workerId, claimed.attempts)
         .then((renewed) => { if (!renewed) leaseLost = true; })
         .catch(() => { leaseLost = true; });
     }, Math.max(50, Math.floor(this.leaseMs / 3)));
@@ -311,11 +412,11 @@ export class IntelligenceEventInbox {
     try {
       await handler(toEnvelope(claimed));
       if (leaseLost) throw new EventLeaseLostError();
-      await this.acknowledge(claimed.id, workerId, new Date());
+      await this.acknowledge(claimed.id, workerId, claimed.attempts, new Date());
       return { status: 'processed' as const, eventId: claimed.eventId };
     } catch (error) {
       if (leaseLost) throw new EventLeaseLostError();
-      const outcome = await this.fail(claimed.id, workerId, error, new Date());
+      const outcome = await this.fail(claimed.id, workerId, claimed.attempts, error, new Date());
       return { ...outcome, eventId: claimed.eventId };
     } finally {
       clearInterval(heartbeat);

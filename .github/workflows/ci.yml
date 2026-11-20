@@ -65,6 +65,10 @@ jobs:
           src/App.test.tsx
       - name: Run plugin integrations centre regression tests
         run: npx vitest run src/components/PluginIntegrationsSettings.test.tsx
+      - name: Run Basic Programming Tools container regression tests
+        run: npx vitest run src/pages/BasicProgrammingTools.test.tsx
+      - name: Run intelligence-event inbox lifecycle unit tests
+        run: npx vitest run src/events/intelligenceEventInbox.test.ts
       - name: Typecheck API independently of application lint
         run: npm run build:server
 
@@ -152,11 +156,11 @@ jobs:
         env:
           POSTGRES_USER: ryanai
           POSTGRES_PASSWORD: ci_password
-          POSTGRES_DB: ryanai_db
+          POSTGRES_DB: ryanai_disposable_db
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U ryanai -d ryanai_db"
+          --health-cmd "pg_isready -U ryanai -d ryanai_disposable_db"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -174,7 +178,7 @@ jobs:
       NODE_ENV: production
       HOST: 127.0.0.1
       PORT: '3000'
-      DATABASE_URL: postgresql://ryanai:ci_password@127.0.0.1:5432/ryanai_db
+      DATABASE_URL: postgresql://ryanai:ci_password@127.0.0.1:5432/ryanai_disposable_db
       REDIS_URL: redis://127.0.0.1:6379
       JWT_SECRET: ci_only_secret_at_least_32_characters_long
       OPENAI_API_KEY: ''
@@ -201,30 +205,7 @@ jobs:
       - name: Prepare disposable PostgreSQL with Supabase Auth compatibility
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
-        run: |
-          set -euo pipefail
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-          DO $$
-          BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
-              CREATE ROLE anon NOLOGIN;
-            END IF;
-            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
-              CREATE ROLE authenticated NOLOGIN;
-            END IF;
-            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
-              CREATE ROLE service_role NOLOGIN BYPASSRLS;
-            END IF;
-          END $$;
-          CREATE SCHEMA IF NOT EXISTS auth;
-          CREATE TABLE IF NOT EXISTS auth.users (
-            id uuid PRIMARY KEY,
-            email text,
-            raw_user_meta_data jsonb NOT NULL DEFAULT '{}'::jsonb,
-            created_at timestamptz DEFAULT now(),
-            updated_at timestamptz DEFAULT now()
-          );
-          SQL
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/prepare-disposable-supabase-auth-fixture.sql
 
       - name: Prepare database
         # This job uses a disposable PostgreSQL instance, never a production database.
@@ -248,6 +229,11 @@ jobs:
         run: node --import tsx/esm scripts/test-studio-worker-queue.integration.mjs
       - name: Verify durable agent queue claims and lease recovery against disposable PostgreSQL
         run: node --import tsx/esm scripts/test-agent-queue.mjs
+      - name: Verify intelligence-event inbox concurrency and audit atomicity against disposable PostgreSQL
+        env:
+          RYANAI_DISPOSABLE_DB: '1'
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+        run: node --import tsx/esm scripts/test-intelligence-event-inbox-postgres.mjs
 
 
       - name: Verify production startup failure and recovery against disposable services
@@ -322,6 +308,100 @@ jobs:
             mcp.log
           if-no-files-found: warn
           retention-days: 7
+
+
+  postgres19-compatibility:
+    name: PostgreSQL 19 compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: validate
+    services:
+      postgres:
+        image: pgvector/pgvector:pg19
+        env:
+          POSTGRES_USER: ryanai
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: ryanai_pg19
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ryanai -d ryanai_pg19"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://ryanai:ci_password@127.0.0.1:5432/ryanai_pg19
+      AUDIOBOOK_DATABASE_URL: postgresql://ryanai:ci_password@127.0.0.1:5432/ryanai_pg19
+      AUDIOBOOK_DATABASE_URL_UNPOOLED: postgresql://ryanai:ci_password@127.0.0.1:5432/ryanai_pg19
+      NODE_ENV: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --include=dev --legacy-peer-deps
+
+      - name: Prepare PostgreSQL 19 compatibility fixture
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+              CREATE ROLE anon NOLOGIN;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+              CREATE ROLE authenticated NOLOGIN;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+              CREATE ROLE service_role NOLOGIN BYPASSRLS;
+            END IF;
+          END $$;
+          CREATE SCHEMA IF NOT EXISTS auth;
+          CREATE TABLE IF NOT EXISTS auth.users (
+            id uuid PRIMARY KEY,
+            email text,
+            raw_user_meta_data jsonb NOT NULL DEFAULT '{}'::jsonb,
+            created_at timestamptz DEFAULT now(),
+            updated_at timestamptz DEFAULT now()
+          );
+          CREATE EXTENSION IF NOT EXISTS vector;
+          SQL
+
+      - name: Verify PostgreSQL 19 server and required extension
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT current_setting('server_version') AS server_version;"
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "SELECT extname, extversion FROM pg_extension WHERE extname = 'vector';"
+
+      - name: Validate Prisma schemas against PostgreSQL 19
+        run: |
+          set -euo pipefail
+          npx prisma validate --schema=prisma/schema.prisma
+          npx prisma validate --schema=prisma/audiobook/schema.prisma
+
+      - name: Apply RyanAI Prisma migrations to PostgreSQL 19
+        run: |
+          set -euo pipefail
+          npx prisma migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
+          npx prisma migrate deploy --schema=prisma/schema.prisma
+
+      - name: Validate PostgreSQL 19 migration result
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          SELECT current_setting('server_version_num')::int >= 190000 AS postgres_19;
+          SELECT count(*) > 0 AS users_table_present
+            FROM information_schema.tables
+           WHERE table_schema = 'public' AND table_name = 'users';
+          SELECT extversion FROM pg_extension WHERE extname = 'vector';
+          SQL
 
   issue-435-supabase:
     name: Issue 435 migrations and attachment security

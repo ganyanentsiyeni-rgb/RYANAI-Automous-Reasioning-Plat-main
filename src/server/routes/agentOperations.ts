@@ -9,7 +9,7 @@ import { PA_DELEGATION_CAPABILITIES, type PADelegationCapability } from '../../a
 import { evaluateGenXSecurityEvent } from '../../security/genxPolicy.js';
 interface DispatchBody { objective: string; taskId?: string; }
 interface OfflineSyncBody { tasks: Array<{ taskId: string; objective: string }>; }
-interface PADelegationBody { objective: string; capabilities: PADelegationCapability[]; }
+interface PADelegationBody { objective: string; capabilities: PADelegationCapability[]; delegationId?: string; }
 const PA_DELEGATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const PA_CAPABILITY_POLICY: Record<PADelegationCapability, { toolName: string; action: 'READ' | 'CREATE' | 'UPDATE' | 'EXECUTE'; target: string }> = {
@@ -46,8 +46,8 @@ export const agentOperationsRoutes: FastifyPluginAsync = async (fastify) => {
       properties: {
         objective: { type: 'string', minLength: 5, maxLength: 12000 },
         capabilities: { type: 'array', minItems: 1, maxItems: PA_DELEGATION_CAPABILITIES.length, uniqueItems: true, items: { type: 'string', enum: [...PA_DELEGATION_CAPABILITIES] } },
-      },
-    } },
+        delegationId: { type: 'string', pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$' },
+    } } },
   }, async (request, reply) => {
     const user = request.authUser;
     if (!user?.id) return reply.code(401).send({ error: 'Sign in to continue.' });
@@ -58,6 +58,7 @@ export const agentOperationsRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const created = await createPADelegation({
         ownerUserId: user.id,
+        delegationId: request.body.delegationId,
         objective: request.body.objective.trim(),
         capabilities: request.body.capabilities,
       });

@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { captureQueueTraceContextForStorage } from '../telemetry/queueContext.js';
 import { appendRunEvidence } from './engineeringEvidence.js';
 import { publishAgentTaskNotification } from './queueNotifications.js';
+import { resolvePAApprovalTransition, resolvePARejectionTransition } from './paDelegationApproval.js';
 import {
   signAgentIdentityProof,
   verifyPAIdentityProof,
@@ -53,7 +54,8 @@ export async function createPADelegation(input: {
     throw new Error('Delegation capability is outside the PA allowlist.');
   }
 
-  return prisma.$transaction(async (tx) => {
+  try {
+    return await prisma.$transaction(async (tx) => {
     if (input.delegationId) {
       const existing = await tx.paDelegation.findFirst({
         where: { id: input.delegationId, ownerUserId: input.ownerUserId },
@@ -111,7 +113,30 @@ export async function createPADelegation(input: {
       payload: { delegationId: delegation.id, capabilities: input.capabilities, traceId: delegation.traceId },
     });
     return { delegation, run };
-  });
+    });
+  } catch (error) {
+    // Concurrent retries with the same client-generated delegation ID can both
+    // observe no row; the unique primary key arbitrates the race. Resolve the
+    // losing request to the committed owner-scoped record when it matches.
+    const code = error && typeof error === 'object' && 'code' in error
+      ? (error as { code?: unknown }).code
+      : undefined;
+    if (!input.delegationId || code !== 'P2002') throw error;
+    const existing = await prisma.paDelegation.findFirst({
+      where: { id: input.delegationId, ownerUserId: input.ownerUserId },
+      include: { agentRun: true, receipt: true },
+    });
+    if (!existing) throw error;
+    const existingCapabilities = Array.isArray(existing.requestedCapabilities)
+      ? existing.requestedCapabilities.map(String).sort()
+      : [];
+    const requestedCapabilities = [...input.capabilities].map(String).sort();
+    if (existing.objective !== input.objective.trim() || JSON.stringify(existingCapabilities) !== JSON.stringify(requestedCapabilities)) {
+      throw new Error('Delegation idempotency conflict: the existing delegation does not match the requested objective or capabilities.', { cause: error });
+    }
+    if (!existing.agentRun) throw new Error('Delegation exists without its agent run; recovery is required before retry.', { cause: error });
+    return { delegation: existing, run: existing.agentRun };
+  }
 }
 
 export async function createJarvisIdentityProof(ownerUserId: string, delegationId: string) {
@@ -190,10 +215,21 @@ export async function approvePADelegation(
     if (run.approvalStatus !== 'pending' || run.status !== 'queued') {
       throw new Error('This PA delegation is no longer awaiting approval.');
     }
-    await tx.agentRun.update({
-      where: { id: run.id },
+    const approvalUpdate = await tx.agentRun.updateMany({
+      where: { id: run.id, approvalStatus: 'pending', status: 'queued' },
       data: { approvalStatus: 'approved', approvedBy, approvedAt: new Date(), status: 'queued' },
     });
+    if (approvalUpdate.count !== 1) {
+      const latestRun = await tx.agentRun.findUnique({
+        where: { id: run.id },
+        select: { approvalStatus: true },
+      });
+      const transition = resolvePAApprovalTransition(approvalUpdate.count, latestRun?.approvalStatus ?? null);
+      if (transition === 'already_approved') {
+        return { delegationId, runId: run.id, status: run.status, alreadyApproved: true };
+      }
+      throw new Error('This PA delegation changed while approval was being recorded; reload before retrying.');
+    }
     await tx.paDelegation.update({ where: { id: delegation.id }, data: { status: 'approved' } });
     await appendRunEvidence(tx, {
       runId: run.id,
@@ -222,10 +258,15 @@ export async function rejectPADelegation(ownerUserId: string, delegationId: stri
     });
     if (!delegation?.agentRun || delegation.agentRun.approvalStatus !== 'pending' || delegation.agentRun.status !== 'queued') return false;
     const now = new Date();
-    await tx.agentRun.update({
-      where: { id: delegation.agentRun.id },
+    // The initial read is only a convenience check. This compare-and-set is the
+    // concurrency boundary shared with approval and worker pickup: whichever
+    // transition changes pending/queued first wins; a stale rejection writes
+    // no delegation status, evidence, or audit event.
+    const rejectionUpdate = await tx.agentRun.updateMany({
+      where: { id: delegation.agentRun.id, approvalStatus: 'pending', status: 'queued' },
       data: { approvalStatus: 'rejected', status: 'cancelled', error: 'Rejected by the authenticated owner.', completedAt: now },
     });
+    if (resolvePARejectionTransition(rejectionUpdate.count) !== 'rejected') return false;
     await tx.paDelegation.update({ where: { id: delegation.id }, data: { status: 'rejected' } });
     await appendRunEvidence(tx, {
       runId: delegation.agentRun.id,

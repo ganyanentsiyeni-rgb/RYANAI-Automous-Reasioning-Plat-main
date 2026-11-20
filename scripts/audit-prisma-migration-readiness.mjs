@@ -67,6 +67,8 @@ export function assessSchema({ columns, tables, indexes, extensions, memoryColum
   const mismatchedAttemptIndexes = Object.entries(expectedAttemptIndexes).filter(([name, expected]) => indexByName.has(name) && !indexByName.get(name).includes(normalizeDefinition(expected))).map(([name, expected]) => ({ name, expected, actual: indexByName.get(name) }));
   const expectedCheckpointWritePrimaryKey = ['thread_id', 'checkpoint_ns', 'checkpoint_id', 'task_id', 'idx', 'channel'];
   const checkpointWrites = {
+    tablePresent: tables.has('checkpoint_writes'),
+    primaryKeyPresent: Array.isArray(checkpointWritePrimaryKeyColumns),
     expectedPrimaryKeyColumns: expectedCheckpointWritePrimaryKey,
     actualPrimaryKeyColumns: Array.isArray(checkpointWritePrimaryKeyColumns) ? checkpointWritePrimaryKeyColumns : null,
     primaryKeyMatches: Array.isArray(checkpointWritePrimaryKeyColumns)
@@ -115,7 +117,7 @@ async function main() {
       pool.query("SELECT conname, pg_get_constraintdef(oid, true) AS definition FROM pg_constraint WHERE conrelid=to_regclass('public.intelligence_event_attempts')"),
       pool.query("SELECT indexname, indexdef FROM pg_indexes WHERE schemaname='public' AND tablename='intelligence_event_attempts'"),
       pool.query("SELECT relrowsecurity FROM pg_class WHERE oid=to_regclass('public.intelligence_event_attempts')"),
-      pool.query("SELECT array_agg(a.attname ORDER BY key_column.ordinality) AS columns FROM pg_constraint c CROSS JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS key_column(attnum, ordinality) JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=key_column.attnum WHERE c.conrelid=to_regclass('public.checkpoint_writes') AND c.contype='p' GROUP BY c.oid"),
+      pool.query("SELECT array_agg(a.attname::text ORDER BY key_column.ordinality) AS columns FROM pg_constraint c CROSS JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS key_column(attnum, ordinality) JOIN pg_attribute a ON a.attrelid=c.conrelid AND a.attnum=key_column.attnum WHERE c.conrelid=to_regclass('public.checkpoint_writes') AND c.contype='p' GROUP BY c.oid"),
     ]);
     const schema = assessSchema({
       columns: new Set(columnResult.rows.map((row) => row.column_name)),

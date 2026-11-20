@@ -16,9 +16,12 @@ projects:
             branch: main
             region: oregon
             plan: free
+            # Root Directory must be the repository root. A folder value such as "Dockerfile.api" makes the Render build fail.
+            rootDir: .
+            dockerContext: .
             dockerfilePath: ./Dockerfile.api
             healthCheckPath: /health
-            autoDeployTrigger: off
+            autoDeployTrigger: checksPass
             envVars:
               - key: NODE_ENV
                 value: staging
@@ -64,7 +67,7 @@ projects:
               - key: ATTACHMENT_ORPHAN_CLEANUP_ENABLED
                 value: "false"
           - type: web
-            name: ryanai-mcp-u2eb
+            name: ryanai-mcp-u2eb-u2eb
             runtime: docker
             repo: https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main
             branch: main
@@ -73,7 +76,7 @@ projects:
             dockerContext: .
             dockerfilePath: ./mcp-server/Dockerfile
             healthCheckPath: /health
-            autoDeployTrigger: off
+            autoDeployTrigger: checksPass
             envVars:
               - key: NODE_ENV
                 value: production
@@ -100,7 +103,7 @@ projects:
             branch: main
             buildCommand: npm ci --legacy-peer-deps && npm run build:web
             staticPublishPath: ./dist
-            autoDeployTrigger: off
+            autoDeployTrigger: checksPass
             envVars:
               - key: VITE_APP_ENV
                 value: staging

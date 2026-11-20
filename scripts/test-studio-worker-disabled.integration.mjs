@@ -30,6 +30,12 @@ function waitForExit(processHandle, timeoutMs = 10000) {
 }
 
 try {
+  // Studio projects are owned by an application user, not a bare Supabase Auth UUID.
+  // Seed that user in this disposable database so the ownership FK is valid.
+  await prisma.user.create({
+    data: { id: ownerUserId, email: `studio-worker-disabled-${suffix}@example.test` },
+  });
+
   const created = await createStudioProject({
     ownerUserId,
     title: 'Disabled worker gate ' + suffix,
@@ -93,5 +99,6 @@ try {
     await new Promise((resolve) => child.once('exit', resolve));
   }
   if (projectId) await prisma.studioProject.delete({ where: { id: projectId } }).catch(() => undefined);
+  await prisma.user.delete({ where: { id: ownerUserId } }).catch(() => undefined);
   await prisma.$disconnect();
 }

@@ -1,18 +1,62 @@
 import { createRyanAIStudioWorkerRuntime } from '../src/server/engineering/ryanaiStudioWorkerRuntime.js';
-import { registerStudioTaskHandler } from '../src/server/engineering/studioNativeCore.js';
+import {
+  getStudioWorkerHandlerReadiness,
+  registerStudioTaskHandler,
+} from '../src/server/engineering/studioNativeCore.js';
+import { createRyanAICiDiagnosticsTaskHandler } from '../src/server/engineering/ryanaiCiDiagnosticsTask.js';
+import { generateRepositoryInventory } from './repository-inventory.mjs';
+import { prisma } from '../src/lib/prisma.js';
+import { inspectConnectedGitHubWorkflowEvidence } from '../src/server/routes/githubIntegration.js';
 
 const profileId = process.env.RYANAI_STUDIO_WORKER_PROFILE_ID?.trim() || 'coordinator';
 const workerId = process.env.RYANAI_STUDIO_WORKER_ID?.trim();
 
-const unregisterCoordination = profileId === 'coordinator'
-  ? registerStudioTaskHandler('coordination', async ({ workerId: runtimeWorkerId, task }) => ({
-      kind: 'coordination.receipt',
-      workerId: runtimeWorkerId,
-      taskId: task.id,
-      objective: task.objective,
-      status: 'accepted',
-    }))
-  : undefined;
+const runRepositoryInventoryTask = async ({ task }: {
+  task: { id: string; objective: string; requiredCapabilities: string[] };
+}) => {
+  if (!task.requiredCapabilities.includes('read-repository')) {
+    throw new Error('Repository inventory requires the explicit read-repository capability.');
+  }
+  return {
+    kind: 'repository.inventory',
+    schemaVersion: 1,
+    taskId: task.id,
+    objective: task.objective,
+    inventory: await generateRepositoryInventory(),
+  };
+};
+
+const runCiDiagnosticsTask = createRyanAICiDiagnosticsTaskHandler(
+  (ownerUserId, headSha, options) => inspectConnectedGitHubWorkflowEvidence(
+    { prisma },
+    ownerUserId,
+    headSha,
+    options,
+  ),
+  (ownerUserId, headSha, options) =>
+    inspectConnectedGitHubWorkflowEvidence({ prisma }, ownerUserId, headSha, options),
+);
+
+const unregisterHandlers = profileId === 'repository-auditor'
+  ? [
+      registerStudioTaskHandler('repository-audit', runRepositoryInventoryTask),
+      registerStudioTaskHandler('inventory', runRepositoryInventoryTask),
+  ]
+  : profileId === 'ci-diagnostics'
+    ? [
+        registerStudioTaskHandler('ci-failure', runCiDiagnosticsTask),
+        registerStudioTaskHandler('test-failure', runCiDiagnosticsTask),
+        registerStudioTaskHandler('build-failure', runCiDiagnosticsTask),
+      ]
+    : [];
+
+const handlerReadiness = getStudioWorkerHandlerReadiness(profileId);
+if (!handlerReadiness.ready) {
+  for (const unregister of unregisterHandlers) unregister();
+  throw new Error(
+    `RyanAI Studio worker ${profileId} cannot start: ${handlerReadiness.reason} Supported task types: ${handlerReadiness.supportedTaskTypes.join(', ')}.`,
+  );
+}
 
 const runtime = createRyanAIStudioWorkerRuntime({
   workerProfileId: profileId,
@@ -23,10 +67,15 @@ const runtime = createRyanAIStudioWorkerRuntime({
   leaseSeconds: Number(process.env.RYANAI_STUDIO_WORKER_LEASE_SECONDS ?? 90),
 });
 
+let shuttingDown = false;
 const shutdown = async () => {
-  unregisterCoordination?.();
-  await runtime.stop();
-  process.exit(0);
+  if (shuttingDown) return;
+  shuttingDown = true;
+  try {
+    await runtime.stop();
+  } finally {
+    for (const unregister of unregisterHandlers) unregister();
+  }
 };
 
 process.once('SIGTERM', () => { void shutdown(); });
@@ -37,5 +86,6 @@ console.log(JSON.stringify({
   service: 'ryanai-native-studio-worker',
   workerId: runtime.snapshot().workerId,
   workerProfileId: profileId,
+  registeredTaskTypes: handlerReadiness.registeredTaskTypes,
   status: runtime.snapshot().status,
 }));

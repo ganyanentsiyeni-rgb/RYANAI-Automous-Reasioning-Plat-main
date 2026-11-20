@@ -15,6 +15,7 @@ projects:
             branch: main
             plan: free
             region: oregon
+            rootDir: .
             dockerContext: .
             dockerfilePath: ./Dockerfile.api
             autoDeployTrigger: off

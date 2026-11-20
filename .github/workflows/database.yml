@@ -602,6 +602,8 @@ jobs:
         # The Supabase-owned objects were asserted immediately above. Remove
         # only those separate-ownership tables from this disposable CI stack;
         # do not weaken the Prisma comparison or alter any hosted database.
+        # CASCADE also drops Supabase storage policies that reference the
+        # attachment scan tables (for example ryanai_attachment_read_clean_own_conversation).
         run: |
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
           DROP TABLE
@@ -612,19 +614,25 @@ jobs:
             public.community_feedback_submissions,
             public.community_beta_interest,
             public.ryanai_attachment_scans,
-            public.ryanai_attachment_upload_events;
+            public.ryanai_attachment_upload_events
+          CASCADE;
           SQL
 
       - name: Compare the migrated Supabase and Prisma database with the Prisma data model
         # Supabase-owned Auth relationships are asserted separately above; this
         # comparison is intentionally limited to the Prisma-owned public schema.
         run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
-      - name: Create isolated Prisma shadow database
+      - name: Create isolated Prisma shadow database and export its URL
         env:
           PGPASSWORD: postgres
         run: |
-          SUPABASE_DB_PORT="$(node -e 'console.log(new URL(process.env.DATABASE_URL).port || 5432)')"
+          set -euo pipefail
+          SUPABASE_DB_PORT="$(node -e 'const u = new URL(process.env.DATABASE_URL); if (!["postgres:", "postgresql:"].includes(u.protocol)) throw new Error("DATABASE_URL must be PostgreSQL"); process.stdout.write(u.port || "5432")')"
           docker run --rm --network host -e PGPASSWORD postgres:16-alpine createdb -h 127.0.0.1 -p "$SUPABASE_DB_PORT" -U postgres ryanai_prisma_shadow
+          SHADOW_DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:${SUPABASE_DB_PORT}/ryanai_prisma_shadow"
+          SHADOW_DATABASE_URL="$SHADOW_DATABASE_URL" node --input-type=module -e 'const u = new URL(process.env.SHADOW_DATABASE_URL); if (!["postgres:", "postgresql:"].includes(u.protocol) || u.hostname !== "127.0.0.1" || u.pathname !== "/ryanai_prisma_shadow") throw new Error("Invalid disposable Prisma shadow URL")'
+
+          echo "SHADOW_DATABASE_URL=$SHADOW_DATABASE_URL" >> "$GITHUB_ENV"
 
       - name: Provision Supabase Auth objects in Prisma shadow database
         run: |
@@ -663,6 +671,5 @@ jobs:
 
       - name: Run disposable PostgreSQL queue and migration dry-run
         env:
-          POSTGRES_TEST_PORT: '55432'
           POSTGRES_TEST_IMAGE: pgvector/pgvector:pg15
         run: npm run test:docker:postgres

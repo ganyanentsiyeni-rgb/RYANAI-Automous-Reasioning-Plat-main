@@ -114,7 +114,7 @@
     "dev:desktop:services": "node scripts/dev-desktop.mjs",
     "platform:wiring:check": "node scripts/check-platform-wiring.mjs",
     "test:legacy-server-entrypoints": "node --test scripts/legacy-server-entrypoints.node-test.mjs",
-    "test:server-assets": "node --test scripts/copy-server-assets.node-test.mjs scripts/audiobook-prisma-boundary.node-test.mjs",
+    "test:server-assets": "node --test scripts/copy-server-assets.node-test.mjs scripts/audiobook-prisma-boundary.node-test.mjs scripts/start-script-contract.node-test.mjs",
     "index:check": "node scripts/check-index-html.mjs",
     "test:stack-validator": "node --test scripts/validate-stack-manifest.test.mjs",
     "audit:inspector": "node scripts/ai-inspector-audit.mjs",
@@ -162,13 +162,16 @@
     "test:pagerduty": "python scripts/run_unittest_discovery.py --start-directory scripts --pattern test_pagerduty_manager.py && python scripts/test_unittest_discovery_runner.py",
     "test:deploy:contracts": "python3 -m unittest discover -s scripts -p 'test-deploy-production.py'",
     "test:prisma-breaking-guard": "python3 -m unittest scripts/test_check_breaking_schema.py -v",
-    "db:validate": "prisma validate --schema=prisma/schema.prisma && prisma validate --schema=prisma/audiobook/schema.prisma",
+    "db:validate": "cross-env DATABASE_URL=postgresql://schema-check:schema-check@127.0.0.1:5432/schema_check AUDIOBOOK_DATABASE_URL=postgresql://schema-check:schema-check@127.0.0.1:5432/audiobook_check AUDIOBOOK_DATABASE_URL_UNPOOLED=postgresql://schema-check:schema-check@127.0.0.1:5432/audiobook_check prisma validate --schema=prisma/schema.prisma && cross-env DATABASE_URL=postgresql://schema-check:schema-check@127.0.0.1:5432/schema_check AUDIOBOOK_DATABASE_URL=postgresql://schema-check:schema-check@127.0.0.1:5432/audiobook_check AUDIOBOOK_DATABASE_URL_UNPOOLED=postgresql://schema-check:schema-check@127.0.0.1:5432/audiobook_check prisma validate --schema=prisma/audiobook/schema.prisma",
     "db:status": "prisma migrate status --schema=prisma/schema.prisma",
     "aerial:smoke": "node scripts/aerial-ai-ran-smoke.mjs",
     "aerial:dev:bridge": "python3 aerial-bridge/server.py",
     "db:migrate:render-staging": "node scripts/migrate-render-staging.mjs",
     "test:render-staging-migration": "node --test scripts/migrate-render-staging.node-test.mjs",
-    "worker:studio": "tsx scripts/ryanai-studio-worker.ts"
+    "worker:studio": "tsx scripts/ryanai-studio-worker.ts",
+    "dns:verify:eu-org": "node scripts/verify-eu-org-dns.mjs",
+    "test:dns:verify:eu-org": "node --test scripts/verify-eu-org-dns.node-test.mjs",
+    "prestart": "npm run build:server"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1169.0",
@@ -300,7 +303,8 @@
     },
     "concurrently": {
       "shell-quote": "1.12.0"
-    }
+    },
+    "effect": "3.22.1"
   },
   "allowScripts": {
     "@prisma/client@6.19.3": true,
