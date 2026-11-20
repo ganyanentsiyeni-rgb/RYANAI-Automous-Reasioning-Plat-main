@@ -15,6 +15,8 @@ interface ConnectionContext {
   ws: WebSocket;
   auth?: AuthContext;
   subscriptions: Set<string>;
+  replayingChannels: Set<string>;
+  pendingDurableEvents: Map<string, Array<{ id: string; sequence: bigint; eventType: string; payload: unknown; createdAt: Date }>>;
   messageCount: number;
   connectedAt: number;
   expiryTimer?: ReturnType<typeof setTimeout>;
@@ -58,6 +60,8 @@ export async function registerWebSocketRoutes(fastify: FastifyInstance) {
         ws: socket as WebSocket,
         auth,
         subscriptions: new Set(),
+        replayingChannels: new Set(),
+        pendingDurableEvents: new Map(),
         messageCount: 0,
         connectedAt: Date.now(),
         closed: false,
@@ -174,7 +178,8 @@ async function handleMessage(context: ConnectionContext, message: WebSocketMessa
           const cursorText = typeof cursorValue === 'number' ? String(cursorValue) : cursorValue;
           if (typeof cursorText !== 'string' || !/^(0|[1-9][0-9]*)$/.test(cursorText)) throw new Error('Replay cursor must be a non-negative integer string');
           // Register before reading history so events published during replay
-          // are not lost. Clients deduplicate by the durable sequence cursor.
+          // are buffered and cannot overtake older persisted events.
+          context.replayingChannels.add(key);
           context.subscriptions.add(data.channel);
           if (!channels.has(key)) channels.set(key, new Set());
           channels.get(key)!.add(context.id);
@@ -185,9 +190,18 @@ async function handleMessage(context: ConnectionContext, message: WebSocketMessa
             limit: 50,
           });
           if (replay.cursorExpired) {
+            context.replayingChannels.delete(key);
+            flushPendingDurableEvents(context, key, data.channel, replay.nextCursor);
             response.data = { subscribed: data.channel, cursorExpired: true, resyncRequired: true, nextCursor: replay.nextCursor.toString() };
           } else {
             for (const event of replay.events) sendDurableEvent(context, data.channel, event);
+            // Keep live events buffered while more history pages remain. The
+            // client requests the next page using nextCursor; only the final
+            // page releases live delivery, preserving sequence order.
+            if (!replay.hasMore) {
+              context.replayingChannels.delete(key);
+              flushPendingDurableEvents(context, key, data.channel, replay.nextCursor);
+            }
             response.data = { subscribed: data.channel, replayed: replay.events.length, hasMore: replay.hasMore, nextCursor: replay.nextCursor.toString() };
           }
 
@@ -242,6 +256,20 @@ function handleReasoningRequest(context: ConnectionContext, request: ReasoningRe
   );
 }
 
+function flushPendingDurableEvents(context: ConnectionContext, key: string, channel: string, afterSequence: bigint) {
+  const pending = context.pendingDurableEvents.get(key) ?? [];
+  context.pendingDurableEvents.delete(key);
+  const ordered = pending
+    .filter((event) => event.sequence > afterSequence)
+    .sort((left, right) => left.sequence < right.sequence ? -1 : left.sequence > right.sequence ? 1 : 0);
+  let lastSequence = afterSequence;
+  for (const event of ordered) {
+    if (event.sequence <= lastSequence) continue;
+    sendDurableEvent(context, channel, event);
+    lastSequence = event.sequence;
+  }
+}
+
 /**
  * Durable publisher. The database append completes before any socket delivery.
  * Audience is always derived from this server-side function argument, never a
@@ -263,7 +291,13 @@ export async function publishRealtimeEvent(input: {
   for (const connId of channels.get(key) ?? []) {
     const conn = connections.get(connId);
     if (conn && !conn.closed && conn.ws.readyState === conn.ws.OPEN) {
-      sendDurableEvent(conn, input.channel, persisted);
+      if (conn.replayingChannels.has(key)) {
+        const pending = conn.pendingDurableEvents.get(key) ?? [];
+        pending.push(persisted);
+        conn.pendingDurableEvents.set(key, pending);
+      } else {
+        sendDurableEvent(conn, input.channel, persisted);
+      }
     }
   }
   return { id: persisted.id, sequence: persisted.sequence.toString() };
