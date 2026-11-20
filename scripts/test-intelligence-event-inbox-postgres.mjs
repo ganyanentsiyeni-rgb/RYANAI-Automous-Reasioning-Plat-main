@@ -42,13 +42,6 @@ try {
   const claims = await Promise.all([
     inbox.claimNext('concurrent-a', claimNow, ['integration.lifecycle.test']),
     inbox.claimNext('concurrent-b', claimNow, ['integration.lifecycle.test']),
-  // The database assigns available_at with its own clock during INSERT.
-  // Capture the claim time after enqueue so the test cannot race that default.
-  const claimAt = new Date(Date.now() + 1_000);
-  const claims = await Promise.all([
-    inbox.claimNext('concurrent-a', claimAt, ['integration.lifecycle.test']),
-    inbox.claimNext('concurrent-b', claimAt, ['integration.lifecycle.test']),
-  ]);
   const winners = claims.filter(Boolean);
   assert.equal(winners.length, 1, 'only one concurrent claimant may own the event');
   assert.equal(winners[0].id, claimEvent.id);
