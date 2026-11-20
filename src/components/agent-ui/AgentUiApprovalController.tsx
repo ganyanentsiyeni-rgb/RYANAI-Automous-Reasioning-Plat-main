@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createRyanAiAgentUiBridge, type RyanAiAgentApprovalRequest } from "@/lib/agentUiBridge";
 
 interface PendingApproval {
@@ -39,14 +39,36 @@ class ApprovalRequestStore {
   }
 }
 
+type AgentUiBridge = ReturnType<typeof createRyanAiAgentUiBridge>;
+
+/** External-store adapter lets the bridge be created in an effect without
+ * scheduling React state updates directly from that effect. */
+class AgentUiBridgeStore {
+  private agent: AgentUiBridge | null = null;
+  private listeners = new Set<() => void>();
+
+  subscribe = (listener: () => void) => {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  };
+
+  getSnapshot = () => this.agent;
+
+  publish(agent: AgentUiBridge | null): void {
+    this.agent = agent;
+    this.listeners.forEach((listener) => listener());
+  }
+}
+
 export function AgentUiApprovalController({
   children,
 }: {
-  children: (agent: ReturnType<typeof createRyanAiAgentUiBridge>) => ReactNode;
+  children: (agent: AgentUiBridge) => ReactNode;
 }) {
   const [pending, setPending] = useState<PendingApproval | null>(null);
   const [approvalStore] = useState(() => new ApprovalRequestStore());
-  const [agent, setAgent] = useState<ReturnType<typeof createRyanAiAgentUiBridge> | null>(null);
+  const [bridgeStore] = useState(() => new AgentUiBridgeStore());
+  const agent = useSyncExternalStore(bridgeStore.subscribe, bridgeStore.getSnapshot, bridgeStore.getSnapshot);
 
   const resolvePending = useCallback((id: number, approved: boolean) => {
     approvalStore.resolve(id, approved);
@@ -78,9 +100,12 @@ export function AgentUiApprovalController({
   }, [approvalStore]);
 
   useEffect(() => {
-    setAgent(createRyanAiAgentUiBridge({ requestApproval }));
-    return () => releasePending();
-  }, [requestApproval, releasePending]);
+    bridgeStore.publish(createRyanAiAgentUiBridge({ requestApproval }));
+    return () => {
+      bridgeStore.publish(null);
+      releasePending();
+    };
+  }, [bridgeStore, requestApproval, releasePending]);
 
   return (
     <>
