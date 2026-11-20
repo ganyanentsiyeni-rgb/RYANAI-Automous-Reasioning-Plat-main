@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { EventReplayCursorStore, normalizeEventEnvelope } from './eventReplay';
 
-const event = (id: string, sequence: number, channel = 'system.status') => ({
+const event = (id: string, sequence: number | string, channel = 'system.status') => ({
   id,
   type: 'event' as const,
   channel,
@@ -68,5 +68,27 @@ describe('EventReplayCursorStore', () => {
       data: { state: 'ready' },
       timestamp: 1_700_000_000_000,
     });
+  });
+
+  it('preserves PostgreSQL BIGINT sequences beyond JavaScript safe integer precision', () => {
+    const large = '900719925474099312345';
+    const store = new EventReplayCursorStore('bigint');
+
+    const accepted = store.accept(event('evt-large', large));
+    expect(accepted?.sequence).toBe(large);
+    expect(store.getCursor('system.status')).toEqual({ sequence: large });
+    expect(localStorage.getItem('ryanai:event-cursor:bigint')).toContain(large);
+
+    expect(store.accept(event('evt-older', '900719925474099312344'))).toBeNull();
+    expect(store.accept(event('evt-newer', '900719925474099312346'))).not.toBeNull();
+
+    const restored = new EventReplayCursorStore('bigint');
+    expect(restored.getCursor('system.status')).toEqual({ sequence: '900719925474099312346' });
+  });
+
+  it('rejects malformed durable sequence values instead of treating them as cursor zero', () => {
+    const store = new EventReplayCursorStore('invalid');
+    expect(store.accept(event('evt-invalid', '1.5'))).toBeNull();
+    expect(store.getCursor('system.status')).toEqual({ sequence: 0 });
   });
 });
