@@ -135,17 +135,11 @@ export async function claimStudioTask(workerId: string, supportedTaskTypes: read
     const rows = await tx.$queryRawUnsafe<Record<string, unknown>[]>(CLAIM_STUDIO_TASK_SQL, [...supportedTaskTypes], workerId, safeLease, workerProfileId ?? null, claimToken);
     if (!rows[0]) return null;
     const claimed = toCamelCaseRow<StudioTask>(rows[0]);
-    const leasedTask = await tx.studioTask.findUnique({
-      where: { id: claimed.id },
-    });
-    if (!leasedTask) throw new Error('Claimed Studio task could not be reloaded for lease evidence.');
     await tx.studioEvent.create({ data: {
-      project: { connect: { id: leasedTask.projectId } },
-      task: { connect: { id: leasedTask.id } },
-      owner: { connect: { id: leasedTask.ownerUserId } },
-      actorId: workerId, eventType: 'task.leased', payload: { attempt: leasedTask.attempts, leaseSeconds: safeLease },
+      projectId: claimed.projectId, taskId: claimed.id, ownerUserId: claimed.ownerUserId,
+      actorId: workerId, eventType: 'task.leased', payload: { attempt: claimed.attempts, leaseSeconds: safeLease },
     } });
-    return leasedTask;
+    return claimed;
   });
 }
 
