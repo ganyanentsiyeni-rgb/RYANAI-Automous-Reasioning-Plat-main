@@ -133,6 +133,7 @@ export async function claimStudioTask(workerId: string, supportedTaskTypes: read
   const safeLease = Math.max(15, Math.min(leaseSeconds, 600));
   return prisma.$transaction(async (tx) => {
     const claimToken = randomUUID();
+    // RETURNING task.* includes the fields needed for the event; map PostgreSQL snake_case once.
     const rows = await tx.$queryRawUnsafe<Record<string, unknown>[]>(
       CLAIM_STUDIO_TASK_SQL,
       [...supportedTaskTypes],
