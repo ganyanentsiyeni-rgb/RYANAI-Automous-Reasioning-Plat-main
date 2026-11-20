@@ -3,6 +3,10 @@ FROM node:24-alpine
 ENV NODE_ENV=production
 WORKDIR /app/mcp-server
 
+# Pull patched Alpine packages before installing dependencies, as the other RyanAI images do.
+RUN apk upgrade --no-cache \
+    && apk add --no-cache 'libexpat>=2.10.0-r0'
+
 COPY mcp-server/package.json mcp-server/package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts \
     && npm cache clean --force \

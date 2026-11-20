@@ -1,4 +1,3 @@
-
 # syntax=docker/dockerfile:1
 # Standalone API image for Render and other Dockerfile-based platforms.
 # Keep this build and runtime contract aligned with the "api" target in ./Dockerfile.
