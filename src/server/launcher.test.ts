@@ -39,6 +39,9 @@ vi.mock('pg', () => {
     default: { Pool: MockPool },
   };
 });
+vi.mock('./audiobookPrisma.js', () => ({
+  getAudiobookPrismaClient: vi.fn(() => null),
+}));
 vi.mock('./connectRedis.js', () => ({
   connectRedis: vi.fn().mockImplementation(async () => {
     state.events.push('redis');
