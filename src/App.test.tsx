@@ -53,8 +53,8 @@ vi.mock('@/pages/TradingTerminal', () => ({
 vi.mock('@/components/CommunicationsCenter', () => ({
   default: () => <div>Private communications</div>,
 }));
-vi.mock('@/pages/Calculator', () => ({
-  default: () => <div>Private calculator</div>,
+vi.mock('@/pages/BasicProgrammingTools', () => ({
+  default: () => <div>Private Basic Programming Tools</div>,
 }));
 vi.mock('@/pages/MusicWorkspace', () => ({ default: () => <div>Private RyanAI Music workspace</div> }));
 vi.mock('@/pages/PhoneLinkWorkspace', () => ({ default: () => <div>Private PhoneLink workspace</div> }));
@@ -354,7 +354,7 @@ describe('application authentication boundary', () => {
   });
 
   it.each([
-    ['calculator', 'Private calculator'],
+    ['programming', 'Private Basic Programming Tools'],
     ['quant', 'Private quant lab'],
     ['trading', 'Private trading terminal'],
     ['audiobook', 'Private audiobook studio'],
