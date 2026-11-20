@@ -121,14 +121,6 @@ RETURNING task.*;
 `;
 
 export async function claimStudioTask(workerId: string, supportedTaskTypes: readonly string[], leaseSeconds = 90, workerProfileId?: string | null) {
-// Raw SQL returns snake_case columns (project_id, lease_token, ...); Prisma's StudioTask is camelCase.
-function toCamelCaseRow<T>(row: Record<string, unknown>): T {
-  return Object.fromEntries(
-    Object.entries(row).map(([key, value]) => [key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase()), value]),
-  ) as T;
-}
-
-export async function claimStudioTask(workerId: string, supportedTaskTypes: readonly string[], leaseSeconds = 90, workerProfileId?: string) {
   if (!workerId.trim() || supportedTaskTypes.length === 0) return null;
   const safeLease = Math.max(15, Math.min(leaseSeconds, 600));
   return prisma.$transaction(async (tx) => {
@@ -136,9 +128,7 @@ export async function claimStudioTask(workerId: string, supportedTaskTypes: read
     const rows = await tx.$queryRawUnsafe<Record<string, unknown>[]>(CLAIM_STUDIO_TASK_SQL, [...supportedTaskTypes], workerId, safeLease, workerProfileId ?? null, claimToken);
     if (!rows[0]) return null;
     const claimed = toCamelCaseRow<StudioTask>(rows[0]);
-    const leasedTask = await tx.studioTask.findUnique({
-      where: { id: claimed.id },
-    });
+    const leasedTask = await tx.studioTask.findUnique({ where: { id: claimed.id } });
     if (!leasedTask) throw new Error('Claimed Studio task could not be reloaded for lease evidence.');
     await tx.studioEvent.create({ data: {
       project: { connect: { id: leasedTask.projectId } },
