@@ -65,6 +65,14 @@ beforeEach(() => {
     databaseBytes: 1234,
     databaseSha256: 'sha256-example',
   });
+  resilience.listDatabaseBackups.mockResolvedValue({
+    status: 'available',
+    bucket: 'private-backups',
+    retentionDays: 30,
+    listedAt: '2026-11-20T00:00:00.000Z',
+    items: [],
+    hasMore: false,
+  });
 });
 
 describe('Admin resilience routes', () => {
@@ -78,6 +86,19 @@ describe('Admin resilience routes', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().backup.status).toBe('ready');
     expect(response.json().recovery.productionRestore).toBe('disabled');
+  });
+
+  it('exposes a read-only backup inventory to administrators', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/admin/resilience/backups',
+      headers: { 'x-test-user': 'admin-1', 'x-test-role': 'admin' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().status).toBe('available');
+    expect(response.json().retentionDays).toBe(30);
+    expect(resilience.listDatabaseBackups).toHaveBeenCalledTimes(1);
   });
 
   it('rejects backup execution for administrators who are not the owner', async () => {
