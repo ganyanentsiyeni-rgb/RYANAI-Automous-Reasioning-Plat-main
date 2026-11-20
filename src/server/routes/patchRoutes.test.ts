@@ -4,23 +4,23 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 const patcher = vi.hoisted(() => ({ proposePullRequest: vi.fn() }));
 vi.mock('../../engine/selfPatchSkill.js', () => ({ SelfPatchSkill: patcher }));
 vi.mock('./auth.js', () => ({
-  requireAdmin: async (
-    request: { authUser: { role: string } | null },
+  requireOwner: async (
+    request: { authUser: { role: string; isOwner?: boolean } | null },
     reply: { code: (status: number) => { send: (body: unknown) => unknown } },
   ) => {
     if (!request.authUser) {
       return reply.code(401).send({ error: 'Sign in to continue.' });
     }
-    if (request.authUser.role !== 'admin') {
-      return reply.code(403).send({ error: 'Administrator access is required.' });
+    if (!request.authUser.isOwner) {
+      return reply.code(403).send({ error: 'RyanAI owner authorization is required.' });
     }
   },
 }));
 
 import { registerPatchRoutes } from './patchRoutes.js';
 
-const admin = { 'x-test-user': 'admin-1', 'x-test-role': 'admin' };
-const member = { 'x-test-user': 'user-1', 'x-test-role': 'user' };
+const admin = { 'x-test-user': 'owner-1', 'x-test-role': 'admin', 'x-test-owner': 'true' };
+const member = { 'x-test-user': 'user-1', 'x-test-role': 'user', 'x-test-owner': 'false' };
 let app: FastifyInstance;
 
 beforeAll(async () => {
@@ -29,7 +29,7 @@ beforeAll(async () => {
   app.addHook('onRequest', async (request) => {
     const id = request.headers['x-test-user'];
     (request as unknown as { authUser: unknown }).authUser = id
-      ? { id: String(id), role: String(request.headers['x-test-role']) }
+      ? { id: String(id), role: String(request.headers['x-test-role']), isOwner: request.headers['x-test-owner'] === 'true' }
       : null;
   });
   await app.register(registerPatchRoutes);
@@ -54,7 +54,7 @@ describe('POST /api/patches/apply', () => {
     expect(patcher.proposePullRequest).not.toHaveBeenCalled();
   });
 
-  it('creates a GitHub PR proposal instead of modifying the running workspace', async () => {
+  it('rejects an administrator who is not the configured RyanAI owner', async () => {\n    const response = await app.inject({\n      method: 'POST', url: '/api/patches/apply', headers: { 'x-test-user': 'admin-2', 'x-test-role': 'admin', 'x-test-owner': 'false' },\n      payload: { filePath: 'src/example.ts', patchContent: 'export const ready = true;' },\n    });\n    expect(response.statusCode).toBe(403);\n    expect(patcher.proposePullRequest).not.toHaveBeenCalled();\n  });\n\n  it('creates a GitHub PR proposal instead of modifying the running workspace', async () => {
     patcher.proposePullRequest.mockResolvedValue({ status: 'proposed', message: 'PR created', pullRequestUrl: 'https://github.com/example/repo/pull/1' });
     const response = await app.inject({
       method: 'POST', url: '/api/patches/apply', headers: admin,
