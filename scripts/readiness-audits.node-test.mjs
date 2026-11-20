@@ -187,7 +187,7 @@ test('Render API configuration audit is read-only and repair remains separately 
   assert.ok(blueprint.includes('ipAllowList: []'));
   assert.ok(blueprint.includes('healthCheckPath: /health'));
   assert.ok(blueprint.includes('value: https://ryanai-api-u2eb.onrender.com'));
-  assert.ok(blueprint.includes('autoDeployTrigger: off'));
+  assert.ok(blueprint.includes('autoDeployTrigger: checksPass'));
   assert.ok(blueprint.includes('region: oregon'));
   assert.ok(blueprint.includes('key: SUPABASE_SESSION_POOLER_HOST'));
   assert.ok(blueprint.includes('key: DATABASE_URL'));
