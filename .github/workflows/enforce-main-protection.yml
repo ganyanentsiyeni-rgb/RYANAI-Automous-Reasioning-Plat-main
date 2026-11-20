@@ -61,6 +61,7 @@ jobs:
                   "dismiss_stale_reviews_on_push": true,
                   "require_code_owner_review": false,
                   "require_last_push_approval": false,
+                  "require_extra_approval_for_unattributed_changes": false,
                   "required_review_thread_resolution": true,
                   "allowed_merge_methods": ["merge", "squash", "rebase"]
                 }
@@ -131,6 +132,7 @@ jobs:
           assert pr.get("dismiss_stale_reviews_on_push") is True, "Stale review dismissal must be enabled"
           assert pr.get("require_code_owner_review") is False, "Code-owner approval must not block a single-owner repository"
           assert pr.get("require_last_push_approval") is False, "Last-push approval cannot be required without a second reviewer"
+          assert pr.get("require_extra_approval_for_unattributed_changes") is False, "Extra approval for unattributed changes cannot be required in single-owner mode"
           assert pr.get("required_review_thread_resolution") is True, "Review thread resolution must be required"
 
           checks = rules["required_status_checks"].get("required_status_checks", [])
