@@ -77,7 +77,7 @@ describe("createPostgresRyanAiGitHubInboxConsumer", () => {
     const [sql, params] = query.mock.calls[0];
     expect(String(sql)).toContain("attempts >= max_attempts");
     expect(String(sql)).toContain("POWER(2");
-    expect(String(sql)).toContain("status = 'retry'");
+    expect(String(sql)).toContain("status = CASE WHEN attempts >= max_attempts THEN 'dead_letter' ELSE 'retry' END");
     expect(params).toEqual([claimedEvent.id, "ci-worker-1", 2_000, 20_000, "temporary"]);
   });
 
