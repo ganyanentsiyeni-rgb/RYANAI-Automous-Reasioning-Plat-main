@@ -43,7 +43,7 @@ function fakeRunner({ code = 0, output = '{"type":"message","text":"safe result"
       child.stdin = new PassThrough();
       child.kill = () => true;
       onLaunch?.({ ...launch, child });
-      queueMicrotask(() => {
+      setImmediate(() => {
         child.stdout.write(output);
         child.stdout.end();
         child.stderr.end();
