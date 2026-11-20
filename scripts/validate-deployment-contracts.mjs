@@ -22,7 +22,7 @@ const u2ebDatabases = u2ebEnvironment?.databases ?? [];
 const u2ebApi = u2ebServices.find((service) => service.name === 'ryanai-api-u2eb');
 const u2ebWeb = u2ebServices.find((service) => service.name === 'ryanai-web-u2eb');
 const u2ebRedis = u2ebServices.find((service) => service.name === 'ryanai-redis-u2eb');
-const u2ebMcp = u2ebServices.find((service) => service.name === 'ryanai-mcp-u2eb');
+const u2ebMcp = u2ebServices.find((service) => service.name === 'ryanai-mcp-u2eb-u2eb');
 const u2ebDatabase = u2ebDatabases.find((database) => database.name === 'ryanai_database');
 const renderApi = productionEnvironment
   ? renderServices.find((service) => service.name === 'ryanai-api')
@@ -76,7 +76,7 @@ const packageHasVercelDependency = ['dependencies', 'devDependencies', 'optional
 const lockfileHasVercelDependency = Object.keys(packageLock.packages ?? {})
   .some((path) => path.startsWith('node_modules/@vercel/'));
 const packageHasVercelScript = Object.entries(packageJson.scripts ?? {})
-  .some(([name, command]) => /\\bvercel\\b/i.test(name) || /\\bvercel\\b/i.test(command));
+  .some(([name, command]) => /\bvercel\b/i.test(name) || /\bvercel\b/i.test(command));
 const envExample = read('.env.example');
 const featureFlags = read('src/server/comms/featureFlags.ts');
 const commsPlugin = read('src/server/comms/index.ts');
@@ -121,7 +121,7 @@ const hasLegacyVercelIntegration =
   || packageHasVercelDependency
   || lockfileHasVercelDependency
   || packageHasVercelScript
-  || workflowContents.some((workflow) => /\\bVERCEL_[A-Z0-9_]*\\b|@vercel\\/|vercel\\.com|\\bvercel\\s+(?:deploy|build|link|env)\\b/i.test(workflow))
+  || workflowContents.some((workflow) => /\bVERCEL_[A-Z0-9_]*\b|@vercel\/|vercel\.com|\bvercel\s+(?:deploy|build|link|env)\b/i.test(workflow))
   || ciWorkflow.includes('VERCEL_')
   || renderDeploy.includes('VERCEL_')
   || railwayDeploy.includes('VERCEL_');
