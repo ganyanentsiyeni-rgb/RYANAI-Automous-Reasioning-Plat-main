@@ -8,7 +8,7 @@ interface PatchApplyBody {
 }
 
 /**
- * Administrator-only production patch proposal endpoint.
+ * Owner-only production patch proposal endpoint.
  * Candidate code is committed to an isolated GitHub branch and opened as a PR.
  * Repository CI and branch protection gate merge and deployment.
  */
