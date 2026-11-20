@@ -1,6 +1,6 @@
 import type { RyanAiPostgresWakeListener } from './postgresGitHubWorkerWake.js';
 import { RYANAI_GITHUB_WORKER_WAKE_CHANNELS } from './postgresGitHubWorkerWake.js';
-import { RYANAI_GITHUB_OWNER_EVENT_WAKE_CHANNEL } from '../events/postgresGitHubOwnerEventWakeSource.js';
+import { RYANAI_GITHUB_OWNER_EVENT_WAKE_CHANNEL } from './postgresGitHubWorkerWake.js';
 
 /** Structural subset of pg.Client; callers supply a dedicated, already-connected client. */
 export interface RyanAiPgNotification {
