@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { requireAdmin, requireOwner } from './auth.js';
-import { backupPreflight, createDatabaseBackup } from '../../services/adminResilience.js';
+import { backupPreflight, createDatabaseBackup, listDatabaseBackups } from '../../services/adminResilience.js';
 
 export const adminResilienceRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/api/admin/resilience/status', { preHandler: requireAdmin }, async () => {
@@ -24,6 +24,10 @@ export const adminResilienceRoutes: FastifyPluginAsync = async (fastify) => {
         automation: 'disabled',
       },
     };
+  });
+
+  fastify.get('/api/admin/resilience/backups', { preHandler: requireAdmin }, async () => {
+    return listDatabaseBackups();
   });
 
   fastify.post('/api/admin/resilience/backups', {
