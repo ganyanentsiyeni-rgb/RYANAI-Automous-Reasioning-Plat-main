@@ -2,7 +2,34 @@ import { useCallback, useEffect, useState } from 'react';
 import { DatabaseBackup, RefreshCw, ShieldAlert, Wrench } from 'lucide-react';
 import { authenticatedFetch } from '@/lib/authenticatedFetch';
 
-interface BackupInventory {\n  status: 'available' | 'not_configured' | 'unavailable';\n  bucket: string | null;\n  retentionDays: number;\n  listedAt: string;\n  hasMore: boolean;\n  reason?: string;\n  items: Array<{ backupId: string; prefix: string; createdAt: string | null; databaseBytes: number | null; databaseSha256: string | null; manifestPresent: boolean; retention: 'within_policy' | 'outside_policy' | 'unknown' }>;\n}\n\ninterface ResilienceStatus {
+interface BackupInventory {
+  status: 'available' | 'not_configured' | 'unavailable';
+  bucket: string | null;
+  retentionDays: number;
+  listedAt: string;
+  hasMore: boolean;
+  reason?: string;
+  items: Array<{
+    backupId: string;
+    prefix: string;
+    createdAt: string | null;
+    databaseBytes: number | null;
+    databaseSha256: string | null;
+    manifestPresent: boolean;
+    retention: 'within_policy' | 'outside_policy' | 'unknown';
+  }>;
+}
+
+interface MaintenanceRecord {
+  id: string;
+  reason: string;
+  startsAt: string;
+  endsAt: string;
+  status: 'requested' | 'closed';
+  requestedAt: string;
+}
+
+interface ResilienceStatus {
   generatedAt: string;
   online: boolean;
   backup: {
@@ -13,38 +40,44 @@ interface BackupInventory {\n  status: 'available' | 'not_configured' | 'unavail
     pgDumpAvailable: boolean;
     reason?: string;
   };
-  recovery: { status: string; productionRestore: string; targetLabel: string | null; writesPerformed: false; reason?: string };
+  recovery: {
+    status: string;
+    productionRestore: string;
+    targetLabel: string | null;
+    writesPerformed: false;
+    reason?: string;
+  };
   selfPatch: { status: string; mode: string };
   maintenance: { status: string; automation: string };
 }
 
-interface BackupInventory {
-  status: string;
-  bucket: string | null;
-  items: Array<{ backupId: string; createdAt: string | null; databaseBytes: number | null; databaseSha256: string | null; manifestPresent: boolean; retention: 'within_policy' | 'outside_policy' | 'unknown' }>;
-  retentionDays: number;
-  listedAt: string;
-  hasMore: boolean;
-  reason?: string;
-}
-
 export default function ResiliencePanel({ userId }: { userId: string }) {
-  const [status, setStatus] = useState<ResilienceStatus | null>(null);\n  const [inventory, setInventory] = useState<BackupInventory | null>(null);
-  const [error, setError] = useState('');
+  const [status, setStatus] = useState<ResilienceStatus | null>(null);
   const [inventory, setInventory] = useState<BackupInventory | null>(null);
+  const [maintenance, setMaintenance] = useState<MaintenanceRecord[]>([]);
+  const [reason, setReason] = useState('');
+  const [startsAt, setStartsAt] = useState('');
+  const [endsAt, setEndsAt] = useState('');
+  const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const response = await authenticatedFetch('/api/admin/resilience/status', { headers: { Accept: 'application/json' } }, userId);
-      const payload = await response.json() as ResilienceStatus & { error?: string };
-      if (!response.ok) throw new Error(payload.error || 'Resilience status unavailable.');
-      setStatus(payload);
-      const inventoryResponse = await authenticatedFetch('/api/admin/resilience/backups', { headers: { Accept: 'application/json' } }, userId);
+      const [statusResponse, inventoryResponse, maintenanceResponse] = await Promise.all([
+        authenticatedFetch('/api/admin/resilience/status', { headers: { Accept: 'application/json' } }, userId),
+        authenticatedFetch('/api/admin/resilience/backups', { headers: { Accept: 'application/json' } }, userId),
+        authenticatedFetch('/api/admin/resilience/maintenance', { headers: { Accept: 'application/json' } }, userId),
+      ]);
+      const statusPayload = await statusResponse.json() as ResilienceStatus & { error?: string };
       const inventoryPayload = await inventoryResponse.json() as BackupInventory;
+      const maintenancePayload = await maintenanceResponse.json() as { records?: MaintenanceRecord[]; error?: string };
+      if (!statusResponse.ok) throw new Error(statusPayload.error || 'Resilience status unavailable.');
       if (!inventoryResponse.ok) throw new Error(inventoryPayload.reason || 'Backup inventory unavailable.');
+      if (!maintenanceResponse.ok) throw new Error(maintenancePayload.error || 'Maintenance history unavailable.');
+      setStatus(statusPayload);
       setInventory(inventoryPayload);
+      setMaintenance(maintenancePayload.records || []);
       setError('');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Resilience status unavailable.');
@@ -60,7 +93,7 @@ export default function ResiliencePanel({ userId }: { userId: string }) {
     setError('');
     try {
       const response = await authenticatedFetch('/api/admin/resilience/backups', { method: 'POST' }, userId);
-      const payload = await response.json() as { success?: boolean; result?: { status?: string; reason?: string; backupId?: string } };
+      const payload = await response.json() as { result?: { reason?: string; backupId?: string } };
       if (!response.ok) throw new Error(payload.result?.reason || 'Backup request failed (' + response.status + ').');
       setNotice('Backup completed: ' + (payload.result?.backupId || 'receipt recorded') + '.');
       await refresh();
@@ -70,6 +103,51 @@ export default function ResiliencePanel({ userId }: { userId: string }) {
       setBusy(false);
     }
   }
+
+  async function requestMaintenance(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const response = await authenticatedFetch('/api/admin/resilience/maintenance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ reason, startsAt: new Date(startsAt).toISOString(), endsAt: new Date(endsAt).toISOString() }),
+      }, userId);
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || 'Maintenance request failed.');
+      setReason('');
+      setStartsAt('');
+      setEndsAt('');
+      setNotice('Maintenance window request recorded. No services were changed or paused.');
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Maintenance request failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function closeMaintenance(id: string) {
+    if (busy || !window.confirm('Close this maintenance record? This only records its lifecycle status; it does not change infrastructure.')) return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const response = await authenticatedFetch('/api/admin/resilience/maintenance/' + encodeURIComponent(id) + '/close', { method: 'POST' }, userId);
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || 'Could not close maintenance record.');
+      setNotice('Maintenance record closed.');
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not close maintenance record.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
 
   const tone = status?.backup.status === 'ready' ? 'text-emerald-300' : 'text-amber-200';
 
@@ -95,79 +173,65 @@ export default function ResiliencePanel({ userId }: { userId: string }) {
           <p className="mt-1 text-xs text-slate-400">Private destination: {status?.backup.destinationBucket || 'not configured'}</p>
           {status?.backup.reason && <p className="mt-2 text-xs text-amber-200">{status.backup.reason}</p>}
           <button disabled={busy || status?.backup.status !== 'ready'} onClick={() => void runBackup()} className="mt-4 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-semibold disabled:opacity-40">
-            {busy ? 'Running backup…' : 'Run database backup'}
+            {busy ? 'Working…' : 'Run database backup'}
           </button>
-          <div className="mt-4 border-t border-slate-800 pt-3">
-            <h4 className="text-sm font-medium">Backup inventory</h4>
-            <p className="mt-1 text-xs text-slate-400">
-              {inventory?.status || 'not checked'} · {inventory?.items.length ?? 0} recorded artifacts
-              · retention window {inventory?.retentionDays ?? 'unknown'} days
-            </p>
-            <p className="mt-1 text-xs text-slate-400">
-              Outside retention window: {inventory?.items.filter((item) => item.retention === 'outside_policy').length ?? 'unknown'} · preview only; no automatic deletion
-            </p>
-            {inventory?.reason && <p className="mt-1 text-xs text-amber-200">{inventory.reason}</p>}
-            <ul className="mt-2 space-y-2">
-              {inventory?.items.slice(0, 5).map((item) => (
-                <li key={item.backupId} className="text-xs text-slate-300">
-                  <span className={item.manifestValid ? 'text-emerald-300' : 'text-amber-200'}>
-                    {item.manifestPresent ? 'Manifest present' : 'Manifest incomplete'}
-                  </span>
-                  {' · '}{item.createdAt ? new Date(item.createdAt).toLocaleString() : 'timestamp unavailable'}
-                  {' · '}{item.databaseBytes === null ? 'size unknown' : item.databaseBytes.toLocaleString() + ' bytes'}
-                  {' · '}{item.retention.replace('_', ' ')}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </article>
-
-        <article className="rounded-xl border border-slate-800 bg-slate-900 p-4 md:col-span-2">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="font-medium">Backup inventory &amp; retention preview</h3>
-            <span className="text-xs text-slate-400">Policy window: {inventory?.retentionDays ?? 30} days</span>
-          </div>
-          {!inventory || inventory.status !== 'available' ? (
-            <p className="mt-2 text-xs text-amber-200">{inventory?.reason || 'Inventory not verified.'}</p>
-          ) : inventory.items.length === 0 ? (
-            <p className="mt-2 text-xs text-slate-400">No backup artifacts were returned by the storage inventory.</p>
-          ) : (
-            <ul className="mt-3 space-y-2">
-              {inventory.items.map((item) => (
-                <li key={item.prefix} className="rounded-lg border border-slate-800 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-sm font-medium">{item.backupId}</span>
-                    <span className={'text-xs ' + (item.retention === 'outside_policy' ? 'text-amber-200' : 'text-slate-400')}>{item.retention.replace('_', ' ')}</span>
-                  </div>
-                  <p className="mt-1 text-xs text-slate-400">{item.createdAt ? new Date(item.createdAt).toLocaleString() : 'Creation time unknown'} · {item.databaseBytes == null ? 'Size unknown' : item.databaseBytes.toLocaleString() + ' bytes'} · manifest {item.manifestPresent ? 'readable' : 'missing/unreadable'}</p>
-                  <p className="mt-1 break-all text-xs text-slate-500">SHA-256: {item.databaseSha256 || 'not available'}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-          <p className="mt-3 text-xs text-amber-200">Retention is preview-only. No backup objects are deleted or modified by this panel.</p>
         </article>
 
         <article className="rounded-xl border border-slate-800 bg-slate-900 p-4">
           <div className="flex items-center gap-2"><ShieldAlert className="h-5 w-5" /><h3 className="font-medium">Disaster recovery</h3></div>
           <p className="mt-2 text-sm">Recovery drill target: {status?.recovery.targetLabel || 'not configured'}</p>
-          <p className="mt-1 text-xs text-slate-400">Production restore: {status?.recovery.productionRestore} · writes performed: {String(status?.recovery.writesPerformed ?? false)}</p>
           <p className="mt-1 text-xs text-slate-400">Target validation: {status?.recovery.status || 'unknown'}</p>
+          <p className="mt-1 text-xs text-slate-400">Production restore: {status?.recovery.productionRestore} · writes performed: {String(status?.recovery.writesPerformed ?? false)}</p>
           {status?.recovery.reason && <p className="mt-1 text-xs text-amber-200">{status.recovery.reason}</p>}
-          <p className="mt-2 text-xs text-amber-200">Restore drills remain isolated and require an explicitly configured recovery target.</p>
+        </article>
+
+        <article className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+          <h3 className="font-medium">Backup inventory &amp; retention preview</h3>
+          <p className="mt-1 text-xs text-slate-400">{inventory?.items.length ?? 0} artifacts · policy window {inventory?.retentionDays ?? 'unknown'} days · preview only</p>
+          {inventory?.reason && <p className="mt-2 text-xs text-amber-200">{inventory.reason}</p>}
+          <ul className="mt-3 space-y-2">
+            {inventory?.items.slice(0, 10).map((item) => (
+              <li key={item.prefix} className="rounded-lg border border-slate-800 p-2 text-xs">
+                <div className="flex justify-between gap-2"><span>{item.backupId}</span><span>{item.retention.replace('_', ' ')}</span></div>
+                <p className="mt-1 text-slate-400">{item.createdAt ? new Date(item.createdAt).toLocaleString() : 'Timestamp unknown'} · {item.databaseBytes == null ? 'Size unknown' : item.databaseBytes.toLocaleString() + ' bytes'}</p>
+                <p className="break-all text-slate-500">SHA-256: {item.databaseSha256 || 'unavailable'} · manifest {item.manifestPresent ? 'present' : 'missing/unreadable'}</p>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-amber-200">No backup objects are deleted or modified by this panel.</p>
         </article>
 
         <article className="rounded-xl border border-slate-800 bg-slate-900 p-4">
           <div className="flex items-center gap-2"><Wrench className="h-5 w-5" /><h3 className="font-medium">Self-patching</h3></div>
           <p className="mt-2 text-sm">Status: {status?.selfPatch.status || 'unknown'}</p>
-          <p className="mt-1 text-xs text-slate-400">Mode: isolated GitHub PR; merge and deployment remain separately gated.</p>
+          <p className="mt-1 text-xs text-slate-400">Mode: isolated GitHub PR; merge and deployment remain separate.</p>
         </article>
 
-        <article className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-          <div className="flex items-center gap-2"><Wrench className="h-5 w-5" /><h3 className="font-medium">Maintenance</h3></div>
-          <p className="mt-2 text-sm">Status: {status?.maintenance.status || 'unknown'}</p>
-          <p className="mt-1 text-xs text-slate-400">Automation: {status?.maintenance.automation || 'unknown'}</p>
-          <p className="mt-2 text-xs text-amber-200">Maintenance actions are request/audit only until the controlled lifecycle is implemented.</p>
+        <article className="rounded-xl border border-slate-800 bg-slate-900 p-4 md:col-span-2">
+          <div className="flex items-center gap-2"><Wrench className="h-5 w-5" /><h3 className="font-medium">Maintenance windows</h3></div>
+          <p className="mt-1 text-xs text-slate-400">Requests are durably audited. This lifecycle does not pause services, deploy code or alter infrastructure.</p>
+          <form onSubmit={(event) => void requestMaintenance(event)} className="mt-3 grid gap-3 md:grid-cols-2">
+            <label className="text-xs text-slate-300 md:col-span-2">Reason
+              <textarea required minLength={8} maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-sm" />
+            </label>
+            <label className="text-xs text-slate-300">Start
+              <input required type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-sm" />
+            </label>
+            <label className="text-xs text-slate-300">End
+              <input required type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-sm" />
+            </label>
+            <button disabled={busy || !reason.trim() || !startsAt || !endsAt} className="rounded-lg bg-cyan-700 px-3 py-2 text-sm font-semibold disabled:opacity-40 md:col-span-2">Record maintenance request</button>
+          </form>
+          <ul className="mt-4 space-y-2">
+            {maintenance.map((item) => (
+              <li key={item.id} className="rounded-lg border border-slate-800 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm">{item.reason}</strong><span className="text-xs text-slate-400">{item.status}</span></div>
+                <p className="mt-1 text-xs text-slate-400">{new Date(item.startsAt).toLocaleString()} – {new Date(item.endsAt).toLocaleString()}</p>
+                {item.status === 'requested' && <button disabled={busy} onClick={() => void closeMaintenance(item.id)} className="mt-2 rounded border border-slate-700 px-2 py-1 text-xs">Close record</button>}
+              </li>
+            ))}
+            {maintenance.length === 0 && <li className="text-xs text-slate-500">No maintenance requests recorded.</li>}
+          </ul>
         </article>
       </div>
     </section>
