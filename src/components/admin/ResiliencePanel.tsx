@@ -18,9 +18,20 @@ interface BackupInventory {\n  status: 'available' | 'not_configured' | 'unavail
   maintenance: { status: string; automation: string };
 }
 
+interface BackupInventory {
+  status: string;
+  bucket: string | null;
+  items: Array<{ backupId: string; createdAt: string; databaseBytes: number | null; databaseSha256: string | null; manifestValid: boolean }>;
+  retentionDays: number | null;
+  retentionMode: 'preview_only';
+  expiredCount: number | null;
+  reason?: string;
+}
+
 export default function ResiliencePanel({ userId }: { userId: string }) {
   const [status, setStatus] = useState<ResilienceStatus | null>(null);\n  const [inventory, setInventory] = useState<BackupInventory | null>(null);
   const [error, setError] = useState('');
+  const [inventory, setInventory] = useState<BackupInventory | null>(null);
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -86,6 +97,28 @@ export default function ResiliencePanel({ userId }: { userId: string }) {
           <button disabled={busy || status?.backup.status !== 'ready'} onClick={() => void runBackup()} className="mt-4 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-semibold disabled:opacity-40">
             {busy ? 'Running backup…' : 'Run database backup'}
           </button>
+          <div className="mt-4 border-t border-slate-800 pt-3">
+            <h4 className="text-sm font-medium">Backup inventory</h4>
+            <p className="mt-1 text-xs text-slate-400">
+              {inventory?.status || 'not checked'} · {inventory?.items.length ?? 0} recorded artifacts
+              · retention {inventory?.retentionDays ? inventory.retentionDays + ' days' : 'not configured'}
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              Expired candidates: {inventory?.expiredCount ?? 'unknown'} · preview only; no automatic deletion
+            </p>
+            {inventory?.reason && <p className="mt-1 text-xs text-amber-200">{inventory.reason}</p>}
+            <ul className="mt-2 space-y-2">
+              {inventory?.items.slice(0, 5).map((item) => (
+                <li key={item.backupId} className="text-xs text-slate-300">
+                  <span className={item.manifestValid ? 'text-emerald-300' : 'text-amber-200'}>
+                    {item.manifestValid ? 'Manifest verified' : 'Manifest incomplete'}
+                  </span>
+                  {' · '}{item.createdAt ? new Date(item.createdAt).toLocaleString() : 'timestamp unavailable'}
+                  {' · '}{item.databaseBytes === null ? 'size unknown' : item.databaseBytes.toLocaleString() + ' bytes'}
+                </li>
+              ))}
+            </ul>
+          </div>
         </article>
 
         <article className="rounded-xl border border-slate-800 bg-slate-900 p-4 md:col-span-2">
