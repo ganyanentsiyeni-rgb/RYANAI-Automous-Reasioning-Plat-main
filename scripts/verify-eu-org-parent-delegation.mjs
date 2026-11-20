@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { Resolver, lookup } from 'node:dns/promises';
+import { createSocket } from 'node:dgram';
+import { randomInt } from 'node:crypto';
 import { isIP } from 'node:net';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,28 +12,153 @@ export const EXPECTED_NAMESERVERS = ['ns1.desec.io', 'ns2.desec.org'];
 
 const normalize = (value) => String(value ?? '').trim().replace(/\.+$/, '').toLowerCase();
 
-function detail(error) {
-  const code = error?.code ? ` (${error.code})` : '';
-  return `${error?.message ?? String(error)}${code}`;
+function encodeName(name) {
+  const labels = normalize(name).split('.');
+  const encoded = [];
+  for (const label of labels) {
+    const bytes = Buffer.from(label, 'ascii');
+    if (!bytes.length || bytes.length > 63 || bytes.toString('ascii') !== label) {
+      throw new Error(`Invalid DNS label in ${name}`);
+    }
+    encoded.push(Buffer.from([bytes.length]), bytes);
+  }
+  encoded.push(Buffer.from([0]));
+  return Buffer.concat(encoded);
 }
 
-async function timed(promise, timeoutMs, onTimeout) {
-  let timer;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise((_, reject) => {
-        timer = setTimeout(() => {
-          onTimeout?.();
-          const error = new Error(`DNS query timed out after ${timeoutMs}ms`);
-          error.code = 'ETIMEDOUT';
-          reject(error);
-        }, timeoutMs);
-      }),
-    ]);
-  } finally {
-    clearTimeout(timer);
+export function buildNsQueryPacket(name, id = randomInt(0, 65536)) {
+  const header = Buffer.alloc(12);
+  header.writeUInt16BE(id, 0);
+  header.writeUInt16BE(1, 4);
+  const question = Buffer.alloc(4);
+  question.writeUInt16BE(2, 0); // NS
+  question.writeUInt16BE(1, 2); // IN
+  return { id, packet: Buffer.concat([header, encodeName(name), question]) };
+}
+
+function decodeName(packet, start) {
+  const labels = [];
+  const visited = new Set();
+  let offset = start;
+  let consumed = null;
+  for (let hops = 0; hops < 128; hops += 1) {
+    if (offset >= packet.length) throw new Error('DNS name extends beyond packet.');
+    const length = packet[offset];
+    if (length === 0) {
+      offset += 1;
+      return { name: labels.join('.').toLowerCase(), nextOffset: consumed ?? offset };
+    }
+    if ((length & 0xc0) === 0xc0) {
+      if (offset + 1 >= packet.length) throw new Error('Truncated DNS compression pointer.');
+      const pointer = ((length & 0x3f) << 8) | packet[offset + 1];
+      if (visited.has(pointer)) throw new Error('DNS compression pointer loop.');
+      visited.add(pointer);
+      if (consumed === null) consumed = offset + 2;
+      offset = pointer;
+      continue;
+    }
+    if ((length & 0xc0) !== 0 || offset + 1 + length > packet.length) {
+      throw new Error('Malformed DNS label.');
+    }
+    labels.push(packet.toString('ascii', offset + 1, offset + 1 + length));
+    offset += length + 1;
   }
+  throw new Error('DNS name compression depth exceeded.');
+}
+
+export function parseNsResponse(packet, expectedId) {
+  if (!Buffer.isBuffer(packet) || packet.length < 12) throw new Error('Truncated DNS response header.');
+  if (packet.readUInt16BE(0) !== expectedId) throw new Error('DNS response ID does not match query.');
+  const flags = packet.readUInt16BE(2);
+  if ((flags & 0x8000) === 0) throw new Error('DNS packet is not a response.');
+  const rcode = flags & 0x000f;
+  const questionCount = packet.readUInt16BE(4);
+  const answerCount = packet.readUInt16BE(6);
+  const authorityCount = packet.readUInt16BE(8);
+  const additionalCount = packet.readUInt16BE(10);
+  let offset = 12;
+
+  for (let i = 0; i < questionCount; i += 1) {
+    offset = decodeName(packet, offset).nextOffset + 4;
+    if (offset > packet.length) throw new Error('Truncated DNS question.');
+  }
+
+  const readRecords = (count, section) => {
+    const records = [];
+    for (let i = 0; i < count; i += 1) {
+      const owner = decodeName(packet, offset);
+      offset = owner.nextOffset;
+      if (offset + 10 > packet.length) throw new Error('Truncated DNS resource record.');
+      const type = packet.readUInt16BE(offset);
+      const klass = packet.readUInt16BE(offset + 2);
+      const ttl = packet.readUInt32BE(offset + 4);
+      const rdlength = packet.readUInt16BE(offset + 8);
+      const rdataOffset = offset + 10;
+      const end = rdataOffset + rdlength;
+      if (end > packet.length) throw new Error('DNS resource data extends beyond packet.');
+      if (type === 2 && klass === 1) {
+        const target = decodeName(packet, rdataOffset).name;
+        records.push({ owner: owner.name, target, ttl, section });
+      }
+      offset = end;
+    }
+    return records;
+  };
+
+  const answerRecords = readRecords(answerCount, 'answer');
+  const authorityRecords = readRecords(authorityCount, 'authority');
+  readRecords(additionalCount, 'additional');
+  return {
+    rcode,
+    authoritative: (flags & 0x0400) !== 0,
+    truncated: (flags & 0x0200) !== 0,
+    answerNs: answerRecords,
+    authorityNs: authorityRecords,
+  };
+}
+
+export async function queryParentNs({ address, family, domain, timeoutMs = 5000 }) {
+  const { id, packet } = buildNsQueryPacket(domain);
+  const socket = createSocket(family === 6 ? 'udp6' : 'udp4');
+  return new Promise((resolvePromise, rejectPromise) => {
+    let settled = false;
+    const finish = (error, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.removeAllListeners();
+      try { socket.close(); } catch {}
+      if (error) rejectPromise(error);
+      else resolvePromise(value);
+    };
+    const timer = setTimeout(() => {
+      const error = new Error(`DNS query timed out after ${timeoutMs}ms`);
+      error.code = 'ETIMEDOUT';
+      finish(error);
+    }, timeoutMs);
+    socket.once('error', (error) => finish(error));
+    socket.once('message', (message) => {
+      try {
+        const result = parseNsResponse(message, id);
+        if (result.truncated) {
+          const error = new Error('Parent DNS response was truncated; TCP fallback is not implemented.');
+          error.code = 'ETRUNCATED';
+          throw error;
+        }
+        if (result.rcode !== 0) {
+          const error = new Error(`Parent DNS server returned RCODE ${result.rcode}.`);
+          error.code = 'EDNS';
+          throw error;
+        }
+        finish(null, result);
+      } catch (error) {
+        finish(error);
+      }
+    });
+    socket.send(packet, 53, address, (error) => {
+      if (error) finish(error);
+    });
+  });
 }
 
 function uniqueAddresses(addresses, label) {
@@ -49,10 +176,15 @@ function uniqueAddresses(addresses, label) {
   return unique;
 }
 
+function detail(error) {
+  const code = error?.code ? ` (${error.code})` : '';
+  return `${error?.message ?? String(error)}${code}`;
+}
+
 /**
- * Queries the eu.org parent-zone nameserver endpoints directly for the child
- * NS RRset. Node's Resolver API does not expose the DNS AA bit, so a matching
- * answer is reported as an observed parent-zone answer, not proof of the AA bit.
+ * Sends non-recursive DNS wire queries directly to eu.org nameserver IPs.
+ * It inspects the answer/authority NS RRsets without following referrals,
+ * so the child delegation is read from the parent-server response itself.
  */
 export async function verifyParentDelegation({
   domain = DEFAULT_DOMAIN,
@@ -60,6 +192,7 @@ export async function verifyParentDelegation({
   nameservers = EXPECTED_NAMESERVERS,
   resolveAddresses = lookup,
   resolverFactory = () => new Resolver(),
+  queryParent = queryParentNs,
   queryTimeoutMs = 5000,
 } = {}) {
   const zone = normalize(domain);
@@ -75,9 +208,7 @@ export async function verifyParentDelegation({
   const discovery = resolverFactory();
   let parentNameservers;
   try {
-    parentNameservers = [...new Set((await timed(
-      discovery.resolveNs(parent), queryTimeoutMs, () => discovery.cancel?.(),
-    )).map(normalize))].sort();
+    parentNameservers = [...new Set((await discovery.resolveNs(parent)).map(normalize))].sort();
   } catch (error) {
     throw new Error(`Could not discover ${parent} nameservers: ${detail(error)}`, { cause: error });
   } finally {
@@ -96,13 +227,17 @@ export async function verifyParentDelegation({
       throw new Error(`Address lookup failed for parent nameserver ${parentNs}: ${detail(error)}`, { cause: error });
     }
     for (const endpoint of addresses) {
-      let resolver;
       try {
-        resolver = resolverFactory();
-        resolver.setServers([endpoint.address]);
-        const observed = [...new Set((await timed(
-          resolver.resolveNs(zone), queryTimeoutMs, () => resolver.cancel?.(),
-        )).map(normalize))].sort();
+        const response = await queryParent({
+          address: endpoint.address,
+          family: endpoint.family,
+          domain: zone,
+          timeoutMs: queryTimeoutMs,
+        });
+        const records = [...response.answerNs, ...response.authorityNs]
+          .filter((record) => normalize(record.owner) === zone)
+          .map((record) => normalize(record.target));
+        const observed = [...new Set(records)].sort();
         if (JSON.stringify(observed) !== JSON.stringify(expected)) {
           throw new Error(`Child NS mismatch; expected [${expected.join(', ')}], received [${observed.join(', ')}].`);
         }
@@ -111,12 +246,12 @@ export async function verifyParentDelegation({
           address: endpoint.address,
           family: endpoint.family,
           childNameservers: observed,
+          recordSection: response.authorityNs.some((record) => normalize(record.owner) === zone) ? 'authority' : 'answer',
+          authoritativeAnswer: response.authoritative,
           status: 'passed',
         });
       } catch (error) {
         throw new Error(`Parent delegation query failed via ${parentNs} at ${endpoint.address}: ${detail(error)}`, { cause: error });
-      } finally {
-        resolver?.cancel?.();
       }
     }
   }
@@ -128,8 +263,7 @@ export async function verifyParentDelegation({
     parentNameservers,
     status: 'passed',
     checks,
-    parentZoneDelegation: 'observed; exact child NS RRset returned by every discovered eu.org nameserver endpoint',
-    authoritativeAnswerBit: 'not-exposed-by-node-dns-resolver-api',
+    parentZoneDelegation: 'observed in direct non-recursive DNS responses from every discovered eu.org nameserver endpoint',
     registrationApproval: 'not-verified; EU.org confirmation or registrar status is still required',
   };
 }
