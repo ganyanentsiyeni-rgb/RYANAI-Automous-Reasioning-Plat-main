@@ -1,10 +1,10 @@
-name: Enforce main branch protection
+name: Enforce single-owner main protection
 
 on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: Type ENFORCE-MAIN-PROTECTION to update the main ruleset
+        description: Type ENFORCE-SINGLE-OWNER-PROTECTION to update ruleset 27357206
         required: true
         type: string
 
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   enforce:
-    name: Apply and verify main protection ruleset
+    name: Apply and verify single-owner main protection
     runs-on: ubuntu-latest
     steps:
       - name: Validate confirmation and administrator credential
@@ -26,106 +26,135 @@ jobs:
           GH_ADMIN_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
         run: |
           set -euo pipefail
-          [[ "$CONFIRMATION" == "ENFORCE-MAIN-PROTECTION" ]] || { echo "::error::Confirmation string did not match"; exit 1; }
-          [[ -n "$GH_ADMIN_TOKEN" ]] || { echo "::error::GH_ADMIN_TOKEN secret is missing; ruleset was not changed"; exit 1; }
+          [[ "$CONFIRMATION" == "ENFORCE-SINGLE-OWNER-PROTECTION" ]] || {
+            echo "::error::Confirmation string did not match; ruleset was not changed"
+            exit 1
+          }
+          [[ -n "$GH_ADMIN_TOKEN" ]] || {
+            echo "::error::GH_ADMIN_TOKEN secret is missing; ruleset was not changed"
+            exit 1
+          }
 
-          # Provider checks run on the exact main commit after merge. They are
-          # enforced by deploy-render.yml before any production deployment,
-          # rather than as PR contexts (the provider workflow is push/dispatch
-          # scoped and does not emit PR check runs).
-      - name: Locate and update the existing main-protection ruleset
-        env:
-          GH_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
+      - name: Build complete single-owner ruleset payload
         run: |
           set -euo pipefail
-
-          # Resolve the existing ruleset by its current or corrected name.
-          # Fail closed if it is missing or ambiguous; never create a second ruleset.
-          RULESET_ID="$(gh api "repos/${GITHUB_REPOSITORY}/rulesets?per_page=100" |
-            jq -er '[.[] | select(.name == "main-protection" or .name == "main-protectiona")]
-              | if length == 1 then .[0].id else error("expected exactly one existing main-protection ruleset") end')"
-
-          jq -n '{
-            name: "main-protection",
-            target: "branch",
-            enforcement: "active",
-            conditions: {
-              ref_name: {
-                include: ["~DEFAULT_BRANCH", "refs/heads/main"],
-                exclude: []
+          cat > ruleset.json <<'JSON'
+          {
+            "name": "main-protection",
+            "target": "branch",
+            "enforcement": "active",
+            "bypass_actors": [],
+            "conditions": {
+              "ref_name": {
+                "include": ["refs/heads/main"],
+                "exclude": []
               }
             },
-            bypass_actors: [],
-            rules: [
-              { type: "pull_request", parameters: {
-                required_approving_review_count: 1,
-                dismiss_stale_reviews_on_push: true,
-                require_code_owner_review: false,
-                require_last_push_approval: true,
-                required_review_thread_resolution: true,
-                allowed_merge_methods: ["squash", "rebase"]
-              }},
-              # PUT replaces the full ruleset, so retain the existing deployment gates.
-              { type: "required_deployments", parameters: {
-                required_deployment_environments: [
-                  "staging",
-                  "ryanai-provider-verification",
-                  "production",
-                  "main - ryanai-web-u2eb",
-                  "main - ryanai-mcp-u2eb-u2eb",
-                  "main - ryanai-api-u2eb"
-                ]
-              }},
-              { type: "required_linear_history" },
-              { type: "non_fast_forward" },
-              { type: "deletion" }
+            "rules": [
+              { "type": "deletion" },
+              { "type": "non_fast_forward" },
+              { "type": "required_linear_history" },
+              {
+                "type": "pull_request",
+                "parameters": {
+                  "required_approving_review_count": 0,
+                  "dismiss_stale_reviews_on_push": true,
+                  "require_code_owner_review": false,
+                  "require_last_push_approval": false,
+                  "required_review_thread_resolution": true,
+                  "allowed_merge_methods": ["merge", "squash", "rebase"]
+                }
+              },
+              {
+                "type": "required_status_checks",
+                "parameters": {
+                  "strict_required_status_checks_policy": true,
+                  "do_not_enforce_on_create": false,
+                  "required_status_checks": [
+                    { "context": "Single-owner release gate" },
+                    { "context": "Validate (typecheck, lint, test, build)" },
+                    { "context": "MCP server and workflow worker" },
+                    { "context": "Integration and end-to-end checks" },
+                    { "context": "PostgreSQL 19 compatibility" },
+                    { "context": "Issue 435 migrations and attachment security" },
+                    { "context": "Analyze (javascript-typescript)" },
+                    { "context": "Analyze (python)" },
+                    { "context": "TruffleHog secret audit" }
+                  ]
+                }
+              }
             ]
-          }' > ruleset.json
+          }
+          JSON
+          python3 -m json.tool ruleset.json >/dev/null
 
-          gh api --method PUT \
-            "repos/${GITHUB_REPOSITORY}/rulesets/${RULESET_ID}" \
-            --input ruleset.json > ruleset-updated.json
-          jq '{id,name,enforcement,conditions,rules,bypass_actors}' ruleset-updated.json
-
-      - name: Verify required protections are active and bypass is disabled
+      - name: Locate and update the existing main ruleset
         env:
           GH_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
         run: |
           set -euo pipefail
-          RULESET_ID="$(gh api "repos/${GITHUB_REPOSITORY}/rulesets?per_page=100" |
-            jq -er '[.[] | select(.name == "main-protection")]
-              | if length == 1 then .[0].id else error("updated main-protection ruleset was not found exactly once") end')"
-          gh api "repos/${GITHUB_REPOSITORY}/rulesets/${RULESET_ID}" > ruleset-final.json
+          RULESET_ID="27357206"
+          gh api --method PUT \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/${GITHUB_REPOSITORY}/rulesets/${RULESET_ID}" \
+            --input ruleset.json > ruleset-updated.json
+          python3 -m json.tool ruleset-updated.json >/dev/null
 
-          jq -e '
-            .name == "main-protection"
-            and .enforcement == "active"
-            and (.bypass_actors // [] | length == 0)
-            and (.conditions.ref_name.include | index("refs/heads/main") != null)
-            and ([.rules[].type] | index("pull_request") != null)
-            and ([.rules[].type] | index("non_fast_forward") != null)
-            and ([.rules[].type] | index("deletion") != null)
-            and ([.rules[].type] | index("required_linear_history") != null)
-            and ([.rules[].type] | index("required_deployments") != null)
-            and ([
-              .rules[]
-              | select(.type == "required_deployments")
-              | .parameters.required_deployment_environments
-            ] == [[
-              "staging",
-              "ryanai-provider-verification",
-              "production",
-              "main - ryanai-web-u2eb",
-              "main - ryanai-mcp-u2eb-u2eb",
-              "main - ryanai-api-u2eb"
-            ]])
-            and ([.conditions.ref_name.include[]] | index("refs/heads/main") != null)
-            and ([
-              .rules[] | select(.type == "pull_request") | .parameters
-              | select(.required_approving_review_count == 1
-                and .dismiss_stale_reviews_on_push == true
-                and .required_review_thread_resolution == true
-                and .require_last_push_approval == true)
-            ] | length == 1)
-          ' ruleset-final.json
-          echo "Verified: main protection is active, requires independent review and existing deployment gates, has no bypass actors, and does not require CI status checks."
+      - name: Verify the live ruleset after update
+        env:
+          GH_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/${GITHUB_REPOSITORY}/rulesets/27357206" > ruleset-final.json
+
+          python3 - <<'PY'
+          import json
+
+          with open("ruleset-final.json", encoding="utf-8") as source:
+              data = json.load(source)
+
+          assert data.get("id") == 27357206, "Unexpected ruleset ID"
+          assert data.get("name") == "main-protection", "Unexpected ruleset name"
+          assert data.get("enforcement") == "active", "Ruleset is not active"
+          assert data.get("bypass_actors", []) == [], "Bypass actors must be empty"
+          assert "refs/heads/main" in data.get("conditions", {}).get("ref_name", {}).get("include", []), "main branch condition missing"
+
+          rules = {rule["type"]: rule.get("parameters", {}) for rule in data.get("rules", [])}
+          assert {"deletion", "non_fast_forward", "required_linear_history", "pull_request", "required_status_checks"} <= set(rules), "A required protection rule is missing"
+
+          pr = rules["pull_request"]
+          assert pr.get("required_approving_review_count") == 0, "Single-owner mode must not require a second reviewer"
+          assert pr.get("dismiss_stale_reviews_on_push") is True, "Stale review dismissal must be enabled"
+          assert pr.get("require_code_owner_review") is False, "Code-owner approval must not block a single-owner repository"
+          assert pr.get("require_last_push_approval") is False, "Last-push approval cannot be required without a second reviewer"
+          assert pr.get("required_review_thread_resolution") is True, "Review thread resolution must be required"
+
+          checks = rules["required_status_checks"].get("required_status_checks", [])
+          contexts = {item.get("context") for item in checks}
+          required = {
+              "Single-owner release gate",
+              "Validate (typecheck, lint, test, build)",
+              "MCP server and workflow worker",
+              "Integration and end-to-end checks",
+              "PostgreSQL 19 compatibility",
+              "Issue 435 migrations and attachment security",
+              "Analyze (javascript-typescript)",
+              "Analyze (python)",
+              "TruffleHog secret audit",
+          }
+          missing = required - contexts
+          assert not missing, f"Required check contexts missing: {sorted(missing)}"
+          assert rules["required_status_checks"].get("strict_required_status_checks_policy") is True, "Strict status-check policy is disabled"
+
+          print("Verified single-owner ruleset 27357206:")
+          print(json.dumps({
+              "enforcement": data["enforcement"],
+              "bypass_actors": data.get("bypass_actors", []),
+              "pull_request": pr,
+              "required_status_checks": sorted(contexts),
+          }, indent=2))
+          PY
