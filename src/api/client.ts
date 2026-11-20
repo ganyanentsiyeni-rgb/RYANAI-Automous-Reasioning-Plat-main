@@ -134,7 +134,7 @@ export class RyanAIClient {
               id: randomMessageId(),
               type: 'request',
               channel: 'subscribe',
-              data: { channel, afterSequence: this.eventCursor.getCursor().sequence },
+              data: { channel, afterSequence: this.eventCursor.getCursor(channel).sequence },
               timestamp: Date.now(),
             });
           }
