@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { Prisma } from '@prisma/client';
 import type { FastifyPluginAsync } from 'fastify';
 import { requireAdmin, requireOwner } from './auth.js';
 import { backupPreflight, createDatabaseBackup, listDatabaseBackups, recoveryPreflight } from '../../services/adminResilience.js';
@@ -98,7 +99,7 @@ export const adminResilienceRoutes: FastifyPluginAsync = async (fastify) => {
     if (action !== 'scheduled' && !body.id) return reply.code(400).send({ error: 'A maintenance window ID is required.' });
 
     const id = action === 'scheduled' ? randomUUID() : body.id!;
-    let details: Record<string, unknown>;
+    let details: Prisma.InputJsonObject;
     if (action === 'scheduled') {
       details = { title: body.title!.trim(), startsAt: new Date(startsAt).toISOString(), endsAt: new Date(endsAt).toISOString() };
     } else {
@@ -113,7 +114,9 @@ export const adminResilienceRoutes: FastifyPluginAsync = async (fastify) => {
          (action === 'completed' && state === 'started') ||
          (action === 'cancelled' && ['scheduled', 'started'].includes(state)));
       if (!valid) return reply.code(409).send({ error: 'Invalid maintenance lifecycle transition.' });
-      details = prior.details && typeof prior.details === 'object' ? prior.details as Record<string, unknown> : {};
+      details = prior.details && typeof prior.details === 'object' && !Array.isArray(prior.details)
+        ? prior.details as Prisma.InputJsonObject
+        : {};
     }
     await fastify.prisma.jarvisAuditEvent.create({
       data: {
