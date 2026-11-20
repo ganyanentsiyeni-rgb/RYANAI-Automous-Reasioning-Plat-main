@@ -16,22 +16,41 @@ const suffix = randomUUID();
 const ownerUserId = randomUUID();
 let projectId;
 let child;
+let childExitObserved = false;
 let output = '';
 let errorOutput = '';
 
 function waitForExit(processHandle, timeoutMs = 10000) {
   return new Promise((resolve, reject) => {
-    // A child can exit between kill() and listener registration. Also, a
-    // signal-terminated child has signalCode set while exitCode remains null.
-    if (processHandle.exitCode !== null || processHandle.signalCode !== null) {
-      resolve({ code: processHandle.exitCode, signal: processHandle.signalCode });
-      return;
-    }
-    const timer = setTimeout(() => reject(new Error('Studio worker did not exit after SIGTERM.')), timeoutMs);
-    processHandle.once('exit', (code, signal) => {
+    // Listen for the actual exit event. exitCode/signalCode may be updated
+    // before this event is delivered, so they are not an exit-event substitute.
+    const onExit = (code, signal) => {
+      childExitObserved = true;
       clearTimeout(timer);
       resolve({ code, signal });
-    });
+    };
+    const timer = setTimeout(() => {
+      processHandle.removeListener('exit', onExit);
+      reject(new Error('Studio worker did not exit after SIGTERM.'));
+    }, timeoutMs);
+    processHandle.once('exit', onExit);
+  });
+}
+
+function waitForOutput(stream, getOutput, marker, timeoutMs = 10000) {
+  if (getOutput().includes(marker)) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const onData = () => {
+      if (!getOutput().includes(marker)) return;
+      clearTimeout(timer);
+      stream.removeListener('data', onData);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      stream.removeListener('data', onData);
+      reject(new Error(`Studio worker did not emit expected log: ${marker}`));
+    }, timeoutMs);
+    stream.on('data', onData);
   });
 }
 
@@ -86,9 +105,15 @@ try {
   assert.equal(output.includes('"event":"started"'), false, 'disabled worker must not enter its execution loop');
   assert.equal(output.includes('"event":"task-cycle"'), false, 'disabled worker must not run task cycles');
 
+  // Register both observers before SIGTERM so neither the log nor the exit
+  // event can be missed during shutdown.
+  const stoppedLog = waitForOutput(child.stdout, () => output, '"event":"stopped"');
+  const exitEvent = waitForExit(child);
   child.kill('SIGTERM');
-  const exit = await waitForExit(child);
-  assert.equal(exit.code, 0, 'disabled worker should stop cleanly after SIGTERM');
+  await stoppedLog;
+  const exit = await exitEvent;
+  assert.equal(exit.signal, null, `disabled worker should not be terminated by a signal (got ${exit.signal})`);
+  assert.equal(exit.code, 0, `disabled worker should stop cleanly after SIGTERM (got ${exit.code})`);
 
   const task = await prisma.studioTask.findUnique({ where: { id: taskId } });
   assert.ok(task, 'fixture task must still exist');
@@ -100,10 +125,12 @@ try {
 
   console.log('Studio worker disabled-gate integration passed: real entrypoint stayed idle, left PostgreSQL task queued, and shut down cleanly.');
 } finally {
-  if (child && child.exitCode === null && child.signalCode === null) {
-    const exitPromise = waitForExit(child);
+  if (child && !childExitObserved) {
+    // The graceful-shutdown assertion window has ended. If no exit event was
+    // observed (even when signalCode is already populated), force cleanup now.
+    const exitPromise = waitForExit(child, 5000);
     child.kill('SIGKILL');
-    await exitPromise;
+    await exitPromise.catch(() => undefined);
   }
   if (projectId) await prisma.studioProject.delete({ where: { id: projectId } }).catch(() => undefined);
   await prisma.user.delete({ where: { id: ownerUserId } }).catch(() => undefined);
