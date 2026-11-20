@@ -8,10 +8,26 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function normalizeApiUrl(value: string): string {
   const trimmed = value.trim();
-  const withProtocol = /^[a-z][a-z\d+.-]*:\/\//i.test(trimmed)
-    ? trimmed
-    : `https://${trimmed}`;
-  return withProtocol.replace(/\/+$/, '');
+  if (/^[a-z][a-z\d+.-]*:\/\//i.test(trimmed)) {
+    return trimmed.replace(/\/+$/, '');
+  }
+
+  let protocol = 'https';
+  try {
+    const candidate = new URL(`http://${trimmed}`);
+    const hostname = candidate.hostname.toLowerCase();
+    if (
+      hostname === 'localhost' ||
+      hostname === '::1' ||
+      hostname === '[::1]' ||
+      /^127(?:\.\d{1,3}){3}$/.test(hostname)
+    ) {
+      protocol = 'http';
+    }
+  } catch {
+    // Hosted hostnames default to HTTPS; malformed values fail at URL parsing.
+  }
+  return `${protocol}://${trimmed}`.replace(/\/+$/, '');
 }
 
 export default defineConfig(({ mode }) => {
