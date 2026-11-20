@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, ClipboardCheck, RefreshCw, XCircle } from 
 import { authenticatedFetch } from '@/lib/authenticatedFetch';
 import TelemetryMetricCard from '@/components/telemetry/TelemetryMetricCard';
 import { createTelemetryMetricSnapshot } from '@/lib/telemetry/contracts';
-import AdminSettingsHub from '@/components/admin/AdminSettingsHub';
+import AdminSettingsHub from '@/components/admin/AdminSettingsHub';\nimport SelfPatchPanel from '@/components/SelfPatchPanel';
 
 interface AdminIdentity {
   authenticated: boolean;
@@ -376,7 +376,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
       {errors.map((error, index) => <p key={index} role="alert" className="rounded-lg border border-rose-400/25 bg-rose-950/20 p-3 text-sm text-rose-200">{error}</p>)}
       {notice && <p role="status" className="rounded-lg border border-cyan-300/20 bg-cyan-950/20 p-3 text-sm text-cyan-100">{notice}</p>}
 
-      <AdminSettingsHub />
+      <AdminSettingsHub />\n\n      {identity?.user.isOwner && <SelfPatchPanel />}
 
       {identity?.user.isOwner && <section id="admin-langgraph-setup" className="scroll-mt-6 rounded-2xl border border-amber-300/25 bg-slate-900/70 p-5 sm:p-6" aria-labelledby="admin-langgraph-setup-title">
         <div className="flex flex-wrap items-start justify-between gap-3">
