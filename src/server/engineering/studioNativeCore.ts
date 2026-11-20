@@ -132,6 +132,14 @@ export async function claimStudioTask(workerId: string, supportedTaskTypes: read
   const safeLease = Math.max(15, Math.min(leaseSeconds, 600));
   return prisma.$transaction(async (tx) => {
     const claimToken = randomUUID();
+    const claimed = await tx.$queryRawUnsafe<Array<{ id: string }>>(CLAIM_STUDIO_TASK_SQL, [...supportedTaskTypes], workerId, safeLease, workerProfileId ?? null, claimToken);
+    if (!claimed[0]) return null;
+    // PostgreSQL returns raw column names (project_id, owner_user_id, lease_token).
+    // Reload through Prisma so required relations and camelCase fields are present.
+    const leasedTask = await tx.studioTask.findUnique({ where: { id: claimed[0].id } });
+    if (!leasedTask) throw new Error('Claimed Studio task could not be reloaded for lease evidence.');
+    await tx.studioEvent.create({ data: {
+      projectId: leasedTask.projectId, taskId: leasedTask.id, ownerUserId: leasedTask.ownerUserId,
     const rows = await tx.$queryRawUnsafe<Record<string, unknown>[]>(CLAIM_STUDIO_TASK_SQL, [...supportedTaskTypes], workerId, safeLease, workerProfileId ?? null, claimToken);
     if (!rows[0]) return null;
     const claimed = toCamelCaseRow<StudioTask>(rows[0]);
