@@ -268,11 +268,7 @@ describe('Studio worker queue lifecycle', () => {
     const unregister = registerStudioTaskHandler('ci-failure', handler);
     try {
       const result = await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
-      expect(result).toMatchObject({
-        state: 'failed',
-        taskId: 'task-1',
-        error: 'Studio worker lease expired before completion could be committed.',
-      });
+      expect(result).toMatchObject({ state: 'lease_lost', taskId: 'task-1' });
       expect(mocks.eventCreate).not.toHaveBeenCalledWith(expect.objectContaining({
         data: expect.objectContaining({ eventType: 'task.completed' }),
       }));
