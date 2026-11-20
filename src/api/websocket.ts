@@ -183,12 +183,19 @@ async function handleMessage(context: ConnectionContext, message: WebSocketMessa
           context.subscriptions.add(data.channel);
           if (!channels.has(key)) channels.set(key, new Set());
           channels.get(key)!.add(context.id);
-          const replay = await replayRealtimeEvents(prisma, {
-            audience: { type: 'user', id: context.auth.userId },
-            channel: data.channel,
-            afterSequence: BigInt(cursorText),
-            limit: 50,
-          });
+          let replay;
+          try {
+            replay = await replayRealtimeEvents(prisma, {
+              audience: { type: 'user', id: context.auth.userId },
+              channel: data.channel,
+              afterSequence: BigInt(cursorText),
+              limit: 50,
+            });
+          } catch (error) {
+            context.replayingChannels.delete(key);
+            flushPendingDurableEvents(context, key, data.channel, BigInt(cursorText));
+            throw error;
+          }
           if (replay.cursorExpired) {
             context.replayingChannels.delete(key);
             flushPendingDurableEvents(context, key, data.channel, replay.nextCursor);
