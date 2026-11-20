@@ -5,6 +5,7 @@ const resilience = vi.hoisted(() => ({
   backupPreflight: vi.fn(),
   createDatabaseBackup: vi.fn(),
   listDatabaseBackups: vi.fn(),
+  listDatabaseBackups: vi.fn(),
 }));
 
 vi.mock('../../services/adminResilience.js', () => resilience);
@@ -59,6 +60,7 @@ beforeEach(() => {
     sourceBuckets: [],
     pgDumpAvailable: true,
   });
+  resilience.listDatabaseBackups.mockResolvedValue({ status: 'available', bucket: 'private-backups', items: [], retentionDays: null, retentionMode: 'preview_only', expiredCount: null });
   resilience.createDatabaseBackup.mockResolvedValue({
     status: 'succeeded',
     backupId: 'backup-1',
@@ -108,6 +110,26 @@ describe('Admin resilience routes', () => {
     expect(response.json().status).toBe('available');
     expect(response.json().retentionDays).toBe(30);
     expect(resilience.listDatabaseBackups).toHaveBeenCalledTimes(1);
+  });
+
+
+  it('exposes backup inventory as read-only administrator data', async () => {
+    resilience.listDatabaseBackups.mockResolvedValue({
+      status: 'available',
+      bucket: 'private-backups',
+      items: [{ backupId: 'backup-1', prefix: 'ryanai-admin/backup-1', createdAt: '2026-11-20T00:00:00.000Z', databaseBytes: 1234, databaseSha256: 'sha256-example', manifestValid: true }],
+      retentionDays: null,
+      retentionMode: 'preview_only',
+      expiredCount: null,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/admin/resilience/backups',
+      headers: { 'x-test-user': 'admin-1', 'x-test-role': 'admin' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().items[0].manifestValid).toBe(true);
+    expect(response.json().retentionMode).toBe('preview_only');
   });
 
   it('rejects backup execution for administrators who are not the owner', async () => {
