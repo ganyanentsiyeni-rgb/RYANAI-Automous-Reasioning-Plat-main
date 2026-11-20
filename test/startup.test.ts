@@ -91,6 +91,7 @@ describe('Redis startup', () => {
           API_BASE_URL: 'http://127.0.0.1:1', WEB_BASE_URL: 'http://127.0.0.1:1',
           MCP_URL: 'http://127.0.0.1:1',
           INTEGRATION_TIMEOUT_MS: '200',
+          API_READINESS_TIMEOUT_MS: '1000',
         },
       }).catch((error: { code: number; stdout: string; stderr: string }) => error);
       expect(result).toMatchObject({ code: 1 });
