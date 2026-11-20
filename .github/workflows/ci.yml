@@ -353,13 +353,13 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
           SELECT 'CREATE ROLE anon NOLOGIN'
           WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon')
-          \\gexec
+          \gexec
           SELECT 'CREATE ROLE authenticated NOLOGIN'
           WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated')
-          \\gexec
+          \gexec
           SELECT 'CREATE ROLE service_role NOLOGIN BYPASSRLS'
           WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role')
-          \\gexec
+          \gexec
           CREATE SCHEMA IF NOT EXISTS auth;
           CREATE TABLE IF NOT EXISTS auth.users (
             id uuid PRIMARY KEY,
