@@ -401,7 +401,7 @@ describe('Studio worker queue lifecycle', () => {
       task({ attempts: 2, leaseToken: 'new-lease-token' }),
     ];
     mocks.queryRawUnsafe.mockImplementation(async (sql: string) => {
-      if (sql.trimStart().startsWith('SELECT id FROM studio_tasks')) return [{ id: 'task-1' }];
+      if (sql.trimStart().startsWith('SELECT id FROM public.studio_tasks')) return [{ id: 'task-1' }];
       return [claims.shift()];
     });
     mocks.taskFindMany.mockResolvedValue([{
