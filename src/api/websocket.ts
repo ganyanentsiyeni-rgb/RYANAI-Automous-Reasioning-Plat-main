@@ -26,6 +26,7 @@ interface ConnectionContext {
 
 const connections = new Map<string, ConnectionContext>();
 const channels = new Map<string, Set<string>>();
+const MAX_PENDING_DURABLE_EVENTS_PER_CONNECTION = 500;
 
 function scopedChannelKey(userId: string, channel: string): string {
   return `user:${userId}:${channel}`;
@@ -300,6 +301,11 @@ export async function publishRealtimeEvent(input: {
     if (conn && !conn.closed && conn.ws.readyState === conn.ws.OPEN) {
       if (conn.replayingChannels.has(key)) {
         const pending = conn.pendingDurableEvents.get(key) ?? [];
+        if (pending.length >= MAX_PENDING_DURABLE_EVENTS_PER_CONNECTION) {
+          sendError(conn.ws, 'REPLAY_BACKLOG_EXCEEDED', 'Replay backlog exceeded; reconnect and resume from the last durable cursor');
+          conn.ws.close(1013, 'Replay backlog exceeded');
+          continue;
+        }
         pending.push(persisted);
         conn.pendingDurableEvents.set(key, pending);
       } else {
