@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { CheckCircle2, Globe2, Save, Volume2, LayoutDashboard, Calculator, BookAudio, BrainCircuit, UserRound, LogOut, Code2, LockKeyhole, ShieldCheck, Smartphone } from 'lucide-react';
+import { CheckCircle2, Globe2, Save, Volume2, LayoutDashboard, BookAudio, BrainCircuit, UserRound, LogOut, Code2, LockKeyhole, ShieldCheck, Smartphone } from 'lucide-react';
 import { DEFAULT_LANGUAGE, isRyanLanguage, RYANAI_LANGUAGES } from '@/shared/languages';
 import { supabase } from '@/lib/supabase';
 import { DEFAULT_MODEL, getAvailableModels, MODELS } from '@/lib/models';
