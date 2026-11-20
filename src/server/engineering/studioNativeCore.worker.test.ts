@@ -524,6 +524,7 @@ describe('Studio worker queue lifecycle', () => {
 
       finishFirstAttempt({ result: 'stale-attempt-output', attempt: 1 });
       const stale = await oldAttempt;
+      expect(stale).toMatchObject({ state: 'lease_lost', taskId: 'task-1' });
       expect(stale).toMatchObject({
         state: 'lease_lost',
         taskId: 'task-1',
