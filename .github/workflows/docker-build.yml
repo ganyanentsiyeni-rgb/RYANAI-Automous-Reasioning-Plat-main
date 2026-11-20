@@ -164,6 +164,7 @@ jobs:
           MCP_ALLOWED_HOSTS=localhost,127.0.0.1,[::1],mcp-server
           RYANAI_MCP_ENABLED_TOOLS=platform_health
           MCPJUNGLE_DB_PASSWORD=ci_only_mcpjungle_db_password_1234567890
+          MCP_PROXY_DELEGATION_TOKEN=ci_only_bootstrap_placeholder
           MCPJUNGLE_IMAGE_TAG=0.4.6
           EOF
           export RYANAI_MCP_DELEGATION_SECRET=ci_only_mcp_delegation_secret_1234567890_abcdefgh
@@ -189,7 +190,7 @@ jobs:
             const signature = createHmac("sha256", process.env.RYANAI_MCP_DELEGATION_SECRET).update(input).digest("base64url");
             process.stdout.write(input + "." + signature);
           ')"
-          printf '\nMCP_PROXY_DELEGATION_TOKEN=%s\n' "$MCP_PROXY_DELEGATION_TOKEN" >> .env
+          sed -i "s|^MCP_PROXY_DELEGATION_TOKEN=.*$|MCP_PROXY_DELEGATION_TOKEN=$MCP_PROXY_DELEGATION_TOKEN|" .env
           if ! docker compose --profile mcp-gateway up -d --wait mcp-proxy mcpjungle; then
             echo "::group::Compose service state after startup failure"
             docker compose --profile mcp-gateway ps -a || true
