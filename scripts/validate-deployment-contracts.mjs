@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
 
 const read = (path) => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
@@ -66,6 +66,17 @@ const apiDockerfile = read('Dockerfile.api');
 const poolerAdapter = read('src/server/supabasePooler.ts');
 const generatedClientCopy = read('scripts/copy-server-assets.mjs');
 const packageJson = JSON.parse(read('package.json'));
+const packageLock = JSON.parse(read('package-lock.json'));
+const workflowDirectory = new URL('../.github/workflows/', import.meta.url);
+const workflowContents = readdirSync(workflowDirectory)
+  .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
+  .map((name) => readFileSync(new URL(name, workflowDirectory), 'utf8'));
+const packageHasVercelDependency = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']
+  .some((section) => Object.keys(packageJson[section] ?? {}).some((name) => name.startsWith('@vercel/')));
+const lockfileHasVercelDependency = Object.keys(packageLock.packages ?? {})
+  .some((path) => path.startsWith('node_modules/@vercel/'));
+const packageHasVercelScript = Object.entries(packageJson.scripts ?? {})
+  .some(([name, command]) => /\\bvercel\\b/i.test(name) || /\\bvercel\\b/i.test(command));
 const envExample = read('.env.example');
 const featureFlags = read('src/server/comms/featureFlags.ts');
 const commsPlugin = read('src/server/comms/index.ts');
@@ -107,8 +118,10 @@ const hasLegacyVercelIntegration =
   existsSync(new URL('../vercel.json', import.meta.url))
   || existsSync(new URL('../.github/workflows/deploy-vercel.yml', import.meta.url))
   || existsSync(new URL('../.github/workflows/vercel-deploy.yml', import.meta.url))
-  || Boolean(packageJson.dependencies?.['@vercel/analytics'])
-  || Boolean(packageJson.devDependencies?.['@vercel/analytics'])
+  || packageHasVercelDependency
+  || lockfileHasVercelDependency
+  || packageHasVercelScript
+  || workflowContents.some((workflow) => /\\bVERCEL_[A-Z0-9_]*\\b|@vercel\\/|vercel\\.com|\\bvercel\\s+(?:deploy|build|link|env)\\b/i.test(workflow))
   || ciWorkflow.includes('VERCEL_')
   || renderDeploy.includes('VERCEL_')
   || railwayDeploy.includes('VERCEL_');
