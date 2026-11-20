@@ -630,6 +630,28 @@ jobs:
           docker run --rm --network host -e PGPASSWORD postgres:16-alpine createdb -h 127.0.0.1 -p "$SUPABASE_DB_PORT" -U postgres ryanai_prisma_shadow
           echo "SHADOW_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:${SUPABASE_DB_PORT}/ryanai_prisma_shadow" >> "$GITHUB_ENV"
 
+      - name: Export isolated Prisma shadow database URL
+        run: |
+          set -euo pipefail
+          SHADOW_DATABASE_URL="$(node --input-type=module <<'NODE'
+          const source = process.env.DATABASE_URL;
+          if (!source) throw new Error('DATABASE_URL is missing; cannot configure Prisma shadow database');
+          const url = new URL(source);
+          if (!['postgres:', 'postgresql:'].includes(url.protocol)) {
+            throw new Error('DATABASE_URL must use the PostgreSQL protocol');
+          }
+          if (!url.hostname || !url.username || !url.password) {
+            throw new Error('DATABASE_URL must include PostgreSQL host and credentials');
+          }
+          url.pathname = '/ryanai_prisma_shadow';
+          url.search = '';
+          url.hash = '';
+          process.stdout.write(url.toString());
+          NODE
+          )"
+          test -n "$SHADOW_DATABASE_URL"
+          echo "SHADOW_DATABASE_URL=$SHADOW_DATABASE_URL" >> "$GITHUB_ENV"
+
       - name: Provision Supabase Auth objects in Prisma shadow database
         run: |
           SUPABASE_DB_PORT="$(node -e 'console.log(new URL(process.env.DATABASE_URL).port || 5432)')"
