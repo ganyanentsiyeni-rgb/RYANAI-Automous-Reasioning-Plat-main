@@ -1,7 +1,6 @@
 import { prisma } from '../../lib/prisma.js';
 import { createRyanAIStudioWorkerRuntime } from './ryanaiStudioWorkerRuntime.js';
-import { registerStudioTaskHandler } from './studioNativeCore.js';
-import { createStudioArtifact } from './studioNativeCore.js';
+import { createStudioArtifact, registerStudioTaskHandler } from './studioNativeCore.js';
 import { removeStoredStudioArtifact, storeStudioArtifact } from './studioArtifactStorage.js';
 
 const workerProfileId = 'coordinator';
