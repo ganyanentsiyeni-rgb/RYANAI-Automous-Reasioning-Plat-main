@@ -30,13 +30,12 @@ The verifier:
   and query timeouts with the affected endpoint;
 - cancels the resolver when a query times out.
 
-A successful result means the configured nameserver endpoints answered with
-consistent SOA and NS data at the time of the check. Node's DNS Resolver API
-does not expose the DNS authoritative-answer (AA) bit, and this script does
-not query the `eu.org` parent zone directly. Therefore the report explicitly
-keeps `registrationApproval` and `parentZoneDelegation` as
-`not-verified`. Do not convert a successful endpoint check into a claim of
-EU.org approval or parent-zone delegation.
+A successful result from this first verifier means the configured child
+nameserver endpoints answered with consistent SOA and NS data at the time of
+the check. It does not query the `eu.org` parent zone, and therefore it keeps
+`registrationApproval` and `parentZoneDelegation` as `not-verified`. Do not
+convert a successful child-zone endpoint check into a claim of EU.org approval
+or parent-zone delegation.
 
 EU.org approval must be established from its confirmation/validation
 communication. Parent delegation can be checked separately with:
