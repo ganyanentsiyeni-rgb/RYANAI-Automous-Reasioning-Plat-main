@@ -56,6 +56,7 @@ describe('Studio worker queue lifecycle', () => {
     mocks.eventCreate.mockResolvedValue({});
   });
 
+  it('does not append authorization evidence after the claimed lease has already been lost', async () => {
   it('releases a token-fenced lease when the optional authorizer fails', async () => {
     mocks.queryRawUnsafe
       .mockResolvedValueOnce([task()])

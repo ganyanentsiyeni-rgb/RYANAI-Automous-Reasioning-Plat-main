@@ -120,6 +120,7 @@ FROM candidate WHERE task.id = candidate.id
 RETURNING task.*;
 `;
 
+// Raw SQL returns snake_case columns (project_id, lease_token, ...); Prisma's StudioTask is camelCase.
 // Raw SQL returns snake_case columns; Prisma's StudioTask uses camelCase.
 function toCamelCaseRow<T>(row: Record<string, unknown>): T {
   return Object.fromEntries(
@@ -146,12 +147,10 @@ export async function claimStudioTask(workerId: string, supportedTaskTypes: read
     const leasedTask = await tx.studioTask.findUnique({ where: { id: claimed.id } });
     if (!leasedTask) throw new Error('Claimed Studio task could not be reloaded for lease evidence.');
     await tx.studioEvent.create({ data: {
-      project: { connect: { id: leasedTask.projectId } },
-      task: { connect: { id: leasedTask.id } },
-      owner: { connect: { id: leasedTask.ownerUserId } },
-      actorId: workerId, eventType: 'task.leased', payload: { attempt: leasedTask.attempts, leaseSeconds: safeLease },
+      projectId: claimed.projectId, taskId: claimed.id, ownerUserId: claimed.ownerUserId,
+      actorId: workerId, eventType: 'task.leased', payload: { attempt: claimed.attempts, leaseSeconds: safeLease },
     } });
-    return leasedTask;
+    return claimed;
   });
 }
 
@@ -289,6 +288,8 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId: str
       ? { state: 'blocked' as const, taskId: task.id }
       : { state: 'lease_lost' as const, taskId: task.id };
   }
+  // Re-check and lock the claimed row in the same transaction as the
+  // authorization event. A lease handoff cannot race an authorization receipt.
 
   if (authorize) {
     try {
