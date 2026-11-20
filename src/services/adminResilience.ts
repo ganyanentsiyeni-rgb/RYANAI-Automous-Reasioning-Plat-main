@@ -101,15 +101,21 @@ export async function backupPreflight(): Promise<BackupPreflight> {
 
 function pgDump(file: string): Promise<void> {
   return new Promise((resolve, reject) => {
+    const databaseUrl = process.env.DATABASE_URL?.trim();
+    if (!databaseUrl) {
+      reject(new Error('DATABASE_URL is not configured.'));
+      return;
+    }
     const child = spawn('pg_dump', [
       '--format=custom',
       '--no-owner',
       '--no-acl',
       '--file',
       file,
+      databaseUrl,
     ], {
       stdio: ['ignore', 'ignore', 'pipe'],
-      env: { ...process.env, PGDATABASE: process.env.DATABASE_URL },
+      env: process.env,
     });
     let stderr = '';
     child.stderr?.on('data', (chunk) => { stderr += String(chunk).slice(-4000); });
