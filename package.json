@@ -114,7 +114,7 @@
     "dev:desktop:services": "node scripts/dev-desktop.mjs",
     "platform:wiring:check": "node scripts/check-platform-wiring.mjs",
     "test:legacy-server-entrypoints": "node --test scripts/legacy-server-entrypoints.node-test.mjs",
-    "test:server-assets": "node --test scripts/copy-server-assets.node-test.mjs scripts/audiobook-prisma-boundary.node-test.mjs",
+    "test:server-assets": "node --test scripts/copy-server-assets.node-test.mjs scripts/audiobook-prisma-boundary.node-test.mjs scripts/start-script-contract.node-test.mjs",
     "index:check": "node scripts/check-index-html.mjs",
     "test:stack-validator": "node --test scripts/validate-stack-manifest.test.mjs",
     "audit:inspector": "node scripts/ai-inspector-audit.mjs",
@@ -170,7 +170,8 @@
     "test:render-staging-migration": "node --test scripts/migrate-render-staging.node-test.mjs",
     "worker:studio": "tsx scripts/ryanai-studio-worker.ts",
     "dns:verify:eu-org": "node scripts/verify-eu-org-dns.mjs",
-    "test:dns:verify:eu-org": "node --test scripts/verify-eu-org-dns.node-test.mjs"
+    "test:dns:verify:eu-org": "node --test scripts/verify-eu-org-dns.node-test.mjs",
+    "prestart": "npm run build:server"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1169.0",
