@@ -45,12 +45,12 @@ npm run test:dns:verify:eu-org:parent
 npm run dns:verify:eu-org:parent
 ```
 
-That verifier discovers `eu.org` nameservers, resolves each IPv4/IPv6 endpoint,
-and queries each endpoint directly for the child NS RRset. It fails closed on
-missing or unexpected nameservers. Node's Resolver API does not expose the
-DNS AA bit, so the report labels this as an observed parent-zone answer and
-records that the AA bit is unavailable. EU.org registration approval remains
-a separate, unverified state.
+That verifier discovers `eu.org` nameservers, resolves each IPv4/IPv6
+endpoint, and sends a raw non-recursive DNS NS query directly to every parent
+endpoint. It inspects the answer and authority sections without following a
+referral, records the DNS AA bit, and fails closed on missing or unexpected
+child nameservers. EU.org registration approval remains a separate,
+unverified state.
 
 ## Post-approval hosting plan (not applied)
 
