@@ -74,6 +74,7 @@ const runtime = createRyanAIStudioWorkerRuntime({
 });
 
 let shutdownPromise: Promise<void> | null = null;
+let disabledStopResolver: (() => void) | null = null;
 async function shutdown(signal: string) {
   if (shutdownPromise) return shutdownPromise;
   shutdownPromise = (async () => {
@@ -84,6 +85,8 @@ async function shutdown(signal: string) {
       unregister();
       await prisma.$disconnect();
       log('stopped', { signal, workerId: runtime.snapshot().workerId });
+      disabledStopResolver?.();
+      disabledStopResolver = null;
     }
   })();
   return shutdownPromise;
@@ -94,6 +97,11 @@ process.once('SIGINT', () => { void shutdown('SIGINT'); });
 
 async function main() {
   try {
+    if (process.env.STUDIO_WORKER_ENABLED !== 'true') {
+      log('disabled', { workerId: runtime.snapshot().workerId, reason: 'STUDIO_WORKER_ENABLED is not true.' });
+      await new Promise<void>((resolve) => { disabledStopResolver = resolve; });
+      return;
+    }
     await runtime.start();
     log('started', {
       workerId: runtime.snapshot().workerId,
