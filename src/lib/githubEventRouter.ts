@@ -123,7 +123,7 @@ export function createRyanAiGitHubEventRouter(
         throw new AggregateError(
           [error, forgetError],
           "GitHub event handling failed and its idempotency record could not be cleared.",
-          { cause: error },
+          { cause: forgetError },
         );
       }
       throw error;
