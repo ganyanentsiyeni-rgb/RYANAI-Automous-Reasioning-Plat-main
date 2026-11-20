@@ -147,7 +147,18 @@ function retentionWindowDays(): number {
   return Number.isFinite(parsed) && parsed >= 7 && parsed <= 3650 ? parsed : 30;
 }
 
-async function listStorageObjects(storage: NonNullable<ReturnType<typeof storageConfig>>, prefix: string) {
+interface StorageObject {
+  name?: string;
+  id?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  metadata?: { size?: number } | null;
+}
+
+async function listStorageObjects(
+  storage: NonNullable<ReturnType<typeof storageConfig>>,
+  prefix: string,
+): Promise<StorageObject[]> {
   const response = await storageRequest(
     storage.baseUrl,
     storage.key,
@@ -163,13 +174,8 @@ async function listStorageObjects(storage: NonNullable<ReturnType<typeof storage
       }),
     },
   );
-  return await response.json() as Array<{
-    name?: string;
-    id?: string | null;
-    created_at?: string;
-    updated_at?: string;
-    metadata?: { size?: number } | null;
-  }>;
+  const payload: unknown = await response.json();
+  return Array.isArray(payload) ? payload as StorageObject[] : [];
 }
 
 export async function listDatabaseBackups(): Promise<BackupInventory> {
