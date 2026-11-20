@@ -5,6 +5,8 @@ import { v4 as uuid } from 'uuid';
 import { WebSocketMessage, AuthContext, ReasoningRequest } from '../shared/types.js';
 import { createLogger } from '../shared/logger.js';
 import { requireAdmin } from '../server/routes/auth.js';
+import { prisma } from '../lib/prisma.js';
+import { appendRealtimeEvent, replayRealtimeEvents } from '../server/realtime/eventStore.js';
 
 const logger = createLogger('websocket');
 
@@ -13,6 +15,8 @@ interface ConnectionContext {
   ws: WebSocket;
   auth?: AuthContext;
   subscriptions: Set<string>;
+  replayingChannels: Set<string>;
+  pendingDurableEvents: Map<string, Array<{ id: string; sequence: bigint; eventType: string; payload: unknown; createdAt: Date }>>;
   messageCount: number;
   connectedAt: number;
   expiryTimer?: ReturnType<typeof setTimeout>;
@@ -22,6 +26,21 @@ interface ConnectionContext {
 
 const connections = new Map<string, ConnectionContext>();
 const channels = new Map<string, Set<string>>();
+const MAX_PENDING_DURABLE_EVENTS_PER_CONNECTION = 500;
+
+function scopedChannelKey(userId: string, channel: string): string {
+  return `user:${userId}:${channel}`;
+}
+
+function sendDurableEvent(context: ConnectionContext, channel: string, event: { id: string; sequence: bigint; eventType: string; payload: unknown; createdAt: Date }) {
+  sendMessage(context.ws, {
+    id: event.id,
+    type: 'event',
+    channel,
+    data: { sequence: event.sequence.toString(), eventType: event.eventType, payload: event.payload, createdAt: event.createdAt.toISOString() },
+    timestamp: event.createdAt.getTime(),
+  });
+}
 
 export async function registerWebSocketRoutes(fastify: FastifyInstance) {
   logger.info('Registering WebSocket routes');
@@ -42,6 +61,8 @@ export async function registerWebSocketRoutes(fastify: FastifyInstance) {
         ws: socket as WebSocket,
         auth,
         subscriptions: new Set(),
+        replayingChannels: new Set(),
+        pendingDurableEvents: new Map(),
         messageCount: 0,
         connectedAt: Date.now(),
         closed: false,
@@ -109,10 +130,10 @@ export async function registerWebSocketRoutes(fastify: FastifyInstance) {
         connections.delete(connId);
 
         context.subscriptions.forEach((channel) => {
-          const channelSubs = channels.get(channel);
+          const channelSubs = channels.get(scopedChannelKey(context.auth!.userId, channel));
           if (channelSubs) {
             channelSubs.delete(connId);
-            if (channelSubs.size === 0) channels.delete(channel);
+            if (channelSubs.size === 0) channels.delete(scopedChannelKey(context.auth!.userId, channel));
           }
         });
 
@@ -151,12 +172,47 @@ async function handleMessage(context: ConnectionContext, message: WebSocketMessa
           if (!data || typeof data !== 'object' || !('channel' in data) || typeof data.channel !== 'string') {
             throw new Error('A subscription channel is required');
           }
+          if (!context.auth?.userId) throw new Error('An authenticated user is required');
+          if (!/^[a-z][a-z0-9._:-]{0,119}$/.test(data.channel)) throw new Error('Invalid subscription channel');
+          const key = scopedChannelKey(context.auth.userId, data.channel);
+          const cursorValue = 'afterSequence' in data ? data.afterSequence : '0';
+          const cursorText = typeof cursorValue === 'number' ? String(cursorValue) : cursorValue;
+          if (typeof cursorText !== 'string' || !/^(0|[1-9][0-9]*)$/.test(cursorText)) throw new Error('Replay cursor must be a non-negative integer string');
+          // Register before reading history so events published during replay
+          // are buffered and cannot overtake older persisted events.
+          context.replayingChannels.add(key);
           context.subscriptions.add(data.channel);
-          if (!channels.has(data.channel)) {
-            channels.set(data.channel, new Set());
+          if (!channels.has(key)) channels.set(key, new Set());
+          channels.get(key)!.add(context.id);
+          let replay: Awaited<ReturnType<typeof replayRealtimeEvents>>;
+          try {
+            replay = await replayRealtimeEvents(prisma, {
+              audience: { type: 'user', id: context.auth.userId },
+              channel: data.channel,
+              afterSequence: BigInt(cursorText),
+              limit: 50,
+            });
+          } catch (error) {
+            context.replayingChannels.delete(key);
+            flushPendingDurableEvents(context, key, data.channel, BigInt(cursorText));
+            throw error;
           }
-          channels.get(data.channel)!.add(context.id);
-          response.data = { subscribed: data.channel };
+          if (replay.cursorExpired) {
+            context.replayingChannels.delete(key);
+            flushPendingDurableEvents(context, key, data.channel, replay.nextCursor);
+            response.data = { subscribed: data.channel, cursorExpired: true, resyncRequired: true, nextCursor: replay.nextCursor.toString() };
+          } else {
+            for (const event of replay.events) sendDurableEvent(context, data.channel, event);
+            // Keep live events buffered while more history pages remain. The
+            // client requests the next page using nextCursor; only the final
+            // page releases live delivery, preserving sequence order.
+            if (!replay.hasMore) {
+              context.replayingChannels.delete(key);
+              flushPendingDurableEvents(context, key, data.channel, replay.nextCursor);
+            }
+            response.data = { subscribed: data.channel, replayed: replay.events.length, hasMore: replay.hasMore, nextCursor: replay.nextCursor.toString() };
+          }
+
         } else {
           response.error = { code: 'UNKNOWN_CHANNEL', message: 'Unknown channel' };
         }
@@ -208,23 +264,72 @@ function handleReasoningRequest(context: ConnectionContext, request: ReasoningRe
   );
 }
 
-export function broadcast(channel: string, data: unknown) {
-  const event: WebSocketMessage = {
-    id: uuid(),
-    type: 'event',
-    channel,
-    data,
-    timestamp: Date.now(),
-  };
+function flushPendingDurableEvents(context: ConnectionContext, key: string, channel: string, afterSequence: bigint) {
+  const pending = context.pendingDurableEvents.get(key) ?? [];
+  context.pendingDurableEvents.delete(key);
+  const ordered = pending
+    .filter((event) => event.sequence > afterSequence)
+    .sort((left, right) => left.sequence < right.sequence ? -1 : left.sequence > right.sequence ? 1 : 0);
+  let lastSequence = afterSequence;
+  for (const event of ordered) {
+    if (event.sequence <= lastSequence) continue;
+    sendDurableEvent(context, channel, event);
+    lastSequence = event.sequence;
+  }
+}
 
-  const subs = channels.get(channel);
-  if (subs) {
-    subs.forEach(connId => {
-      const conn = connections.get(connId);
-      if (conn && conn.ws.readyState === conn.ws.OPEN) {
-        sendMessage(conn.ws, event);
+/**
+ * Durable publisher. The database append completes before any socket delivery.
+ * Audience is always derived from this server-side function argument, never a
+ * browser-supplied audience field.
+ */
+export async function publishRealtimeEvent(input: {
+  userId: string;
+  channel: string;
+  eventType: string;
+  payload: Record<string, unknown>;
+}) {
+  const persisted = await appendRealtimeEvent(prisma, {
+    audience: { type: 'user', id: input.userId },
+    channel: input.channel,
+    eventType: input.eventType,
+    payload: input.payload,
+  });
+  const key = scopedChannelKey(input.userId, input.channel);
+  for (const connId of channels.get(key) ?? []) {
+    const conn = connections.get(connId);
+    if (conn && !conn.closed && conn.ws.readyState === conn.ws.OPEN) {
+      if (conn.replayingChannels.has(key)) {
+        const pending = conn.pendingDurableEvents.get(key) ?? [];
+        if (pending.length >= MAX_PENDING_DURABLE_EVENTS_PER_CONNECTION) {
+          sendError(conn.ws, 'REPLAY_BACKLOG_EXCEEDED', 'Replay backlog exceeded; reconnect and resume from the last durable cursor');
+          conn.ws.close(1013, 'Replay backlog exceeded');
+          continue;
+        }
+        pending.push(persisted);
+        conn.pendingDurableEvents.set(key, pending);
+      } else {
+        sendDurableEvent(conn, input.channel, persisted);
       }
-    });
+    }
+  }
+  return { id: persisted.id, sequence: persisted.sequence.toString() };
+}
+
+/**
+ * Legacy ephemeral system notifications only. User/workspace business events
+ * must use publishRealtimeEvent so persistence precedes delivery.
+ */
+export function broadcast(channel: string, data: unknown) {
+  if (!channel.startsWith('system.')) {
+    logger.warn({ channel }, 'Ignored non-system ephemeral broadcast; use publishRealtimeEvent');
+    return;
+  }
+  const event: WebSocketMessage = { id: uuid(), type: 'event', channel, data, timestamp: Date.now() };
+  for (const conn of connections.values()) {
+    if (conn.auth && conn.subscriptions.has(channel) && conn.ws.readyState === conn.ws.OPEN) {
+      sendMessage(conn.ws, event);
+    }
   }
 }
 
