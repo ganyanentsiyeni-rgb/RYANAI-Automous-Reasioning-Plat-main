@@ -44,6 +44,7 @@ function waitForExit(processHandle, timeoutMs = 10000) {
     };
     const timer = setTimeout(() => {
       processHandle.removeListener('exit', onExit);
+      reject(new Error('Studio worker did not exit after SIGTERM.\n' + childDiagnostics(processHandle)));
       reject(new Error('Studio worker did not exit after SIGTERM.\\n' + childDiagnostics(processHandle)));
     }, timeoutMs);
     processHandle.once('exit', onExit);
@@ -62,6 +63,7 @@ function waitForOutput(stream, getOutput, marker, processHandle, timeoutMs = 100
     const timer = setTimeout(() => {
       stream.removeListener('data', onData);
       reject(new Error(
+        'Studio worker did not emit expected log: ' + marker + '\n' + childDiagnostics(processHandle),
         'Studio worker did not emit expected log: ' + marker + '\\n' + childDiagnostics(processHandle),
       ));
     }, timeoutMs);
@@ -110,12 +112,14 @@ try {
   const deadline = Date.now() + 10000;
   while (!output.includes('"event":"disabled"') && Date.now() < deadline) {
     if (child.exitCode !== null || child.signalCode !== null) {
+      throw new Error('Worker exited before reporting disabled state.\n' + childDiagnostics(child));
       throw new Error('Worker exited before reporting disabled state.\\n' + childDiagnostics(child));
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   assert.ok(
     output.includes('"event":"disabled"'),
+    'worker must explicitly report its disabled state.\n' + (child ? childDiagnostics(child) : ''),
     'worker must explicitly report its disabled state.\\n' + (child ? childDiagnostics(child) : ''),
   );
   const disabledLogLine = output.split(/\r?\n/).find((line) => line.includes('"event":"disabled"'));
