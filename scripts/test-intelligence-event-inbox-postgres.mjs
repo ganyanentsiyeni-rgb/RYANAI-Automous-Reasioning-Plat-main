@@ -42,12 +42,6 @@ try {
   const claims = await Promise.all([
     inbox.claimNext('concurrent-a', claimNow, ['integration.lifecycle.test']),
     inbox.claimNext('concurrent-b', claimNow, ['integration.lifecycle.test']),
-  // availableAt is assigned by PostgreSQL at insert time. Base both
-  // competing claims on the persisted timestamp, not a pre-insert JS clock.
-  const claimAt = new Date(claimEvent.availableAt.getTime() + 1_000);
-  const claims = await Promise.all([
-    inbox.claimNext('concurrent-a', claimAt, ['integration.lifecycle.test']),
-    inbox.claimNext('concurrent-b', claimAt, ['integration.lifecycle.test']),
   ]);
   const winners = claims.filter(Boolean);
   assert.equal(winners.length, 1, 'only one concurrent claimant may own the event');
@@ -167,9 +161,12 @@ try {
   assert.equal(await inbox.claimNext('generic-worker', now, ['github.pull_request']), null,
     'generic workers must not claim GitHub Event Streams events');
   const ownerClaimNow = new Date(githubEvent.event.availableAt.getTime() + 1_000);
-  const ownerClaim = await inbox.claimNextForOwner('github-owner-worker', githubOwner, ownerClaimNow, ['github.pull_request']);
-  const ownerClaimAt = new Date(githubEvent.event.availableAt.getTime() + 1_000);
-  const ownerClaim = await inbox.claimNextForOwner('github-owner-worker', githubOwner, ownerClaimAt, ['github.pull_request']);
+  const ownerClaim = await inbox.claimNextForOwner(
+    'github-owner-worker',
+    githubOwner,
+    ownerClaimNow,
+    ['github.pull_request'],
+  );
   assert.equal(ownerClaim?.id, githubEvent.event.id,
     'the authenticated owner-scoped path must claim its own GitHub event');
   console.log('PASS: PostgreSQL GitHub event lane requires authenticated owner-scoped claim');
