@@ -54,7 +54,16 @@ describe('POST /api/patches/apply', () => {
     expect(patcher.proposePullRequest).not.toHaveBeenCalled();
   });
 
-  it('rejects an administrator who is not the configured RyanAI owner', async () => {\n    const response = await app.inject({\n      method: 'POST', url: '/api/patches/apply', headers: { 'x-test-user': 'admin-2', 'x-test-role': 'admin', 'x-test-owner': 'false' },\n      payload: { filePath: 'src/example.ts', patchContent: 'export const ready = true;' },\n    });\n    expect(response.statusCode).toBe(403);\n    expect(patcher.proposePullRequest).not.toHaveBeenCalled();\n  });\n\n  it('creates a GitHub PR proposal instead of modifying the running workspace', async () => {
+  it('rejects an administrator who is not the configured RyanAI owner', async () => {
+    const response = await app.inject({
+      method: 'POST', url: '/api/patches/apply', headers: { 'x-test-user': 'admin-2', 'x-test-role': 'admin', 'x-test-owner': 'false' },
+      payload: { filePath: 'src/example.ts', patchContent: 'export const ready = true;' },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(patcher.proposePullRequest).not.toHaveBeenCalled();
+  });
+
+  it('creates a GitHub PR proposal instead of modifying the running workspace', async () => {
     patcher.proposePullRequest.mockResolvedValue({ status: 'proposed', message: 'PR created', pullRequestUrl: 'https://github.com/example/repo/pull/1' });
     const response = await app.inject({
       method: 'POST', url: '/api/patches/apply', headers: admin,
