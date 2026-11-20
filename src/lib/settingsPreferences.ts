@@ -74,7 +74,7 @@ export const DEFAULT_PHONELINK_SETTINGS: PhoneLinkSettings = {
 export function normalizePhoneLinkSettings(value: unknown): PhoneLinkSettings {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return { ...DEFAULT_PHONELINK_SETTINGS };
   const input = value as Record<string, unknown>;
-  const validTime = (candidate: unknown, fallback: string) => typeof candidate === 'string' && /^([01]\\d|2[0-3]):[0-5]\\d$/.test(candidate) ? candidate : fallback;
+  const validTime = (candidate: unknown, fallback: string) => typeof candidate === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(candidate) ? candidate : fallback;
   return {
     autoReconnect: typeof input.autoReconnect === 'boolean' ? input.autoReconnect : DEFAULT_PHONELINK_SETTINGS.autoReconnect,
     wifiOnlyTransfers: typeof input.wifiOnlyTransfers === 'boolean' ? input.wifiOnlyTransfers : DEFAULT_PHONELINK_SETTINGS.wifiOnlyTransfers,
