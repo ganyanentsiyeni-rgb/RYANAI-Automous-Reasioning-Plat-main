@@ -39,9 +39,19 @@ keeps `registrationApproval` and `parentZoneDelegation` as
 EU.org approval or parent-zone delegation.
 
 EU.org approval must be established from its confirmation/validation
-communication. Parent delegation must be checked independently against the
-parent zone (for example, by querying the `eu.org` authoritative servers for
-the child NS delegation). These checks must not be conflated.
+communication. Parent delegation can be checked separately with:
+
+```sh
+npm run test:dns:verify:eu-org:parent
+npm run dns:verify:eu-org:parent
+```
+
+That verifier discovers `eu.org` nameservers, resolves each IPv4/IPv6 endpoint,
+and queries each endpoint directly for the child NS RRset. It fails closed on
+missing or unexpected nameservers. Node's Resolver API does not expose the
+DNS AA bit, so the report labels this as an observed parent-zone answer and
+records that the AA bit is unavailable. EU.org registration approval remains
+a separate, unverified state.
 
 ## Post-approval hosting plan (not applied)
 
