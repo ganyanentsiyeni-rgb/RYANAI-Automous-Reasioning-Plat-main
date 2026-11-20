@@ -40,6 +40,23 @@ async function taskById(id) {
   return row;
 }
 
+async function approveTaskForIntegrationTest(taskId) {
+  await prisma.studioTask.update({
+    where: { id: taskId },
+    data: { approvalRequired: true, approvalStatus: 'approved' },
+  });
+  await prisma.studioEvent.create({
+    data: {
+      projectId,
+      taskId,
+      ownerUserId,
+      actorId: ownerUserId,
+      eventType: 'task.human_approved',
+      payload: { source: 'disposable-integration-fixture', approval: 'explicit-owner-test-approval' },
+    },
+  });
+}
+
 async function withHandler(type, handler, run) {
   const unregister = registerStudioTaskHandler(type, handler);
   try {
@@ -102,6 +119,7 @@ try {
 
   const successTask = created.tasks.find((item) => item.taskType === taskType.success);
   assert.ok(successTask);
+  await approveTaskForIntegrationTest(successTask.id);
   const success = await withHandler(taskType.success, async ({ heartbeat }) => {
     assert.equal(await heartbeat(), true, 'handler heartbeat should renew its active lease');
     return { result: 'persisted', fixture: suffix };
@@ -124,6 +142,7 @@ try {
 
   const retryTask = created.tasks.find((item) => item.taskType === taskType.retry);
   assert.ok(retryTask);
+  await approveTaskForIntegrationTest(retryTask.id);
   const retry = await withHandler(taskType.retry, async () => { throw new Error('must not execute after auth exception'); },
     () => runWorker('studio-ci-retry-' + suffix, async () => { throw new Error('temporary authorization timeout'); }));
   assert.equal(retry.state, 'failed');
@@ -135,6 +154,7 @@ try {
 
   const exhaustedTask = created.tasks.find((item) => item.taskType === taskType.exhausted);
   assert.ok(exhaustedTask);
+  await approveTaskForIntegrationTest(exhaustedTask.id);
   await prisma.studioTask.update({ where: { id: exhaustedTask.id }, data: { maxAttempts: 1 } });
   const exhausted = await withHandler(taskType.exhausted, async () => ({}),
     () => runWorker('studio-ci-exhausted-' + suffix, async () => { throw new Error('final authorization timeout'); }));
@@ -144,6 +164,7 @@ try {
 
   const handlerFailureTask = created.tasks.find((item) => item.taskType === taskType.handlerFailure);
   assert.ok(handlerFailureTask);
+  await approveTaskForIntegrationTest(handlerFailureTask.id);
   const handlerFailure = await withHandler(taskType.handlerFailure, async () => { throw new Error('temporary handler failure'); },
     () => runWorker('studio-ci-handler-failure-' + suffix));
   assert.equal(handlerFailure.state, 'failed');
@@ -152,11 +173,12 @@ try {
 
   const leaseLostTask = created.tasks.find((item) => item.taskType === taskType.leaseLost);
   assert.ok(leaseLostTask);
+  await approveTaskForIntegrationTest(leaseLostTask.id);
   const leaseLost = await withHandler(taskType.leaseLost, async ({ task }) => {
     await prisma.studioTask.update({ where: { id: task.id }, data: { leaseExpiresAt: new Date(Date.now() - 1000) } });
     return { result: 'must-not-complete' };
   }, () => runWorker('studio-ci-lease-lost-' + suffix));
-  assert.equal(leaseLost.state, 'failed');
+  assert.equal(leaseLost.state, 'lease_lost');
   const stale = await taskById(leaseLostTask.id);
   assert.equal(stale.status, 'running');
   assert.ok(stale.leaseExpiresAt <= new Date());
