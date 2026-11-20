@@ -128,6 +128,22 @@ export async function claimStudioTask(workerId: string, supportedTaskTypes: read
   const safeLease = Math.max(15, Math.min(leaseSeconds, 600));
   return prisma.$transaction(async (tx) => {
     const claimToken = randomUUID();
+    const claimed = await tx.$queryRawUnsafe<StudioTask[]>(CLAIM_STUDIO_TASK_SQL, [...supportedTaskTypes], workerId, safeLease, workerProfileId ?? null, claimToken);
+    if (claimed[0]) {
+      // Re-read through Prisma after the raw SQL lease update so mapped relation
+      // fields are hydrated before persisting the lease audit event.
+      const leasedTask = await tx.studioTask.findUnique({
+        where: { id: claimed[0].id },
+        select: { id: true, projectId: true, ownerUserId: true, attempts: true },
+      });
+      if (!leasedTask) throw new Error('Claimed Studio task could not be reloaded for lease evidence.');
+      await tx.studioEvent.create({ data: {
+        project: { connect: { id: leasedTask.projectId } },
+        task: { connect: { id: leasedTask.id } },
+        owner: { connect: { id: leasedTask.ownerUserId } },
+        actorId: workerId, eventType: 'task.leased', payload: { attempt: leasedTask.attempts, leaseSeconds: safeLease },
+      } });
+    }
     const rows = await tx.$queryRawUnsafe<Record<string, unknown>[]>(CLAIM_STUDIO_TASK_SQL, [...supportedTaskTypes], workerId, safeLease, workerProfileId ?? null, claimToken);
     const claimed = rows.map((row) => toCamelCaseRow<StudioTask>(row));
     if (claimed[0]) await tx.studioEvent.create({ data: {
