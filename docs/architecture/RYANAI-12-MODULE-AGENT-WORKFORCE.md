@@ -24,7 +24,7 @@ This is a workforce ownership model, not a claim that twelve agents are currentl
 | Memory Vault | Memory Curator | Authorised retrieval quality, provenance, freshness, contradiction and retention review; PostgreSQL + pgvector stay authoritative. |
 | Voice | Voice Quality Analyst | Speech recognition/synthesis, latency, device readiness, accessibility and consent-aware tests. |
 | RyanAI Studio | Studio Builder | Workspace/editor workflow reliability, project scaffolding and regression review. |
-| Operations Center | Reliability Coordinator | Cross-module incidents, queues, retries, service readiness and recovery evidence. |
+| Operations Center | Reliability Coordinator | Cross-module incidents, queues, retries, service readiness and recovery evidence; accountable home for the RYAN-RELAY continuity model and shared `internal-comms-continuity` skill. |
 
 The assignment maps to current application route/module identifiers where present. GitHub and Voice are represented as operational capabilities even though they are not standalone entries in `app/routes.json`.
 
