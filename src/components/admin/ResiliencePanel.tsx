@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { DatabaseBackup, RefreshCw, ShieldAlert, Wrench } from 'lucide-react';
 import { authenticatedFetch } from '@/lib/authenticatedFetch';
 
-interface BackupItem {
+interface BackupInventoryItem {
   backupId: string;
   prefix: string;
   createdAt: string | null;
@@ -18,27 +18,7 @@ interface BackupInventory {
   listedAt: string;
   hasMore: boolean;
   reason?: string;
-  items: Array<{
-    backupId: string;
-    prefix: string;
-    createdAt: string | null;
-    databaseBytes: number | null;
-    databaseSha256: string | null;
-    manifestPresent: boolean;
-    retention: 'within_policy' | 'outside_policy' | 'unknown';
-  }>;
-}
-
-interface MaintenanceRecord {
-  id: string;
-  reason: string;
-  startsAt: string;
-  endsAt: string;
-  status: 'requested' | 'closed';
-  requestedAt: string;
-}
-
-  items: BackupItem[];
+  items: BackupInventoryItem[];
 }
 interface ResilienceStatus {
   generatedAt: string;
@@ -53,7 +33,7 @@ interface ResilienceStatus {
   };
   recovery: {
     status: string;
-    productionRestore: string;
+    productionRestore: 'disabled';
     targetLabel: string | null;
     writesPerformed: false;
     reason?: string;
@@ -65,6 +45,7 @@ interface MaintenanceItem {
   id: string;
   state: 'scheduled' | 'started' | 'completed' | 'cancelled';
   title: string;
+  reason: string;
   startsAt: string | null;
   endsAt: string | null;
   updatedAt: string;
@@ -73,10 +54,9 @@ interface MaintenanceItem {
 export default function ResiliencePanel({ userId }: { userId: string }) {
   const [status, setStatus] = useState<ResilienceStatus | null>(null);
   const [inventory, setInventory] = useState<BackupInventory | null>(null);
-  const [maintenance, setMaintenance] = useState<MaintenanceRecord[]>([]);
-  const [reason, setReason] = useState('');
   const [maintenance, setMaintenance] = useState<MaintenanceItem[]>([]);
   const [title, setTitle] = useState('');
+  const [reason, setReason] = useState('');
   const [startsAt, setStartsAt] = useState('');
   const [endsAt, setEndsAt] = useState('');
   const [error, setError] = useState('');
@@ -92,14 +72,12 @@ export default function ResiliencePanel({ userId }: { userId: string }) {
       ]);
       const statusPayload = await statusResponse.json() as ResilienceStatus & { error?: string };
       const inventoryPayload = await inventoryResponse.json() as BackupInventory;
-      const maintenancePayload = await maintenanceResponse.json() as { records?: MaintenanceRecord[]; error?: string };
       const maintenancePayload = await maintenanceResponse.json() as { items?: MaintenanceItem[]; error?: string };
       if (!statusResponse.ok) throw new Error(statusPayload.error || 'Resilience status unavailable.');
       if (!inventoryResponse.ok) throw new Error(inventoryPayload.reason || 'Backup inventory unavailable.');
       if (!maintenanceResponse.ok) throw new Error(maintenancePayload.error || 'Maintenance history unavailable.');
       setStatus(statusPayload);
       setInventory(inventoryPayload);
-      setMaintenance(maintenancePayload.records || []);
       setMaintenance(maintenancePayload.items || []);
       setError('');
     } catch (cause) {
@@ -116,19 +94,13 @@ export default function ResiliencePanel({ userId }: { userId: string }) {
       const response = await authenticatedFetch('/api/admin/resilience/backups', { method: 'POST' }, userId);
       const payload = await response.json() as { result?: { reason?: string; backupId?: string } };
       if (!response.ok) throw new Error(payload.result?.reason || 'Backup request failed (' + response.status + ').');
-      setNotice('Backup request accepted: ' + (payload.result?.backupId || 'receipt recorded') + '.');
+      setNotice('Backup execution accepted: ' + (payload.result?.backupId || 'receipt recorded') + '.');
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Backup failed.');
     } finally { setBusy(false); }
   }
 
-  async function requestMaintenance(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (busy) return;
-    setBusy(true);
-    setError('');
-    setNotice('');
   async function maintenanceAction(body: Record<string, string>) {
     if (busy) return;
     setBusy(true); setError(''); setNotice('');
@@ -136,92 +108,12 @@ export default function ResiliencePanel({ userId }: { userId: string }) {
       const response = await authenticatedFetch('/api/admin/resilience/maintenance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ reason, startsAt: new Date(startsAt).toISOString(), endsAt: new Date(endsAt).toISOString() }),
-      }, userId);
-      const payload = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(payload.error || 'Maintenance request failed.');
-      setReason('');
-      setStartsAt('');
-      setEndsAt('');
-      setNotice('Maintenance window request recorded. No services were changed or paused.');
-      await refresh();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Maintenance request failed.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function closeMaintenance(id: string) {
-    if (busy || !window.confirm('Close this maintenance record? This only records its lifecycle status; it does not change infrastructure.')) return;
-    setBusy(true);
-    setError('');
-    setNotice('');
-    try {
-      const response = await authenticatedFetch('/api/admin/resilience/maintenance/' + encodeURIComponent(id) + '/close', { method: 'POST' }, userId);
-      const payload = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(payload.error || 'Could not close maintenance record.');
-      setNotice('Maintenance record closed.');
-      await refresh();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not close maintenance record.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function requestMaintenance(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (busy) return;
-    setBusy(true);
-    setError('');
-    setNotice('');
-    try {
-      const response = await authenticatedFetch('/api/admin/resilience/maintenance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ reason, startsAt: new Date(startsAt).toISOString(), endsAt: new Date(endsAt).toISOString() }),
-      }, userId);
-      const payload = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(payload.error || 'Maintenance request failed.');
-      setReason('');
-      setStartsAt('');
-      setEndsAt('');
-      setNotice('Maintenance window request recorded. No services were changed or paused.');
-      await refresh();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Maintenance request failed.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function closeMaintenance(id: string) {
-    if (busy || !window.confirm('Close this maintenance record? This only records its lifecycle status; it does not change infrastructure.')) return;
-    setBusy(true);
-    setError('');
-    setNotice('');
-    try {
-      const response = await authenticatedFetch('/api/admin/resilience/maintenance/' + encodeURIComponent(id) + '/close', { method: 'POST' }, userId);
-      const payload = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(payload.error || 'Could not close maintenance record.');
-      setNotice('Maintenance record closed.');
-      await refresh();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not close maintenance record.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-
-  const tone = status?.backup.status === 'ready' ? 'text-emerald-300' : 'text-amber-200';
         body: JSON.stringify(body),
       }, userId);
       const payload = await response.json() as { error?: string; state?: string };
       if (!response.ok) throw new Error(payload.error || 'Maintenance action failed.');
-      setNotice('Maintenance window updated: ' + (payload.state || body.action) + '.');
-      if (body.action === 'scheduled') { setTitle(''); setStartsAt(''); setEndsAt(''); }
+      setNotice('Maintenance window updated: ' + (payload.state || body.action) + '. No infrastructure was changed.');
+      if (body.action === 'scheduled') { setTitle(''); setReason(''); setStartsAt(''); setEndsAt(''); }
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Maintenance action failed.');
@@ -245,17 +137,16 @@ export default function ResiliencePanel({ userId }: { userId: string }) {
           <p className="mt-1 text-xs text-slate-400">PostgreSQL: {status?.backup.databaseConfigured ? 'configured' : 'not configured'} · pg_dump: {status?.backup.pgDumpAvailable ? 'available' : 'unavailable'}</p>
           <p className="mt-1 text-xs text-slate-400">Private destination: {status?.backup.destinationBucket || 'not configured'}</p>
           {status?.backup.reason && <p className="mt-2 text-xs text-amber-200">{status.backup.reason}</p>}
-          <button disabled={busy || status?.backup.status !== 'ready'} onClick={() => void runBackup()} className="mt-4 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-semibold disabled:opacity-40">
-            {busy ? 'Working…' : 'Run database backup'}
-          </button>
+          <button disabled={busy || status?.backup.status !== 'ready'} onClick={() => void runBackup()} className="mt-4 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-semibold disabled:opacity-40">{busy ? 'Working…' : 'Run database backup'}</button>
         </article>
 
         <article className="rounded-xl border border-slate-800 bg-slate-900 p-4">
           <div className="flex items-center gap-2"><ShieldAlert className="h-5 w-5" /><h3 className="font-medium">Disaster recovery</h3></div>
           <p className="mt-2 text-sm">Recovery drill target: {status?.recovery.targetLabel || 'not configured'}</p>
           <p className="mt-1 text-xs text-slate-400">Target validation: {status?.recovery.status || 'unknown'}</p>
-          <p className="mt-1 text-xs text-slate-400">Production restore: {status?.recovery.productionRestore} · writes performed: {String(status?.recovery.writesPerformed ?? false)}</p>
+          <p className="mt-1 text-xs text-slate-400">Production restore: {status?.recovery.productionRestore || 'unknown'} · writes performed: {String(status?.recovery.writesPerformed ?? false)}</p>
           {status?.recovery.reason && <p className="mt-1 text-xs text-amber-200">{status.recovery.reason}</p>}
+          <p className="mt-2 text-xs text-amber-200">Isolated restore execution and verification are not yet enabled.</p>
         </article>
 
         <article className="rounded-xl border border-slate-800 bg-slate-900 p-4">
@@ -264,95 +155,50 @@ export default function ResiliencePanel({ userId }: { userId: string }) {
           {inventory?.reason && <p className="mt-2 text-xs text-amber-200">{inventory.reason}</p>}
           <ul className="mt-3 space-y-2">
             {inventory?.items.slice(0, 10).map((item) => (
-              <li key={item.prefix} className="rounded-lg border border-slate-800 p-2 text-xs">
+              <li key={item.backupId} className="rounded-lg border border-slate-800 p-2 text-xs">
                 <div className="flex justify-between gap-2"><span>{item.backupId}</span><span>{item.retention.replace('_', ' ')}</span></div>
                 <p className="mt-1 text-slate-400">{item.createdAt ? new Date(item.createdAt).toLocaleString() : 'Timestamp unknown'} · {item.databaseBytes == null ? 'Size unknown' : item.databaseBytes.toLocaleString() + ' bytes'}</p>
                 <p className="break-all text-slate-500">SHA-256: {item.databaseSha256 || 'unavailable'} · manifest {item.manifestPresent ? 'present' : 'missing/unreadable'}</p>
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-xs text-amber-200">No backup objects are deleted or modified by this panel.</p>
+          <p className="mt-2 text-xs text-amber-200">Retention is preview-only. No backup objects are deleted or modified.</p>
         </article>
 
-        <article className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-          <h3 className="font-medium">Backup inventory &amp; retention preview</h3>
-          <p className="mt-1 text-xs text-slate-400">{inventory?.items.length ?? 0} artifacts · policy window {inventory?.retentionDays ?? 'unknown'} days · preview only</p>
-          {inventory?.reason && <p className="mt-2 text-xs text-amber-200">{inventory.reason}</p>}
-          <ul className="mt-3 space-y-2">
-            {inventory?.items.slice(0, 10).map((item) => (
-              <li key={item.prefix} className="rounded-lg border border-slate-800 p-2 text-xs">
-                <div className="flex justify-between gap-2"><span>{item.backupId}</span><span>{item.retention.replace('_', ' ')}</span></div>
-                <p className="mt-1 text-slate-400">{item.createdAt ? new Date(item.createdAt).toLocaleString() : 'Timestamp unknown'} · {item.databaseBytes == null ? 'Size unknown' : item.databaseBytes.toLocaleString() + ' bytes'}</p>
-                <p className="break-all text-slate-500">SHA-256: {item.databaseSha256 || 'unavailable'} · manifest {item.manifestPresent ? 'present' : 'missing/unreadable'}</p>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2 text-xs text-amber-200">No backup objects are deleted or modified by this panel.</p>
-          <button disabled={busy || status?.backup.status !== 'ready'} onClick={() => void runBackup()} className="mt-4 rounded-lg bg-cyan-600 px-3 py-2 text-sm font-semibold disabled:opacity-40">{busy ? 'Working…' : 'Run database backup'}</button>
-          <div className="mt-4 border-t border-slate-800 pt-3">
-            <h4 className="text-sm font-medium">Backup inventory · {inventory?.items.length ?? 0} artifacts</h4>
-            <p className="mt-1 text-xs text-slate-400">Retention window: {inventory?.retentionDays ?? 'unknown'} days · outside policy: {inventory?.items.filter((item) => item.retention === 'outside_policy').length ?? 'unknown'}</p>
-            {inventory?.reason && <p className="mt-1 text-xs text-amber-200">{inventory.reason}</p>}
-            <ul className="mt-2 space-y-2">{inventory?.items.slice(0, 5).map((item) => <li key={item.backupId} className="text-xs text-slate-300">{item.manifestPresent ? 'Manifest present' : 'Manifest incomplete'} · {item.createdAt ? new Date(item.createdAt).toLocaleString() : 'time unknown'} · {item.databaseBytes == null ? 'size unknown' : item.databaseBytes.toLocaleString() + ' bytes'} · {item.retention.replace('_', ' ')}</li>)}</ul>
-            <p className="mt-2 text-xs text-amber-200">Retention is preview-only. No objects are deleted.</p>
-          </div>
-        </article>
-        <article className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-          <div className="flex items-center gap-2"><ShieldAlert className="h-5 w-5" /><h3 className="font-medium">Disaster recovery</h3></div>
-          <p className="mt-2 text-sm">Target: {status?.recovery.targetLabel || 'not configured'}</p>
-          <p className="mt-1 text-xs text-slate-400">Validation: {status?.recovery.status || 'unknown'} · production restore: {status?.recovery.productionRestore} · writes: {String(status?.recovery.writesPerformed ?? false)}</p>
-          {status?.recovery.reason && <p className="mt-1 text-xs text-amber-200">{status.recovery.reason}</p>}
-        </article>
         <article className="rounded-xl border border-slate-800 bg-slate-900 p-4">
           <div className="flex items-center gap-2"><Wrench className="h-5 w-5" /><h3 className="font-medium">Self-patching</h3></div>
           <p className="mt-2 text-sm">Status: {status?.selfPatch.status || 'unknown'}</p>
-          <p className="mt-1 text-xs text-slate-400">Mode: isolated GitHub PR; merge and deployment remain separate.</p>
+          <p className="mt-1 text-xs text-slate-400">Mode: isolated GitHub PR; merge and deployment remain separate operations.</p>
         </article>
 
         <article className="rounded-xl border border-slate-800 bg-slate-900 p-4 md:col-span-2">
           <div className="flex items-center gap-2"><Wrench className="h-5 w-5" /><h3 className="font-medium">Maintenance windows</h3></div>
-          <p className="mt-1 text-xs text-slate-400">Requests are durably audited. This lifecycle does not pause services, deploy code or alter infrastructure.</p>
-          <form onSubmit={(event) => void requestMaintenance(event)} className="mt-3 grid gap-3 md:grid-cols-2">
-            <label className="text-xs text-slate-300 md:col-span-2">Reason
-              <textarea required minLength={8} maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-sm" />
-            </label>
-            <label className="text-xs text-slate-300">Start
-              <input required type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-sm" />
-            </label>
-            <label className="text-xs text-slate-300">End
-              <input required type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-sm" />
-            </label>
-            <button disabled={busy || !reason.trim() || !startsAt || !endsAt} className="rounded-lg bg-cyan-700 px-3 py-2 text-sm font-semibold disabled:opacity-40 md:col-span-2">Record maintenance request</button>
+          <p className="mt-1 text-xs text-slate-400">Owner-authorized lifecycle with append-only audit history. This records maintenance intent; it does not pause services, silence alerts or deploy code.</p>
+          <form className="mt-3 grid gap-2 md:grid-cols-2" onSubmit={(event) => {
+            event.preventDefault();
+            const start = Date.parse(startsAt); const end = Date.parse(endsAt);
+            if (!Number.isFinite(start) || !Number.isFinite(end)) { setError('Enter valid maintenance start and end times.'); return; }
+            void maintenanceAction({ action: 'scheduled', title: title.trim(), reason: reason.trim(), startsAt: new Date(start).toISOString(), endsAt: new Date(end).toISOString() });
+          }}>
+            <input aria-label="Maintenance title" required maxLength={120} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Maintenance title" className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm" />
+            <input aria-label="Maintenance reason" required minLength={8} maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Reason / expected impact" className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm" />
+            <label className="text-xs text-slate-300">Start<input aria-label="Start time" required type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm" /></label>
+            <label className="text-xs text-slate-300">End<input aria-label="End time" required type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm" /></label>
+            <button disabled={busy || !title.trim() || reason.trim().length < 8 || !startsAt || !endsAt} className="rounded-lg bg-cyan-700 px-3 py-2 text-sm font-semibold disabled:opacity-40 md:col-span-2">Schedule maintenance window</button>
           </form>
           <ul className="mt-4 space-y-2">
             {maintenance.map((item) => (
               <li key={item.id} className="rounded-lg border border-slate-800 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2"><strong className="text-sm">{item.reason}</strong><span className="text-xs text-slate-400">{item.status}</span></div>
-                <p className="mt-1 text-xs text-slate-400">{new Date(item.startsAt).toLocaleString()} – {new Date(item.endsAt).toLocaleString()}</p>
-                {item.status === 'requested' && <button disabled={busy} onClick={() => void closeMaintenance(item.id)} className="mt-2 rounded border border-slate-700 px-2 py-1 text-xs">Close record</button>}
+                <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-medium">{item.title}</span><span className="text-xs text-slate-400">{item.state}</span></div>
+                <p className="mt-1 text-xs text-slate-400">{item.reason}</p>
+                <p className="mt-1 text-xs text-slate-400">{item.startsAt ? new Date(item.startsAt).toLocaleString() : 'start unknown'} – {item.endsAt ? new Date(item.endsAt).toLocaleString() : 'end unknown'}</p>
+                {item.state === 'scheduled' && <button disabled={busy} onClick={() => void maintenanceAction({ action: 'started', id: item.id })} className="mt-2 mr-2 rounded border border-slate-600 px-2 py-1 text-xs">Mark started</button>}
+                {item.state === 'started' && <button disabled={busy} onClick={() => void maintenanceAction({ action: 'completed', id: item.id })} className="mt-2 mr-2 rounded border border-slate-600 px-2 py-1 text-xs">Mark completed</button>}
+                {['scheduled', 'started'].includes(item.state) && <button disabled={busy} onClick={() => void maintenanceAction({ action: 'cancelled', id: item.id })} className="mt-2 rounded border border-rose-900 px-2 py-1 text-xs text-rose-200">Cancel window</button>}
               </li>
             ))}
-            {maintenance.length === 0 && <li className="text-xs text-slate-500">No maintenance requests recorded.</li>}
+            {maintenance.length === 0 && <li className="text-xs text-slate-500">No maintenance windows recorded.</li>}
           </ul>
-          <p className="mt-1 text-xs text-slate-400">Isolated GitHub PR workflow; merge and deployment are separate operations.</p>
-        </article>
-        <article className="rounded-xl border border-slate-800 bg-slate-900 p-4 md:col-span-2">
-          <div className="flex items-center gap-2"><Wrench className="h-5 w-5" /><h3 className="font-medium">Maintenance windows</h3></div>
-          <p className="mt-1 text-xs text-slate-400">Owner-authorized lifecycle with append-only audit history. This records windows; it does not change infrastructure or silence alerts.</p>
-          <form className="mt-3 grid gap-2 md:grid-cols-3" onSubmit={(event) => { event.preventDefault(); void maintenanceAction({ action: 'scheduled', title, startsAt: new Date(startsAt).toISOString(), endsAt: new Date(endsAt).toISOString() }); }}>
-            <input aria-label="Maintenance title" required maxLength={120} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Maintenance title" className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm" />
-            <input aria-label="Start time" required type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm" />
-            <input aria-label="End time" required type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm" />
-            <button disabled={busy || !title.trim() || !startsAt || !endsAt} className="rounded-lg bg-cyan-700 px-3 py-2 text-sm font-semibold disabled:opacity-40 md:col-span-3">Schedule maintenance window</button>
-          </form>
-          <ul className="mt-4 space-y-2">{maintenance.map((item) => <li key={item.id} className="rounded-lg border border-slate-800 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-medium">{item.title}</span><span className="text-xs text-slate-400">{item.state}</span></div>
-            <p className="mt-1 text-xs text-slate-400">{item.startsAt ? new Date(item.startsAt).toLocaleString() : 'start unknown'} – {item.endsAt ? new Date(item.endsAt).toLocaleString() : 'end unknown'}</p>
-            {item.state === 'scheduled' && <button disabled={busy} onClick={() => void maintenanceAction({ action: 'started', id: item.id })} className="mt-2 mr-2 rounded border border-slate-600 px-2 py-1 text-xs">Mark started</button>}
-            {item.state === 'started' && <button disabled={busy} onClick={() => void maintenanceAction({ action: 'completed', id: item.id })} className="mt-2 mr-2 rounded border border-slate-600 px-2 py-1 text-xs">Mark completed</button>}
-            {['scheduled', 'started'].includes(item.state) && <button disabled={busy} onClick={() => void maintenanceAction({ action: 'cancelled', id: item.id })} className="mt-2 rounded border border-rose-900 px-2 py-1 text-xs text-rose-200">Cancel window</button>}
-          </li>)}</ul>
-          {maintenance.length === 0 && <p className="mt-3 text-xs text-slate-400">No maintenance windows recorded.</p>}
         </article>
       </div>
     </section>
