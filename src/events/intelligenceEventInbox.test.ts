@@ -376,7 +376,7 @@ describe('IntelligenceEventInbox', () => {
     };
     inboxDelegate.findFirst.mockResolvedValue(candidate);
     inboxDelegate.updateMany.mockResolvedValue({ count: 1 });
-    inboxDelegate.findUnique.mockResolvedValue({ ...candidate, status: 'processing', leaseOwner: 'worker-a' });
+    inboxDelegate.findUnique.mockResolvedValue({ ...candidate, attempts: 1, status: 'processing', leaseOwner: 'worker-a' });
     attemptDelegate.create.mockResolvedValue({});
     const handler = vi.fn().mockResolvedValue(undefined);
     const result = await inbox.processNext('worker-a', handler);
@@ -401,7 +401,7 @@ describe('IntelligenceEventInbox', () => {
         leaseExpiresAt: new Date(Date.now() + 60_000),
       });
     inboxDelegate.updateMany.mockResolvedValue({ count: 1 });
-    inboxDelegate.findUnique.mockResolvedValue({ ...candidate, status: 'processing', leaseOwner: 'worker-a' });
+    inboxDelegate.findUnique.mockResolvedValue({ ...candidate, attempts: 1, status: 'processing', leaseOwner: 'worker-a' });
     attemptDelegate.create.mockResolvedValue({});
     const handler = vi.fn().mockRejectedValue(new Error('handler rejected untrusted payload'));
     const result = await inbox.processNext('worker-a', handler);

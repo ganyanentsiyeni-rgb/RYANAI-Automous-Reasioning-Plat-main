@@ -54,7 +54,8 @@ describe('Studio task artifact lease fencing', () => {
   });
 
   it('requires a lease for task-bound artifact registration', async () => {
-    const { lease: _lease, ...withoutLease } = baseInput;
+    const { lease, ...withoutLease } = baseInput;
+    void lease;
     await expect(createStudioArtifact(withoutLease)).rejects.toThrow(
       'Task-bound artifact registration requires the active worker lease.',
     );

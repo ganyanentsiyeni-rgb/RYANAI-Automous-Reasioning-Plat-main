@@ -350,9 +350,23 @@ export default function OperatorConsole({ userId }: { userId: string }) {
         <section className="overflow-hidden rounded-2xl border border-white/10 bg-slate-900/70" aria-labelledby="operator-history-title">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 p-4">
             <div><h2 id="operator-history-title" className="font-semibold text-white">Task history</h2><p className="mt-1 text-xs text-slate-500">{tasks.length} recent user-owned tasks</p></div>
-            <div className="flex items-center gap-2">
-              <AgentReadyTaskFilter value={filter} onChange={setFilter} />
-            </div>
+            <AgentUiApprovalController>
+              {(agent) => (
+                <div className="flex items-center gap-2">
+                  <AgentReadyTaskFilter value={filter} onChange={setFilter} />
+                  <button
+                    type="button"
+                    onClick={() => void agent.act({
+                      steps: [{ ref: 'Filter tasks', action: 'setValue', args: ['running'] }],
+                    })}
+                    className="rounded-lg border border-cyan-300/20 px-2 py-1.5 text-[10px] font-medium text-cyan-200 hover:bg-cyan-300/10"
+                    aria-label="Agent filter running tasks"
+                  >
+                    Agent: running
+                  </button>
+                </div>
+              )}
+            </AgentUiApprovalController>
           </div>
           <div className="max-h-[620px] overflow-y-auto">
             {loading && <p className="p-4 text-sm text-slate-400">Loading tasks…</p>}

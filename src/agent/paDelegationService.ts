@@ -132,9 +132,9 @@ export async function createPADelegation(input: {
       : [];
     const requestedCapabilities = [...input.capabilities].map(String).sort();
     if (existing.objective !== input.objective.trim() || JSON.stringify(existingCapabilities) !== JSON.stringify(requestedCapabilities)) {
-      throw new Error('Delegation idempotency conflict: the existing delegation does not match the requested objective or capabilities.');
+      throw new Error('Delegation idempotency conflict: the existing delegation does not match the requested objective or capabilities.', { cause: error });
     }
-    if (!existing.agentRun) throw new Error('Delegation exists without its agent run; recovery is required before retry.');
+    if (!existing.agentRun) throw new Error('Delegation exists without its agent run; recovery is required before retry.', { cause: error });
     return { delegation: existing, run: existing.agentRun };
   }
 }

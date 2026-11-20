@@ -47,7 +47,7 @@ export const agentOperationsRoutes: FastifyPluginAsync = async (fastify) => {
         objective: { type: 'string', minLength: 5, maxLength: 12000 },
         capabilities: { type: 'array', minItems: 1, maxItems: PA_DELEGATION_CAPABILITIES.length, uniqueItems: true, items: { type: 'string', enum: [...PA_DELEGATION_CAPABILITIES] } },
         delegationId: { type: 'string', pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$' },
-    } },
+    } } },
   }, async (request, reply) => {
     const user = request.authUser;
     if (!user?.id) return reply.code(401).send({ error: 'Sign in to continue.' });

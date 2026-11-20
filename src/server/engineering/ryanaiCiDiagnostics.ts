@@ -1,6 +1,5 @@
 export type RyanAICiEvidenceState =
   | 'passed' | 'failed' | 'queued' | 'running' | 'cancelled'
-  | 'skipped' | 'neutral' | 'missing' | 'unknown';
   | 'skipped' | 'neutral' | 'missing' | 'unknown' | 'provider-blocked';
 
 export interface RyanAICiWorkflowEvidence {
