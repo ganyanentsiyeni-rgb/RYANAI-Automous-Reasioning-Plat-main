@@ -65,7 +65,7 @@ export default function SelfPatchPanel() {
         <FileCode2 className="h-6 w-6 text-cyan-300" />
         <div>
           <h2 id="self-patch-heading" className="font-semibold text-cyan-100">Self-Patch Control</h2>
-          <p className="text-xs text-slate-400">Administrator-only · GitHub branch · CI-gated pull request</p>
+          <p className="text-xs text-slate-400">Owner-only · GitHub branch · CI-gated pull request</p>
         </div>
       </header>
 

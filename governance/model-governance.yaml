@@ -165,3 +165,11 @@ model_registry:
     authority: none
     activation: offline_benchmark_only_pending_privacy_cost_region_and_api_review
     evaluation_required: true
+  - id: specialist.ryan_relay
+    provider: internal
+    role: communication_continuity
+    status: evaluation_only
+    task_families: [event_classification, delivery_reconciliation, offline_sync_analysis, communication_health]
+    authority: none
+    activation: shared_skill_only_pending_runtime_and_failure_recovery_evaluation
+    evaluation_required: true
