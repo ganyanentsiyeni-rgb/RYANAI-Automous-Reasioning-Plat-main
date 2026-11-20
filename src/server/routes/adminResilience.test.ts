@@ -6,7 +6,6 @@ const resilience = vi.hoisted(() => ({
   createDatabaseBackup: vi.fn(),
   listDatabaseBackups: vi.fn(),
   recoveryPreflight: vi.fn(),
-  listDatabaseBackups: vi.fn(),
 }));
 
 vi.mock('../../services/adminResilience.js', () => resilience);
@@ -70,22 +69,7 @@ beforeEach(() => {
     databaseBytes: 1234,
     databaseSha256: 'sha256-example',
   });
-  resilience.listDatabaseBackups.mockResolvedValue({
-    status: 'available',
-    bucket: 'private-backups',
-    retentionDays: 30,
-    listedAt: '2026-11-20T00:00:00.000Z',
-    items: [],
-    hasMore: false,
-  });
-  resilience.listDatabaseBackups.mockResolvedValue({
-    status: 'available',
-    bucket: 'private-backups',
-    retentionDays: 30,
-    listedAt: '2026-11-20T00:00:00.000Z',
-    items: [],
-    hasMore: false,
-  });
+  resilience.listDatabaseBackups.mockResolvedValue({ status: 'available', bucket: 'private-backups', retentionDays: 30, listedAt: '2026-11-20T00:00:00.000Z', items: [], hasMore: false });
 });
 
 describe('Admin resilience routes', () => {
