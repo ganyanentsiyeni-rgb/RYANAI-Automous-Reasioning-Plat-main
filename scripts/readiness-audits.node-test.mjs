@@ -173,12 +173,11 @@ test('Render API configuration audit is read-only and repair remains separately 
   assert.ok(!repair.includes('workflow_run:'));
   assert.ok(!repair.includes('/deploys'));
 
-  assert.ok(blueprint.includes('services:'));
-  assert.ok(!blueprint.includes('projects:'));
-  assert.ok(blueprint.includes('name: ryanai-api'));
-  assert.ok(blueprint.includes('name: ryanai-web'));
-  assert.ok(blueprint.includes('name: ryanai-redis'));
-  assert.ok(blueprint.includes('repo: https://github.com/RyanAI-Automated/RYANAI-Automous-Reasioning-Plat'));
+  assert.ok(blueprint.includes('projects:'));
+  assert.ok(blueprint.includes('name: ryanai-api-u2eb'));
+  assert.ok(blueprint.includes('name: ryanai-web-u2eb'));
+  assert.ok(blueprint.includes('name: ryanai-redis-u2eb'));
+  assert.ok(blueprint.includes('repo: https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main'));
   assert.ok(blueprint.includes('branch: main'));
   assert.ok(blueprint.includes('runtime: docker'));
   assert.ok(blueprint.includes('runtime: static'));
@@ -187,12 +186,11 @@ test('Render API configuration audit is read-only and repair remains separately 
   assert.ok(!blueprint.includes('dockerTarget:'));
   assert.ok(blueprint.includes('ipAllowList: []'));
   assert.ok(blueprint.includes('healthCheckPath: /health'));
-  assert.ok(blueprint.includes('value: https://ryanai-api.onrender.com'));
+  assert.ok(blueprint.includes('value: https://ryanai-api-u2eb.onrender.com'));
   assert.ok(blueprint.includes('autoDeployTrigger: off'));
   assert.ok(blueprint.includes('region: oregon'));
   assert.ok(blueprint.includes('key: SUPABASE_SESSION_POOLER_HOST'));
-  assert.ok(blueprint.includes('key: AUDIOBOOK_DATABASE_URL'));
-  assert.ok(blueprint.includes('key: AUDIOBOOK_DATABASE_URL_UNPOOLED'));
+  assert.ok(blueprint.includes('key: DATABASE_URL'));
   assert.ok(blueprint.includes('key: COMMUNICATIONS_ENABLED'));
   assert.ok(blueprint.includes('key: COMMUNICATION_ATTACHMENTS_ENABLED'));
   assert.ok(blueprint.includes('value: "false"'));
