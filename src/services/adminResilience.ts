@@ -133,7 +133,7 @@ export async function createDatabaseBackup(): Promise<BackupResult> {
     await pgDump(dumpPath);
     const dump = await readFile(dumpPath);
     const sha256 = createHash('sha256').update(dump).digest('hex');
-    const objectPath = '/' + encodeURIComponent(storage.bucket) + '/' + prefix + '/database.dump';
+    const objectPath = '/' + encodeURIComponent(storage.bucket) + '/' + prefix.split('/').map(encodeURIComponent).join('/') + '/database.dump';
 
     await storageRequest(storage.baseUrl, storage.key, '/storage/v1/object' + objectPath, {
       method: 'POST',
@@ -154,7 +154,7 @@ export async function createDatabaseBackup(): Promise<BackupResult> {
       secretsIncluded: false,
       recoveryTargetRequired: true,
     };
-    await storageRequest(storage.baseUrl, storage.key, '/storage/v1/object' + encodeURIComponent('/' + storage.bucket + '/' + prefix + '/manifest.json'), {
+    await storageRequest(storage.baseUrl, storage.key, '/storage/v1/object/' + encodeURIComponent(storage.bucket) + '/' + prefix.split('/').map(encodeURIComponent).join('/') + '/manifest.json', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-upsert': 'true' },
       body: JSON.stringify(manifest, null, 2),
