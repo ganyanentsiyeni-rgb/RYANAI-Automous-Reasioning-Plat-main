@@ -2,6 +2,12 @@ import { createHash } from 'node:crypto';
 import type { ExecutionPlan } from './executionPlanner.js';
 import { appendRunEvidence } from './engineeringEvidence.js';
 import type { Prisma } from '@prisma/client';
+/** Normalize domain objects at the Prisma JSON boundary (including optional fields). */
+function toPrismaJson(value: unknown): Prisma.InputJsonValue {
+  const serialized = JSON.stringify(value);
+  if (serialized === undefined) throw new TypeError('Cannot persist an undefined Prisma JSON value.');
+  return JSON.parse(serialized) as Prisma.InputJsonValue;
+}
 import type { BrainOutput } from './operationsCore.js';
 import { assertPACompletionCapabilityReceipts, assertPARepositoryInspectionEvidence, type PACapabilityReceipt } from './paCapabilityCompletion.js';
 
@@ -119,7 +125,7 @@ export async function persistAgentRunCompletion(
     where: { id: run.id, status: 'running', workerId: run.worker_id, attempts: run.attempts, cancelRequestedAt: null },
     data: {
       status: 'completed',
-      result: { synthesis: plan.synthesis, degraded: plan.degraded, executionPlan, brains: plan.outputs.map(({ brain, latencyMs }) => ({ brain, latencyMs })), capabilityReceipts: plan.capabilityReceipts ?? [], repositoryInspection },
+      result: toPrismaJson({ synthesis: plan.synthesis, degraded: plan.degraded, executionPlan, brains: plan.outputs.map(({ brain, latencyMs }) => ({ brain, latencyMs })), capabilityReceipts: plan.capabilityReceipts ?? [], repositoryInspection }),
       completedAt: new Date(),
       lockedAt: null,
       workerId: null,
@@ -139,14 +145,14 @@ export async function persistAgentRunCompletion(
         traceId: delegation.traceId,
         attempt: run.attempts,
         status: 'completed',
-        result: buildPAExecutionReceiptResult(plan, repositoryInspection),
+        result: toPrismaJson(buildPAExecutionReceiptResult(plan, repositoryInspection)),
       },
       update: {
         agentRunId: run.id,
         traceId: delegation.traceId,
         attempt: run.attempts,
         status: 'completed',
-        result: buildPAExecutionReceiptResult(plan, repositoryInspection),
+        result: toPrismaJson(buildPAExecutionReceiptResult(plan, repositoryInspection)),
         error: null,
       },
     });
