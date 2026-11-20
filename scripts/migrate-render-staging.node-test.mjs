@@ -17,8 +17,6 @@ test('rejects Supabase, pooler, production, other Render DBs and wrong database/
     'postgresql://other:p@dpg-dbtev2rm8hqs73anvf00-a.oregon-postgres.render.com/ryanai_database',
   ]) assert.throws(() => validateTarget(value));
 });
-test('rejects missing DATABASE_URL', () => assert.throws(() => validateTarget(undefined)));
-
 test('rejects missing DATABASE_URL', () => {
   assert.throws(() => validateTarget(undefined));
 });
