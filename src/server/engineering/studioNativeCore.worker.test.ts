@@ -43,7 +43,7 @@ const task = (overrides: Record<string, unknown> = {}) => ({
 
 describe('Studio worker queue lifecycle', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     const transactionClient = {
       $queryRawUnsafe: mocks.queryRawUnsafe,
       studioTask: { findMany: mocks.taskFindMany, findUnique: mocks.taskFindUnique, updateMany: mocks.taskUpdateMany },
