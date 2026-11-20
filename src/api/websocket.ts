@@ -5,6 +5,8 @@ import { v4 as uuid } from 'uuid';
 import { WebSocketMessage, AuthContext, ReasoningRequest } from '../shared/types.js';
 import { createLogger } from '../shared/logger.js';
 import { requireAdmin } from '../server/routes/auth.js';
+import { prisma } from '../server/lib/prisma.js';
+import { appendRealtimeEvent, replayRealtimeEvents } from '../server/realtime/eventStore.js';
 
 const logger = createLogger('websocket');
 
@@ -22,6 +24,20 @@ interface ConnectionContext {
 
 const connections = new Map<string, ConnectionContext>();
 const channels = new Map<string, Set<string>>();
+
+function scopedChannelKey(userId: string, channel: string): string {
+  return `user:${userId}:${channel}`;
+}
+
+function sendDurableEvent(context: ConnectionContext, channel: string, event: { id: string; sequence: bigint; eventType: string; payload: unknown; createdAt: Date }) {
+  sendMessage(context.ws, {
+    id: event.id,
+    type: 'event',
+    channel,
+    data: { sequence: event.sequence.toString(), eventType: event.eventType, payload: event.payload, createdAt: event.createdAt.toISOString() },
+    timestamp: event.createdAt.getTime(),
+  });
+}
 
 export async function registerWebSocketRoutes(fastify: FastifyInstance) {
   logger.info('Registering WebSocket routes');
@@ -109,10 +125,10 @@ export async function registerWebSocketRoutes(fastify: FastifyInstance) {
         connections.delete(connId);
 
         context.subscriptions.forEach((channel) => {
-          const channelSubs = channels.get(channel);
+          const channelSubs = channels.get(scopedChannelKey(context.auth!.userId, channel));
           if (channelSubs) {
             channelSubs.delete(connId);
-            if (channelSubs.size === 0) channels.delete(channel);
+            if (channelSubs.size === 0) channels.delete(scopedChannelKey(context.auth!.userId, channel));
           }
         });
 
@@ -151,12 +167,27 @@ async function handleMessage(context: ConnectionContext, message: WebSocketMessa
           if (!data || typeof data !== 'object' || !('channel' in data) || typeof data.channel !== 'string') {
             throw new Error('A subscription channel is required');
           }
-          context.subscriptions.add(data.channel);
-          if (!channels.has(data.channel)) {
-            channels.set(data.channel, new Set());
+          if (!context.auth?.userId) throw new Error('An authenticated user is required');
+          if (!/^[a-z][a-z0-9._:-]{0,119}$/.test(data.channel)) throw new Error('Invalid subscription channel');
+          const key = scopedChannelKey(context.auth.userId, data.channel);
+          const cursorValue = 'afterSequence' in data ? data.afterSequence : '0';
+          const cursorText = typeof cursorValue === 'number' ? String(cursorValue) : cursorValue;
+          if (typeof cursorText !== 'string' || !/^(0|[1-9][0-9]*)$/.test(cursorText)) throw new Error('Replay cursor must be a non-negative integer string');
+          const replay = await replayRealtimeEvents(prisma, {
+            audience: { type: 'user', id: context.auth.userId },
+            channel: data.channel,
+            afterSequence: BigInt(cursorText),
+            limit: 50,
+          });
+          if (replay.cursorExpired) {
+            response.data = { subscribed: data.channel, cursorExpired: true, resyncRequired: true, nextCursor: replay.nextCursor.toString() };
+          } else {
+            for (const event of replay.events) sendDurableEvent(context, data.channel, event);
+            response.data = { subscribed: data.channel, replayed: replay.events.length, hasMore: replay.hasMore, nextCursor: replay.nextCursor.toString() };
           }
-          channels.get(data.channel)!.add(context.id);
-          response.data = { subscribed: data.channel };
+          context.subscriptions.add(data.channel);
+          if (!channels.has(key)) channels.set(key, new Set());
+          channels.get(key)!.add(context.id);
         } else {
           response.error = { code: 'UNKNOWN_CHANNEL', message: 'Unknown channel' };
         }
@@ -208,23 +239,47 @@ function handleReasoningRequest(context: ConnectionContext, request: ReasoningRe
   );
 }
 
-export function broadcast(channel: string, data: unknown) {
-  const event: WebSocketMessage = {
-    id: uuid(),
-    type: 'event',
-    channel,
-    data,
-    timestamp: Date.now(),
-  };
+/**
+ * Durable publisher. The database append completes before any socket delivery.
+ * Audience is always derived from this server-side function argument, never a
+ * browser-supplied audience field.
+ */
+export async function publishRealtimeEvent(input: {
+  userId: string;
+  channel: string;
+  eventType: string;
+  payload: Record<string, unknown>;
+}) {
+  const persisted = await appendRealtimeEvent(prisma, {
+    audience: { type: 'user', id: input.userId },
+    channel: input.channel,
+    eventType: input.eventType,
+    payload: input.payload,
+  });
+  const key = scopedChannelKey(input.userId, input.channel);
+  for (const connId of channels.get(key) ?? []) {
+    const conn = connections.get(connId);
+    if (conn && !conn.closed && conn.ws.readyState === conn.ws.OPEN) {
+      sendDurableEvent(conn, input.channel, persisted);
+    }
+  }
+  return { id: persisted.id, sequence: persisted.sequence.toString() };
+}
 
-  const subs = channels.get(channel);
-  if (subs) {
-    subs.forEach(connId => {
-      const conn = connections.get(connId);
-      if (conn && conn.ws.readyState === conn.ws.OPEN) {
-        sendMessage(conn.ws, event);
-      }
-    });
+/**
+ * Legacy ephemeral system notifications only. User/workspace business events
+ * must use publishRealtimeEvent so persistence precedes delivery.
+ */
+export function broadcast(channel: string, data: unknown) {
+  if (!channel.startsWith('system.')) {
+    logger.warn({ channel }, 'Ignored non-system ephemeral broadcast; use publishRealtimeEvent');
+    return;
+  }
+  const event: WebSocketMessage = { id: uuid(), type: 'event', channel, data, timestamp: Date.now() };
+  for (const conn of connections.values()) {
+    if (conn.auth && conn.subscriptions.has(channel) && conn.ws.readyState === conn.ws.OPEN) {
+      sendMessage(conn.ws, event);
+    }
   }
 }
 
