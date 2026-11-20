@@ -46,6 +46,7 @@ export function AgentUiApprovalController({
 }) {
   const [pending, setPending] = useState<PendingApproval | null>(null);
   const [approvalStore] = useState(() => new ApprovalRequestStore());
+  const [agent, setAgent] = useState<ReturnType<typeof createRyanAiAgentUiBridge> | null>(null);
 
   const resolvePending = useCallback((id: number, approved: boolean) => {
     approvalStore.resolve(id, approved);
@@ -76,13 +77,14 @@ export function AgentUiApprovalController({
     approvalStore.cancel();
   }, [approvalStore]);
 
-  useEffect(() => () => releasePending(), [releasePending]);
-
-  const agent = createRyanAiAgentUiBridge({ requestApproval });
+  useEffect(() => {
+    setAgent(createRyanAiAgentUiBridge({ requestApproval }));
+    return () => releasePending();
+  }, [requestApproval, releasePending]);
 
   return (
     <>
-      {children(agent)}
+      {agent ? children(agent) : null}
       {pending && (
         <div
           role="dialog"
