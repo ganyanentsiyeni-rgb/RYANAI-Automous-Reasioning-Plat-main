@@ -5,6 +5,7 @@ const resilience = vi.hoisted(() => ({
   backupPreflight: vi.fn(),
   createDatabaseBackup: vi.fn(),
   listDatabaseBackups: vi.fn(),
+  recoveryPreflight: vi.fn(),
   listDatabaseBackups: vi.fn(),
 }));
 
@@ -61,6 +62,7 @@ beforeEach(() => {
     pgDumpAvailable: true,
   });
   resilience.listDatabaseBackups.mockResolvedValue({ status: 'available', bucket: 'private-backups', items: [], retentionDays: null, retentionMode: 'preview_only', expiredCount: null });
+  resilience.recoveryPreflight.mockReturnValue({ status: 'not_configured', targetLabel: null, productionRestore: 'disabled', writesPerformed: false });
   resilience.createDatabaseBackup.mockResolvedValue({
     status: 'succeeded',
     backupId: 'backup-1',
@@ -112,6 +114,25 @@ describe('Admin resilience routes', () => {
     expect(resilience.listDatabaseBackups).toHaveBeenCalledTimes(1);
   });
 
+
+
+  it('reports recovery target validation without performing writes', async () => {
+    resilience.recoveryPreflight.mockReturnValue({
+      status: 'blocked_same_as_source',
+      targetLabel: 'candidate-target',
+      productionRestore: 'disabled',
+      writesPerformed: false,
+      reason: 'Recovery target resolves to the source database; isolated recovery is blocked.',
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/admin/resilience/status',
+      headers: { 'x-test-user': 'admin-1', 'x-test-role': 'admin' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().recovery.status).toBe('blocked_same_as_source');
+    expect(response.json().recovery.writesPerformed).toBe(false);
+  });
 
   it('exposes backup inventory as read-only administrator data', async () => {
     resilience.listDatabaseBackups.mockResolvedValue({
