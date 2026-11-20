@@ -371,6 +371,14 @@ jobs:
             created_at timestamptz DEFAULT now(),
             updated_at timestamptz DEFAULT now()
           );
+          -- Match the Supabase Auth helper used by application defaults and RLS policies.
+          CREATE OR REPLACE FUNCTION auth.uid()
+          RETURNS uuid
+          LANGUAGE sql
+          STABLE
+          AS $
+            SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid;
+          $;
           CREATE EXTENSION IF NOT EXISTS vector;
           SQL
 
