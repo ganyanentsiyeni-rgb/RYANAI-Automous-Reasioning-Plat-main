@@ -132,12 +132,12 @@ export async function verifyAuthoritativeDns({
 async function main() {
   const domain = process.argv[2] || DEFAULT_DOMAIN;
   const report = await verifyAuthoritativeDns({ domain });
-  process.stdout.write(`${JSON.stringify(report, null, 2)}\\n`);
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   main().catch((error) => {
-    process.stderr.write(`DNS verification failed: ${error.message}\\n`);
+    process.stderr.write(`DNS verification failed: ${error.message}\n`);
     process.exitCode = 1;
   });
 }
