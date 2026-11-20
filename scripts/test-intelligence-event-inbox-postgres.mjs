@@ -42,10 +42,6 @@ try {
   const claims = await Promise.all([
     inbox.claimNext('concurrent-a', claimNow, ['integration.lifecycle.test']),
     inbox.claimNext('concurrent-b', claimNow, ['integration.lifecycle.test']),
-  const claimAt = new Date(claimEvent.availableAt.getTime() + 1_000);
-  const claims = await Promise.all([
-    inbox.claimNext('concurrent-a', claimAt, ['integration.lifecycle.test']),
-    inbox.claimNext('concurrent-b', claimAt, ['integration.lifecycle.test']),
   ]);
   const winners = claims.filter(Boolean);
   assert.equal(winners.length, 1, 'only one concurrent claimant may own the event');
@@ -171,8 +167,6 @@ try {
     ownerClaimNow,
     ['github.pull_request'],
   );
-  const ownerClaimAt = new Date(githubEvent.event.availableAt.getTime() + 1_000);
-  const ownerClaim = await inbox.claimNextForOwner('github-owner-worker', githubOwner, ownerClaimAt, ['github.pull_request']);
   assert.equal(ownerClaim?.id, githubEvent.event.id,
     'the authenticated owner-scoped path must claim its own GitHub event');
   console.log('PASS: PostgreSQL GitHub event lane requires authenticated owner-scoped claim');
