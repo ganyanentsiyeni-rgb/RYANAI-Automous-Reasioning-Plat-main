@@ -183,7 +183,7 @@ async function handleMessage(context: ConnectionContext, message: WebSocketMessa
           context.subscriptions.add(data.channel);
           if (!channels.has(key)) channels.set(key, new Set());
           channels.get(key)!.add(context.id);
-          let replay;
+          let replay: Awaited<ReturnType<typeof replayRealtimeEvents>>;
           try {
             replay = await replayRealtimeEvents(prisma, {
               audience: { type: 'user', id: context.auth.userId },
