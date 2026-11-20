@@ -136,7 +136,7 @@ describe('Studio worker lease fencing', () => {
       storageProvider: 'supabase-storage',
       storageKey: 'owner/project/task/stale.json',
       leaseFence: { workerId: 'worker-1', claimToken: '11111111-1111-4111-8111-111111111111' },
-    })).rejects.toThrow('Studio worker lease expired before artifact registration.');
+    })).rejects.toThrow('Studio task lease is no longer active; artifact registration was rejected.');
 
     expect(tx.studioArtifact.create).not.toHaveBeenCalled();
     expect(tx.studioEvent.create).not.toHaveBeenCalled();
