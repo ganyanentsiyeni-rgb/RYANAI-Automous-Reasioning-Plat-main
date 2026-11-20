@@ -36,6 +36,7 @@ export interface CommsConversation {
 }
 export interface CommsStatus {
   status: 'configuration_snapshot';
+  enabled: boolean;
   channels: Record<string, boolean>;
   ai?: { openai?: { status: 'configured_unverified' | 'missing_credentials' } };
   note: string;

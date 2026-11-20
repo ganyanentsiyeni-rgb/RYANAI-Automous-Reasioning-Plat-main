@@ -28,6 +28,7 @@ vi.mock('pg', () => {
       return this;
     }
 
+    on = vi.fn().mockReturnThis();
     query = vi.fn().mockImplementation(async () => {
       state.events.push('database');
       return { rows: [{ now: 'test' }] };

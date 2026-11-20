@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync, FastifyInstance } from 'fastify';
+import { extractRyanAIGitHubJobLogExcerpts } from '../engineering/ryanaiGitHubJobLogs.js';
 import { mapPullRequestReviewProvenance, type GraphQLPullRequestReviewPayload } from '../githubReviewProvenance.js';
 import { requireUser } from './auth.js';
 import {
@@ -23,7 +24,7 @@ type GitHubTokenResponse = {
 };
 
 type GitHubUser = { id?: number; login?: string; avatar_url?: string };
-type GitHubRepository = { id?: number; full_name?: string; permissions?: Record<string, boolean> };
+type GitHubRepository = { id?: number; name?: string; full_name?: string; html_url?: string; private?: boolean; pushed_at?: string; default_branch?: string; permissions?: Record<string, boolean> };
 type StoredConnection = {
   userId: string;
   githubUserId: string;
@@ -97,6 +98,34 @@ async function refreshGitHubToken(config: GitHubAppConfig, refreshToken: string)
     throw new GitHubOAuthError('github_token_refresh_failed');
   }
   return payload as GitHubTokenResponse;
+}
+
+async function readBoundedGitHubArchive(response: Response, maxBytes: number): Promise<Uint8Array> {
+  const reader = response.body?.getReader();
+  if (!reader) throw new GitHubOAuthError('github_job_log_archive_empty');
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const item = await reader.read();
+      if (item.done) break;
+      total += item.value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new GitHubOAuthError('github_job_log_archive_size_invalid');
+      }
+      chunks.push(item.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return result;
 }
 
 async function githubApi<T>(path: string, accessToken: string): Promise<T> {
@@ -173,7 +202,7 @@ async function claimOAuthState(fastify: FastifyInstance, state: string) {
 }
 
 async function getUsableAccessToken(
-  fastify: FastifyInstance,
+  fastify: Pick<FastifyInstance, 'prisma'>,
   config: GitHubAppConfig,
   connection: StoredConnection,
 ): Promise<string | null> {
@@ -229,6 +258,294 @@ async function getUsableAccessToken(
     }
     return null;
   }
+}
+
+
+/**
+ * Inspect only the repository already bound to this user's encrypted OAuth connection.
+ * The function performs GitHub GET requests only and never accepts a repository or token
+ * from an agent-supplied payload.
+ */
+export async function inspectConnectedGitHubRepository(
+  fastify: Pick<FastifyInstance, 'prisma'>,
+  userId: string,
+): Promise<{
+  repositoryFullName: string;
+  repositoryUrl: string;
+  accountLogin: string;
+  defaultBranch: string;
+  commitSha: string;
+  commitUrl: string;
+  inspectedAt: string;
+  source: 'github-oauth-read-only';
+}> {
+  if (!userId.trim()) throw new GitHubOAuthError('github_owner_identity_missing');
+  const config = readGitHubAppConfig();
+  if (!config) throw new GitHubOAuthError('github_app_not_configured');
+  const connection = await fastify.prisma.gitHubAppConnection.findUnique({ where: { userId } });
+  if (!connection || connection.repositoryFullName !== GITHUB_APP_REPOSITORY) {
+    throw new GitHubOAuthError('github_owner_connection_missing_or_wrong_repository');
+  }
+  // Worker inspection must not rotate or persist OAuth credentials. If the access token
+  // is expired or inside the refresh window, fail closed and require the owner to reconnect.
+  if (connection.accessTokenExpiresAt &&
+      connection.accessTokenExpiresAt.getTime() <= Date.now() + REFRESH_SKEW_MS) {
+    throw new GitHubOAuthError('github_owner_reauthorization_required');
+  }
+  let accessToken: string;
+  try {
+    accessToken = decryptGitHubSecret(connection.encryptedAccessToken, config.encryptionKey);
+  } catch {
+    throw new GitHubOAuthError('github_owner_reauthorization_required');
+  }
+
+  const [account, repository] = await Promise.all([
+    githubApi<GitHubUser>('user', accessToken),
+    githubApi<GitHubRepository>('repos/' + GITHUB_APP_REPOSITORY, accessToken),
+  ]);
+  if (
+    String(account.id ?? '') !== connection.githubUserId ||
+    typeof account.login !== 'string' || !account.login.trim() ||
+    String(repository.id ?? '') !== connection.repositoryId ||
+    repository.full_name !== GITHUB_APP_REPOSITORY ||
+    repository.permissions?.pull !== true ||
+    typeof repository.default_branch !== 'string' ||
+    !repository.default_branch.trim()
+  ) throw new GitHubOAuthError('github_owner_or_repository_verification_failed');
+
+  const commit = await githubApi<{ sha?: string; html_url?: string }>(
+    'repos/' + GITHUB_APP_REPOSITORY + '/commits/' + encodeURIComponent(repository.default_branch),
+    accessToken,
+  );
+  if (typeof commit.sha !== 'string' || !/^[a-f0-9]{40}$/i.test(commit.sha)) {
+    throw new GitHubOAuthError('github_default_branch_commit_invalid');
+  }
+  return {
+    repositoryFullName: GITHUB_APP_REPOSITORY,
+    repositoryUrl: typeof repository.html_url === 'string' ? repository.html_url : 'https://github.com/' + GITHUB_APP_REPOSITORY,
+    accountLogin: account.login,
+    defaultBranch: repository.default_branch,
+    commitSha: commit.sha,
+    commitUrl: typeof commit.html_url === 'string'
+      ? commit.html_url
+      : 'https://github.com/' + GITHUB_APP_REPOSITORY + '/commit/' + commit.sha,
+    inspectedAt: new Date().toISOString(),
+    source: 'github-oauth-read-only',
+  };
+}
+
+export interface ConnectedGitHubWorkflowEvidence {
+  repositoryFullName: string;
+  requestedHeadSha: string;
+  verifiedHeadSha: string;
+  source: 'github-oauth-read-only';
+  inspectedAt: string;
+  workflowRuns: Array<{
+    id: number;
+    name: string;
+    headSha: string;
+    status: string;
+    conclusion: string | null;
+    url: string | null;
+    jobs: Array<{ id: number; name: string; status: string; conclusion: string | null }>;
+  }>;
+  jobLogExcerpts: Array<{ runId: number; jobName: string; excerpt: string; lineCount: number }>;
+  jobLogStatus: 'not_requested' | 'complete' | 'partial' | 'unavailable';
+  complete: boolean;
+}
+
+/**
+ * Fetch workflow-run and job metadata for one exact commit from the repository
+ * already bound to the user's encrypted GitHub OAuth connection. GET only.
+ * No log archives, workflow dispatches, token refreshes, or credential writes.
+ * Log archives are fetched only when explicitly requested by the caller.
+ */
+export async function inspectConnectedGitHubWorkflowEvidence(
+  fastify: Pick<FastifyInstance, 'prisma'>,
+  userId: string,
+  requestedHeadSha: string,
+  options: { includeJobLogs?: boolean } = {},
+): Promise<ConnectedGitHubWorkflowEvidence> {
+  if (!/^[a-f0-9]{40}$/i.test(requestedHeadSha)) {
+    throw new GitHubOAuthError('github_workflow_head_sha_invalid');
+  }
+  const config = readGitHubAppConfig();
+  if (!config) throw new GitHubOAuthError('github_app_not_configured');
+  const connection = await fastify.prisma.gitHubAppConnection.findUnique({ where: { userId } });
+  if (!connection || connection.repositoryFullName !== GITHUB_APP_REPOSITORY) {
+    throw new GitHubOAuthError('github_owner_connection_missing_or_wrong_repository');
+  }
+  if (connection.accessTokenExpiresAt &&
+      connection.accessTokenExpiresAt.getTime() <= Date.now() + REFRESH_SKEW_MS) {
+    throw new GitHubOAuthError('github_owner_reauthorization_required');
+  }
+  let accessToken: string;
+  try {
+    accessToken = decryptGitHubSecret(connection.encryptedAccessToken, config.encryptionKey);
+  } catch {
+    throw new GitHubOAuthError('github_owner_reauthorization_required');
+  }
+
+  const [account, repository, commit] = await Promise.all([
+    githubApi<GitHubUser>('user', accessToken),
+    githubApi<GitHubRepository>('repos/' + GITHUB_APP_REPOSITORY, accessToken),
+    githubApi<{ sha?: string }>(
+      'repos/' + GITHUB_APP_REPOSITORY + '/commits/' + encodeURIComponent(requestedHeadSha),
+      accessToken,
+    ),
+  ]);
+  if (
+    String(account.id ?? '') !== connection.githubUserId ||
+    String(repository.id ?? '') !== connection.repositoryId ||
+    repository.full_name !== GITHUB_APP_REPOSITORY ||
+    repository.permissions?.pull !== true
+  ) throw new GitHubOAuthError('github_owner_or_repository_verification_failed');
+  if (typeof commit.sha !== 'string' || commit.sha.toLowerCase() !== requestedHeadSha.toLowerCase()) {
+    throw new GitHubOAuthError('github_workflow_commit_sha_mismatch');
+  }
+
+  const rawRuns: Array<{
+    id?: number; name?: string; head_sha?: string; status?: string;
+    conclusion?: string | null; html_url?: string;
+  }> = [];
+  let runsComplete = false;
+  for (let page = 1; page <= 3; page += 1) {
+    const runPayload = await githubApi<{
+      total_count?: number;
+      workflow_runs?: Array<{
+        id?: number; name?: string; head_sha?: string; status?: string;
+        conclusion?: string | null; html_url?: string;
+      }>;
+    }>(
+      'repos/' + GITHUB_APP_REPOSITORY + '/actions/runs?head_sha=' +
+        encodeURIComponent(requestedHeadSha) + '&per_page=50&page=' + page,
+      accessToken,
+    );
+    const pageRuns = Array.isArray(runPayload.workflow_runs) ? runPayload.workflow_runs : [];
+    rawRuns.push(...pageRuns);
+    const totalCount = typeof runPayload.total_count === 'number' ? runPayload.total_count : null;
+    if (pageRuns.length < 50 || (totalCount !== null && rawRuns.length >= totalCount)) {
+      runsComplete = true;
+      break;
+    }
+  }
+
+  const exactRuns = rawRuns.filter((run) =>
+    typeof run.id === 'number' &&
+    typeof run.head_sha === 'string' &&
+    run.head_sha.toLowerCase() === requestedHeadSha.toLowerCase(),
+  );
+  let jobsComplete = exactRuns.length <= 50;
+  const workflowRuns: ConnectedGitHubWorkflowEvidence['workflowRuns'] = [];
+  for (const run of exactRuns.slice(0, 50)) {
+    const rawJobs: Array<{ id?: number; name?: string; status?: string; conclusion?: string | null }> = [];
+    let runJobsComplete = false;
+    for (let page = 1; page <= 3; page += 1) {
+      const jobsPayload = await githubApi<{
+        total_count?: number;
+        jobs?: Array<{ id?: number; name?: string; status?: string; conclusion?: string | null }>;
+      }>(
+        'repos/' + GITHUB_APP_REPOSITORY + '/actions/runs/' +
+          encodeURIComponent(String(run.id)) + '/jobs?per_page=100&page=' + page,
+        accessToken,
+      );
+      const pageJobs = Array.isArray(jobsPayload.jobs) ? jobsPayload.jobs : [];
+      rawJobs.push(...pageJobs);
+      const totalCount = typeof jobsPayload.total_count === 'number' ? jobsPayload.total_count : null;
+      if (pageJobs.length < 100 || (totalCount !== null && rawJobs.length >= totalCount)) {
+        runJobsComplete = true;
+        break;
+      }
+    }
+    if (!runJobsComplete) jobsComplete = false;
+    workflowRuns.push({
+      id: run.id!,
+      name: typeof run.name === 'string' ? run.name : 'Unnamed workflow',
+      headSha: run.head_sha!,
+      status: typeof run.status === 'string' ? run.status : 'unknown',
+      conclusion: typeof run.conclusion === 'string' ? run.conclusion : null,
+      url: typeof run.html_url === 'string' ? run.html_url : null,
+      jobs: rawJobs.slice(0, 300).map((job) => ({
+        id: typeof job.id === 'number' ? job.id : 0,
+        name: typeof job.name === 'string' ? job.name : 'Unnamed job',
+        status: typeof job.status === 'string' ? job.status : 'unknown',
+        conclusion: typeof job.conclusion === 'string' ? job.conclusion : null,
+      })),
+    });
+  }
+
+  const jobLogExcerpts: Array<{ runId: number; jobName: string; excerpt: string; lineCount: number }> = [];
+  let jobLogStatus: ConnectedGitHubWorkflowEvidence['jobLogStatus'] = options.includeJobLogs ? 'complete' : 'not_requested';
+  if (options.includeJobLogs) {
+    let attempted = 0;
+    for (const run of workflowRuns) {
+      for (const job of run.jobs) {
+        if (attempted >= 20) { jobLogStatus = 'partial'; break; }
+        if (job.status !== 'completed' || job.conclusion !== 'failure' || job.id <= 0) continue;
+        attempted += 1;
+        try {
+          const logResponse = await fetch(
+            'https://api.github.com/repos/' + GITHUB_APP_REPOSITORY + '/actions/jobs/' + job.id + '/logs',
+            {
+              headers: {
+                Accept: 'application/vnd.github+json',
+                Authorization: 'Bearer ' + accessToken,
+                'X-GitHub-Api-Version': GITHUB_API_VERSION,
+              },
+              redirect: 'manual',
+              signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+            },
+          );
+          if (![301, 302, 303, 307, 308].includes(logResponse.status)) {
+            jobLogStatus = 'partial';
+            continue;
+          }
+          const location = logResponse.headers.get('location');
+          if (!location) { jobLogStatus = 'partial'; continue; }
+          let archiveUrl: URL;
+          try { archiveUrl = new URL(location); } catch { jobLogStatus = 'partial'; continue; }
+          if (archiveUrl.protocol !== 'https:' ||
+              !/^productionresultssa[0-9]+\.blob\.core\.windows\.net$/i.test(archiveUrl.hostname) ||
+              archiveUrl.username || archiveUrl.password) {
+            jobLogStatus = 'partial';
+            continue;
+          }
+          const archiveResponse = await fetch(archiveUrl, {
+            method: 'GET',
+            redirect: 'manual',
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          });
+          if (!archiveResponse.ok || archiveResponse.status >= 300) {
+            jobLogStatus = 'partial';
+            continue;
+          }
+          const declaredLength = Number(archiveResponse.headers.get('content-length') ?? 0);
+          if (declaredLength > 2 * 1024 * 1024) { jobLogStatus = 'partial'; continue; }
+          const archive = await readBoundedGitHubArchive(archiveResponse, 2 * 1024 * 1024);
+          const excerpts = extractRyanAIGitHubJobLogExcerpts(archive);
+          for (const excerpt of excerpts) {
+            jobLogExcerpts.push({ runId: run.id, ...excerpt });
+          }
+        } catch {
+          jobLogStatus = 'partial';
+        }
+      }
+      if (attempted >= 20) break;
+    }
+    if (jobLogStatus === 'complete' && attempted === 0) jobLogStatus = 'complete';
+  }
+
+  return {
+    repositoryFullName: GITHUB_APP_REPOSITORY,
+    requestedHeadSha: requestedHeadSha.toLowerCase(),
+    verifiedHeadSha: commit.sha.toLowerCase(),
+    source: 'github-oauth-read-only',
+    inspectedAt: new Date().toISOString(),
+    workflowRuns,
+    jobLogExcerpts,
+    jobLogStatus,
+    complete: runsComplete && jobsComplete,
+  };
 }
 
 export const githubIntegrationRoutes: FastifyPluginAsync = async (fastify) => {

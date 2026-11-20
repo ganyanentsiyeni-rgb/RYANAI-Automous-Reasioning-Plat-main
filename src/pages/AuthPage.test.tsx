@@ -115,6 +115,25 @@ it('authenticates with normalized email and password', async () => {
     password: 'correct-password',
   });
 });
+it('distinguishes an invalid Supabase project API key from bad login credentials', async () => {
+  mock.signInWithPassword.mockResolvedValue({
+    data: {},
+    error: Object.assign(new Error('Invalid API key'), {
+      code: 'invalid_api_key',
+      status: 401,
+    }),
+  });
+  await act(async () => root.render(<AuthPage />));
+  await fill('[type=email]', 'alice@example.com');
+  await fill('[type=password]', 'correct-password');
+  await submit();
+  const alert = container.querySelector('[role=alert]')?.textContent ?? '';
+  expect(alert).toContain('Supabase rejected the project API key');
+  expect(alert).toContain('VITE_SUPABASE_PUBLISHABLE_KEY');
+  expect(alert).toContain('not an incorrect email or password');
+  expect(alert).not.toContain('Invalid login credentials');
+});
+
 it('shows server rejection and keeps real OAuth choices available', async () => {
   mock.signInWithPassword.mockResolvedValue({
     data: {},

@@ -39,6 +39,26 @@ afterEach(async () => {
 });
 
 describe('Community survey', () => {
+  it('requires privacy acknowledgement and includes it in required progress', async () => {
+    await act(async () => root.render(<CommunitySurveyPage />));
+    const form = container.querySelector('form')!;
+    const consent = form.querySelector('input[type="checkbox"][required]') as HTMLInputElement;
+
+    expect(consent).not.toBeNull();
+    expect(container.textContent).toContain('0 of 11 required answers · 0%');
+    expect(container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuemax')).toBe('11');
+
+    await act(async () => {
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Please review the privacy notice and confirm consent before submitting.');
+
+    await act(async () => { consent.click(); });
+    expect(container.textContent).toContain('1 of 11 required answers · 9%');
+    expect(container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe('1');
+  });
+
   it('submits anonymous answers and displays the owner notification state', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
@@ -57,6 +77,8 @@ describe('Community survey', () => {
     for (const select of form!.querySelectorAll('select')) {
       await setValue(select, select.options[1]?.value ?? 'Other');
     }
+    const consent = form!.querySelector('input[type="checkbox"][required]') as HTMLInputElement;
+    await act(async () => { consent.click(); });
     const priority = form!.querySelector('textarea[required]');
     expect(priority).not.toBeNull();
     await setValue(priority!, 'Reliable and private AI workflows.');
@@ -71,6 +93,7 @@ describe('Community survey', () => {
     expect(requestInit).toBeDefined();
     const payload = JSON.parse(String(requestInit?.body));
     expect(payload).toHaveProperty('role');
+    expect(payload.privacyConsent).toBe(true);
     expect(payload).not.toHaveProperty('contactName');
     expect(payload).not.toHaveProperty('contactEmail');
     expect(payload).not.toHaveProperty('followUpConsent');
@@ -89,6 +112,8 @@ describe('Community survey', () => {
       await setValue(select, select.options[1]?.value ?? 'Other');
     }
     await setValue(form.querySelector('textarea[required]')!, 'A useful test response.');
+    const consent = form.querySelector('input[type="checkbox"][required]') as HTMLInputElement;
+    await act(async () => { consent.click(); });
     await act(async () => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
     expect(container.textContent).toContain('final mailbox delivery is not confirmed');
   });

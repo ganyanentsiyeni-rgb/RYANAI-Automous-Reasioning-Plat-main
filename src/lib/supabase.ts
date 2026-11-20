@@ -4,10 +4,31 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 // historical project: doing so can silently bind a new frontend to the wrong
 // database and produce misleading auth/data-fetch failures.
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL?.trim() ?? '';
-const supabaseKey =
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ||
-  import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
 
-// Explicitly typed to prevent 'unknown' inference and fail closed if missing config
+const publishableKey =
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ?? '';
+const legacyAnonKey =
+  import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() ?? '';
+const candidateKey = publishableKey || legacyAnonKey;
+
+// Supabase secret keys (sb_secret_...) are privileged server-side credentials.
+// VITE_ variables are bundled into the browser, so never pass a secret key to
+// the browser client—even if it was mistakenly placed in the legacy variable.
+const isSecretKey = candidateKey.startsWith('sb_secret_');
+const supabaseKey = isSecretKey ? '' : candidateKey;
+
+// Use PKCE so OAuth callbacks exchange the authorization code for a session.
+// Keep the session in browser storage across refreshes and let the SDK refresh
+// expiring tokens and detect the callback URL on initial client construction.
+const authOptions = {
+  flowType: 'pkce' as const,
+  persistSession: true,
+  autoRefreshToken: true,
+  detectSessionInUrl: true,
+};
+
+// Explicitly typed and fail closed when configuration is missing or unsafe.
 export const supabase: SupabaseClient | null =
-  SUPABASE_URL && supabaseKey ? createClient(SUPABASE_URL, supabaseKey) : null;
+  SUPABASE_URL && supabaseKey
+    ? createClient(SUPABASE_URL, supabaseKey, { auth: authOptions })
+    : null;

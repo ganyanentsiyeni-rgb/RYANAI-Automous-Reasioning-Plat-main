@@ -105,6 +105,7 @@
     "src/api/auth/signin.ts",
     "src/lib/supabase/server.ts",
     "src/lib/supabase/middleware.ts",
-    "src/lib/prisma.ts"
+    "src/lib/prisma.ts",
+    "src/lib/postgresWakeListenerClient.ts"
   ]
 }

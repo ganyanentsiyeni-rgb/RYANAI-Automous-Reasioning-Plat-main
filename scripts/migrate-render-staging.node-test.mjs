@@ -7,6 +7,7 @@ const good = 'postgresql://ryanai_database_user:secret@dpg-dbtev2rm8hqs73anvf00-
 test('accepts only the approved Render staging database identity', () => {
   assert.equal(validateTarget(good).pathname, '/ryanai_database');
 });
+
 test('rejects Supabase, pooler, production, other Render DBs and wrong database/user', () => {
   for (const value of [
     'postgresql://u:p@db.example.supabase.co/ryanai_database',
@@ -17,6 +18,10 @@ test('rejects Supabase, pooler, production, other Render DBs and wrong database/
   ]) assert.throws(() => validateTarget(value));
 });
 test('rejects missing DATABASE_URL', () => assert.throws(() => validateTarget(undefined)));
+
+test('rejects missing DATABASE_URL', () => {
+  assert.throws(() => validateTarget(undefined));
+});
 
 test('requires TLS and verifies the PostgreSQL server certificate', () => {
   const options = createPoolOptions(good);

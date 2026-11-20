@@ -52,6 +52,7 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
   const [conversationSearch, setConversationSearch] = useState('');
   const [channelFilter, setChannelFilter] = useState<'all' | CommsChannel>('all');
   const attachmentsEnabled = status?.channels?.attachments === true;
+  const communicationsEnabled = status?.enabled === true;
 
   function startNewDraft() {
     setIdempotencyKey(crypto.randomUUID());
@@ -283,6 +284,20 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
         </button>
       </div>
 
+      {loading && !status && !error && (
+        <div role="status" aria-live="polite" className="rounded-xl border border-cyan-300/15 bg-cyan-300/[0.04] p-4 text-sm text-cyan-100">
+          <div className="flex items-center gap-3"><RefreshCw className="h-4 w-4 animate-spin" /> Loading Comms configuration and persisted conversation history…</div>
+          <p className="mt-2 text-xs text-cyan-100/60">RyanAI is contacting the authenticated Comms API. This can take a moment on a cold-started backend.</p>
+        </div>
+      )}
+
+      {status && !communicationsEnabled && (
+        <div role="status" aria-live="polite" className="rounded-xl border border-amber-300/20 bg-amber-300/[0.04] p-4 text-sm text-amber-100">
+          <p className="font-semibold">Outbound Comms is currently disabled by the server configuration.</p>
+          <p className="mt-1 text-xs text-amber-100/70">Conversation history and the Comms workspace remain available. Provider credentials and explicit outbound test authorization are separate gates and are not enabled by this UI.</p>
+        </div>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {statusChannels.map(({ id, label, icon: Icon }) => {
           const configured = id === 'openai'
@@ -361,8 +376,9 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
             <label className="block text-[11px] text-slate-500">Channel<select value={channelFilter} onChange={event => setChannelFilter(event.target.value as 'all' | CommsChannel)} className="mt-1 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-xs text-white"><option value="all">All channels</option>{channels.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
           </div>
           <div className="max-h-[680px] overflow-y-auto">
-            {loading && <p className="p-4 text-sm text-slate-400">Loading history…</p>}
-            {!loading && conversations.length === 0 && <p className="p-4 text-sm text-slate-500">No persisted conversations yet. New inbound and outbound events will appear here.</p>}
+            {loading && <p role="status" className="p-4 text-sm text-slate-400">Loading persisted conversation history…</p>}
+            {!loading && error && conversations.length === 0 && <div className="space-y-2 p-4"><p className="text-sm text-rose-200">Conversation history could not be loaded.</p><button type="button" onClick={() => void refresh()} className="rounded-lg border border-cyan-400/20 px-3 py-2 text-xs text-cyan-200 hover:bg-cyan-400/10">Retry history</button></div>}
+            {!loading && !error && conversations.length === 0 && <p className="p-4 text-sm text-slate-500">No persisted conversations yet. New inbound and outbound events will appear here.</p>}
             {!loading && conversations.length > 0 && visibleConversations.length === 0 && <p className="p-4 text-sm text-slate-500">No conversations match these filters.</p>}
             {visibleConversations.map((conversation) => (
               <button key={conversation.id} type="button" onClick={() => setActiveId(conversation.id)} className={`block w-full border-b border-white/5 p-4 text-left hover:bg-white/5 ${activeId === conversation.id ? 'bg-cyan-400/10' : ''}`}>
@@ -447,12 +463,12 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
               {reviewing ? (
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <button type="button" onClick={() => setReviewing(false)} disabled={sending} className="rounded-lg border border-white/15 px-3 py-2 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50">Back to edit</button>
-                  <button type="button" onClick={() => void dispatchReviewedMessage()} disabled={sending || !message.trim()} className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50">
-                    <ShieldCheck className="h-4 w-4" />{sending ? 'Working…' : 'Approve & send'}
+                  <button type="button" onClick={() => void dispatchReviewedMessage()} disabled={sending || !message.trim() || !communicationsEnabled} className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50">
+                    <ShieldCheck className="h-4 w-4" />{sending ? 'Working…' : communicationsEnabled ? 'Approve & send' : 'Outbound disabled'}
                   </button>
                 </div>
               ) : (
-                <button type="submit" disabled={sending || !message.trim()} className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50">
+                <button type="submit" disabled={sending || !message.trim() || !communicationsEnabled} className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50">
                   <Send className="h-4 w-4" />Review message
                 </button>
               )}

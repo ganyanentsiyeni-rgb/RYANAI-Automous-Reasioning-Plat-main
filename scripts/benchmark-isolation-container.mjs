@@ -23,8 +23,39 @@ record('only-loopback-network-interface', 'node os.networkInterfaces()', interfa
   JSON.stringify(interfaces) === JSON.stringify(['lo']),
   'observed interfaces: ' + interfaces.join(','));
 
-record('ipv4-loopback-fixture', 'node net.connect(127.0.0.1:9)', 'loopback-not-routed', true);
-record('ipv6-loopback-fixture', 'node net.connect([::1]:9)', 'loopback-not-routed', true);
+// Exercise actual TCP loopback using an ephemeral server and client, rather than
+// treating a connection to an arbitrary closed port as proof of loopback.
+const verifyLoopback = async (host, family) => {
+  const server = net.createServer(socket => socket.end('loopback-ok'));
+  try {
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen({ host, port: 0, exclusive: true }, resolve);
+    });
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('server did not expose a TCP address');
+    const response = await new Promise((resolve, reject) => {
+      const socket = net.createConnection({ host, port: address.port, family });
+      const chunks = [];
+      socket.on('data', chunk => chunks.push(chunk));
+      socket.once('end', () => resolve(Buffer.concat(chunks).toString()));
+      socket.once('error', reject);
+    });
+    return response === 'loopback-ok' ? 'LOOPBACK_CONNECTED' : 'UNEXPECTED_RESPONSE';
+  } finally {
+    await new Promise(resolve => server.close(() => resolve()));
+  }
+};
+for (const fixture of [
+  { name: 'ipv4-loopback-fixture', host: '127.0.0.1', family: 4 },
+  { name: 'ipv6-loopback-fixture', host: '::1', family: 6 }
+]) {
+  let result;
+  try { result = await verifyLoopback(fixture.host, fixture.family); }
+  catch (error) { result = error?.code ?? error?.name ?? 'UNKNOWN'; }
+  record(fixture.name, `TCP server/client loopback round-trip to ${fixture.host}`, result,
+    result === 'LOOPBACK_CONNECTED', 'expected a successful loopback TCP round-trip, observed ' + result);
+}
 
 const connectDenied = host => new Promise(resolve => {
   const socket = net.createConnection({ host, port: 443 });

@@ -220,8 +220,8 @@ model Profile {
   email     String?
   fullName  String?   @map("full_name")
   avatarUrl String?   @map("avatar_url")
-  createdAt DateTime? @default(now()) @map("created_at")
-  updatedAt DateTime? @default(now()) @map("updated_at")
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   @@map("profiles")
   @@schema("public")
@@ -229,11 +229,11 @@ model Profile {
 
 model Conversation {
   id        String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId    String           @map("user_id") @db.Uuid
+  userId    String           @default(dbgenerated("auth.uid()")) @map("user_id") @db.Uuid
   title     String           @default("New Thread")
   model     String           @default("claude-sonnet-4.6")
-  createdAt DateTime?        @default(now()) @map("created_at")
-  updatedAt DateTime?        @default(now()) @map("updated_at")
+  createdAt DateTime?        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime?        @default(now()) @map("updated_at") @db.Timestamptz(6)
   messages  ChatSqlMessage[]
 
   @@index([userId])
@@ -244,13 +244,13 @@ model Conversation {
 model ChatSqlMessage {
   id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   conversationId String       @map("conversation_id") @db.Uuid
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   role           String
   content        String       @db.Text
   model          String?
   steps          Json?
   metadata       Json?
-  createdAt      DateTime?    @default(now()) @map("created_at")
+  createdAt      DateTime?    @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([conversationId])
   @@map("messages")
@@ -259,13 +259,13 @@ model ChatSqlMessage {
 
 model MemoryEntry {
   id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId    String    @map("user_id") @db.Uuid
+  userId    String    @default(dbgenerated("auth.uid()")) @map("user_id") @db.Uuid
   key       String
   value     String    @db.Text
   category  String    @default("preference")
-  createdAt DateTime? @default(now()) @map("created_at")
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  @@unique([userId, key])
+  @@unique([userId, key], map: "memory_entries_user_key_idx")
   @@index([userId])
   @@map("memory_entries")
   @@schema("public")
@@ -698,6 +698,7 @@ model LangGraphCheckpoint {
   metadata Json @default("{}")
 
   @@id([threadId, checkpointNs, checkpointId])
+  @@index([threadId], map: "checkpoints_thread_id_idx")
   @@map("checkpoints")
   @@schema("public")
 }
@@ -711,6 +712,7 @@ model LangGraphCheckpointBlob {
   blob Bytes?
 
   @@id([threadId, checkpointNs, channel, version])
+  @@index([threadId], map: "checkpoint_blobs_thread_id_idx")
   @@map("checkpoint_blobs")
   @@schema("public")
 }
@@ -726,7 +728,8 @@ model LangGraphCheckpointWrite {
   blob Bytes
   taskPath String @default("") @map("task_path")
 
-  @@id([threadId, checkpointNs, checkpointId, taskId, idx])
+  @@id([threadId, checkpointNs, checkpointId, taskId, idx, channel])
+  @@index([threadId], map: "checkpoint_writes_thread_id_idx")
   @@map("checkpoint_writes")
   @@schema("public")
 }
@@ -1260,6 +1263,7 @@ model StudioTask {
   maxAttempts         Int       @default(3) @map("max_attempts")
   availableAt         DateTime  @default(now()) @map("available_at") @db.Timestamptz(6)
   leaseOwner          String?   @map("lease_owner") @db.VarChar(128)
+  leaseToken          String?   @map("lease_token") @db.Uuid
   leaseExpiresAt      DateTime? @map("lease_expires_at") @db.Timestamptz(6)
   heartbeatAt         DateTime? @map("heartbeat_at") @db.Timestamptz(6)
   approvalRequired    Boolean   @default(false) @map("approval_required")

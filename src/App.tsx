@@ -10,7 +10,6 @@ import {
   Wallet,
   MessageSquareText,
   BookAudio,
-  Calculator as CalculatorIcon,
   Mail,
   Music2,
   Smartphone,
@@ -42,7 +41,7 @@ const CommunicationsCenter = lazy(() => import('@/components/CommunicationsCente
 const AudiobookStudio = lazy(() => import('@/pages/AudiobookStudio'));
 const MusicWorkspace = lazy(() => import('@/pages/MusicWorkspace'));
 const PhoneLinkWorkspace = lazy(() => import('@/pages/PhoneLinkWorkspace'));
-const CalculatorPage = lazy(() => import('@/pages/Calculator'));
+const BasicProgrammingToolsPage = lazy(() => import('@/pages/BasicProgrammingTools'));
 const DashboardPage = lazy(() => import('@/pages/Dashboard'));
 const PAAgentPage = lazy(() => import('@/pages/PAAgent'));
 const CodingStudio = lazy(() => import('@/pages/CodingStudio'));
@@ -76,7 +75,9 @@ const routeFromHash = (): Route => {
       ? 'signin'
       : segment === 'register'
         ? 'signup'
-        : segment;
+        : segment === 'calculator'
+          ? 'programming'
+          : segment;
   return (
     appManifest.routes.find((candidate) => candidate.id === route)?.id ??
     UI_CONFIG.defaultRoute
@@ -90,7 +91,7 @@ const routeIcons: Record<Route, LucideIcon> = {
   signup: UserPlus,
   dashboard: LayoutDashboard,
   pa: BrainCircuit,
-  calculator: CalculatorIcon,
+  programming: Code2,
   operator: Activity,
   operations: ListChecks,
   admin: ShieldCheck,
@@ -115,7 +116,7 @@ const destinations = appManifest.routes.map((route) => ({
 }));
 const routeUiOptions: Partial<Record<Route, DashboardUiId>> = {
   // Dashboard is a core authenticated surface, not a user-toggleable workspace.
-  pa: 'pa', calculator: 'calculator', operator: 'operator',
+  pa: 'pa', programming: 'programming', operator: 'operator',
   operations: 'operations', admin: 'admin', quant: 'quant', trading: 'trading',
   cockpit: 'cockpit', studio: 'studio', comms: 'comms', audiobook: 'audiobook', music: 'music', phonelink: 'phonelink', workspace: 'workspace',
 };
@@ -285,7 +286,7 @@ export default function App() {
                 {route === 'admin' && (isAdmin ? <AdminConsole key={user.id} userId={user.id} /> : <p role="alert" className="p-8 text-sm text-rose-200">Administrator access is required to open the RyanAI Admin Console.</p>)}
                 {route === 'quant' && <QuantLabPage userId={user.id} />}
                 {route === 'trading' && <TradingTerminalPage />}
-                {route === 'calculator' && <CalculatorPage />}
+                {route === 'programming' && <BasicProgrammingToolsPage />}
                 {route === 'comms' && (isOwner ? <CommunicationsCenter userId={user.id} phoneLinkSettings={phoneLinkSettings} /> : <p role="alert" className="p-8 text-sm text-rose-200">Owner access is required to open RyanAI Comms.</p>)}
                 {route === 'music' && <MusicWorkspace settings={musicSettings} />}
                 {route === 'phonelink' && <PhoneLinkWorkspace userId={user.id} settings={phoneLinkSettings} />}

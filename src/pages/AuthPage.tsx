@@ -19,6 +19,21 @@ const SUPABASE_CALLBACK_URL = (() => {
     : 'the callback URL shown in Supabase Dashboard → Authentication → Sign In / Providers';
 })();
 
+function getAuthenticationErrorMessage(cause: unknown, fallback: string): string {
+  if (!(cause instanceof Error)) return fallback;
+
+  const authError = cause as Error & { code?: string; status?: number };
+  const message = authError.message || '';
+  if (
+    authError.code === 'invalid_api_key' ||
+    /invalid\\s+(?:project\\s+)?api\\s*key|api\\s*key\\s+is\\s+invalid/i.test(message)
+  ) {
+    return 'Supabase rejected the project API key. Check that VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY belong to the same Supabase project, then rebuild the frontend. Do not use a secret key in any VITE_ variable. This is a project configuration error, not an incorrect email or password.';
+  }
+
+  return message || fallback;
+}
+
 function getOAuthProviderError(provider: OAuthProvider, cause: unknown): Error | null {
   if (!(cause instanceof Error)) return null;
 
@@ -71,9 +86,10 @@ export default function AuthPage({ mode = 'signin' }: AuthPageProps) {
       if (authError) throw getOAuthProviderError(provider, authError) ?? authError;
     } catch (cause) {
       setError(
-        cause instanceof Error
-          ? cause.message
-          : `${OAUTH_PROVIDER_LABELS[provider]} authentication failed. Please try again.`,
+        getAuthenticationErrorMessage(
+          cause,
+          `${OAUTH_PROVIDER_LABELS[provider]} authentication failed. Please try again.`,
+        ),
       );
       setLoading(false);
     }
@@ -106,9 +122,7 @@ export default function AuthPage({ mode = 'signin' }: AuthPageProps) {
       }
     } catch (cause) {
       setError(
-        cause instanceof Error
-          ? cause.message
-          : 'Authentication failed. Please try again.',
+        getAuthenticationErrorMessage(cause, 'Authentication failed. Please try again.'),
       );
     } finally {
       setLoading(false);

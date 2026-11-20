@@ -47,6 +47,15 @@ export function evaluateGenXSecurityEvent(event: GenXSecurityEvent): GenXPolicyR
   if (!event.agentId.trim() || !event.principal.trim() || !tool) {
     return { decision: 'DENY', ruleId: 'GX-IDENTITY-001', reason: 'Agent and principal identity are mandatory.', severity: 'HIGH' };
   }
+  // A human may propose the dedicated isolated test runner, but execution is
+  // never auto-authorized here. REQUIRE_APPROVAL keeps the request behind the
+  // existing owner approval endpoint; production and arbitrary commands remain denied.
+  if (event.command === undefined && event.action === 'EXECUTE' &&
+      tool === 'test_runner' && event.target === 'pa:isolated-test-suite' &&
+      event.actorType === 'human' &&
+      (event.environment === 'development' || event.environment === 'staging')) {
+    return { decision: 'REQUIRE_APPROVAL', ruleId: 'GX-ISOLATED-TEST-APPROVAL-001', reason: 'The isolated test runner may be proposed in development or staging, but requires explicit human approval before execution.', severity: 'HIGH' };
+  }
   if (event.command !== undefined || event.action === 'EXECUTE' || BLOCKED_TOOL_NAMES.has(tool)) {
     return { decision: 'DENY', ruleId: 'GX-EXEC-001', reason: 'Arbitrary command execution and offensive security tooling are disabled by Gen-X policy.', severity: 'CRITICAL' };
   }

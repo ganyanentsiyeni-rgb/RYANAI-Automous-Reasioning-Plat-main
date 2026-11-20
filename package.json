@@ -52,7 +52,7 @@
     "db:audiobook:status": "prisma migrate status --schema=prisma/audiobook/schema.prisma",
     "db:audiobook:migrate": "prisma migrate deploy --schema=prisma/audiobook/schema.prisma",
     "db:migration:audit": "node scripts/audit-prisma-migration-readiness.mjs",
-    "test:migration:audit": "node --test scripts/audit-prisma-migration-readiness.node-test.mjs && npm run test:migration:scope",
+    "test:migration:audit": "node --test scripts/audit-prisma-migration-readiness.node-test.mjs scripts/langgraph-checkpoint-schema.node-test.mjs && npm run test:migration:scope",
     "test:migration:scope": "node --import tsx --test scripts/scoped-prisma-migration.node-test.mjs",
     "db:push": "prisma db push",
     "db:migrate": "node --import tsx/esm src/db/migrate.ts",
@@ -101,6 +101,8 @@
     "frontend:validate": "npm run workflow:validate && npm run frontend:agent",
     "workflow:agent": "node scripts/github-workflow-agent.mjs --audit",
     "workflow:agent:fix": "node scripts/github-workflow-agent.mjs --fix",
+    "github:tokens:validate": "node scripts/validate-github-installation-token-compat.mjs",
+    "test:github-token-compat": "vitest run scripts/github-installation-token-compat.test.mjs",
     "workflow:validate": "node scripts/validate-github-workflows.mjs && npm run provider-verification:validate",
     "stack:validate": "node scripts/validate-stack-manifest.mjs",
     "jarvis:status": "node --import tsx/esm scripts/jarvis-sync.ts status",
@@ -157,7 +159,7 @@
     "agent-governance:validate": "node scripts/validate-agent-governance.mjs",
     "test:agent-governance": "node --test scripts/agent-governance.node-test.mjs",
     "test:docker:postgres": "bash scripts/run-ephemeral-postgres-integration.sh",
-    "test:pagerduty": "python3 -m unittest discover -s scripts -p 'test-pagerduty-manager.py'",
+    "test:pagerduty": "python scripts/run_unittest_discovery.py --start-directory scripts --pattern test_pagerduty_manager.py && python scripts/test_unittest_discovery_runner.py",
     "test:deploy:contracts": "python3 -m unittest discover -s scripts -p 'test-deploy-production.py'",
     "test:prisma-breaking-guard": "python3 -m unittest scripts/test_check_breaking_schema.py -v",
     "db:validate": "prisma validate --schema=prisma/schema.prisma && prisma validate --schema=prisma/audiobook/schema.prisma",
@@ -166,6 +168,10 @@
     "aerial:dev:bridge": "python3 aerial-bridge/server.py",
     "db:migrate:render-staging": "node scripts/migrate-render-staging.mjs",
     "test:render-staging-migration": "node --test scripts/migrate-render-staging.node-test.mjs"
+    "test:render-staging-migration": "node --test scripts/migrate-render-staging.node-test.mjs",
+    "worker:studio": "tsx scripts/ryanai-studio-worker.ts",
+    "dns:verify:eu-org": "node scripts/verify-eu-org-dns.mjs",
+    "test:dns:verify:eu-org": "node --test scripts/verify-eu-org-dns.node-test.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1169.0",
@@ -235,7 +241,9 @@
     "ws": "^8.23.0",
     "yaml": "^2.9.1",
     "zod": "^4.5.4",
-    "zustand": "^5.0.15"
+    "zustand": "^5.0.15",
+    "@ui-sdk/core": "0.1.0-beta.13",
+    "@ui-sdk/react": "0.1.0-beta.13"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -2,7 +2,49 @@ import { createHash } from 'node:crypto';
 import type { ExecutionPlan } from './executionPlanner.js';
 import { appendRunEvidence } from './engineeringEvidence.js';
 import type { Prisma } from '@prisma/client';
+/** Normalize domain objects at the Prisma JSON boundary (including optional fields). */
+function toPrismaJson(value: unknown): Prisma.InputJsonValue {
+  const serialized = JSON.stringify(value);
+  if (serialized === undefined) throw new TypeError('Cannot persist an undefined Prisma JSON value.');
+  return JSON.parse(serialized) as Prisma.InputJsonValue;
+}
 import type { BrainOutput } from './operationsCore.js';
+import { assertPACompletionCapabilityReceipts, assertPARepositoryInspectionEvidence, type PACapabilityReceipt } from './paCapabilityCompletion.js';
+
+
+/** Keep the create and update branches of the PA receipt upsert structurally identical. */
+export function buildPAExecutionReceiptResult(
+  plan: { synthesis: string; degraded: boolean; verification?: { verified: boolean; reason: string | null }; capabilityReceipts?: PACapabilityReceipt[] },
+  repositoryInspection: PACapabilityReceipt['repositoryInspection'] | null,
+) {
+  return {
+    synthesis: plan.synthesis,
+    degraded: plan.degraded,
+    verification: plan.verification ?? { verified: false, reason: 'Verification evidence was not supplied.' },
+    capabilityReceipts: plan.capabilityReceipts ?? [],
+    repositoryInspection,
+  };
+}
+
+/** A PA-scoped run cannot complete successfully after its delegation record disappears. */
+export function requirePADelegationForCompletion(
+  delegation: { id: string; traceId: string } | null,
+): { id: string; traceId: string } {
+  if (!delegation) {
+    throw new Error('PA delegation record is missing; completion receipt cannot be persisted.');
+  }
+  return delegation;
+}
+
+/** A PA-scoped terminal transition requires its persisted delegation record. */
+export function requirePADelegationRecord(
+  delegation: { id: string; traceId: string } | null,
+): { id: string; traceId: string } {
+  if (!delegation) {
+    throw new Error('PA delegation record is missing; terminal receipt cannot be persisted.');
+  }
+  return delegation;
+}
 
 interface PersistableAgentRun {
   id: string;
@@ -25,9 +67,23 @@ export async function persistAgentRunCompletion(
   tx: Prisma.TransactionClient,
   run: PersistableAgentRun,
   handoffs: PersistableHandoff[],
-  plan: { outputs: BrainOutput[]; synthesis: string; degraded: boolean; verification?: { verified: boolean; reason: string | null } },
+  plan: { outputs: BrainOutput[]; synthesis: string; degraded: boolean; verification?: { verified: boolean; reason: string | null }; capabilityReceipts?: PACapabilityReceipt[] },
   executionPlan: ExecutionPlan,
 ): Promise<void> {
+  // A PA delegation is complete only when every approved capability has a passed, evidence-backed handler receipt.
+  assertPACompletionCapabilityReceipts(run.execution_scope, plan.capabilityReceipts ?? []);
+  const repositoryReceipt = plan.capabilityReceipts?.find((item) => item.capability === 'repository.inspect');
+  const evidenceIds = (repositoryReceipt?.evidenceReferences ?? [])
+    .filter((reference) => reference.startsWith('agent-run-evidence:'))
+    .map((reference) => reference.slice('agent-run-evidence:'.length));
+  const repositoryEvidence = evidenceIds.length
+    ? await tx.agentRunEvidence.findMany({
+        where: { runId: run.id, id: { in: evidenceIds } },
+        select: { id: true, eventType: true, payload: true },
+      })
+    : [];
+  assertPARepositoryInspectionEvidence(plan.capabilityReceipts ?? [], repositoryEvidence);
+  const repositoryInspection = repositoryReceipt?.repositoryInspection ?? null;
   const outputByBrain = new Map(plan.outputs.map((item) => [item.brain, item]));
   for (const row of handoffs) {
     const output = row.toAgent === 'primary'
@@ -69,7 +125,7 @@ export async function persistAgentRunCompletion(
     where: { id: run.id, status: 'running', workerId: run.worker_id, attempts: run.attempts, cancelRequestedAt: null },
     data: {
       status: 'completed',
-      result: { synthesis: plan.synthesis, degraded: plan.degraded, executionPlan, brains: plan.outputs.map(({ brain, latencyMs }) => ({ brain, latencyMs })) },
+      result: toPrismaJson({ synthesis: plan.synthesis, degraded: plan.degraded, executionPlan, brains: plan.outputs.map(({ brain, latencyMs }) => ({ brain, latencyMs })), capabilityReceipts: plan.capabilityReceipts ?? [], repositoryInspection }),
       completedAt: new Date(),
       lockedAt: null,
       workerId: null,
@@ -79,29 +135,27 @@ export async function persistAgentRunCompletion(
   const scope = run.execution_scope && typeof run.execution_scope === 'object' ? run.execution_scope as Record<string, unknown> : {};
   const paDelegationId = typeof scope.paDelegationId === 'string' ? scope.paDelegationId : null;
   if (paDelegationId) {
-    const delegation = await tx.paDelegation.findUnique({ where: { id: paDelegationId }, select: { id: true, traceId: true } });
-    if (delegation) {
-      await tx.paDelegation.update({ where: { id: delegation.id }, data: { status: 'completed' } });
-      await tx.paExecutionReceipt.upsert({
-        where: { delegationId: delegation.id },
-        create: {
-          delegationId: delegation.id,
-          agentRunId: run.id,
-          traceId: delegation.traceId,
-          attempt: run.attempts,
-          status: 'completed',
-          result: { synthesis: plan.synthesis, degraded: plan.degraded, verification: plan.verification ?? { verified: false, reason: 'Verification evidence was not supplied.' } },
-        },
-        update: {
-          agentRunId: run.id,
-          traceId: delegation.traceId,
-          attempt: run.attempts,
-          status: 'completed',
-          result: { synthesis: plan.synthesis, degraded: plan.degraded, verification: plan.verification ?? { verified: false, reason: 'Verification evidence was not supplied.' } },
-          error: null,
-        },
-      });
-    }
+    const delegation = requirePADelegationForCompletion(await tx.paDelegation.findUnique({ where: { id: paDelegationId }, select: { id: true, traceId: true } }));
+    await tx.paDelegation.update({ where: { id: delegation.id }, data: { status: 'completed' } });
+    await tx.paExecutionReceipt.upsert({
+      where: { delegationId: delegation.id },
+      create: {
+        delegationId: delegation.id,
+        agentRunId: run.id,
+        traceId: delegation.traceId,
+        attempt: run.attempts,
+        status: 'completed',
+        result: toPrismaJson(buildPAExecutionReceiptResult(plan, repositoryInspection)),
+      },
+      update: {
+        agentRunId: run.id,
+        traceId: delegation.traceId,
+        attempt: run.attempts,
+        status: 'completed',
+        result: toPrismaJson(buildPAExecutionReceiptResult(plan, repositoryInspection)),
+        error: null,
+      },
+    });
   }
   await appendRunEvidence(tx, {
     runId: run.id,
@@ -113,6 +167,8 @@ export async function persistAgentRunCompletion(
       brains: plan.outputs.map(({ brain, latencyMs }) => ({ brain, latencyMs })),
       synthesisSha256: createHash('sha256').update(plan.synthesis, 'utf8').digest('hex'),
       verificationStatus: plan.verification?.verified ? 'three_brain_complete' : 'degraded',
+      capabilityReceipts: plan.capabilityReceipts ?? [],
+      repositoryInspection,
     },
   });
 }

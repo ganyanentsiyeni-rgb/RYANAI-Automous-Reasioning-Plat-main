@@ -66,6 +66,41 @@ jobs:
       - name: Test read-only migration audit contracts
         run: npm run test:migration:audit
 
+      - name: Verify memory uniqueness migration rejects duplicate owner/key pairs
+        env:
+          PGPASSWORD: ci_password
+        run: |
+          set -euo pipefail
+          test_db=ryanai_memory_unique_preflight
+          docker run --rm --network host -e PGPASSWORD \
+            postgres:16-alpine createdb -h 127.0.0.1 -U ryanai "$test_db"
+          cleanup() {
+            docker run --rm --network host -e PGPASSWORD \
+              postgres:16-alpine dropdb -h 127.0.0.1 -U ryanai --if-exists "$test_db"
+          }
+          trap cleanup EXIT
+          docker run --rm --network host -e PGPASSWORD \
+            postgres:16-alpine psql -h 127.0.0.1 -U ryanai -d "$test_db" \
+              -v ON_ERROR_STOP=1 -c \
+              "CREATE TABLE public.memory_entries (user_id uuid NOT NULL, key text NOT NULL);
+               INSERT INTO public.memory_entries (user_id, key) VALUES
+                 ('00000000-0000-0000-0000-000000000001', 'duplicate'),
+                 ('00000000-0000-0000-0000-000000000001', 'duplicate');"
+          if docker run --rm --network host -e PGPASSWORD \
+            -v "$GITHUB_WORKSPACE/supabase/migrations/20261119160000_memory_entries_user_key_unique.sql:/tmp/migration.sql:ro" \
+            postgres:16-alpine psql -h 127.0.0.1 -U ryanai -d "$test_db" \
+              -v ON_ERROR_STOP=1 -f /tmp/migration.sql > /tmp/memory-unique-preflight.log 2>&1; then
+            cat /tmp/memory-unique-preflight.log
+            echo "::error::The memory uniqueness migration accepted duplicate owner/key pairs."
+            exit 1
+          fi
+          grep -F "Duplicate (user_id, key) pairs" /tmp/memory-unique-preflight.log
+          index_absent="$(docker run --rm --network host -e PGPASSWORD \
+            postgres:16-alpine psql -h 127.0.0.1 -U ryanai -d "$test_db" -Atc \
+            "SELECT to_regclass('public.memory_entries_user_key_idx') IS NULL")"
+          test "$index_absent" = "t"
+
+
       - name: Create disposable audiobook database
         env:
           PGPASSWORD: ci_password
@@ -488,6 +523,9 @@ jobs:
           }
           NODE
 
+      - name: Assert Supabase-owned shared schema, Auth relationships, and required indexes
+        run: node scripts/assert-supabase-schema-contract.mjs
+
       - name: Exclude Supabase-owned Auth foreign keys from the Prisma-only drift comparison
         # Supabase Auth owns auth.users and these cross-schema relationships.
         # Assert the phone-link relationship is present, then remove every
@@ -515,6 +553,23 @@ jobs:
             `);
             assert.equal(phoneLink.rowCount, 1,
               'phonelink_devices_user_id_fkey must remain owned by Supabase Auth and target auth.users');
+
+            const memoryOwner = await pool.query(`
+              SELECT 1
+              FROM pg_constraint c
+              JOIN pg_class src ON src.oid = c.conrelid
+              JOIN pg_namespace src_ns ON src_ns.oid = src.relnamespace
+              JOIN pg_class target ON target.oid = c.confrelid
+              JOIN pg_namespace target_ns ON target_ns.oid = target.relnamespace
+              WHERE c.contype = 'f'
+                AND src_ns.nspname = 'public'
+                AND src.relname = 'memory_entries'
+                AND c.conname = 'memory_entries_user_id_fkey'
+                AND target_ns.nspname = 'auth'
+                AND target.relname = 'users'
+            `);
+            assert.equal(memoryOwner.rowCount, 1,
+              'memory_entries_user_id_fkey must remain a Supabase-owned relationship to auth.users');
           } finally {
             await pool.end();
           }
@@ -543,16 +598,41 @@ jobs:
           END $block$;
           SQL
 
+      - name: Exclude Supabase-owned tables from the Prisma-only drift comparison
+        # The Supabase-owned objects were asserted immediately above. Remove
+        # only those separate-ownership tables from this disposable CI stack;
+        # do not weaken the Prisma comparison or alter any hosted database.
+        # CASCADE also drops Supabase storage policies that reference the
+        # attachment scan tables (for example ryanai_attachment_read_clean_own_conversation).
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DROP TABLE
+            public.phonelink_device_exchanges,
+            public.phonelink_events,
+            public.phonelink_pairings,
+            public.phonelink_devices,
+            public.community_feedback_submissions,
+            public.community_beta_interest,
+            public.ryanai_attachment_scans,
+            public.ryanai_attachment_upload_events
+          CASCADE;
+          SQL
+
       - name: Compare the migrated Supabase and Prisma database with the Prisma data model
         # Supabase-owned Auth relationships are asserted separately above; this
         # comparison is intentionally limited to the Prisma-owned public schema.
         run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
-      - name: Create isolated Prisma shadow database
+      - name: Create isolated Prisma shadow database and export its URL
         env:
           PGPASSWORD: postgres
         run: |
-          SUPABASE_DB_PORT="$(node -e 'console.log(new URL(process.env.DATABASE_URL).port || 5432)')"
+          set -euo pipefail
+          SUPABASE_DB_PORT="$(node -e 'const u = new URL(process.env.DATABASE_URL); if (!["postgres:", "postgresql:"].includes(u.protocol)) throw new Error("DATABASE_URL must be PostgreSQL"); process.stdout.write(u.port || "5432")')"
           docker run --rm --network host -e PGPASSWORD postgres:16-alpine createdb -h 127.0.0.1 -p "$SUPABASE_DB_PORT" -U postgres ryanai_prisma_shadow
+          SHADOW_DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:${SUPABASE_DB_PORT}/ryanai_prisma_shadow"
+          SHADOW_DATABASE_URL="$SHADOW_DATABASE_URL" node --input-type=module -e 'const u = new URL(process.env.SHADOW_DATABASE_URL); if (!["postgres:", "postgresql:"].includes(u.protocol) || u.hostname !== "127.0.0.1" || u.pathname !== "/ryanai_prisma_shadow") throw new Error("Invalid disposable Prisma shadow URL")'
+
+          echo "SHADOW_DATABASE_URL=$SHADOW_DATABASE_URL" >> "$GITHUB_ENV"
 
       - name: Provision Supabase Auth objects in Prisma shadow database
         run: |
@@ -591,6 +671,5 @@ jobs:
 
       - name: Run disposable PostgreSQL queue and migration dry-run
         env:
-          POSTGRES_TEST_PORT: '55432'
           POSTGRES_TEST_IMAGE: pgvector/pgvector:pg15
         run: npm run test:docker:postgres
