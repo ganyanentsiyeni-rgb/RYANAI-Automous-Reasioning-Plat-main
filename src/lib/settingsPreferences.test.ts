@@ -20,8 +20,8 @@ describe('RyanAI dashboard and inference preferences', () => {
   });
 
   it('preserves valid module choices and ignores malformed values', () => {
-    const preferences = normalizeDashboardUiPreferences({ calculator: false, admin: 'on', unknown: false });
-    expect(preferences.calculator).toBe(false);
+    const preferences = normalizeDashboardUiPreferences({ dashboard: false, admin: 'on', unknown: false });
+    expect(preferences.dashboard).toBe(false);
     expect(preferences.admin).toBe(true);
   });
 
