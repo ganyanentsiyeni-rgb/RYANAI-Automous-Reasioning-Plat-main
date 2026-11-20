@@ -170,6 +170,50 @@ export default function ResiliencePanel({ userId }: { userId: string }) {
     }
   }
 
+  async function requestMaintenance(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const response = await authenticatedFetch('/api/admin/resilience/maintenance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ reason, startsAt: new Date(startsAt).toISOString(), endsAt: new Date(endsAt).toISOString() }),
+      }, userId);
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || 'Maintenance request failed.');
+      setReason('');
+      setStartsAt('');
+      setEndsAt('');
+      setNotice('Maintenance window request recorded. No services were changed or paused.');
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Maintenance request failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function closeMaintenance(id: string) {
+    if (busy || !window.confirm('Close this maintenance record? This only records its lifecycle status; it does not change infrastructure.')) return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const response = await authenticatedFetch('/api/admin/resilience/maintenance/' + encodeURIComponent(id) + '/close', { method: 'POST' }, userId);
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(payload.error || 'Could not close maintenance record.');
+      setNotice('Maintenance record closed.');
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not close maintenance record.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
 
   const tone = status?.backup.status === 'ready' ? 'text-emerald-300' : 'text-amber-200';
         body: JSON.stringify(body),
@@ -212,6 +256,22 @@ export default function ResiliencePanel({ userId }: { userId: string }) {
           <p className="mt-1 text-xs text-slate-400">Target validation: {status?.recovery.status || 'unknown'}</p>
           <p className="mt-1 text-xs text-slate-400">Production restore: {status?.recovery.productionRestore} · writes performed: {String(status?.recovery.writesPerformed ?? false)}</p>
           {status?.recovery.reason && <p className="mt-1 text-xs text-amber-200">{status.recovery.reason}</p>}
+        </article>
+
+        <article className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+          <h3 className="font-medium">Backup inventory &amp; retention preview</h3>
+          <p className="mt-1 text-xs text-slate-400">{inventory?.items.length ?? 0} artifacts · policy window {inventory?.retentionDays ?? 'unknown'} days · preview only</p>
+          {inventory?.reason && <p className="mt-2 text-xs text-amber-200">{inventory.reason}</p>}
+          <ul className="mt-3 space-y-2">
+            {inventory?.items.slice(0, 10).map((item) => (
+              <li key={item.prefix} className="rounded-lg border border-slate-800 p-2 text-xs">
+                <div className="flex justify-between gap-2"><span>{item.backupId}</span><span>{item.retention.replace('_', ' ')}</span></div>
+                <p className="mt-1 text-slate-400">{item.createdAt ? new Date(item.createdAt).toLocaleString() : 'Timestamp unknown'} · {item.databaseBytes == null ? 'Size unknown' : item.databaseBytes.toLocaleString() + ' bytes'}</p>
+                <p className="break-all text-slate-500">SHA-256: {item.databaseSha256 || 'unavailable'} · manifest {item.manifestPresent ? 'present' : 'missing/unreadable'}</p>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-amber-200">No backup objects are deleted or modified by this panel.</p>
         </article>
 
         <article className="rounded-xl border border-slate-800 bg-slate-900 p-4">

@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
+import { randomUUID } from 'node:crypto';
 import { requireAdmin, requireOwner } from './auth.js';
 import { backupPreflight, createDatabaseBackup, listDatabaseBackups, recoveryPreflight } from '../../services/adminResilience.js';
 
 interface MaintenanceRequestBody { reason: string; startsAt: string; endsAt: string; }
+interface MaintenanceEventDetails { maintenanceId?: string; reason?: string; startsAt?: string; endsAt?: string; requestedAt?: string; closedAt?: string; }
 interface MaintenanceEventDetails { maintenanceId?: string; reason?: string; startsAt?: string; endsAt?: string; requestedAt?: string; }
 
 export const adminResilienceRoutes: FastifyPluginAsync = async (fastify) => {
@@ -20,6 +22,7 @@ export const adminResilienceRoutes: FastifyPluginAsync = async (fastify) => {
         mode: 'isolated-github-pr',
       },
       maintenance: {
+        status: 'audit_lifecycle',
         status: 'audited_lifecycle',
         automation: 'disabled',
       },
@@ -29,6 +32,7 @@ export const adminResilienceRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/api/admin/resilience/backups', { preHandler: requireAdmin }, async () => {
     return listDatabaseBackups();
   });
+
 
   fastify.get('/api/admin/resilience/maintenance', { preHandler: requireAdmin }, async () => {
     const events = await fastify.prisma.jarvisAuditEvent.findMany({
