@@ -77,7 +77,15 @@ async function createApp(standaloneApprovals = false) {
 beforeEach(() => {
   vi.stubEnv('SUPABASE_URL', 'https://project.supabase.co');
   vi.stubEnv('SUPABASE_PUBLISHABLE_KEY', 'synthetic-publishable-key');
-  createContextClient.mockReturnValue({ auth: { getUser } });
+  createContextClient.mockReturnValue({
+    auth: {
+      getUser,
+      getClaims: vi.fn().mockResolvedValue({
+        data: { claims: { sub: user.id, aal: 'aal2' } },
+        error: null,
+      }),
+    },
+  });
   getUser.mockResolvedValue({ data: { user }, error: null });
   invoke.mockResolvedValue({ messages: [{ content: 'done' }] });
   getState.mockResolvedValue({ next: [], values: { messages: [] } });
@@ -215,7 +223,7 @@ describe('Supabase API authentication', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       authenticated: true,
-      user: { id: user.id, email: user.email, role: 'user', isOwner: false },
+      user: { id: user.id, email: user.email, role: 'user', isOwner: false, sessionAssurance: 'aal2' },
     });
     expect(getUser).toHaveBeenCalledExactlyOnceWith('synthetic-access-token');
     expect(createContextClient).toHaveBeenCalledWith(

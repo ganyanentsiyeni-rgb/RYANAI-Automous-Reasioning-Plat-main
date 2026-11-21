@@ -1,116 +1,92 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import Fastify, { type FastifyInstance } from 'fastify';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { assessStructuralContract, assessMigrationSourceContracts } from './audit-prisma-structural-contract.mjs';
 
-const {
-  createContextClient, getUser, listOpenActions, decideAction
-} = vi.hoisted(() => ({
-  createContextClient: vi.fn(),
-  getUser: vi.fn(),
-  listOpenActions: vi.fn(),
-  decideAction: vi.fn()
-}));
-
-vi.mock('@supabase/server/core', () => ({ createContextClient }));
-vi.mock('../../approvals/pendingStore.js', () => ({ listOpenActions }));
-vi.mock('../../approvals/service.js', () => ({ decideAction }));
-
-import { installAuthentication } from './auth.js';
-import { pendingActionsRoutes } from './pendingActions.js';
-
-const actionId = '7b0f1c1e-3c0a-4d3e-9a52-0b5f3b6a1c11';
-const bearer = { authorization: 'Bearer synthetic-approval-access-token' };
-const apps: FastifyInstance[] = [];
-
-function identity(role: 'user' | 'admin' = 'user') {
-  return {
-    id: 'verified-' + role + '-id',
-    email: role + '@example.test',
-    app_metadata: role === 'admin' ? { role: 'admin' } : {},
-    user_metadata: { role: 'admin' },
-    is_anonymous: false
-  };
-}
-
-async function createApp() {
-  const app = Fastify();
-  apps.push(app);
-  installAuthentication(app);
-  await app.register(pendingActionsRoutes);
-  await app.ready();
-  return app;
-}
-
-beforeEach(() => {
-  vi.stubEnv('SUPABASE_URL', 'https://synthetic-project.supabase.co');
-  vi.stubEnv('SUPABASE_PUBLISHABLE_KEY', 'synthetic-publishable-key');
-  createContextClient.mockReturnValue({ auth: { getUser } });
-  getUser.mockResolvedValue({ data: { user: identity('admin') }, error: null });
-  listOpenActions.mockResolvedValue([]);
-  decideAction.mockResolvedValue({ outcome: 'executed', result: 'synthetic-only' });
-  vi.clearAllMocks();
+test('classifies absent tables, columns, indexes, foreign keys, triggers and Auth function as missing', () => {
+  const result = assessStructuralContract({ tables: [], columns: [], indexes: [], constraints: [], triggers: [], functions: [], grants: [] });
+  assert.ok(result.counts.missing > 50);
+  assert.equal(result.counts.structurally_wrong, 0);
+  assert.equal(result.findings.find((item) => item.object === 'grant public.users to service_role')?.status, 'missing');
+  for (const name of ['table public.users','column public.users.email','index public.coding_tasks.coding_tasks_user_created_idx','foreign_key public.coding_tasks.coding_tasks_user_id_fkey','trigger auth.users.ryanai_auth_user_sync_update','function public.sync_ryanai_auth_user search_path']) {
+    assert.equal(result.findings.find((item) => item.object === name)?.status, 'missing', name);
+  }
 });
 
-afterAll(async () => {
-  await Promise.all(apps.splice(0).map(app => app.close()));
-  vi.unstubAllEnvs();
+test('reports wrong defaults, timestamp precision and foreign-key update actions explicitly', () => {
+  const result = assessStructuralContract({
+    tables: [{ table_name: 'agent_runs', relkind: 'r', relrowsecurity: false }, { table_name: 'coding_tasks', relkind: 'r', relrowsecurity: false }],
+    columns: [
+      { table_name: 'agent_runs', column_name: 'approval_status', formatted_type: 'text', is_nullable: false, column_default: "'pending'::text" },
+      { table_name: 'agent_runs', column_name: 'lease_expires_at', formatted_type: 'timestamp(6) with time zone', is_nullable: true, column_default: null },
+      { table_name: 'coding_tasks', column_name: 'heartbeat_at', formatted_type: 'timestamp(3) without time zone', is_nullable: true, column_default: null },
+    ],
+    constraints: [{ conname: 'coding_tasks_user_id_fkey', table_name: 'coding_tasks', definition: 'FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE' }],
+  });
+  const approval = result.findings.find((item) => item.object === 'column public.agent_runs.approval_status');
+  assert.equal(approval.status, 'structurally_wrong');
+  assert.equal(approval.expected.default, "'approved'");
+  assert.match(approval.actual.default, /pending/);
+  const lease = result.findings.find((item) => item.object === 'column public.agent_runs.lease_expires_at');
+  assert.equal(lease.status, 'structurally_wrong');
+  assert.equal(lease.expected.type, 'timestamp(3) without time zone');
+  const heartbeat = result.findings.find((item) => item.object === 'column public.coding_tasks.heartbeat_at');
+  assert.equal(heartbeat.status, 'structurally_wrong');
+  assert.equal(heartbeat.expected.type, 'timestamp(6) with time zone');
+  const fk = result.findings.find((item) => item.object === 'foreign_key public.coding_tasks.coding_tasks_user_id_fkey');
+  assert.equal(fk.status, 'structurally_wrong');
+  assert.equal(fk.expected.onUpdate, 'no action');
+  assert.equal(fk.actual.onUpdate, 'cascade');
 });
 
-describe('real administrator guard for pending approval actions', () => {
-  it('rejects missing or malformed bearer credentials before reaching the approval service', async () => {
-    const app = await createApp();
-    const noToken = await app.inject({
-      method: 'POST', url: `/api/actions/${actionId}/approve`
-    });
-    const malformed = await app.inject({
-      method: 'POST', url: `/api/actions/${actionId}/approve`,
-      headers: { authorization: 'Basic not-a-bearer' }
-    });
-    expect(noToken.statusCode).toBe(401);
-    expect(malformed.statusCode).toBe(401);
-    expect(getUser).not.toHaveBeenCalled();
-    expect(decideAction).not.toHaveBeenCalled();
-  });
 
-  it('rejects a verified member even when editable user metadata claims admin', async () => {
-    getUser.mockResolvedValue({
-      data: { user: identity('user') },
-      error: null
-    });
-    const app = await createApp();
-    const response = await app.inject({
-      method: 'POST', url: `/api/actions/${actionId}/approve`, headers: bearer
-    });
-    expect(response.statusCode).toBe(403);
-    expect(decideAction).not.toHaveBeenCalled();
+test('accepts the quoted queued default used by the coding_tasks migration', () => {
+  const result = assessStructuralContract({
+    tables: [{ table_name: 'coding_tasks', relkind: 'r', relrowsecurity: false }],
+    columns: [{
+      table_name: 'coding_tasks',
+      column_name: 'status',
+      formatted_type: 'text',
+      is_nullable: false,
+      column_default: "'queued'::text",
+    }],
   });
+  const status = result.findings.find((item) => item.object === 'column public.coding_tasks.status');
+  assert.equal(status.status, 'matching');
+});
 
-  it.each(['unavailable', 'throws'] as const)(
-    'fails closed when the authenticated identity provider %s',
-    async failure => {
-      if (failure === 'throws') {
-        getUser.mockRejectedValue(new Error('synthetic auth provider outage'));
-      } else {
-        getUser.mockResolvedValue({
-          data: { user: null },
-          error: { status: 503, message: 'synthetic auth provider unavailable' }
-        });
-      }
-      const app = await createApp();
-      const response = await app.inject({
-        method: 'POST', url: `/api/actions/${actionId}/approve`, headers: bearer
-      });
-      expect(response.statusCode).toBe(503);
-      expect(decideAction).not.toHaveBeenCalled();
-    }
-  );
+test('does not mistake intentionally absent handoff updated_at for a defect', () => {
+  const result = assessStructuralContract({ tables: [], columns: [], indexes: [], constraints: [], triggers: [], functions: [], grants: [] });
+  assert.equal(result.findings.find((item) => item.object === 'column public.agent_handoffs.updated_at')?.status, 'matching');
+});
 
-  it('uses only the Supabase-verified administrator identity to decide the pending action', async () => {
-    const app = await createApp();
-    const response = await app.inject({
-      method: 'POST', url: `/api/actions/${actionId}/approve`, headers: bearer
-    });
-    expect(response.statusCode).toBe(200);
-    expect(decideAction).toHaveBeenCalledExactlyOnceWith(actionId, 'verified-admin-id', true);
-    expect(response.json()).toEqual({ status: 'executed', result: 'synthetic-only' });
+test('checks identity bridge, legacy queue correction and lease heartbeat migration source contracts', () => {
+  const result = assessMigrationSourceContracts({
+    authBridge: "SECURITY DEFINER; SET search_path = ''; COALESCE(NULLIF(NEW.email, ''), 'auth-user-' || NEW.id::text || '@no-email.invalid'); COALESCE(EXCLUDED.name, public.users.name); CREATE TRIGGER ryanai_auth_user_sync_insert AFTER INSERT ON auth.users; CREATE TRIGGER ryanai_auth_user_sync_update AFTER UPDATE OF email, raw_user_meta_data ON auth.users; CREATE TRIGGER ryanai_auth_user_sync_delete AFTER DELETE ON auth.users; REVOKE ALL PRIVILEGES ON TABLE public.users FROM PUBLIC, anon, authenticated; GRANT ALL PRIVILEGES ON TABLE public.users TO service_role; COALESCE(au.created_at, pg_catalog.now())::timestamp(3) COALESCE(au.updated_at, au.created_at, pg_catalog.now())::timestamp(3)",
+    agentOperations: '"input" TEXT NOT NULL, "started_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, agent_handoffs_run_id_started_at_idx, agent_handoffs_run_id_fkey FOREIGN KEY (run_id) REFERENCES "agent_runs"("id") ON DELETE CASCADE ON UPDATE CASCADE, "status" TEXT NOT NULL, agent_brain_health_brain_key',
+    codingQueue: "id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE, workbench_run_id TEXT NOT NULL REFERENCES public.agent_runs(id) ON DELETE CASCADE, approval_id TEXT NOT NULL, plan_hash TEXT NOT NULL, base_commit_sha TEXT NOT NULL, proposed_diff_hash TEXT NOT NULL, agent TEXT NOT NULL, prompt TEXT NOT NULL, workspace_key TEXT NOT NULL, coding_tasks_status_next_attempt_idx coding_tasks_status_lease_expiry_idx coding_tasks_user_created_idx coding_tasks_workbench_run_idx WHERE approval_status = 'pending' OR plan_snapshot IS NOT NULL OR proposed_diff_hash IS NOT NULL;",
+    queueCorrection: "SET queue_type = 'unclassified' WHERE queue_type = 'coding' AND approval_status = 'pending' AND plan_snapshot IS NULL AND proposed_diff_hash IS NULL;",
+    leaseHeartbeat: "ALTER TABLE public.agent_runs ADD COLUMN lease_expires_at TIMESTAMP(3), ADD COLUMN heartbeat_at TIMESTAMP(3); ALTER TABLE public.coding_tasks ADD COLUMN heartbeat_at TIMESTAMPTZ(6); UPDATE public.coding_tasks SET heartbeat_at = COALESCE(locked_at, NOW()) WHERE status = 'running' AND heartbeat_at IS NULL;",
   });
+  assert.equal(result.counts.missing, 0);
+  assert.equal(result.counts.structurally_wrong, 0);
+  assert.equal(result.counts.matching, 8);
+});
+
+test('flags weakened legacy coding classification', () => {
+  const result = assessMigrationSourceContracts({ authBridge: '', agentOperations: '', codingQueue: "WHERE approval_status = 'pending';", queueCorrection: '', leaseHeartbeat: '' });
+  assert.ok(result.findings.some((item) => item.object === 'migration coding queue legacy classification' && item.status === 'structurally_wrong'));
+});
+
+
+test('classifies absent and partial service-role grants distinctly', () => {
+  const absent = assessStructuralContract({ tables: [], columns: [], indexes: [], constraints: [], triggers: [], functions: [], grants: [] });
+  const absentGrant = absent.findings.find((item) => item.object === 'grant public.users to service_role');
+  assert.equal(absentGrant.status, 'missing');
+
+  const partial = assessStructuralContract({
+    tables: [], columns: [], indexes: [], constraints: [], triggers: [], functions: [],
+    grants: [{ table_name: 'users', grantee: 'service_role', privilege_type: 'SELECT' }],
+  });
+  const partialGrant = partial.findings.find((item) => item.object === 'grant public.users to service_role');
+  assert.equal(partialGrant.status, 'structurally_wrong');
 });

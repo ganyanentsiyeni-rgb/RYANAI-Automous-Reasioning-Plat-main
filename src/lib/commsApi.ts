@@ -131,6 +131,37 @@ export async function assistCommsConversation(input: {
   return readJson<CommsAssistResult>(response);
 }
 
+export interface CommsApprovalRequest {
+  approvalId: string;
+  status: 'pending';
+  expiresInSeconds: number;
+  policy: { decision: string; ruleId: string };
+}
+
+export async function requestCommsApproval(input: {
+  channel: CommsChannel;
+  recipient?: string;
+  message: string;
+  subject?: string;
+  idempotencyKey: string;
+  attachmentIds?: string[];
+}, userId: string): Promise<CommsApprovalRequest> {
+  const response = await authenticatedFetch('/api/comms/approvals', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  }, userId);
+  return readJson<CommsApprovalRequest>(response);
+}
+
+export async function approveCommsApproval(approvalId: string, userId: string): Promise<{ approvalId: string; status: 'approved' }> {
+  const response = await authenticatedFetch(`/api/comms/approvals/${encodeURIComponent(approvalId)}/approve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  }, userId);
+  return readJson(response);
+}
+
 export async function sendCommsMessage(input: {
   channel: CommsChannel;
   recipient?: string;
@@ -138,6 +169,7 @@ export async function sendCommsMessage(input: {
   subject?: string;
   idempotencyKey: string;
   attachmentIds?: string[];
+  approvalId: string;
 }, userId: string): Promise<{ success: boolean; channel: CommsChannel; providerId: string | null; status: string; replayed?: boolean }> {
   const response = await authenticatedFetch('/api/comms/send', {
     method: 'POST',

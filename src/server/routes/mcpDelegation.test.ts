@@ -19,7 +19,7 @@ describe('API MCP delegation endpoint', () => {
     vi.stubEnv('RYANAI_MCP_SERVICE_TOKEN', serviceToken);
     vi.stubEnv('RYANAI_MCP_DELEGATION_SECRET', signingSecret);
     vi.stubEnv('NODE_ENV', 'test');
-    createContextClient.mockReturnValue({ auth: { getUser } });
+    createContextClient.mockReturnValue({ auth: { getUser, getClaims: vi.fn().mockResolvedValue({ data: { claims: { sub: 'verified-user-id', aal: 'aal2' } }, error: null }) } });
     getUser.mockResolvedValue({
       data: { user: { id: 'verified-user-id', email: 'member@example.test', app_metadata: {}, user_metadata: {}, is_anonymous: false } },
       error: null,

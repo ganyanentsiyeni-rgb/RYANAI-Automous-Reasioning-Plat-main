@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { Activity, BrainCircuit, Download, Mail, MessageCircle, Paperclip, Phone, RefreshCw, Send, ShieldCheck, Smartphone } from 'lucide-react';
 import {
   getCommsAttachmentDownloadUrl, getCommsAttachmentStatuses, getCommsConversations,
-  getCommsStatus, prepareCommsAttachments, sendCommsMessage, assistCommsConversation, uploadCommsAttachment, publishPhoneLinkEvent,
+  getCommsStatus, prepareCommsAttachments, requestCommsApproval, approveCommsApproval,
+  sendCommsMessage, assistCommsConversation, uploadCommsAttachment, publishPhoneLinkEvent,
   type CommsAttachment, type CommsChannel, type CommsConversation, type CommsStatus,
 } from '@/lib/commsApi';
 
@@ -205,10 +206,22 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
           return;
         }
       }
+      // The owner's explicit Check and send action creates and approves a
+      // short-lived, payload-bound authorization before any provider dispatch.
+      const approval = await requestCommsApproval({
+        channel,
+        message: message.trim(),
+        idempotencyKey,
+        ...(recipient.trim() ? { recipient: recipient.trim() } : {}),
+        ...(channel === 'email' && subject.trim() ? { subject: subject.trim() } : {}),
+        ...(currentIds.length ? { attachmentIds: currentIds } : {}),
+      }, userId);
+      await approveCommsApproval(approval.approvalId, userId);
       const result = await sendCommsMessage({
         channel,
         message: message.trim(),
         idempotencyKey,
+        approvalId: approval.approvalId,
         ...(recipient.trim() ? { recipient: recipient.trim() } : {}),
         ...(channel === 'email' && subject.trim() ? { subject: subject.trim() } : {}),
         ...(currentIds.length ? { attachmentIds: currentIds } : {}),

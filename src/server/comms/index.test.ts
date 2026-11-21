@@ -29,7 +29,6 @@ const token = 'synthetic-voice-auth-token';
 const voiceUrl = 'https://ryanai.example.test/api/webhooks/twilio/voice';
 const actionUrl = 'https://ryanai.example.test/api/webhooks/twilio/voice/respond';
 const smsUrl = 'https://ryanai.example.test/api/webhooks/twilio/sms';
-const statusUrl = 'https://ryanai.example.test/api/webhooks/twilio/status';
 
 async function send(path: string, url: string, payload: Record<string, string>, valid = true) {
   const app = Fastify();
@@ -191,19 +190,7 @@ describe('Twilio conversational voice webhooks', () => {
 });
 
 
-describe('Twilio delivery status callbacks', () => {
-  it('updates status without replacing the existing message metadata', async () => {
-    const payload = { MessageSid: 'SM-delivered-1', MessageStatus: 'delivered', ErrorCode: '' };
-    const response = await send('/api/webhooks/twilio/status', statusUrl, payload);
-    expect(response.statusCode).toBe(200);
-    expect(prismaMock.communicationMessage.updateMany).toHaveBeenCalledWith({
-      where: { providerMessageId: 'SM-delivered-1' }, data: { status: 'delivered' },
-    });
-    expect(prismaMock.$executeRawUnsafe).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE public.comms_send_approvals'), 'SM-delivered-1', 'delivered',
-    );
-  });
-});
+// Delivery status callback behavior is covered by twilioStatusCallback.test.ts.
 
 describe('Comms conversation ownership', () => {
   it('never assigns legacy ownerless conversations to the requesting owner during a read', async () => {

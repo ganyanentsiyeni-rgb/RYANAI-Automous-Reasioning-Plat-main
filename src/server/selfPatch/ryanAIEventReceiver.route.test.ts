@@ -22,8 +22,7 @@ function event(eventId: string) {
 }
 
 async function postEvent(body: unknown, configuredSecret: string | undefined = secret) {
-  if (configuredSecret === undefined) delete process.env.RYANAI_EVENT_HMAC_SECRET;
-  else process.env.RYANAI_EVENT_HMAC_SECRET = configuredSecret;
+  process.env.RYANAI_EVENT_HMAC_SECRET = configuredSecret ?? '';
   const timestamp = String(Math.floor(Date.now() / 1000));
   const signature = signRyanAIEventBody(timestamp, body, secret);
   const app = Fastify();
