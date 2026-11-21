@@ -1,5 +1,8 @@
-# RyanAI local/container stack. Copy .env.example to .env and set the
-# required secrets before running: docker compose up --build --detach --wait.
+# RyanAI local/container stack only. Never point this Compose Postgres volume at Production.
+# Supabase is the authoritative application identity/database in hosted environments;
+# Neon is the separate Audiobook database; Redis is the cache/queue store.
+# Local Postgres below is an isolated pgvector development/test database.
+# Copy .env.example to .env and set local secrets before running.
 
 services:
   postgres:
@@ -155,6 +158,8 @@ services:
       JARVIS_STACK_PATH: ${JARVIS_STACK_PATH:-/api/v1/stacks}
     networks: [ryanai-net]
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     ports:
@@ -175,7 +180,7 @@ services:
   mcp-server:
     build:
       context: .
-      dockerfile: mcp-server/Dockerfile
+      dockerfile: Dockerfile.mcp_server
     container_name: ryanai-mcp
     environment:
       NODE_ENV: production
@@ -240,7 +245,7 @@ services:
     container_name: ryanai-mcpjungle-db
     environment:
       POSTGRES_USER: mcpjungle
-      POSTGRES_PASSWORD: ${MCPJUNGLE_DB_PASSWORD:-}
+      POSTGRES_PASSWORD: ${MCPJUNGLE_DB_PASSWORD:?Set MCPJUNGLE_DB_PASSWORD when enabling mcp-gateway}
       POSTGRES_DB: mcpjungle
     networks: [ryanai-net]
     volumes:
@@ -257,7 +262,7 @@ services:
     image: ghcr.io/mcpjungle/mcpjungle:${MCPJUNGLE_IMAGE_TAG:-0.4.6}
     container_name: ryanai-mcpjungle
     environment:
-      DATABASE_URL: postgres://mcpjungle:${MCPJUNGLE_DB_PASSWORD:-}@mcpjungle-db:5432/mcpjungle?sslmode=disable
+      DATABASE_URL: postgres://mcpjungle:${MCPJUNGLE_DB_PASSWORD:?Set MCPJUNGLE_DB_PASSWORD when enabling mcp-gateway}@mcpjungle-db:5432/mcpjungle?sslmode=disable
       SERVER_MODE: enterprise
       OTEL_ENABLED: "true"
     networks: [ryanai-net]

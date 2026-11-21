@@ -67,6 +67,7 @@ COPY --chown=node:node scripts/verify-node-ca.sh ./scripts/verify-node-ca.sh
 RUN test -s dist/server/server/launcher.js \
     && test -s scripts/backup-on-startup.mjs \
     && test -s scripts/verify-node-ca.sh \
+    && test -s dist/server/server/engineering/studioWorker.js \
     && node --check scripts/backup-on-startup.mjs \
     && sh -n scripts/verify-node-ca.sh \
     && pg_dump --version >/dev/null \

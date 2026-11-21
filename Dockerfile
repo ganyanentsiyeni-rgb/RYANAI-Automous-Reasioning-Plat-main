@@ -95,6 +95,11 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 CMD ["sh", "-c", "exec sh scripts/verify-node-ca.sh sh -c 'node scripts/backup-on-startup.mjs; exec node dist/server/server/launcher.js'"]
 
+# Independently runnable Studio worker target; no HTTP healthcheck is exposed.
+FROM api AS studio-worker
+HEALTHCHECK NONE
+CMD ["node", "dist/server/server/engineering/studioWorker.js"]
+
 # Build-time Vite configuration contains public browser values only.
 FROM node:24-alpine AS web-builder
 WORKDIR /app
