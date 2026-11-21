@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 
-export type CommunicationChannel = 'whatsapp' | 'sms' | 'voice' | 'email';
+export type CommunicationChannel = 'in_app' | 'whatsapp' | 'sms' | 'voice' | 'email';
 export type CommunicationDirection = 'inbound' | 'outbound';
 
 export interface RecordCommunicationInput {
