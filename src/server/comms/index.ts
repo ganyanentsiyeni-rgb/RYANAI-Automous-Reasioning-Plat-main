@@ -96,8 +96,8 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
   await fastify.register(formbody);
   await fastify.register(rawBody, { field: 'rawBody', global: false, encoding: 'utf8', runFirst: true });
 
-  const finishInAppChatTurn = async (messageId: string, runId: string, timeoutMs = 8_000) => {
-    const completed = await waitForInboundCommunicationRun(runId, '', timeoutMs);
+  const finishInAppChatTurn = async (messageId: string, runId: string, ownerUserId: string, timeoutMs = 8_000) => {
+    const completed = await waitForInboundCommunicationRun(runId, ownerUserId, timeoutMs);
     if (!completed.completed) return null;
     const answer = addressOwnerResponse(completed.answer || 'I could not prepare a response.');
     const inbound = await fastify.prisma.communicationMessage.findUnique({
@@ -109,7 +109,8 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       ? inbound.metadata as Record<string, unknown> : {};
     await recordCommunication(fastify.prisma, {
       channel: 'in_app',
-      externalAddress: 'owner:' + String((fastify as typeof fastify & { __unused?: never }).prisma ? '' : ''),
+      externalAddress: 'owner:' + ownerUserId,
+      ownerUserId,
       direction: 'outbound',
       body: answer,
       providerMessageId: 'inapp-reply:' + messageId,
@@ -281,7 +282,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       });
       if (!claim.claimed) {
         if (claim.existing?.agentRunId) {
-          const response = await finishInAppChatTurn(claim.existing.messageId, claim.existing.agentRunId);
+          const response = await finishInAppChatTurn(claim.existing.messageId, claim.existing.agentRunId, ownerUserId);
           if (response) return { messageId: claim.existing.messageId, runId: claim.existing.agentRunId, status: 'replied', reply: response, replayed: true };
           return reply.code(202).send({ messageId: claim.existing.messageId, runId: claim.existing.agentRunId, status: 'processing', replayed: true });
         }
@@ -293,7 +294,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
         ownerUserId,
         providerMessageId,
       });
-      const response = await finishInAppChatTurn(claim.messageId, queued.runId);
+      const response = await finishInAppChatTurn(claim.messageId, queued.runId, ownerUserId);
       if (!response) return reply.code(202).send({ messageId: claim.messageId, runId: queued.runId, status: 'processing', replayed: false });
       return { messageId: claim.messageId, runId: queued.runId, status: 'replied', reply: response, replayed: false };
     } catch (error) {
@@ -320,7 +321,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
     }
     if (!message.agentRunId) return reply.code(202).send({ messageId: message.id, status: 'processing' });
     try {
-      const response = await finishInAppChatTurn(message.id, message.agentRunId, 1_000);
+      const response = await finishInAppChatTurn(message.id, message.agentRunId, request.authUser.id, 1_000);
       if (!response) return reply.code(202).send({ messageId: message.id, runId: message.agentRunId, status: 'processing' });
       return { messageId: message.id, runId: message.agentRunId, status: 'replied', reply: response };
     } catch (error) {
