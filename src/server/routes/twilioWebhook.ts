@@ -1,16 +1,13 @@
 import { FastifyPluginAsync } from 'fastify';
 import twilio from 'twilio';
 import formbody from '@fastify/formbody';
-import { humanInTheLoopAgent } from '../../agent/approvalEngine.js';
 import { claimInboundCommunication, recordCommunication } from '../comms/history.js';
 import { getOwnerInboundUserId, storeTwilioMediaForCommunication } from '../comms/attachments.js';
-import { addressOwnerResponse, ownerCommunicationInstruction } from '../../shared/ryanIdentity.js';
+import { addressOwnerResponse } from '../../shared/ryanIdentity.js';
+import { enqueueInboundCommunicationRun, waitForInboundCommunicationRun } from '../comms/agentRuns.js';
 import { isCommunicationsEnabled, isCommunicationsTestAuthorized } from '../comms/featureFlags.js';
 import { decideCommsApprovalFromOwner } from '../comms/authorization.js';
 import { recordOwnerGitHubPrReviewDecision } from '../githubPrReviewApproval.js';
-
-const extractContent = (content: unknown): string =>
-  typeof content === 'string' ? content : JSON.stringify(content) ?? '';
 
 function normalizePhone(value: string): string {
   return value.replace(/^whatsapp:/i, '').replace(/[^+\d]/g, '');
@@ -59,7 +56,7 @@ export const twilioWebhookPlugin: FastifyPluginAsync = async (fastify) => {
     if (!ownerPhone) return reply.code(503).send({ error: 'RyanAI owner contact is not configured.' });
     if (senderPhone !== normalizePhone(ownerPhone)) return reply.code(403).send({ error: 'This WhatsApp assistant is privately configured.' });
     const ownerUserId = getOwnerInboundUserId();
-    if (media.length && !ownerUserId) return reply.code(503).send({ error: 'Inbound media storage requires the verified owner Supabase user ID.' });
+    if (!ownerUserId) return reply.code(503).send({ error: 'Inbound WhatsApp processing requires the verified owner Supabase user ID.' });
 
     const threadId = `whatsapp_${senderPhone.replace(/\D/g, '')}`;
     let mediaStorageFailed = false;
@@ -70,16 +67,33 @@ export const twilioWebhookPlugin: FastifyPluginAsync = async (fastify) => {
         body: incomingText || `[${media.length} media attachment(s)]`,
         providerMessageId: body.MessageSid,
         status: 'processing',
-        ...(ownerUserId ? { ownerUserId } : {}),
+        ownerUserId,
         ...(media.length ? { metadata: { mediaCount: media.length } } : {}),
       });
       if (!claim.claimed) {
         const previousReply = claim.existing?.metadata && typeof claim.existing.metadata === 'object'
           && !Array.isArray(claim.existing.metadata) ? (claim.existing.metadata as { reply?: unknown }).reply : undefined;
-        reply.type('text/xml');
         if (typeof previousReply === 'string' && previousReply.length) {
+          reply.type('text/xml');
           return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(previousReply)}</Message></Response>`;
         }
+        if (claim.existing?.agentRunId) {
+          const resumed = await waitForInboundCommunicationRun(claim.existing.agentRunId, ownerUserId);
+          if (resumed.completed) {
+            const answer = addressOwnerResponse(resumed.answer || 'I could not prepare a response.');
+            await fastify.prisma.communicationMessage.update({
+              where: { id: claim.existing.messageId },
+              data: { status: 'replied', metadata: { reply: answer, mediaCount: media.length } },
+            });
+            await recordCommunication(fastify.prisma, {
+              channel: 'whatsapp', externalAddress: senderPhone, direction: 'outbound',
+              body: answer, status: 'response_generated', metadata: { inReplyTo: body.MessageSid }, ownerUserId,
+            });
+            reply.type('text/xml');
+            return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(answer.slice(0, 4000))}</Message></Response>`;
+          }
+        }
+        reply.type('text/xml');
         return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
       }
       if (media.length) {
@@ -210,25 +224,26 @@ export const twilioWebhookPlugin: FastifyPluginAsync = async (fastify) => {
         reply.type('text/xml');
         return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
       }
-      const prompt = incomingText
-        ? incomingText + (media.length ? `\\n\\nThe sender attached ${media.length} file(s). They have been stored securely but have not been analyzed. Do not claim to have inspected their contents.` : '')
-        : `The sender attached ${media.length} file(s). They have been stored securely, but their contents have not been analyzed. Tell Sir they were received without claiming to inspect them.`;
-      const result = await humanInTheLoopAgent.invoke({
-        messages: [
-          { role: 'system', content: ownerCommunicationInstruction() },
-          { role: 'user', content: prompt },
-        ],
-      }, { configurable: { thread_id: threadId } });
-      const messages = (result as { messages?: Array<{ content?: unknown }> }).messages ?? [];
-      const agentReply = addressOwnerResponse(extractContent(messages.at(-1)?.content) || 'I could not prepare a response.');
+      const queued = await enqueueInboundCommunicationRun({
+        messageId: claim.messageId!,
+        ownerUserId,
+        providerMessageId: body.MessageSid,
+      });
+      const completed = await waitForInboundCommunicationRun(queued.runId, ownerUserId);
+      if (!completed.completed) {
+        request.log.info({ runId: queued.runId, providerMessageId: body.MessageSid }, 'WhatsApp agent run remains queued or running; webhook will not fabricate a reply');
+        reply.type('text/xml');
+        return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
+      }
+      const agentReply = addressOwnerResponse(completed.answer || 'I could not prepare a response.');
       await fastify.prisma.communicationMessage.update({
         where: { providerMessageId: body.MessageSid },
-        data: { status: 'replied', metadata: { reply: agentReply, mediaCount: media.length } },
+        data: { status: 'replied', metadata: { reply: agentReply, mediaCount: media.length, agentRunId: queued.runId } },
       });
       await recordCommunication(fastify.prisma, {
         channel: 'whatsapp', externalAddress: senderPhone, direction: 'outbound',
         body: agentReply, status: 'response_generated', metadata: { inReplyTo: body.MessageSid },
-        ...(ownerUserId ? { ownerUserId } : {}),
+        ownerUserId,
       });
       reply.type('text/xml');
       return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(agentReply.slice(0, 4000))}</Message></Response>`;
