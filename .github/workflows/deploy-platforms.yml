@@ -1,0 +1,166 @@
+name: Deploy Platforms via CI
+
+on:
+  workflow_run:
+    workflows: ["CI - Build, Test, and Integrate"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: "Exact reviewed commit SHA to deploy"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: platform-deploy-${{ github.event.workflow_run.head_branch || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Verify CI gate
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+          (github.event.workflow_run.conclusion == 'success' &&
+           github.event.workflow_run.head_branch == 'main') }}
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - name: Resolve exact deployment SHA
+        id: sha
+        env:
+          WORKFLOW_SHA: ${{ github.event.workflow_run.head_sha }}
+          INPUT_SHA: ${{ inputs.commit_sha }}
+        run: |
+          set -euo pipefail
+          sha="${WORKFLOW_SHA:-$INPUT_SHA}"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Invalid deployment SHA"; exit 1; }
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Confirm exact commit is main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+          [[ "$SHA" == "$main_sha" ]] || {
+            echo "::error::Deployment SHA is not the current main SHA; refusing deployment."
+            exit 1
+          }
+
+      - name: Require CI workflow success for exact SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          runs="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${SHA}&per_page=100" --jq '.workflow_runs[] | select(.name=="CI - Build, Test, and Integrate") | [.status,.conclusion,.id] | @tsv')"
+          echo "$runs"
+          echo "$runs" | grep -q $'completed\tsuccess\t' || {
+            echo "::error::No successful CI run exists for the exact deployment SHA."
+            exit 1
+          }
+
+  railway:
+    name: Railway deploy
+    needs: gate
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+          persist-credentials: false
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli
+
+      - name: Deploy exact SHA to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
+          DEPLOY_SHA: ${{ needs.gate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          [[ -n "${RAILWAY_TOKEN:-}" ]] || { echo "::error::RAILWAY_TOKEN is not configured"; exit 1; }
+          [[ -n "${RAILWAY_PROJECT_ID:-}" ]] || { echo "::error::RAILWAY_PROJECT_ID is not configured"; exit 1; }
+          [[ -n "${RAILWAY_ENVIRONMENT_ID:-}" ]] || { echo "::error::RAILWAY_ENVIRONMENT_ID is not configured"; exit 1; }
+          [[ -n "${RAILWAY_SERVICE_ID:-}" ]] || { echo "::error::RAILWAY_SERVICE_ID is not configured"; exit 1; }
+          railway up --ci --service "$RAILWAY_SERVICE_ID" --environment "$RAILWAY_ENVIRONMENT_ID" --project "$RAILWAY_PROJECT_ID"
+
+  render:
+    name: Render deploy
+    needs: [gate, railway]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Trigger Render deploy for exact SHA
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_IDS: ${{ vars.RENDER_SERVICE_IDS }}
+          DEPLOY_SHA: ${{ needs.gate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          [[ -n "${RENDER_API_KEY:-}" ]] || { echo "::error::RENDER_API_KEY is not configured"; exit 1; }
+          [[ -n "${RENDER_SERVICE_IDS:-}" ]] || { echo "::error::RENDER_SERVICE_IDS is not configured"; exit 1; }
+
+          IFS=',' read -ra services <<< "$RENDER_SERVICE_IDS"
+          for service_id in "${services[@]}"; do
+            service_id="$(echo "$service_id" | xargs)"
+            [[ -n "$service_id" ]] || continue
+            echo "Triggering Render service $service_id at $DEPLOY_SHA"
+            curl --fail-with-body --silent --show-error \
+              --request POST \
+              --url "https://api.render.com/v1/services/${service_id}/deploys" \
+              --header "Authorization: Bearer ${RENDER_API_KEY}" \
+              --header "Content-Type: application/json" \
+              --data "{"commitId":"${DEPLOY_SHA}","deployMode":"build_and_deploy"}"
+          done
+
+  vercel:
+    name: Vercel deploy
+    needs: [gate, railway]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+          persist-credentials: false
+
+      - name: Install Vercel CLI
+        env:
+          VERCEL_CLI_VERSION: ${{ vars.VERCEL_CLI_VERSION }}
+        run: |
+          set -euo pipefail
+          [[ -n "${VERCEL_CLI_VERSION:-}" ]] || { echo "::error::VERCEL_CLI_VERSION is not configured"; exit 1; }
+          npm install --global "vercel@${VERCEL_CLI_VERSION}"
+
+      - name: Pull Vercel production environment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          [[ -n "${VERCEL_TOKEN:-}" ]] || { echo "::error::VERCEL_TOKEN is not configured"; exit 1; }
+          [[ -n "${VERCEL_ORG_ID:-}" ]] || { echo "::error::VERCEL_ORG_ID is not configured"; exit 1; }
+          [[ -n "${VERCEL_PROJECT_ID:-}" ]] || { echo "::error::VERCEL_PROJECT_ID is not configured"; exit 1; }
+          vercel pull --yes --environment=production
+
+      - name: Build exact reviewed commit
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel build --prod
+
+      - name: Deploy prebuilt artifact
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel deploy --prebuilt --prod --skip-domain
