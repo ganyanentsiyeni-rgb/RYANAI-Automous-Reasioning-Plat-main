@@ -364,7 +364,7 @@ export class RyanAIClient {
   }
 
   private clearReconnectTimer(): void {
-    if (this.reconnectTimer) {
+    if (this.reconnectTimer !== undefined) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = undefined;
     }
