@@ -51,4 +51,6 @@ envsubst '${PORT} ${API_HOST} ${API_PORT}' < "$template" > "$temporary_output"
 mv "$temporary_output" "$output"
 trap - EXIT HUP INT TERM
 
+# Validate the fully rendered nginx configuration before starting the process.
+nginx -t
 exec "$@"
