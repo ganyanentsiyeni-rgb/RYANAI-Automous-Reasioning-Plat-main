@@ -285,6 +285,13 @@ export async function listDatabaseBackups(): Promise<BackupInventory> {
   }
 }
 
+export function backupReadbackMatches(original: Uint8Array, stored: Uint8Array): boolean {
+  if (original.byteLength !== stored.byteLength) return false;
+  const originalDigest = createHash('sha256').update(original).digest('hex');
+  const storedDigest = createHash('sha256').update(stored).digest('hex');
+  return originalDigest === storedDigest;
+}
+
 export async function createDatabaseBackup(): Promise<BackupResult> {
   const preflight = await backupPreflight();
   if (preflight.status !== 'ready') return { status: preflight.status === 'not_configured' ? 'not_configured' : 'failed', reason: preflight.reason };
@@ -312,10 +319,9 @@ export async function createDatabaseBackup(): Promise<BackupResult> {
       body: dump,
     });
 
-    const verification = await storageRequest(storage.baseUrl, storage.key, '/storage/v1/object/' + encodeURIComponent(storage.bucket) + '/' + prefix.split('/').map(encodeURIComponent).join('/') + '/database.dump');
+    const verification = await storageRequest(storage.baseUrl, storage.key, '/storage/v1/object/authenticated/' + encodeURIComponent(storage.bucket) + '/' + prefix.split('/').map(encodeURIComponent).join('/') + '/database.dump');
     const storedDump = Buffer.from(await verification.arrayBuffer());
-    const storedSha256 = createHash('sha256').update(storedDump).digest('hex');
-    if (storedDump.length !== dump.length || storedSha256 !== sha256) throw new Error('Uploaded backup failed read-back size or SHA-256 integrity verification.');
+    if (!backupReadbackMatches(dump, storedDump)) throw new Error('Uploaded backup failed read-back size or SHA-256 integrity verification.');
 
     const manifest = {
       format: 'ryanai-admin-backup-v1',
