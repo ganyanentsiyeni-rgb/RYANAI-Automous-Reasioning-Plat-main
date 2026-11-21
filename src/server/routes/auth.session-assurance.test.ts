@@ -56,8 +56,7 @@ describe('Supabase session assurance on the backend', () => {
   });
 
   it('rejects claims whose subject does not match the Supabase user', async () => {
-    const context = mocks.createContextClient.mock.results[0]?.value;
-    if (context) context.auth.getClaims.mockResolvedValue({
+    mocks.getClaims.mockResolvedValue({
       data: { claims: { sub: 'different-user', aal: 'aal2' } }, error: null,
     });
     const response = await authenticate();
