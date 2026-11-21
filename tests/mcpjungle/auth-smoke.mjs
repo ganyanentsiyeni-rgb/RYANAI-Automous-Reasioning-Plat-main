@@ -7,7 +7,7 @@ const restrictedToken = process.env.MCPJUNGLE_RESTRICTED_CLIENT_TOKEN;
 assert.ok(allowedToken, "MCPJUNGLE_ALLOWED_CLIENT_TOKEN is required");
 assert.ok(restrictedToken, "MCPJUNGLE_RESTRICTED_CLIENT_TOKEN is required");
 
-async function post(method, id, token, sessionId) {
+async function post(method, id, token, sessionId, params = {}) {
   const headers = {
     "content-type": "application/json",
     accept: "application/json, text/event-stream",
@@ -28,7 +28,7 @@ async function post(method, id, token, sessionId) {
             capabilities: {},
             clientInfo: { name: "ryanai-ci-auth-test", version: "1.0.0" },
           }
-        : {},
+        : params,
     }),
     signal: AbortSignal.timeout(15000),
   });
@@ -103,11 +103,27 @@ if (restrictedListing.response.status === 401 || restrictedListing.response.stat
       0,
       `Client with an empty server allowlist must see no tools; received: ${restrictedTools.map((tool) => tool.name).join(", ")}`,
     );
+  } else if (restrictedTools === null || restrictedTools === undefined) {
+    // MCPJungle 0.4.6 may encode an empty restricted catalogue as tools:null.
+    // Prove authorization at invocation time instead of treating null as a pass.
+    const deniedCall = await post(
+      "tools/call",
+      3,
+      restrictedToken,
+      restrictedListing.session,
+      { name: "ryanai__platform_health", arguments: {} },
+    );
+    const deniedByHttp = deniedCall.response.status === 401 || deniedCall.response.status === 403;
+    const deniedByRpc = deniedCall.payload?.error && deniedCall.payload.error.code !== undefined;
+    assert.ok(
+      deniedByHttp || deniedByRpc,
+      `Restricted client must be denied when invoking a server tool; received HTTP ${deniedCall.response.status}: ${JSON.stringify(deniedCall.payload)}`,
+    );
   } else {
     assert.ok(
       restrictedListing.payload?.error && restrictedListing.payload.error.code !== undefined,
       `Restricted client must receive an empty tools array or an explicit JSON-RPC denial; received: ${JSON.stringify(restrictedListing.payload)}`,
     );
   }
-  console.log("PASS: authenticated client with an empty allowlist receives no tools or an explicit JSON-RPC denial");
+  console.log("PASS: authenticated client with an empty allowlist cannot discover or invoke the RyanAI health tool");
 }
