@@ -260,9 +260,9 @@ export function assessMigrationSourceContracts(sources) {
     'empty search_path; NULLIF email fallback; name COALESCE; exact auth.users triggers; client revoke and service_role grant',
     authBridge,
     Boolean(authBridge && /SET search_path\s*=\s*''/i.test(authBridge)
-      && /NULLIF\(NEW\.email, ''\)/i.test(authBridge)
-      && /'auth-user-'\s*\|\|\s*NEW\.id::text\s*\|\|\s*'@no-email\.invalid'/i.test(authBridge)
+      && /COALESCE\(NULLIF\(NEW\.email, ''\),\s*'auth-user-'\s*\|\|\s*NEW\.id::text\s*\|\|\s*'@no-email\.invalid'\)/i.test(authBridge)
       && /COALESCE\(EXCLUDED\.name,\s*public\.users\.name\)/i.test(authBridge)
+      && !/\btrim\s*\(/i.test(authBridge)
       && /CREATE TRIGGER ryanai_auth_user_sync_insert[\s\S]*?AFTER INSERT ON auth\.users/i.test(authBridge)
       && /CREATE TRIGGER ryanai_auth_user_sync_update[\s\S]*?AFTER UPDATE OF email, raw_user_meta_data ON auth\.users/i.test(authBridge)
       && /CREATE TRIGGER ryanai_auth_user_sync_delete[\s\S]*?AFTER DELETE ON auth\.users/i.test(authBridge)
