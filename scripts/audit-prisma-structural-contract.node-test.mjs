@@ -37,6 +37,22 @@ test('reports wrong defaults, timestamp precision and foreign-key update actions
   assert.equal(fk.actual.onUpdate, 'cascade');
 });
 
+
+test('accepts the quoted queued default used by the coding_tasks migration', () => {
+  const result = assessStructuralContract({
+    tables: [{ table_name: 'coding_tasks', relkind: 'r', relrowsecurity: false }],
+    columns: [{
+      table_name: 'coding_tasks',
+      column_name: 'status',
+      formatted_type: 'text',
+      is_nullable: false,
+      column_default: "'queued'::text",
+    }],
+  });
+  const status = result.findings.find((item) => item.object === 'column public.coding_tasks.status');
+  assert.equal(status.status, 'matching');
+});
+
 test('does not mistake intentionally absent handoff updated_at for a defect', () => {
   const result = assessStructuralContract({ tables: [], columns: [], indexes: [], constraints: [], triggers: [], functions: [], grants: [] });
   assert.equal(result.findings.find((item) => item.object === 'column public.agent_handoffs.updated_at')?.status, 'matching');
