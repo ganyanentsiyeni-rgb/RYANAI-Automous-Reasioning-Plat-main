@@ -72,7 +72,7 @@ jobs:
                   "strict_required_status_checks_policy": true,
                   "do_not_enforce_on_create": false,
                   "required_status_checks": [
-                    { "context": "Reviewed release gate" },
+                    { "context": "Single-owner release gate" },
                     { "context": "Validate (typecheck, lint, test, build)" },
                     { "context": "MCP server and workflow worker" },
                     { "context": "Integration and end-to-end checks" },
@@ -141,7 +141,7 @@ jobs:
           checks = rules["required_status_checks"].get("required_status_checks", [])
           contexts = {item.get("context") for item in checks}
           required = {
-              "Reviewed release gate",
+              "Single-owner release gate",
               "Validate (typecheck, lint, test, build)",
               "MCP server and workflow worker",
               "Integration and end-to-end checks",
