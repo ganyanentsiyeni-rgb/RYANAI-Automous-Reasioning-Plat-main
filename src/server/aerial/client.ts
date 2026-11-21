@@ -67,6 +67,7 @@ export class AerialClient {
         joinUrl(this.config.baseUrl!, this.config.healthPath),
         {
           headers: authHeaders(this.config),
+          redirect: 'error',
           signal: signal ?? AbortSignal.timeout(this.config.timeoutMs),
         },
       );
@@ -112,6 +113,7 @@ export class AerialClient {
 
     const response = await fetch(this.config.inferenceUrl, {
       method: 'POST',
+      redirect: 'error',
       headers: {
         'content-type': 'application/json',
         ...authHeaders(this.config),
