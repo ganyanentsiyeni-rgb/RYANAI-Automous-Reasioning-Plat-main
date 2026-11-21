@@ -46,7 +46,7 @@ describe('admin resilience backup artifact persistence', () => {
     const requestedPaths: string[] = [];
     const request = vi.fn(async (_base: string, _key: string, path: string): Promise<Response> => {
       requestedPaths.push(path);
-      if (path.includes('/authenticated/')) return new Response(dump.subarray(0, 7));
+      if (path.includes('/authenticated/')) return new Response(dump.subarray(0, 7).slice().buffer as ArrayBuffer);
       return new Response('{}');
     });
 
@@ -63,7 +63,7 @@ describe('admin resilience backup artifact persistence', () => {
     const request = vi.fn(async (_base: string, _key: string, path: string): Promise<Response> => {
       requestedPaths.push(path);
       if (path.endsWith('/manifest.json')) throw new Error('manifest storage unavailable');
-      if (path.includes('/authenticated/')) return new Response(dump);
+      if (path.includes('/authenticated/')) return new Response(dump.slice().buffer as ArrayBuffer);
       return new Response('{}');
     });
 
