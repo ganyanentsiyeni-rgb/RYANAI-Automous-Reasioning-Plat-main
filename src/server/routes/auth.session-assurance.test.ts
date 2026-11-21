@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { requireUser } from './auth.js';
 
-const mocks = vi.hoisted(() => ({ createContextClient: vi.fn() }));
+const mocks = vi.hoisted(() => ({ createContextClient: vi.fn(), getUser: vi.fn(), getClaims: vi.fn() }));
 vi.mock('@supabase/server/core', () => ({ createContextClient: mocks.createContextClient }));
 
 const userId = '123e4567-e89b-12d3-a456-426614174000';
@@ -11,17 +11,16 @@ const apps: FastifyInstance[] = [];
 beforeEach(() => {
   process.env.SUPABASE_URL = 'https://project.example.test';
   process.env.SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_test_key';
+  mocks.getUser.mockResolvedValue({
+    data: { user: { id: userId, email: 'person@example.test', is_anonymous: false, app_metadata: {}, user_metadata: {} } },
+    error: null,
+  });
+  mocks.getClaims.mockResolvedValue({
+    data: { claims: { sub: userId, aal: 'aal2', session_id: 'session-123' } },
+    error: null,
+  });
   mocks.createContextClient.mockReturnValue({
-    auth: {
-      getUser: vi.fn().mockResolvedValue({
-        data: { user: { id: userId, email: 'person@example.test', is_anonymous: false, app_metadata: {}, user_metadata: {} } },
-        error: null,
-      }),
-      getClaims: vi.fn().mockResolvedValue({
-        data: { claims: { sub: userId, aal: 'aal2', session_id: 'session-123' } },
-        error: null,
-      }),
-    },
+    auth: { getUser: mocks.getUser, getClaims: mocks.getClaims },
   });
 });
 
@@ -48,8 +47,7 @@ describe('Supabase session assurance on the backend', () => {
   });
 
   it('preserves aal1 as aal1 rather than upgrading it from a Twilio-style verification', async () => {
-    const context = mocks.createContextClient.mock.results[0]?.value;
-    if (context) context.auth.getClaims.mockResolvedValue({
+    mocks.getClaims.mockResolvedValue({
       data: { claims: { sub: userId, aal: 'aal1' } }, error: null,
     });
     const response = await authenticate();
