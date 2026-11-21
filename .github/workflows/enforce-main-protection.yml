@@ -80,9 +80,21 @@ jobs:
                     { "context": "Issue 435 migrations and attachment security" },
                     { "context": "Analyze (javascript-typescript)" },
                     { "context": "Analyze (python)" },
+                    { "context": "TruffleHog secret audit" }
+                    { "context": "validate-database" },
+                    { "context": "Ephemeral PostgreSQL integration dry-run" },
+                    { "context": "Verify Supabase and Prisma fresh-stack migrations" },
+                    { "context": "Test agent API contracts" },
+                    { "context": "Codacy Security Scan" },
+                    { "context": "Inspect release quality" },
+                    { "context": "Generate & Upload SBOMs" },
+                    { "context": "Upgrade legacy pgvector database safely (unquoted)" },
+                    { "context": "Validate configuration files" },
                     { "context": "TruffleHog secret audit" },
-                    { "context": "Validate application and MCP dependencies" },
-                    { "context": "Audit GitHub workflows" }
+                    { "context": "Upgrade legacy pgvector database safely (quoted)" },
+                    { "context": "Single-owner release gate" },
+                    { "context": "Audit GitHub workflows" },
+                    { "context": "Triage & Auto-Label" }
                   ]
                 }
               }
@@ -140,20 +152,27 @@ jobs:
           checks = rules["required_status_checks"].get("required_status_checks", [])
           contexts = {item.get("context") for item in checks}
           required = {
-              "Single-owner release gate",
-              "Validate (typecheck, lint, test, build)",
-              "MCP server and workflow worker",
-              "Integration and end-to-end checks",
-              "PostgreSQL 19 compatibility",
-              "Issue 435 migrations and attachment security",
-              "Analyze (javascript-typescript)",
-              "Analyze (python)",
+              "validate-database",
+              "Ephemeral PostgreSQL integration dry-run",
+              "Verify Supabase and Prisma fresh-stack migrations",
+              "Test agent API contracts",
+              "Codacy Security Scan",
+              "Inspect release quality",
+              "Generate & Upload SBOMs",
+              "Upgrade legacy pgvector database safely (unquoted)",
+              "Validate configuration files",
               "TruffleHog secret audit",
-              "Validate application and MCP dependencies",
+
+              "Upgrade legacy pgvector database safely (quoted)",
+              "Single-owner release gate",
               "Audit GitHub workflows",
+              "Triage & Auto-Label",
           }
-          missing = required - contexts
-          assert not missing, f"Required check contexts missing: {sorted(missing)}"
+          assert len(checks) == len(required), "Required check list contains duplicates or unexpected entries"
+          assert contexts == required, (
+              f"Required check contexts differ; missing={sorted(required - contexts)}, "
+              f"unexpected={sorted(contexts - required)}"
+          )
           assert rules["required_status_checks"].get("strict_required_status_checks_policy") is True, "Strict status-check policy is disabled"
 
           print("Verified reviewed ruleset 27357206:")
