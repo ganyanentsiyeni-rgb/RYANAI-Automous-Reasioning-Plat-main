@@ -646,6 +646,7 @@ model CommunicationMessage {
   createdAt         DateTime                  @default(now()) @db.Timestamptz(6) @map("created_at")
   attachments       CommunicationAttachment[]
   outboundDispatch  OutboundCommsDispatch?
+  deliveryReceipts  CommsDeliveryReceipt[]
 
   @@index([conversationId, createdAt], map: "communication_messages_conversation_created_idx")
   @@index([status, createdAt], map: "communication_messages_status_created_idx")
@@ -658,7 +659,7 @@ model CommunicationMessage {
 model OutboundCommsDispatch {
   id                     String                    @id @default(uuid())
   communicationMessageId String                    @unique @map("communication_message_id")
-  communicationMessage   CommunicationMessage     @relation(fields: [communicationMessageId], references: [id], onDelete: Cascade)
+  communicationMessage   CommunicationMessage     @relation(fields: [communicationMessageId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "outbound_comms_dispatches_communication_message_id_fkey")
   agentRunId             String?                   @map("agent_run_id")
   agentRun               AgentRun?                 @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
   channel                String
@@ -688,8 +689,9 @@ model OutboundCommsDispatch {
 model CommsDeliveryReceipt {
   id                     String                @id @default(uuid())
   dispatchId             String                @map("dispatch_id")
-  dispatch               OutboundCommsDispatch @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  dispatch               OutboundCommsDispatch @relation(fields: [dispatchId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "comms_delivery_receipts_dispatch_id_fkey")
   communicationMessageId String                @map("communication_message_id")
+  communicationMessage   CommunicationMessage @relation(fields: [communicationMessageId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "comms_delivery_receipts_communication_message_id_fkey")
   providerMessageId      String                @map("provider_message_id")
   providerStatus         String                @map("provider_status")
   deliveryState           String                @map("delivery_state")
