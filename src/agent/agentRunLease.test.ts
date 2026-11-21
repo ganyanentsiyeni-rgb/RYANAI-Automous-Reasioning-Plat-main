@@ -10,6 +10,7 @@ describe('durable agent worker lease fencing', () => {
       status: 'running',
       workerId: 'worker-a',
       attempts: 2,
+      leaseExpiresAt: { gt: expect.any(Date) },
     });
   });
 
@@ -24,12 +25,13 @@ describe('durable agent worker lease fencing', () => {
     );
     await vi.advanceTimersByTimeAsync(5_000);
     expect(refresh).toHaveBeenCalledOnce();
-    expect(refresh).toHaveBeenCalledWith({
-      id: 'run-2',
-      status: 'running',
-      workerId: 'worker-b',
-      attempts: 1,
+    const [where, heartbeatAt, leaseExpiresAt] = refresh.mock.calls[0];
+    expect(where).toMatchObject({
+      id: 'run-2', status: 'running', workerId: 'worker-b', attempts: 1,
+      leaseExpiresAt: { gt: expect.any(Date) },
     });
+    expect(heartbeatAt).toBeInstanceOf(Date);
+    expect(leaseExpiresAt.getTime()).toBe(heartbeatAt.getTime() + 30_000);
     stop();
   });
 
@@ -110,7 +112,7 @@ describe('durable agent worker lease fencing', () => {
     )).resolves.toBeUndefined();
     expect(isActive).toHaveBeenCalledWith({
       id: 'run-boundary', status: 'running', workerId: 'worker-boundary',
-      attempts: 4, cancelRequestedAt: null,
+      attempts: 4, leaseExpiresAt: { gt: expect.any(Date) }, cancelRequestedAt: null,
     });
   });
 
