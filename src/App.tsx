@@ -69,7 +69,7 @@ import { normalizeAudiobookSettings, normalizeCopilotSettings, normalizeDashboar
 type Route = (typeof appManifest.routes)[number]['id'];
 
 const routeFromHash = (): Route => {
-  const segment = window.location.hash.replace(/^#\/?/, '').split('/')[0];
+  const segment = window.location.hash.replace(/^#\/?/, '').split(/[/?]/)[0];
   const route =
     segment === 'login'
       ? 'signin'
