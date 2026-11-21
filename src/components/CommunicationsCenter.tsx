@@ -292,7 +292,7 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
   }
 
   async function sendApprovedMessage() {
-    if (!approvalId || approvalStatus !== 'approved' || sending) return;
+    if (channel === 'in_app' || !approvalId || approvalStatus !== 'approved' || sending) return;
     setSending(true);
     setError('');
     setNotice('');
