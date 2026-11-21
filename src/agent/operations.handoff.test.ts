@@ -7,7 +7,7 @@ describe('agent run handoff reconciliation', () => {
   it('updates primary and secondary handoffs created by either the supervisor or Jarvis', () => {
     expect(buildRunHandoffUpdateWhere(run, 'primary')).toMatchObject({
       runId: 'run-1',
-      run: { is: { status: 'running', workerId: 'worker-1', attempts: 2 } },
+      run: { is: { status: 'running', workerId: 'worker-1', attempts: 2, leaseExpiresAt: { gt: expect.any(Date) } } },
       fromAgent: { in: ['supervisor', 'jarvis'] },
       toAgent: 'primary',
     });
@@ -17,7 +17,7 @@ describe('agent run handoff reconciliation', () => {
   it('keeps logic handoffs targeted to the two analysis inputs under the active lease', () => {
     expect(buildRunHandoffUpdateWhere(run, 'logic')).toMatchObject({
       runId: 'run-1',
-      run: { is: { status: 'running', workerId: 'worker-1', attempts: 2 } },
+      run: { is: { status: 'running', workerId: 'worker-1', attempts: 2, leaseExpiresAt: { gt: expect.any(Date) } } },
       toAgent: 'logic',
       status: { in: ['pending', 'running'] },
     });

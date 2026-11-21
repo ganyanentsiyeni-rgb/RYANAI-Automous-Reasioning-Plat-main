@@ -215,10 +215,10 @@ interface ClaimedAgentRun {
 
 /** Atomically claim one queued run; stale leases are recoverable after worker restarts. */
 export async function claimNextAgentRun(workerId: string, leaseMs = 30_000): Promise<ClaimedAgentRun | null> {
-  const exhausted = await prisma.$queryRaw<Array<{ id: string }>>`
+  const exhausted = await prisma.$queryRaw<Array<{ id: string; status: string }>>`
     UPDATE "agent_runs"
-    SET "status" = 'failed',
-        "error" = 'Worker lease expired after the maximum number of attempts.',
+    SET "status" = CASE WHEN "cancel_requested_at" IS NOT NULL THEN 'cancelled' ELSE 'failed' END,
+        "error" = CASE WHEN "cancel_requested_at" IS NOT NULL THEN 'Cancellation finalized after the worker lease expired.' ELSE 'Worker lease expired after the maximum number of attempts.' END,
         "completed_at" = NOW(),
         "worker_id" = NULL,
         "locked_at" = NULL,
@@ -228,13 +228,13 @@ export async function claimNextAgentRun(workerId: string, leaseMs = 30_000): Pro
       AND "approval_status" = 'approved'
       AND "lease_expires_at" <= NOW()
       AND "attempts" >= "max_attempts"
-    RETURNING "id"
+    RETURNING "id", "status"
   `;
   for (const expired of exhausted) {
     await recordRunEvidence({
       runId: expired.id,
-      eventType: 'execution.lease_exhausted',
-      payload: { reason: 'Worker lease expired after the maximum number of attempts.' },
+      eventType: expired.status === 'cancelled' ? 'execution.cancelled' : 'execution.lease_exhausted',
+      payload: { reason: expired.status === 'cancelled' ? 'Cancellation finalized after the worker lease expired.' : 'Worker lease expired after the maximum number of attempts.' },
     });
   }
   const rows = await prisma.$queryRawUnsafe<ClaimedAgentRun[]>(
