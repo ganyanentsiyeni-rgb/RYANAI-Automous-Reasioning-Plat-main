@@ -46,6 +46,14 @@ export function cursorKey(channel: string): string {
   return `ryanai:realtime-cursor:${channel}`;
 }
 
+function readStoredCursor(channel: string): string {
+  try {
+    return canonicalCursor(localStorage.getItem(cursorKey(channel))) ?? '0';
+  } catch {
+    return '0';
+  }
+}
+
 export interface UseRealtimeEventsResult {
   connected: boolean;
   resyncRequired: boolean;
@@ -61,12 +69,12 @@ export function useRealtimeEvents(
 ): UseRealtimeEventsResult {
   const [connected, setConnected] = useState(false);
   const [resyncRequired, setResyncRequired] = useState(false);
-  const [cursor, setCursor] = useState('0');
+  const [cursor, setCursor] = useState(() => readStoredCursor(channel));
   const socketRef = useRef<WebSocket | null>(null);
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>();
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const stoppedRef = useRef(false);
   const onEventRef = useRef(onEvent);
-  const cursorRef = useRef('0');
+  const cursorRef = useRef(readStoredCursor(channel));
 
   useEffect(() => {
     onEventRef.current = onEvent;
@@ -97,14 +105,8 @@ export function useRealtimeEvents(
     if (!enabled || !channel) return;
 
     stoppedRef.current = false;
-    let initialCursor = '0';
-    try {
-      initialCursor = canonicalCursor(localStorage.getItem(cursorKey(channel))) ?? '0';
-    } catch {
-      initialCursor = '0';
-    }
+    const initialCursor = readStoredCursor(channel);
     cursorRef.current = initialCursor;
-    setCursor(initialCursor);
     setResyncRequired(false);
 
     const connect = () => {
@@ -133,13 +135,11 @@ export function useRealtimeEvents(
           const sequence = canonicalCursor(data.sequence);
           if (!sequence || typeof message.id !== 'string' || typeof data.eventType !== 'string' || typeof data.createdAt !== 'string') return;
 
-          let isNew = true;
           try {
-            isNew = BigInt(sequence) > BigInt(cursorRef.current);
+            if (BigInt(sequence) <= BigInt(cursorRef.current)) return;
           } catch {
-            isNew = false;
+            return;
           }
-          if (!isNew) return;
 
           setCursorValue(sequence);
           onEventRef.current({
