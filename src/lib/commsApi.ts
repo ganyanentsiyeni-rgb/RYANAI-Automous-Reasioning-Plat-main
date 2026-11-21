@@ -67,7 +67,7 @@ export async function getCommsConversations(userId: string, limit = 50): Promise
 
 export interface InAppCommsReply {
   messageId: string;
-  runId: string;
+  runId?: string;
   status: 'processing' | 'replied';
   reply?: { id: string; body: string; createdAt: string; status: string };
 }
