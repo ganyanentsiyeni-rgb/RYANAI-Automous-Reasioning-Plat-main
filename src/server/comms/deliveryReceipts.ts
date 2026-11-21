@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { buildCommsProviderEventKey } from './outboundDispatch.js';
 
@@ -8,7 +8,7 @@ export interface AppendCommsDeliveryReceiptInput {
   providerMessageId: string;
   providerStatus: string;
   deliveryState: string;
-  metadata?: Record<string, unknown>;
+  metadata?: Prisma.InputJsonObject;
   occurredAt?: Date;
 }
 
