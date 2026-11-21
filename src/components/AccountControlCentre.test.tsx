@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import AccountControlCentre, { ACCOUNT_CONTROL_LINKS } from './AccountControlCentre';
+import AccountControlCentre from './AccountControlCentre';
+import { ACCOUNT_CONTROL_LINKS } from './accountControlLinks';
 
 describe('RyanAI account control centre', () => {
   it('renders an accessible account trigger with the verified role label', () => {
