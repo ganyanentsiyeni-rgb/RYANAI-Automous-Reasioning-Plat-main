@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { supabase } from '@/lib/supabase';
 
 interface AuthPageProps {
@@ -65,10 +65,14 @@ export default function AuthPage({ mode = 'signin' }: AuthPageProps) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  // React state updates are asynchronous; use a synchronous lock so rapid
+  // clicks cannot start overlapping PKCE flows and overwrite stored OAuth state.
+  const authAttemptInFlight = useRef(false);
   const isSignup = mode === 'signup';
 
   const handleOAuthAuth = async (provider: OAuthProvider) => {
-    if (!supabase || loading) return;
+    if (!supabase || authAttemptInFlight.current) return;
+    authAttemptInFlight.current = true;
     setError('');
     setSuccess('');
     setLoading(true);
@@ -91,19 +95,22 @@ export default function AuthPage({ mode = 'signin' }: AuthPageProps) {
           `${OAUTH_PROVIDER_LABELS[provider]} authentication failed. Please try again.`,
         ),
       );
+    } finally {
+      authAttemptInFlight.current = false;
       setLoading(false);
     }
   };
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!supabase || loading) return;
+    if (!supabase || authAttemptInFlight.current) return;
     setError('');
     setSuccess('');
     if (isSignup && password !== confirmPassword) {
       setError('Passwords do not match.');
       return;
     }
+    authAttemptInFlight.current = true;
     setLoading(true);
     try {
       const credentials = { email: email.trim().toLowerCase(), password };
@@ -125,6 +132,7 @@ export default function AuthPage({ mode = 'signin' }: AuthPageProps) {
         getAuthenticationErrorMessage(cause, 'Authentication failed. Please try again.'),
       );
     } finally {
+      authAttemptInFlight.current = false;
       setLoading(false);
     }
   };

@@ -52,6 +52,26 @@ async function continueWithOAuth(provider: 'google' | 'github') {
     container.querySelector<HTMLButtonElement>(`button[data-provider="${provider}"]`)!.click();
   });
 }
+it('serializes rapid OAuth clicks so only one PKCE attempt starts', async () => {
+  let resolveAttempt!: (value: { data: { url: null }; error: null }) => void;
+  mock.signInWithOAuth.mockReturnValue(
+    new Promise((resolve) => {
+      resolveAttempt = resolve;
+    }),
+  );
+  await act(async () => root.render(<AuthPage />));
+  await act(async () => {
+    const button = container.querySelector<HTMLButtonElement>('button[data-provider="google"]')!;
+    button.click();
+    button.click();
+  });
+  expect(mock.signInWithOAuth).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    resolveAttempt({ data: { url: null }, error: null });
+    await Promise.resolve();
+  });
+});
+
 it.each(['signin', 'signup'] as const)(
   'starts Google OAuth from the %s screen and returns to the sign-in route',
   async (mode) => {
