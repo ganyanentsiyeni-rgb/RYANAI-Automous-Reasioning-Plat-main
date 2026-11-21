@@ -34,6 +34,7 @@ const token = 'synthetic-voice-auth-token';
 const voiceUrl = 'https://ryanai.example.test/api/webhooks/twilio/voice';
 const actionUrl = 'https://ryanai.example.test/api/webhooks/twilio/voice/respond';
 const smsUrl = 'https://ryanai.example.test/api/webhooks/twilio/sms';
+const statusUrl = 'https://ryanai.example.test/api/webhooks/twilio/status';
 
 async function send(path: string, url: string, payload: Record<string, string>, valid = true) {
   const app = Fastify();
