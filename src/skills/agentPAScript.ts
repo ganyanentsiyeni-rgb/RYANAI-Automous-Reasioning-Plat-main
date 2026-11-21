@@ -1,5 +1,4 @@
 import { EventEmitter } from "node:events";
-import { evaluateGenXSecurityEvent } from "../security/genxPolicy.js";
 import { PA_TASK_AWARENESS_SKILL } from "../agent/awareness/operationalAwareness.js";
 
 export interface AgentPAHealthSnapshot {
@@ -23,7 +22,7 @@ export interface AgentPASerializedStatus {
   lastError: string | null;
   observationsCompleted: number;
   eBPFPolicyEnforced: false;
-  genXPolicyEngineAvailable: boolean;
+  genXPolicyEngineAvailable: false;
   adoptedSkills: string[];
   retryAttempts: number;
   lastTransitionAt: string | null;
@@ -188,7 +187,7 @@ export class AgentPAScript extends EventEmitter {
       lastError: this.lastError,
       observationsCompleted: this.observationsCompleted,
       eBPFPolicyEnforced: false,
-      genXPolicyEngineAvailable: typeof evaluateGenXSecurityEvent === "function",
+      genXPolicyEngineAvailable: false,
       adoptedSkills: [PA_TASK_AWARENESS_SKILL.id],
       retryAttempts: this.retryCount,
       lastTransitionAt: this.lastTransitionAt,
