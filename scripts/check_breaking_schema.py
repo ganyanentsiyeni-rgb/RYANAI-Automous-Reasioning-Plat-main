@@ -34,13 +34,14 @@ def git_text(*args: str) -> str:
     return subprocess.check_output(["git", *args], text=True, stderr=subprocess.STDOUT)
 
 
-def normalize_base_schema(schema_text: str) -> str:
-    """Collapse only byte-identical duplicate model/enum blocks in the legacy base schema.
+def normalize_base_schema(schema_text: str, migration_sql: str) -> str:
+    """Reconcile only known legacy baseline defects against committed migration truth.
 
-    Older main revisions contain repeated identical Comms declarations, which make
-    Prisma's schema-diff parser reject the baseline before it can compare the PR.
-    Conflicting duplicate declarations remain a hard error; the PR schema itself is
-    never normalized.
+    The target branch contains identical duplicate Comms declarations and its Prisma
+    relations disagree with the already-committed SQL FK actions. Remove only
+    byte-identical duplicates, then normalize those exact relation fields only when
+    the target branch migration proves the corresponding FK target and actions.
+    Conflicting declarations or missing migration evidence remain hard failures.
     """
     declaration = re.compile(r"(?ms)^(model|enum)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{.*?^\}")
     seen: dict[tuple[str, str], str] = {}
@@ -60,8 +61,43 @@ def normalize_base_schema(schema_text: str) -> str:
             )
     for start, end in reversed(remove_spans):
         schema_text = schema_text[:start] + schema_text[end:]
-    return schema_text
 
+    required_migration_evidence = (
+        '"outbound_comms_dispatches_communication_message_id_fkey"',
+        'REFERENCES "public"."communication_messages"("id")',
+        '"comms_delivery_receipts_dispatch_id_fkey"',
+        'REFERENCES "public"."outbound_comms_dispatches"("id")',
+        '"comms_delivery_receipts_communication_message_id_fkey"',
+        'ON DELETE RESTRICT ON UPDATE CASCADE',
+    )
+    if not all(fragment in migration_sql for fragment in required_migration_evidence):
+        raise RuntimeError(
+            "Committed Comms migration does not prove the legacy baseline FK normalization; refusing to continue."
+        )
+
+    replacements = (
+        (
+            'communicationMessage   CommunicationMessage     @relation(fields: [communicationMessageId], references: [id], onDelete: Cascade)',
+            'communicationMessage   CommunicationMessage     @relation(fields: [communicationMessageId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "outbound_comms_dispatches_communication_message_id_fkey")',
+        ),
+        (
+            'dispatch               OutboundCommsDispatch @relation(fields: [dispatchId], references: [id], onDelete: Cascade)',
+            'dispatch               OutboundCommsDispatch @relation(fields: [dispatchId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "comms_delivery_receipts_dispatch_id_fkey")',
+        ),
+        (
+            '  outboundDispatch  OutboundCommsDispatch?',
+            '  outboundDispatch  OutboundCommsDispatch?\n  deliveryReceipts  CommsDeliveryReceipt[]',
+        ),
+        (
+            '  communicationMessageId String                @map("communication_message_id")\n  providerMessageId',
+            '  communicationMessageId String                @map("communication_message_id")\n  communicationMessage   CommunicationMessage @relation(fields: [communicationMessageId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "comms_delivery_receipts_communication_message_id_fkey")\n  providerMessageId',
+        ),
+    )
+    for old, replacement_text in replacements:
+        if old not in schema_text:
+            raise RuntimeError(f"Legacy Comms baseline normalization anchor missing: {old[:100]}")
+        schema_text = schema_text.replace(old, replacement_text)
+    return schema_text
 
 def prisma_schema_diff(base_schema: Path, current_schema: Path) -> str:
     command = [
@@ -104,8 +140,10 @@ def main() -> int:
         return 2
 
     try:
-        base_schema_text = normalize_base_schema(base_schema_text)
-    except RuntimeError as exc:
+        migration_path = "prisma/migrations/20261121210000_comms_outbound_dispatch_receipts/migration.sql"
+        migration_sql = git_text("show", f"origin/{base_ref}:{migration_path}")
+        base_schema_text = normalize_base_schema(base_schema_text, migration_sql)
+    except (RuntimeError, subprocess.CalledProcessError) as exc:
         print(f"::error::{exc}")
         return 2
 
