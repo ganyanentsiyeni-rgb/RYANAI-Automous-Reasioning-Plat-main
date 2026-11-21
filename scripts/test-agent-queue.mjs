@@ -87,6 +87,7 @@ try {
     where: { id: expired.id },
     data: {
       lockedAt: new Date(Date.now() - 4 * 60_000),
+      leaseExpiresAt: new Date(Date.now() - 1_000),
       nextAttemptAt: new Date(Date.now() - 1_000),
     },
   });
@@ -94,6 +95,20 @@ try {
   assert.equal(recovered?.id, expired.id, 'expired lease should be recovered');
   assert.equal(recovered?.attempts, 2, 'recovery must increment the attempt counter');
   assert.equal(recovered?.worker_id, recoveryWorker, 'new worker must own the recovered lease');
+  assert.ok(recovered?.lease_expires_at && recovered.lease_expires_at > new Date(), 'reclaimed run must receive a future lease deadline');
+  assert.ok(recovered?.heartbeat_at && recovered.heartbeat_at > new Date(Date.now() - 5_000), 'reclaimed run must receive a fresh heartbeat');
+
+  const staleHeartbeat = await prisma.agentRun.updateMany({
+    where: {
+      id: expired.id,
+      status: 'running',
+      workerId: expired.worker_id,
+      attempts: expired.attempts,
+      leaseExpiresAt: { gt: new Date() },
+    },
+    data: { heartbeatAt: new Date(), leaseExpiresAt: new Date(Date.now() + 30_000) },
+  });
+  assert.equal(staleHeartbeat.count, 0, 'the previous owner must not renew after lease takeover');
 
   // A stale run at its maximum attempt count must be terminal, not reclaimed.
   const exhausted = claims[1];
@@ -104,6 +119,7 @@ try {
       attempts: 3,
       maxAttempts: 3,
       lockedAt: new Date(Date.now() - 4 * 60_000),
+      leaseExpiresAt: new Date(Date.now() - 1_000),
       nextAttemptAt: new Date(Date.now() - 1_000),
     },
   });
@@ -141,6 +157,8 @@ try {
       workerId: 'worker-a-' + suffix,
       attempts: 1,
       maxAttempts: 3,
+      leaseExpiresAt: new Date(Date.now() + 30_000),
+      heartbeatAt: new Date(),
     },
   });
   await recordRunEvidence({ runId: staleRun.id, eventType: 'ci.fixture', actorId: 'ci', payload: { immutable: true } });
@@ -165,8 +183,25 @@ try {
   });
   await prisma.agentRun.update({
     where: { id: staleRun.id },
-    data: { workerId: 'worker-b-' + suffix, attempts: 2, lockedAt: new Date() },
+    data: {
+      workerId: 'worker-b-' + suffix,
+      attempts: 2,
+      lockedAt: new Date(),
+      leaseExpiresAt: new Date(Date.now() + 30_000),
+      heartbeatAt: new Date(),
+    },
   });
+  const lateHeartbeat = await prisma.agentRun.updateMany({
+    where: {
+      id: staleRun.id,
+      status: 'running',
+      workerId: 'worker-a-' + suffix,
+      attempts: 1,
+      leaseExpiresAt: { gt: new Date() },
+    },
+    data: { heartbeatAt: new Date(), leaseExpiresAt: new Date(Date.now() + 30_000) },
+  });
+  assert.equal(lateHeartbeat.count, 0, 'stale worker heartbeat must be rejected after takeover');
   const stalePlan = {
     outputs: [
       { brain: 'primary', output: 'A primary', latencyMs: 1 },
