@@ -453,7 +453,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
         }
         if (claim.existing.agentRunId) {
           const resumed = await waitForInboundCommunicationRun(claim.existing.agentRunId, ownerUserId);
-          if (resumed.completed) {
+          if (resumed.completed && outboundReplyAllowed) {
             const answer = addressOwnerResponse(resumed.answer);
             await fastify.prisma.communicationMessage.update({
               where: { id: claim.existing.messageId },
