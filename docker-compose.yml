@@ -248,6 +248,7 @@ services:
       POSTGRES_USER: mcpjungle
       POSTGRES_PASSWORD: ${MCPJUNGLE_DB_PASSWORD:-}
       POSTGRES_DB: mcpjungle
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
     networks: [ryanai-net]
     volumes:
       - mcpjungle_data:/var/lib/postgresql/data
