@@ -58,7 +58,6 @@ export const twilioWebhookPlugin: FastifyPluginAsync = async (fastify) => {
     const ownerUserId = getOwnerInboundUserId();
     if (!ownerUserId) return reply.code(503).send({ error: 'Inbound WhatsApp processing requires the verified owner Supabase user ID.' });
 
-    const threadId = `whatsapp_${senderPhone.replace(/\D/g, '')}`;
     let mediaStorageFailed = false;
     try {
       const claim = await claimInboundCommunication(fastify.prisma, {
