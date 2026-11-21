@@ -50,6 +50,7 @@ describe('RyanAIClient transport continuity', () => {
     for (const client of clients.splice(0)) client.destroy();
     vi.clearAllTimers();
     vi.restoreAllMocks();
+    for (const client of clients.splice(0)) client.destroy();
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
@@ -61,6 +62,7 @@ describe('RyanAIClient transport continuity', () => {
       maxReconnectAttempts: 2,
       maxReconnectDelay: 250,
     });
+    clients.push(client);
 
     clients.push(client);
     const handler = vi.fn();
@@ -83,6 +85,12 @@ describe('RyanAIClient transport continuity', () => {
     });
     expect(handler).toHaveBeenCalledWith({ cpu: 10 });
 
+    // Keep a real request in flight across the disconnect. It must not be
+    // replayed on the new socket because the server may already have committed it.
+    const pendingRequest = client.send('reasoning.start', { prompt: 'do not replay' });
+    const requestTimeout = expect(pendingRequest).rejects.toThrow('Request timeout');
+    expect(first.send).toHaveBeenCalledWith(expect.stringContaining('"channel":"reasoning.start"'));
+
     first.close();
     expect(client.connectionState.value).toBe('reconnecting');
 
@@ -93,9 +101,15 @@ describe('RyanAIClient transport continuity', () => {
 
     expect(client.connectionState.value).toBe('connected');
     expect(second.send).toHaveBeenCalledWith(expect.stringContaining('"channel":"subscribe"'));
+    expect(second.send.mock.calls.some((call) => {
+      const message = JSON.parse(String(call[0]));
+      return message.channel === 'reasoning.start';
+    })).toBe(false);
 
-    // An in-flight request is never replayed automatically after transport loss.
-    expect(second.send.mock.calls.filter((call) => String(call[0]).includes('"type":"request"')).length).toBe(1);
+    // The original request expires normally; it is not silently replayed or
+    // resolved by the replacement transport.
+    await vi.advanceTimersByTimeAsync(30_000);
+    await requestTimeout;
 
     client.destroy();
   });
@@ -103,9 +117,10 @@ describe('RyanAIClient transport continuity', () => {
   it('moves to offline state and waits for browser connectivity before reconnecting', async () => {
     const client = new RyanAIClient({
       url: 'ws://example.test/ws',
-      reconnectInterval: 100,
+      reconnectInterval: 250,
       maxReconnectAttempts: 2,
     });
+    clients.push(client);
 
     clients.push(client);
     const connection = client.connect();
@@ -132,9 +147,10 @@ describe('RyanAIClient transport continuity', () => {
   it('does not reconnect after an explicit disconnect', async () => {
     const client = new RyanAIClient({
       url: 'ws://example.test/ws',
-      reconnectInterval: 100,
+      reconnectInterval: 250,
       maxReconnectAttempts: 2,
     });
+    clients.push(client);
 
     clients.push(client);
     const connection = client.connect();
