@@ -3,16 +3,18 @@
  *
  * Application startup performs read-only schema readiness checks and never
  * applies DDL. Production execution is limited to one allowlisted migration
- * after checking the database's complete migration history.
+ * after checking the database's complete migration history and checksums.
  */
+import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { accessSync, constants } from 'node:fs';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { Pool } from 'pg';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { resolveSupabaseSessionPoolerUrl } from '../server/supabasePooler.js';
 import {
+  assertAppliedMigrationChecksumsMatch,
   assertOnlyApprovedMigrationPending,
   stageApprovedPrismaMigration,
 } from './scopedPrismaMigration.js';
@@ -36,6 +38,14 @@ async function runPrismaMigration(schemaPath) {
   });
 }
 
+async function readLocalMigrationChecksums(prismaDirectory, migrationNames) {
+  const entries = await Promise.all(migrationNames.map(async (name) => {
+    const sql = await readFile(join(prismaDirectory, 'migrations', name, 'migration.sql'));
+    return [name, createHash('sha256').update(sql).digest('hex')];
+  }));
+  return Object.fromEntries(entries);
+}
+
 async function runProductionMigration(databaseUrl) {
   const prismaDirectory = resolve(process.cwd(), 'prisma');
   const migrationName = process.env.PRODUCTION_MIGRATION_NAME?.trim();
@@ -54,11 +64,19 @@ async function runProductionMigration(databaseUrl) {
   try {
     let history;
     try {
+      const ledger = await pool.query(
+        "SELECT to_regclass('public._prisma_migrations') AS ledger",
+      );
+      if (!ledger.rows[0]?.ledger) {
+        throw new Error('missing');
+      }
       history = await pool.query(
-        'SELECT migration_name, finished_at, rolled_back_at FROM "_prisma_migrations" ORDER BY migration_name',
+        'SELECT migration_name, checksum, finished_at, rolled_back_at FROM public."_prisma_migrations" ORDER BY migration_name',
       );
     } catch {
-      throw new Error('Production Prisma migration history could not be verified; refusing to migrate.');
+      throw new Error(
+        'Production Prisma migration history is missing or unreadable; refusing to bootstrap or migrate.',
+      );
     }
 
     const localEntries = await readdir(join(prismaDirectory, 'migrations'), { withFileTypes: true });
@@ -66,12 +84,21 @@ async function runProductionMigration(databaseUrl) {
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)
       .sort();
-    const appliedMigrationNames = history.rows
-      .filter((row) => row.finished_at && !row.rolled_back_at)
-      .map((row) => row.migration_name);
+    const appliedMigrationRecords = history.rows
+      .filter((row) => row.finished_at && !row.rolled_back_at);
+    const appliedMigrationNames = appliedMigrationRecords.map((row) => row.migration_name);
     const unresolvedMigrationNames = history.rows
       .filter((row) => !row.finished_at)
       .map((row) => row.migration_name);
+
+    const localMigrationChecksums = await readLocalMigrationChecksums(
+      prismaDirectory,
+      localMigrationNames,
+    );
+    assertAppliedMigrationChecksumsMatch({
+      localMigrationChecksums,
+      appliedMigrationRecords,
+    });
 
     assertOnlyApprovedMigrationPending({
       localMigrationNames,
