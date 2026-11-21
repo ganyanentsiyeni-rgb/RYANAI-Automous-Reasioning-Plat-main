@@ -4,6 +4,8 @@ import formbody from '@fastify/formbody';
 import twilio from 'twilio';
 import type { CommsDeliveryState, RyanAIEvent } from '../selfPatch/ryanAIEventContract.js';
 import { ryanAIPaEventBridge } from '../selfPatch/ryanAIPaEventBridge.js';
+import { appendCommsDeliveryReceiptIdempotent } from './deliveryReceipts.js';
+import { advanceOutboundCommsDispatchFromReceipt } from './outboundDispatch.js';
 
 type TwilioStatusBody = Record<string, string | undefined>;
 
@@ -74,23 +76,43 @@ export const twilioStatusCallbackPlugin: FastifyPluginAsync = async (fastify) =>
       return reply.code(400).send({ accepted: false, state: 'invalid_callback' });
     }
 
-    const message = await fastify.prisma.communicationMessage.findUnique({
+    const dispatch = await fastify.prisma.outboundCommsDispatch.findUnique({
       where: { providerMessageId },
-      select: { id: true, direction: true, conversation: { select: { channel: true } } },
+      select: {
+        id: true,
+        communicationMessageId: true,
+        state: true,
+        agentRunId: true,
+        channel: true,
+      },
     });
-    // Return a retryable response if the dispatch record has not committed yet.
-    if (!message || message.direction !== 'outbound') {
-      return reply.code(503).send({ accepted: false, state: 'message_record_not_ready' });
+    // The governed dispatch reservation is the callback correlation boundary.
+    // Retry the provider callback if it races the dispatch commit.
+    if (!dispatch) {
+      return reply.code(503).send({ accepted: false, state: 'dispatch_record_not_ready' });
     }
 
-    const channel = message.conversation.channel;
+    const channel = dispatch.channel;
     if (!['whatsapp', 'sms', 'voice'].includes(channel)) {
       return reply.code(400).send({ accepted: false, state: 'unsupported_channel' });
     }
     const deliveryState = mapTwilioDeliveryState(channel, providerStatus);
-    await fastify.prisma.communicationMessage.update({
-      where: { id: message.id },
-      data: { status: providerStatus },
+    const metadata = {
+      accountSid: body.AccountSid ?? null,
+      errorCode: body.ErrorCode ?? null,
+      errorMessage: body.ErrorMessage ?? null,
+    };
+    const receipt = await appendCommsDeliveryReceiptIdempotent(fastify.prisma, {
+      dispatchId: dispatch.id,
+      communicationMessageId: dispatch.communicationMessageId,
+      providerMessageId,
+      providerStatus,
+      deliveryState,
+      metadata,
+    });
+    await advanceOutboundCommsDispatchFromReceipt(fastify.prisma, {
+      dispatchId: dispatch.id,
+      deliveryState,
     });
     await fastify.prisma.$executeRawUnsafe(
       `UPDATE public.comms_send_approvals
@@ -119,7 +141,7 @@ export const twilioStatusCallbackPlugin: FastifyPluginAsync = async (fastify) =>
         repository: 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main',
         commitSha,
         eventId: randomUUID(),
-        correlationId: `twilio:${providerMessageId}`,
+        correlationId: `twilio:${providerMessageId}:dispatch:${dispatch.id}`,
         occurredAt: new Date().toISOString(),
         channel: channel as 'whatsapp' | 'sms' | 'voice',
         state: deliveryState,
@@ -127,7 +149,7 @@ export const twilioStatusCallbackPlugin: FastifyPluginAsync = async (fastify) =>
       };
       ryanAIPaEventBridge.publish(event);
     } else {
-      request.log.warn({ providerMessageId }, 'Twilio status persisted; PA event omitted because runtime commit SHA is unavailable');
+      request.log.warn({ providerMessageId, dispatchId: dispatch.id }, 'Twilio delivery receipt persisted; PA event omitted because runtime commit SHA is unavailable');
     }
 
     request.log.info({
@@ -135,7 +157,11 @@ export const twilioStatusCallbackPlugin: FastifyPluginAsync = async (fastify) =>
       channel,
       providerStatus,
       deliveryState,
-    }, 'Authenticated Twilio delivery status persisted');
+      receiptId: receipt.receiptId,
+      replayed: receipt.replayed,
+      dispatchId: dispatch.id,
+      agentRunId: dispatch.agentRunId,
+    }, 'Authenticated Twilio delivery receipt appended');
     return reply.code(202).send({ accepted: true, state: deliveryState });
   });
 };
