@@ -487,6 +487,7 @@ model AgentRun {
   codingTasks CodingTask[]
   paDelegation PaDelegation?
   communicationMessage CommunicationMessage?
+  outboundDispatches OutboundCommsDispatch[]
   queueType String @default("reasoning") @map("queue_type")
   @@index([queueType, status, createdAt], map: "agent_runs_queue_type_status_created_idx")
   @@index([userId, createdAt])
@@ -644,6 +645,7 @@ model CommunicationMessage {
   metadata          Json?
   createdAt         DateTime                  @default(now()) @db.Timestamptz(6) @map("created_at")
   attachments       CommunicationAttachment[]
+  outboundDispatch  OutboundCommsDispatch?
 
   @@index([conversationId, createdAt], map: "communication_messages_conversation_created_idx")
   @@index([status, createdAt], map: "communication_messages_status_created_idx")
