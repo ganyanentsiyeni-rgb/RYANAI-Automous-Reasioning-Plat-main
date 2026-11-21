@@ -22,6 +22,14 @@ This README describes the application and contracts present in this repository. 
 
 **Documentation baseline (21 November 2026):** implementation notes and links below are reconciled against the accessible canonical mainline through the latest verified repository commits. The README is an index and summary; the relevant source, migration, runbook, workflow, and pull-request evidence remains authoritative. Historical snapshot reference only; see the current documentation baseline below.
 
+## Maintained RyanAI document set
+
+- [Agent operating guide](agent.md)
+- [Agent skills and boundaries](RyanAI.agent.skills.md)
+- [Test and release verification plan](test.md)
+- [Architecture, security and patch policy](RyanAI%20architecture,%20security%20and%20patches.md)
+- [Canonical RyanAI document index](RyanAI%20Documents.md)
+
 ## Contents
 
 - [Product overview](#product-overview)
