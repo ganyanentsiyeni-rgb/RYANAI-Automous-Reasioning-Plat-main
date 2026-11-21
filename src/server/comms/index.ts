@@ -13,9 +13,10 @@ import { createCommsUploadIntents, createCommsStorageAdmin, cleanCommsAttachment
 import { addressOwnerResponse, RYANAI_LOCALE } from '../../shared/ryanIdentity.js';
 import { areCommunicationAttachmentsEnabled, isCommunicationsEnabled, isCommunicationsTestAuthorized } from './featureFlags.js';
 import { assertCommsActionAuthorized, buildCommsActionPayload, claimCommsAction, finishCommsAction } from './authorization.js';
+import { reserveOutboundCommsDispatch, claimOutboundCommsDispatch, markOutboundCommsDispatchAccepted, markOutboundCommsDispatchUncertain } from './outboundDispatch.js';
 
 type Channel = 'whatsapp' | 'sms' | 'voice' | 'email';
-type CommsBody = { channel?: Channel; recipient?: string; message?: string; subject?: string; contentSid?: string; contentVariables?: string; idempotencyKey?: string; attachmentIds?: string[]; approvalId?: string };
+type CommsBody = { channel?: Channel; recipient?: string; message?: string; subject?: string; contentSid?: string; contentVariables?: string; idempotencyKey?: string; attachmentIds?: string[]; approvalId?: string; agentRunId?: string };
 const MAX_MESSAGE_LENGTH = 4000;
 const E164 = /^\+[1-9]\d{7,14}$/;
 
@@ -418,9 +419,65 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       request.log.error({ err: error, channel }, 'Unable to reserve outbound communication');
       return reply.code(503).send({ success: false, error: 'The communication could not be safely reserved. No provider request was sent.' });
     }
-    if (reservation.replayed) return reply.code(202).send({
-      success: true, channel, providerId: reservation.providerMessageId, status: reservation.status, replayed: true,
-    });
+    let dispatch;
+    try {
+      dispatch = await reserveOutboundCommsDispatch(fastify.prisma, {
+        communicationMessageId: reservation.id,
+        agentRunId: typeof request.body?.agentRunId === 'string' ? request.body.agentRunId.trim() || null : null,
+        channel,
+        recipient: target,
+        idempotencyKey: key,
+        provider: channel === 'email' ? 'smtp' : 'twilio',
+      });
+    } catch (error) {
+      request.log.error({ err: error, channel }, 'Unable to reserve governed outbound dispatch');
+      return reply.code(503).send({ success: false, error: 'The outbound dispatch could not be safely reserved. No provider request was sent.' });
+    }
+    if (dispatch.replayed && dispatch.state === 'uncertain') {
+      return reply.code(409).send({
+        success: false,
+        channel,
+        status: 'uncertain',
+        dispatchId: dispatch.id,
+        error: 'The previous provider outcome is uncertain. Explicit provider/operator reconciliation is required; the message will not be resent automatically.',
+      });
+    }
+    if (dispatch.replayed && dispatch.state !== 'reserved') {
+      return reply.code(202).send({
+        success: true,
+        channel,
+        providerId: dispatch.providerMessageId,
+        status: dispatch.state,
+        dispatchId: dispatch.id,
+        replayed: true,
+      });
+    }
+    let dispatchClaim;
+    try {
+      dispatchClaim = await claimOutboundCommsDispatch(fastify.prisma, dispatch.id);
+    } catch (error) {
+      request.log.error({ err: error, channel, dispatchId: dispatch.id }, 'Unable to claim outbound dispatch');
+      return reply.code(503).send({ success: false, error: 'The outbound dispatch could not be safely claimed. No provider request was sent.' });
+    }
+    if (dispatchClaim.state === 'uncertain') {
+      return reply.code(409).send({
+        success: false,
+        channel,
+        status: 'uncertain',
+        dispatchId: dispatch.id,
+        error: 'The dispatch became stale before provider confirmation. It will not be resent automatically.',
+      });
+    }
+    if (dispatchClaim.replayed && dispatchClaim.state !== 'dispatching') {
+      return reply.code(202).send({
+        success: true,
+        channel,
+        providerId: dispatch.providerMessageId,
+        status: dispatchClaim.state,
+        dispatchId: dispatch.id,
+        replayed: true,
+      });
+    }
     try {
       await claimCommsAction(fastify.prisma, request.authUser.id, approvalId, actionPayload);
     } catch (error) {
@@ -438,6 +495,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
           statusCallback: statusCallbackUrl!,
         });
         await completeOutboundCommunication(fastify.prisma, { id: reservation.id, providerMessageId: sent.sid, status: sent.status });
+        await markOutboundCommsDispatchAccepted(fastify.prisma, { dispatchId: dispatch.id, providerMessageId: sent.sid });
         await finishCommsAction(fastify.prisma, approvalId, { status: 'accepted', providerMessageId: sent.sid, providerStatus: sent.status });
         return reply.code(202).send({ success: true, channel, providerId: sent.sid, status: sent.status, replayed: false });
       }
@@ -446,12 +504,13 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
         statusCallback: statusCallbackUrl!,
       });
       await completeOutboundCommunication(fastify.prisma, { id: reservation.id, providerMessageId: call.sid, status: call.status });
+      await markOutboundCommsDispatchAccepted(fastify.prisma, { dispatchId: dispatch.id, providerMessageId: call.sid });
       await finishCommsAction(fastify.prisma, approvalId, { status: 'accepted', providerMessageId: call.sid, providerStatus: call.status });
       return reply.code(202).send({ success: true, channel, providerId: call.sid, status: call.status, replayed: false });
     } catch (error) {
       try { await finishCommsAction(fastify.prisma, approvalId, { status: 'unknown' }); }
       catch (approvalPersistenceError) { request.log.error({ err: approvalPersistenceError, channel }, 'Unable to mark communications approval outcome as unknown'); }
-      try { await markOutboundCommunicationUnknown(fastify.prisma, reservation.id); }
+      try { await markOutboundCommsDispatchUncertain(fastify.prisma, dispatch.id, 'provider_request_or_acceptance_persistence_failed'); }
       catch (persistenceError) { request.log.error({ err: persistenceError, channel }, 'Unable to mark outbound communication outcome as unknown'); }
       request.log.error({ err: error, channel }, 'Communication provider request or result persistence failed');
       return reply.code(502).send({ success: false, error: 'Communication outcome is unknown. The idempotency key remains reserved to prevent duplicate dispatch.' });
