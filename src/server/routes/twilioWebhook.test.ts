@@ -5,8 +5,9 @@ import { twilioWebhookPlugin } from './twilioWebhook.js';
 import { ownerCommunicationInstruction } from '../../shared/ryanIdentity.js';
 import { installAuthentication } from './auth.js';
 
-const { invoke, decideCommsApprovalFromOwner, prismaMock } = vi.hoisted(() => ({
+const { invoke, decideCommsApprovalFromOwner, recordOwnerGitHubPrReviewDecision, prismaMock } = vi.hoisted(() => ({
   decideCommsApprovalFromOwner: vi.fn(),
+  recordOwnerGitHubPrReviewDecision: vi.fn(),
   invoke: vi.fn(),
   prismaMock: {
     communicationConversation: { upsert: vi.fn().mockResolvedValue({ id: 'conversation-1' }) },
@@ -22,6 +23,7 @@ vi.mock('../../agent/approvalEngine.js', () => ({
   humanInTheLoopAgent: { invoke },
 }));
 vi.mock('../comms/authorization.js', () => ({ decideCommsApprovalFromOwner }));
+vi.mock('../githubPrReviewApproval.js', () => ({ recordOwnerGitHubPrReviewDecision }));
 const applications: FastifyInstance[] = [];
 const token = 'synthetic-twilio-auth-token';
 const webhookUrl = 'https://app.example.test/api/webhooks/twilio/whatsapp';
@@ -58,6 +60,7 @@ beforeEach(() => {
   vi.stubEnv('RYANAI_OWNER_PHONE', '+15555550123');
   vi.stubEnv('RYANAI_OWNER_AUTH_USER_ID', '11111111-1111-4111-8111-111111111111');
   decideCommsApprovalFromOwner.mockReset();
+  recordOwnerGitHubPrReviewDecision.mockReset();
   vi.stubEnv('RYANAI_OWNER_LANGUAGE', 've-ZA');
   invoke.mockResolvedValue({
     messages: [{ content: 'Approved <reply> & ready' }],
@@ -187,6 +190,47 @@ describe('Twilio webhook provider authentication', () => {
         },
       },
     });
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('records an exact-SHA GitHub PR approval through the signed owner WhatsApp route without submitting a review', async () => {
+    const approvalId = '44444444-4444-4444-8444-444444444444';
+    const sha = 'a'.repeat(40);
+    recordOwnerGitHubPrReviewDecision.mockResolvedValue({
+      id: approvalId, pull_request_number: 624, expected_head_sha: sha, status: 'approved',
+    });
+    const payload = { ...body, Body: `GITHUB APPROVE ${approvalId} ${sha}` };
+    const signature = twilio.getExpectedTwilioSignature(token, webhookUrl, payload);
+
+    const response = await sendWebhook(signature, payload);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain('records consent only; no GitHub review has been submitted');
+    expect(recordOwnerGitHubPrReviewDecision).toHaveBeenCalledExactlyOnceWith(
+      prismaMock,
+      '11111111-1111-4111-8111-111111111111',
+      expect.objectContaining({
+        ownerUserId: '11111111-1111-4111-8111-111111111111',
+        approvalId,
+        expectedHeadSha: sha,
+        inboundMessageSid: payload.MessageSid,
+        decision: 'approve',
+      }),
+    );
+    expect(decideCommsApprovalFromOwner).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed GitHub approval commands without invoking the agent or Comms approval path', async () => {
+    const payload = { ...body, Body: 'GITHUB APPROVE 44444444' };
+    const signature = twilio.getExpectedTwilioSignature(token, webhookUrl, payload);
+
+    const response = await sendWebhook(signature, payload);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain('GITHUB APPROVE');
+    expect(recordOwnerGitHubPrReviewDecision).not.toHaveBeenCalled();
+    expect(decideCommsApprovalFromOwner).not.toHaveBeenCalled();
     expect(invoke).not.toHaveBeenCalled();
   });
 
