@@ -28,6 +28,13 @@ function joinUrl(base: string, path: string): string {
   return new URL(path.startsWith('/') ? path.slice(1) : path, base.endsWith('/') ? base : base + '/').toString();
 }
 
+function assertAllowedEndpoint(config: AerialConfig, endpoint: string): void {
+  const hostname = new URL(endpoint).hostname.toLowerCase();
+  if (!config.allowedHosts.includes(hostname)) {
+    throw new Error('Aerial endpoint host is not in AERIAL_ALLOWED_HOSTS.');
+  }
+}
+
 function authHeaders(config: AerialConfig): Record<string, string> {
   return config.apiKey ? { authorization: 'Bearer ' + config.apiKey } : {};
 }
@@ -63,10 +70,13 @@ export class AerialClient {
 
     const started = Date.now();
     try {
+      const healthUrl = joinUrl(this.config.baseUrl!, this.config.healthPath);
+      assertAllowedEndpoint(this.config, healthUrl);
       const response = await fetch(
-        joinUrl(this.config.baseUrl!, this.config.healthPath),
+        healthUrl,
         {
           headers: authHeaders(this.config),
+          redirect: 'error',
           signal: signal ?? AbortSignal.timeout(this.config.timeoutMs),
         },
       );
@@ -110,8 +120,10 @@ export class AerialClient {
       throw new Error('AERIAL_INFERENCE_URL is required for external Aerial inference.');
     }
 
+    assertAllowedEndpoint(this.config, this.config.inferenceUrl);
     const response = await fetch(this.config.inferenceUrl, {
       method: 'POST',
+      redirect: 'error',
       headers: {
         'content-type': 'application/json',
         ...authHeaders(this.config),
