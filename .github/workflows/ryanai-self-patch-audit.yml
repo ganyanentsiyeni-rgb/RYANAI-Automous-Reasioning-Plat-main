@@ -1,0 +1,56 @@
+name: RyanAI Self-Patch CI/CD Audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/15 * * * *'
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+  deployments: read
+  pull-requests: read
+
+concurrency:
+  group: ryanai-self-patch-audit-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Audit RyanAI GitHub workflows and CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+      deployments: read
+      pull-requests: read
+    steps:
+      - name: Checkout exact triggering commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Test audit classification and redaction
+        run: node --test scripts/ryanai-self-patch-audit.test.mjs
+      - name: Audit workflows and exact-head CI
+        id: audit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: node scripts/ryanai-self-patch-audit.mjs > ryanai-self-patch-report.json
+      - name: Upload read-only audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ryanai-self-patch-audit-${{ github.run_id }}
+          path: ryanai-self-patch-report.json
+          if-no-files-found: warn
+          retention-days: 14
