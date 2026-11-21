@@ -26,7 +26,7 @@ class BreakingSchemaGuardTests(unittest.TestCase):
             "}\n"
         )
         baseline = (
-            "model CommunicationMessage {\n  outboundDispatch OutboundCommsDispatch?\n}\n"
+            "model CommunicationMessage {\n  outboundDispatch  OutboundCommsDispatch?\n}\n"
             + dispatch + receipt + dispatch + receipt
         )
         migration_sql = (
