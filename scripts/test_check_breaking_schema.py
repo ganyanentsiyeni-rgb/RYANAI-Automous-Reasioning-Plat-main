@@ -14,19 +14,19 @@ SPEC.loader.exec_module(guard)
 class BreakingSchemaGuardTests(unittest.TestCase):
     def test_normalizes_only_identical_duplicate_baseline_models(self):
         dispatch = (
-            "model OutboundCommsDispatch {\\n"
-            "  communicationMessage CommunicationMessage @relation(fields: [communicationMessageId], references: [id], onDelete: Cascade)\\n"
-            "}\\n"
+            "model OutboundCommsDispatch {\n"
+            "  communicationMessage CommunicationMessage @relation(fields: [communicationMessageId], references: [id], onDelete: Cascade)\n"
+            "}\n"
         )
         receipt = (
-            "model CommsDeliveryReceipt {\\n"
-            "  dispatch OutboundCommsDispatch @relation(fields: [dispatchId], references: [id], onDelete: Cascade)\\n"
-            "  communicationMessageId String @map(\\"communication_message_id\\")\\n"
-            "  providerMessageId String\\n"
-            "}\\n"
+            "model CommsDeliveryReceipt {\n"
+            "  dispatch OutboundCommsDispatch @relation(fields: [dispatchId], references: [id], onDelete: Cascade)\n"
+            "  communicationMessageId String @map(\"communication_message_id\")\n"
+            "  providerMessageId String\n"
+            "}\n"
         )
         baseline = (
-            "model CommunicationMessage {\\n  outboundDispatch OutboundCommsDispatch?\\n}\\n"
+            "model CommunicationMessage {\n  outboundDispatch OutboundCommsDispatch?\n}\n"
             + dispatch + receipt + dispatch + receipt
         )
         migration_sql = (
