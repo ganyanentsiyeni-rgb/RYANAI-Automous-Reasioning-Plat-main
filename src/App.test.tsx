@@ -513,9 +513,13 @@ describe('application authentication boundary', () => {
     await mount('/workspace');
     await act(async () =>
       container
-        .querySelector<HTMLButtonElement>('header button[aria-label="Sign out"]')
+        .querySelector<HTMLButtonElement>('button[aria-label="Open account and preferences menu"]')
         ?.click(),
     );
+    const signOutButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find((button) => button.textContent?.includes('Sign out of RyanAI'));
+    expect(signOutButton).toBeDefined();
+    await act(async () => signOutButton?.click());
     await expectContent('Sign in to RYANAI');
     expect(auth.signOut).toHaveBeenCalledOnce();
     expect(container.textContent).not.toContain('Private workspace');

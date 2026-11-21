@@ -75,6 +75,12 @@ jobs:
       - name: Typecheck API independently of application lint
         run: npm run build:server
 
+      - name: Run Admin Resilience service tests
+        run: npx vitest run src/services/adminResilience.test.ts
+
+      - name: Run Admin Resilience route tests
+        run: npx vitest run src/server/routes/adminResilience.test.ts
+
       - name: Validate application
         run: npm run validate
 
