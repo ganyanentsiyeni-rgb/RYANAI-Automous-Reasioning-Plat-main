@@ -25,6 +25,14 @@ describe('RyanAI event contract', () => {
 
   it('accepts a RyanAI Self-Patch finding', () => {
     expect(parseRyanAIEvent({
+      schemaVersion: 1,
+      eventType: 'selfpatch.audit.finding',
+      source: 'ryanai-self-patch',
+      repository: RYANAI_REPOSITORY,
+      commitSha: 'a'.repeat(40),
+      eventId: '123e4567-e89b-42d3-a456-426614174000',
+      correlationId: 'selfpatch-test-20261121-0001',
+      occurredAt: '2026-11-21T12:00:00.000Z',
       ...base,
       eventType: 'selfpatch.audit.finding',
       source: 'ryanai-self-patch',
@@ -50,6 +58,15 @@ describe('RyanAI event contract', () => {
     expect(parseRyanAIEvent({ ...base, authToken: 'must-not-leak' })).toBeNull();
   });
 
+  it('requires a valid provider receipt hash before accepting delivered state', () => {
+    expect(parseRyanAIEvent({ ...base, state: 'sent' })).toBeNull();
+    expect(parseRyanAIEvent({ ...base, state: 'delivered' })).toBeNull();
+    expect(parseRyanAIEvent({ ...base, state: 'delivered', providerReferenceHash: 'bad' })).toBeNull();
+    expect(parseRyanAIEvent({
+      ...base,
+      state: 'delivered',
+      providerReferenceHash: 'b'.repeat(64),
+    })).toMatchObject({ state: 'delivered', providerReferenceHash: 'b'.repeat(64) });
   it('rejects delivered state unless explicitly represented by a validated receipt', () => {
     expect(parseRyanAIEvent({ ...base, state: 'sent' })).toBeNull();
     expect(parseRyanAIEvent({ ...base, state: 'delivered', providerReferenceHash: 'bad' })).toBeNull();
