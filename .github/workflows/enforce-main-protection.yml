@@ -72,16 +72,26 @@ jobs:
                   "strict_required_status_checks_policy": true,
                   "do_not_enforce_on_create": false,
                   "required_status_checks": [
-                    { "context": "Single-owner release gate" },
-                    { "context": "Generate & Upload SBOMs" },
-                    { "context": "Dependency audit" },
-                    { "context": "Trivy filesystem scan" },
                     { "context": "Audit GitHub workflows" },
-                    { "context": "Ephemeral PostgreSQL integration dry-run" },
+                    { "context": "Validate (typecheck, lint, test, build)" },
+                    { "context": "MCP server and workflow worker" },
+                    { "context": "Analyze (javascript-typescript)" },
+                    { "context": "TruffleHog secret audit" },
                     { "context": "Verify Supabase and Prisma fresh-stack migrations" },
-                    { "context": "validate-database" },
+                    { "context": "Ephemeral PostgreSQL integration dry-run" },
+                    { "context": "Dependency audit" },
+                    { "context": "Generate & Upload SBOMs" },
                     { "context": "Validate configuration files" },
-                    { "context": "Inspect release quality" }
+                    { "context": "Issue 435 migrations and attachment security" },
+                    { "context": "Test agent API contracts" },
+                    { "context": "Analyze (python)" },
+                    { "context": "Trivy filesystem scan" },
+                    { "context": "Upgrade legacy pgvector database safely (quoted)" },
+                    { "context": "Codacy Security Scan" },
+                    { "context": "validate-database" },
+                    { "context": "Inspect release quality" },
+                    { "context": "Single-owner release gate" },
+                    { "context": "Upgrade legacy pgvector database safely (unquoted)" }
                   ]
                 }
               }
@@ -139,16 +149,26 @@ jobs:
           checks = rules["required_status_checks"].get("required_status_checks", [])
           contexts = {item.get("context") for item in checks}
           required = {
-              "Single-owner release gate",
-              "Generate & Upload SBOMs",
-              "Dependency audit",
-              "Trivy filesystem scan",
               "Audit GitHub workflows",
-              "Ephemeral PostgreSQL integration dry-run",
+              "Validate (typecheck, lint, test, build)",
+              "MCP server and workflow worker",
+              "Analyze (javascript-typescript)",
+              "TruffleHog secret audit",
               "Verify Supabase and Prisma fresh-stack migrations",
-              "validate-database",
+              "Ephemeral PostgreSQL integration dry-run",
+              "Dependency audit",
+              "Generate & Upload SBOMs",
               "Validate configuration files",
+              "Issue 435 migrations and attachment security",
+              "Test agent API contracts",
+              "Analyze (python)",
+              "Trivy filesystem scan",
+              "Upgrade legacy pgvector database safely (quoted)",
+              "Codacy Security Scan",
+              "validate-database",
               "Inspect release quality",
+              "Single-owner release gate",
+              "Upgrade legacy pgvector database safely (unquoted)",
           }
           missing = required - contexts
           assert not missing, f"Required check contexts missing: {sorted(missing)}"
