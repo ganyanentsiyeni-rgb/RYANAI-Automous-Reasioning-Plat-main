@@ -150,14 +150,26 @@ describe('admin resilience recovery target comparison', () => {
     }));
   });
 
-  it('accepts a separately hosted recovery database', () => {
+  it('does not claim isolation for a separately hosted URL without proving target identity', () => {
     process.env.DATABASE_URL = 'postgresql://source:secret@db.example.com:5432/ryanai';
     process.env.RYANAI_RECOVERY_DATABASE_URL = 'postgresql://recovery:other@recovery.example.com:5432/ryanai';
     process.env.RYANAI_RECOVERY_TARGET_LABEL = 'recovery-drill';
 
     expect(recoveryPreflight()).toEqual(expect.objectContaining({
-      status: 'isolated_target_configured',
+      status: 'identity_unverified',
       targetLabel: 'recovery-drill',
+      productionRestore: 'disabled',
+      writesPerformed: false,
+    }));
+  });
+
+  it('blocks a matching database name even when a misleading hostname alias is used', () => {
+    process.env.DATABASE_URL = 'postgresql://source:secret@db-primary.example.com:5432/ryanai';
+    process.env.RYANAI_RECOVERY_DATABASE_URL = 'postgresql://recovery:other@db-alias.example.com:6432/ryanai';
+    process.env.RYANAI_RECOVERY_TARGET_LABEL = 'recovery-drill';
+
+    expect(recoveryPreflight()).toEqual(expect.objectContaining({
+      status: 'blocked_same_as_source',
       productionRestore: 'disabled',
       writesPerformed: false,
     }));
