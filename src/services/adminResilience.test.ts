@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { backupReadbackMatches, listDatabaseBackups, recoveryPreflight } from './adminResilience.js';
+import { backupReadbackMatches, listDatabaseBackups, persistBackupArtifact, recoveryPreflight } from './adminResilience.js';
 
 const originalEnv = { ...process.env };
 
@@ -34,6 +34,45 @@ describe('admin resilience backup integrity', () => {
     const original = Buffer.from('complete database dump');
     const partial = original.subarray(0, 8);
     expect(backupReadbackMatches(original, partial)).toBe(false);
+  });
+});
+
+describe('admin resilience backup artifact persistence', () => {
+  const storage = { baseUrl: 'https://storage.example.test', key: 'test-key', bucket: 'private-backups' };
+  const manifest = { format: 'ryanai-admin-backup-v1', backupId: 'backup-test' };
+  const dump = Buffer.from('complete database dump');
+
+  it('stops before manifest creation when Storage read-back is partial', async () => {
+    const requestedPaths: string[] = [];
+    const request = vi.fn(async (_base: string, _key: string, path: string): Promise<Response> => {
+      requestedPaths.push(path);
+      if (path.includes('/authenticated/')) return new Response(dump.subarray(0, 7));
+      return new Response('{}');
+    });
+
+    await expect(persistBackupArtifact(storage, 'ryanai-admin/test-backup', dump, manifest, request))
+      .rejects.toThrow('read-back size or SHA-256 integrity verification');
+    expect(requestedPaths).toHaveLength(2);
+    expect(requestedPaths[0]).toContain('/database.dump');
+    expect(requestedPaths[1]).toContain('/authenticated/');
+    expect(requestedPaths.some((path) => path.endsWith('/manifest.json'))).toBe(false);
+  });
+
+  it('reports manifest-write failure after a complete verified dump upload', async () => {
+    const requestedPaths: string[] = [];
+    const request = vi.fn(async (_base: string, _key: string, path: string): Promise<Response> => {
+      requestedPaths.push(path);
+      if (path.endsWith('/manifest.json')) throw new Error('manifest storage unavailable');
+      if (path.includes('/authenticated/')) return new Response(dump);
+      return new Response('{}');
+    });
+
+    await expect(persistBackupArtifact(storage, 'ryanai-admin/test-backup', dump, manifest, request))
+      .rejects.toThrow('manifest storage unavailable');
+    expect(requestedPaths).toHaveLength(3);
+    expect(requestedPaths[0]).toContain('/database.dump');
+    expect(requestedPaths[1]).toContain('/authenticated/');
+    expect(requestedPaths[2]).toContain('/manifest.json');
   });
 });
 
