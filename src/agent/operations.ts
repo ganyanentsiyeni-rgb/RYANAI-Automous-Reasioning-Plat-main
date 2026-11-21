@@ -8,6 +8,7 @@ import { executeThreeBrainPlan, type BrainId, type BrainOutput } from './operati
 import { resolveBrainProviderConfig } from './providerConfig.js';
 import { resolveSelectedReasoningModel } from './modelSelection.js';
 import { buildBrainKnowledgeContext } from './knowledgeAgent.js';
+import { buildMemoryContext } from './memoryContext.js';
 import { parsePAExecutionScope } from './agentRunExecution.js';
 import { getAgentRunRetryDelayMs, invokeWithCancellationRetry, shouldRetryAgentRun } from './agentRunRetry.js';
 import { persistAgentRunCompletion, requirePADelegationRecord } from './agentRunPersistence.js';
@@ -359,8 +360,15 @@ async function processAgentRun(
     activeRegion = null;
     activeRegion = 'memory';
     await recordRegion('memory', 'started');
-    const knowledge = await buildBrainKnowledgeContext();
-    await recordRegion('memory', 'completed', { contextAvailable: Boolean(knowledge) });
+    const [knowledge, ownerMemory] = await Promise.all([
+      buildBrainKnowledgeContext(),
+      buildMemoryContext(run.user_id),
+    ]);
+    const memoryContext = [knowledge, ownerMemory].filter((part): part is string => Boolean(part)).join('\\n\\n');
+    await recordRegion('memory', 'completed', {
+      contextAvailable: Boolean(memoryContext),
+      ownerPreferencesAvailable: Boolean(ownerMemory),
+    });
     activeRegion = null;
     activeRegion = 'planning';
     await recordRegion('planning', 'started');
@@ -385,7 +393,7 @@ async function processAgentRun(
       executionPlan,
     );
     const sharedObjective = buildSharedReasoningObjective(
-      knowledge,
+      memoryContext,
       plannedObjective,
       verifiedCapabilityContext,
     );
