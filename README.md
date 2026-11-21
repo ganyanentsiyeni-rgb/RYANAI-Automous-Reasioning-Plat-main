@@ -1,12 +1,26 @@
 # RyanAI — Autonomous Reasoning Platform
 
+## Documentation and execution baseline — 21 November 2026
+
+> This addendum is the current operational correction to older historical notes below. Where a dated historical paragraph conflicts with this baseline, use the newer exact-commit evidence and the owning workflow/runbook.
+
+- **Verified repository main at documentation start:** `daf185b348917e5c63f1b0b33917a65d9faabb25` (PR #652, Comms Prisma relation/migration-history reconciliation). This is a repository snapshot, not a claim that every workflow or deployment is green.
+- **Comms execution model:** inbound admission is durable and idempotent; a crash while an operation is `in_flight` must recover through an explicit uncertain/provider-reconciled path. AgentRun execution state is distinct from append-only provider delivery receipts. A callback may update dispatch/delivery projections but must not rewrite the AgentRun or message execution state as if delivery were execution.
+- **Comms schema:** PR #652 removed duplicate legacy Comms Prisma model declarations and reconciled relations against committed migration history. Migration ownership and replay order remain authoritative; do not use schema push or rewrite historical migrations as a shortcut.
+- **Deployment CI topology:** CI/release evidence must cover **Railway (primary gate), Render, Vercel, and MCP/MCP servers**. Each target needs an exact-head workflow result, provider deployment identifier, and runtime/health evidence. A queued, skipped, cancelled, missing, or provider-blocked job is not a pass. A successful build is not proof of deployment. No auto-merge.
+- **Release controls:** focused repair branches and PRs are permitted. Human review and required CI/security checks remain mandatory. Production deployment, production database migrations, secret changes, paid upgrades, and production infrastructure mutations remain separately approval-gated.
+- **Communications safety:** provider configuration is not sender verification or delivery. Live WhatsApp/SMS/voice/email requires valid provider callbacks/signature checks, verified owner and destination, and explicit test authorization. Never publish credentials or claim delivery without provider evidence.
+- **Documentation ownership:** README is the entry point; `AGENTS.md` is the engineering contract; `agent.md` and `RyanAI.agent.skills.md` define agent operating/skill boundaries; `test.md` defines verification; `RyanAI architecture, security and patches.md` records architecture and safe patch rules; `RyanAI Documents.md` is the canonical index. Detailed source, migrations, workflow files, and runbooks override summaries.
+- **Current hosting responsibility mapping:** Railway is the primary release gate and persistent-workload target; Render and Vercel are independent CI/deployment targets in the release topology; MCP and MCP servers have their own build, authentication, discovery, and health gates. The precise service-to-provider mapping must be read from the current workflow and service configuration, not inferred from this summary.
+
+
 RyanAI is an AI-assisted, human-governed engineering and operations platform. It brings together conversational assistance, agent orchestration, model routing, durable memory, software workspaces, communications, audiobook production, quantitative research, and operational controls behind authenticated APIs and reviewable workflows.
 
 > **Authority principle:** AI proposes. Gen-X authorizes. Jarvis coordinates. Tools execute. Systems report. Evidence proves. Memory remembers. Humans retain approval authority wherever policy requires it.
 
 This README describes the application and contracts present in this repository. It does not claim that every integration is connected, every workflow is passing, or every service is deployed. A source file, configured provider, queued job, green unit test, or healthy process is not by itself proof of end-to-end production readiness.
 
-**Documentation baseline (21 November 2026):** implementation notes and links below are reconciled against the accessible canonical mainline through the latest verified repository commits. The README is an index and summary; the relevant source, migration, runbook, workflow, and pull-request evidence remains authoritative. Current main SHA: `eb7171b88ba47513b20c6a84577c61db62add6c1`.
+**Documentation baseline (21 November 2026):** implementation notes and links below are reconciled against the accessible canonical mainline through the latest verified repository commits. The README is an index and summary; the relevant source, migration, runbook, workflow, and pull-request evidence remains authoritative. Historical snapshot reference only; see the current documentation baseline below.
 
 ## Contents
 
