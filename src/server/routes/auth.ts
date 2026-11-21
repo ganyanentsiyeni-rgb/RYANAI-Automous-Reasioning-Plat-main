@@ -202,6 +202,12 @@ export function installAuthentication(fastify: FastifyInstance) {
       return requireUser(request, reply);
     }
 
+    // Aerial inference applies its own Gen-X decision after verifying the
+    // human identity. Do not force the global admin-only fallback first.
+    if (request.method === 'POST' && path === '/api/aerial/inference') {
+      return requireUser(request, reply);
+    }
+
     if (
       (request.method === 'POST' &&
         ['/api/reason', '/api/reasoning/stream', '/api/v1/realtime/voice-ticket'].includes(path)) ||
