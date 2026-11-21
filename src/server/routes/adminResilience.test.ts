@@ -93,7 +93,7 @@ describe('Admin resilience routes', () => {
     });
     const response = await app.inject({ method: 'GET', url: '/api/admin/resilience/status', headers: adminHeaders });
     expect(response.statusCode).toBe(200);
-    expect(response.json().recovery.status).toBe('isolated_target_configured');
+    expect(response.json().recovery.status).toBe('identity_unverified');
     expect(response.json().recovery.productionRestore).toBe('disabled');
   });
 
