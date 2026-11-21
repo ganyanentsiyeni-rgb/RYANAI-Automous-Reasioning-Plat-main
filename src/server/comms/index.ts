@@ -475,6 +475,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       status: 'history',
       conversations: conversations.map((conversation) => ({
         ...conversation,
+        externalAddress: conversation.channel === 'in_app' ? 'RyanAI private chat' : conversation.externalAddress,
         messages: [...conversation.messages].reverse().map(message => ({
           ...message,
           attachments: message.attachments.map(attachment => ({
