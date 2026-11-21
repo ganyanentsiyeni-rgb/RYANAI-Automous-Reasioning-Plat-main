@@ -47,7 +47,7 @@ test('checks identity bridge, legacy queue correction and lease heartbeat migrat
     authBridge: "COALESCE(au.created_at, pg_catalog.now())::timestamp(3) COALESCE(au.updated_at, au.created_at, pg_catalog.now())::timestamp(3)",
     codingQueue: "WHERE approval_status = 'pending' OR plan_snapshot IS NOT NULL OR proposed_diff_hash IS NOT NULL;",
     queueCorrection: "SET queue_type = 'unclassified' WHERE queue_type = 'coding' AND approval_status = 'pending' AND plan_snapshot IS NULL AND proposed_diff_hash IS NULL;",
-    leaseHeartbeat: "ADD COLUMN lease_expires_at TIMESTAMP(3), ADD COLUMN heartbeat_at TIMESTAMP(3); ADD COLUMN heartbeat_at TIMESTAMPTZ(6); UPDATE public.coding_tasks SET heartbeat_at = COALESCE(locked_at, NOW()) WHERE status = 'running' AND heartbeat_at IS NULL;",
+    leaseHeartbeat: "ALTER TABLE public.agent_runs ADD COLUMN lease_expires_at TIMESTAMP(3), ADD COLUMN heartbeat_at TIMESTAMP(3); ALTER TABLE public.coding_tasks ADD COLUMN heartbeat_at TIMESTAMPTZ(6); UPDATE public.coding_tasks SET heartbeat_at = COALESCE(locked_at, NOW()) WHERE status = 'running' AND heartbeat_at IS NULL;",
   });
   assert.equal(result.counts.missing, 0);
   assert.equal(result.counts.structurally_wrong, 0);
