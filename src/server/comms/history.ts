@@ -305,9 +305,9 @@ export async function claimInboundCommunication(
         status: existing.status,
         metadata: existing.metadata,
         agentRunId: existing.agentRunId,
-        body: existing.body,
-        channel: existing.conversation.channel,
-        ownerUserId: existing.conversation.ownerUserId,
+        body: existing.body ?? input.body,
+        channel: existing.conversation?.channel ?? input.channel,
+        ownerUserId: existing.conversation?.ownerUserId ?? input.ownerUserId ?? null,
       },
     };
   }

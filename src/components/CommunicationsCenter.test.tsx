@@ -170,10 +170,10 @@ describe('RyanAI Comms inbox controls', () => {
     const form = container.querySelector('form') as HTMLFormElement;
     await act(async () => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
     expect(container.textContent).toContain('Review before dispatch');
-    expect(container.textContent).toContain('Approve & send');
+    expect(container.textContent).toContain('Request owner approval');
     expect(comms.sendCommsMessage).not.toHaveBeenCalled();
 
-    const approve = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Approve & send'));
+    const approve = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Request owner approval'));
     expect(approve).toBeTruthy();
     await act(async () => approve?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
     expect(comms.sendCommsMessage).toHaveBeenCalledTimes(1);
