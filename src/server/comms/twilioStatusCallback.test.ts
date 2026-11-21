@@ -21,8 +21,9 @@ const prisma = {
   $executeRawUnsafe: vi.fn().mockResolvedValue(1),
 };
 
-async function post(body: Record<string, string>, overrides: { signature?: string; configuredUrl?: string } = {}) {
-  process.env.TWILIO_AUTH_TOKEN = token;
+async function post(body: Record<string, string>, overrides: { signature?: string; configuredUrl?: string; authToken?: string | null } = {}) {
+  if (overrides.authToken === null) delete process.env.TWILIO_AUTH_TOKEN;
+  else process.env.TWILIO_AUTH_TOKEN = overrides.authToken ?? token;
   process.env.TWILIO_STATUS_WEBHOOK_URL = overrides.configuredUrl ?? url;
   process.env.TWILIO_ACCOUNT_SID = 'AC' + 'c'.repeat(32);
   process.env.VERCEL_GIT_COMMIT_SHA = commitSha;
@@ -58,7 +59,7 @@ describe('Twilio delivery status callback', () => {
 
   it('rejects a missing authentication configuration', async () => {
     delete process.env.TWILIO_AUTH_TOKEN;
-    const response = await post({ MessageSid: sid, MessageStatus: 'delivered' });
+    const response = await post({ MessageSid: sid, MessageStatus: 'delivered' }, { authToken: null });
     expect(response.statusCode).toBe(503);
   });
 
