@@ -278,6 +278,101 @@ describe('Comms conversation intelligence', () => {
   });
 });
 
+describe('private RyanAI in-app Comms chat', () => {
+  it('accepts an owner message, creates one durable AgentRun and persists RyanAI reply even when provider Comms is disabled', async () => {
+    vi.stubEnv('COMMUNICATIONS_ENABLED', 'false');
+    const app = Fastify();
+    apps.push(app);
+    app.decorateRequest('authUser', null);
+    app.addHook('preHandler', async (request) => {
+      request.authUser = { id: 'owner-test', role: 'user', isOwner: true };
+    });
+    app.decorate('prisma', prismaMock as never);
+    await app.register(commsPlugin);
+    prismaMock.communicationMessage.create.mockResolvedValueOnce({ id: 'in-app-message-1' });
+    prismaMock.communicationMessage.findUnique
+      .mockResolvedValueOnce({ metadata: { source: 'comms_in_app' } })
+      .mockResolvedValueOnce({
+        id: 'in-app-reply-1',
+        body: 'Certainly, Sir G. Your Comms chat is working.',
+        status: 'response_generated',
+        createdAt: new Date('2026-11-21T20:00:00.000Z'),
+      });
+    enqueueInboundCommunicationRun.mockResolvedValueOnce({
+      runId: 'in-app-run-1', status: 'queued', replayed: false, notified: true,
+    });
+    waitForInboundCommunicationRun.mockResolvedValueOnce({
+      completed: true, answer: 'Your Comms chat is working.',
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/comms/chat',
+      payload: { message: 'RyanAI, can you hear me?', idempotencyKey: 'in-app-chat-request-0001' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      messageId: 'in-app-message-1',
+      runId: 'in-app-run-1',
+      status: 'replied',
+      reply: { id: 'in-app-reply-1', status: 'response_generated' },
+    });
+    expect(enqueueInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith({
+      messageId: 'in-app-message-1',
+      ownerUserId: 'owner-test',
+      providerMessageId: 'inapp:owner-test:in-app-chat-request-0001',
+    });
+    expect(waitForInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith('in-app-run-1', 'owner-test', 8_000);
+    expect(prismaMock.communicationMessage.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { providerMessageId: 'inapp-reply:in-app-message-1' },
+    }));
+  });
+
+  it('does not expose the private chat endpoint to non-owners', async () => {
+    const app = Fastify();
+    apps.push(app);
+    app.decorateRequest('authUser', null);
+    app.addHook('preHandler', async (request) => {
+      request.authUser = { id: 'other-user', role: 'user', isOwner: false };
+    });
+    app.decorate('prisma', prismaMock as never);
+    await app.register(commsPlugin);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/comms/chat',
+      payload: { message: 'Hello', idempotencyKey: 'in-app-chat-request-0002' },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
+  });
+
+  it('returns a processing state rather than fabricating a reply when the AgentRun is not finished', async () => {
+    const app = Fastify();
+    apps.push(app);
+    app.decorateRequest('authUser', null);
+    app.addHook('preHandler', async (request) => {
+      request.authUser = { id: 'owner-test', role: 'user', isOwner: true };
+    });
+    app.decorate('prisma', prismaMock as never);
+    await app.register(commsPlugin);
+    prismaMock.communicationMessage.create.mockResolvedValueOnce({ id: 'in-app-message-2' });
+    waitForInboundCommunicationRun.mockResolvedValueOnce({ completed: false });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/comms/chat',
+      payload: { message: 'Check my request', idempotencyKey: 'in-app-chat-request-0003' },
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({ messageId: 'in-app-message-2', runId: 'in-app-run-1', status: 'processing' });
+    expect(prismaMock.communicationMessage.upsert).not.toHaveBeenCalled();
+  });
+});
+
 describe('outbound Comms request validation', () => {
   it('blocks provider dispatch when explicit test authorization is absent', async () => {
     vi.stubEnv('RYANAI_COMMS_TEST_AUTHORIZED', 'false');
