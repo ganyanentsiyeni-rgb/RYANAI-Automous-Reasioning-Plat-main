@@ -3,6 +3,7 @@ import {
   assertCommsActionAuthorized,
   buildCommsActionPayload,
   claimCommsAction,
+  decideCommsApprovalFromOwner,
   hashCommsActionPayload,
   normalizeCommsRecipient,
   type CommsActionPayload,
@@ -80,6 +81,34 @@ describe('owner communications authorization payload', () => {
     )).resolves.toBeUndefined();
     expect(query.mock.calls[1][0]).toContain("status = 'approved'");
     expect(query.mock.calls[1][0]).toContain('RETURNING id');
+  });
+
+  it('accepts a verified inbound owner approval once and records the Gen-X rule', async () => {
+    vi.stubEnv('RYANAI_OWNER_PHONE', '+15555550123');
+    const query = vi.fn()
+      .mockResolvedValueOnce([{ id: 'verified-owner-phone' }])
+      .mockResolvedValueOnce([{ channel: 'sms', payload_hash: 'a'.repeat(64) }]);
+    const execute = vi.fn().mockResolvedValue(1);
+    await expect(decideCommsApprovalFromOwner(
+      { $queryRawUnsafe: query, $executeRawUnsafe: execute },
+      'owner-test', '00000000-0000-4000-8000-000000000001', 'approve',
+    )).resolves.toMatchObject({ status: 'approved' });
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query.mock.calls[0][0]).toContain('comms_verified_destinations');
+    expect(execute.mock.calls[0][0]).toContain("status = 'pending'");
+    expect(execute.mock.calls[0][2]).toBe('approved');
+  });
+
+  it('fails closed when the inbound owner WhatsApp number is not verified', async () => {
+    vi.stubEnv('RYANAI_OWNER_PHONE', '+15555550123');
+    const query = vi.fn().mockResolvedValue([]);
+    const execute = vi.fn();
+    await expect(decideCommsApprovalFromOwner(
+      { $queryRawUnsafe: query, $executeRawUnsafe: execute },
+      'owner-test', '00000000-0000-4000-8000-000000000001', 'approve',
+    )).rejects.toThrow('inbound_owner_phone_not_verified');
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(execute).not.toHaveBeenCalled();
   });
 
   it('keeps outbound network actions behind the Gen-X human approval gate', () => {
