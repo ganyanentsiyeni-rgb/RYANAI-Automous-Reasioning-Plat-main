@@ -75,3 +75,17 @@ test('flags weakened legacy coding classification', () => {
   const result = assessMigrationSourceContracts({ authBridge: '', agentOperations: '', codingQueue: "WHERE approval_status = 'pending';", queueCorrection: '', leaseHeartbeat: '' });
   assert.ok(result.findings.some((item) => item.object === 'migration coding queue legacy classification' && item.status === 'structurally_wrong'));
 });
+
+
+test('classifies absent and partial service-role grants distinctly', () => {
+  const absent = assessStructuralContract({ tables: [], columns: [], indexes: [], constraints: [], triggers: [], functions: [], grants: [] });
+  const absentGrant = absent.findings.find((item) => item.object === 'grant public.users to service_role');
+  assert.equal(absentGrant.status, 'missing');
+
+  const partial = assessStructuralContract({
+    tables: [], columns: [], indexes: [], constraints: [], triggers: [], functions: [],
+    grants: [{ table_name: 'users', grantee: 'service_role', privilege_type: 'SELECT' }],
+  });
+  const partialGrant = partial.findings.find((item) => item.object === 'grant public.users to service_role');
+  assert.equal(partialGrant.status, 'structurally_wrong');
+});
