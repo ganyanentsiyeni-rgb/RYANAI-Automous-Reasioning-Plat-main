@@ -33,6 +33,9 @@ describe('RyanAI event contract', () => {
       eventId: '123e4567-e89b-42d3-a456-426614174000',
       correlationId: 'selfpatch-test-20261121-0001',
       occurredAt: '2026-11-21T12:00:00.000Z',
+      ...base,
+      eventType: 'selfpatch.audit.finding',
+      source: 'ryanai-self-patch',
       severity: 'warning',
       findingCode: 'workflow.check.missing',
     })).toMatchObject({ eventType: 'selfpatch.audit.finding', findingCode: 'workflow.check.missing' });
@@ -64,6 +67,9 @@ describe('RyanAI event contract', () => {
       state: 'delivered',
       providerReferenceHash: 'b'.repeat(64),
     })).toMatchObject({ state: 'delivered', providerReferenceHash: 'b'.repeat(64) });
+  it('rejects delivered state unless explicitly represented by a validated receipt', () => {
+    expect(parseRyanAIEvent({ ...base, state: 'sent' })).toBeNull();
+    expect(parseRyanAIEvent({ ...base, state: 'delivered', providerReferenceHash: 'bad' })).toBeNull();
   });
 
   it('rejects invalid correlation IDs and timestamps', () => {

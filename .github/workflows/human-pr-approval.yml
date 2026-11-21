@@ -3,56 +3,75 @@ name: Single-owner release gate
 on:
   pull_request:
     branches: [main]
-    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, edited]
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
 
 permissions:
   contents: read
   pull-requests: read
 
 concurrency:
-  group: single-owner-release-gate-${{ github.event.pull_request.number }}
+  group: single-owner-release-gate-${{ github.event.pull_request.number || github.event.review.pull_request_url }}
   cancel-in-progress: true
 
 jobs:
   single-owner-release-gate:
     name: Single-owner release gate
-    # Never skip this required check for drafts or missing owner attestation.
     runs-on: ubuntu-latest
     steps:
-      - name: Verify owner attestation matches the exact current PR head
+      - name: Require an independent approval for the exact current PR head
         uses: actions/github-script@v9
         with:
           script: |
             const pull = context.payload.pull_request;
             if (!pull) {
-              core.setFailed('Pull request payload is missing; refusing to pass the single-owner gate.');
-              return;
-            }
-
-            if (pull.user?.login?.toLowerCase() !== 'ganyanentsiyeni-rgb') {
-              core.setFailed('This repository uses a single-owner release process; the PR author is not the configured owner.');
+              core.setFailed('Pull request payload is missing; refusing to pass the human-review gate.');
               return;
             }
 
             if (pull.draft) {
-              core.setFailed('Draft PRs cannot satisfy the single-owner release gate.');
+              core.setFailed('Draft PRs cannot satisfy the human-review gate.');
               return;
             }
 
+            const author = pull.user?.login?.toLowerCase();
             const head = pull.head?.sha;
-            if (!head) {
-              core.setFailed('Current PR head SHA is unavailable.');
+            if (!author || !head) {
+              core.setFailed('PR author or current head SHA is unavailable.');
               return;
             }
 
-            // The sole owner adds this marker only after personally reviewing
-            // the complete diff at this exact SHA. Any new push invalidates it.
-            const marker = `<!-- OWNER_VERIFIED_SHA: ${head} -->`;
-            if (!pull.body?.includes(marker)) {
+            const { data: reviews } = await github.rest.pulls.listReviews({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pull.number,
+              per_page: 100
+            });
+
+            // Only each reviewer's latest submitted review counts. A later
+            // COMMENTED or CHANGES_REQUESTED review supersedes an approval.
+            const latestByReviewer = new Map();
+            for (const review of reviews) {
+              const login = review.user?.login?.toLowerCase();
+              if (!login || !review.submitted_at) continue;
+              const previous = latestByReviewer.get(login);
+              if (!previous || new Date(review.submitted_at) > new Date(previous.submitted_at)) {
+                latestByReviewer.set(login, review);
+              }
+            }
+
+            const qualifying = [...latestByReviewer.entries()].filter(([login, review]) =>
+              login !== author &&
+              review.state === 'APPROVED' &&
+              review.commit_id === head
+            );
+
+            if (qualifying.length === 0) {
               core.setFailed(
-                `Owner verification is missing or stale. After reviewing the complete diff, add this exact marker to the PR description: ${marker}`
+                `No independent human approval exists for exact PR head ${head}. Request a qualified reviewer; self-approval and approvals on older commits do not count.`
               );
               return;
             }
 
-            core.info(`Owner attestation matches current PR head ${head}. Automated checks remain independently mandatory.`);
+            core.info(`Independent human approval verified for PR #${pull.number} at ${head}: ${qualifying.map(([login]) => login).join(', ')}`);
