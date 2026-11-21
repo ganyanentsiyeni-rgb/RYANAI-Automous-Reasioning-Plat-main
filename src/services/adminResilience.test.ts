@@ -16,8 +16,9 @@ function configureStorage() {
   process.env.RYANAI_BACKUP_RETENTION_DAYS = '30';
 }
 
-function jsonResponse(body: unknown, _ok = true, status = 200): Response {
+function jsonResponse(body: unknown, status = 200): Response {
 function jsonResponse(body: unknown, ok = true, status = 200): Response {
+function jsonResponse(body: unknown, _ok = true, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json' },
@@ -95,7 +96,7 @@ describe('admin resilience backup inventory', () => {
         { name: 'database.dump', id: 'dump-3', created_at: '2026-11-20T12:00:00.000Z', metadata: { size: 128 } },
         { name: 'manifest.json', id: 'manifest-3', created_at: '2026-11-20T12:00:00.000Z' },
       ]))
-      .mockResolvedValueOnce(jsonResponse({ error: 'storage unavailable' }, false, 503));
+      .mockResolvedValueOnce(jsonResponse({ error: 'storage unavailable' }, 503));
 
     const inventory = await listDatabaseBackups();
 
@@ -108,11 +109,25 @@ describe('admin resilience backup inventory', () => {
     }));
   });
 
+  it('returns an unavailable inventory when the Storage listing payload is not an array', async () => {
+    configureStorage();
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({ error: 'unexpected provider payload' }),
+    );
+
+    const inventory = await listDatabaseBackups();
+
+    expect(inventory.status).toBe('unavailable');
+    expect(inventory.items).toEqual([]);
+    expect(inventory.reason).toContain('invalid object listing');
+  });
+
   it('returns an unavailable inventory when storage listing fails', async () => {
     configureStorage();
 
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      jsonResponse({ error: 'storage unavailable' }, false, 503),
+      jsonResponse({ error: 'storage unavailable' }, 503),
     );
 
     const inventory = await listDatabaseBackups();
