@@ -2,11 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import twilio from 'twilio';
 import { commsPlugin } from './index.js';
-import { ownerCommunicationInstruction } from '../../shared/ryanIdentity.js';
 import { installAuthentication } from '../routes/auth.js';
 
-const { invoke, prismaMock } = vi.hoisted(() => ({
-  invoke: vi.fn(),
+const { enqueueInboundCommunicationRun, waitForInboundCommunicationRun, enqueueCommsAssistRun, waitForAutonomousTask, prismaMock } = vi.hoisted(() => ({
+  enqueueInboundCommunicationRun: vi.fn(),
+  waitForInboundCommunicationRun: vi.fn(),
+  enqueueCommsAssistRun: vi.fn(),
+  waitForAutonomousTask: vi.fn(),
   prismaMock: {
     communicationConversation: { upsert: vi.fn().mockResolvedValue({ id: 'conversation-1' }), findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]), updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
     $executeRawUnsafe: vi.fn().mockResolvedValue(1),
@@ -20,9 +22,12 @@ const { invoke, prismaMock } = vi.hoisted(() => ({
     },
   },
 }));
-vi.mock('../../agent/approvalEngine.js', () => ({
-  humanInTheLoopAgent: { invoke },
+vi.mock('./agentRuns.js', () => ({
+  enqueueInboundCommunicationRun,
+  waitForInboundCommunicationRun,
+  enqueueCommsAssistRun,
 }));
+vi.mock('../../agent/operations.js', () => ({ waitForAutonomousTask }));
 
 const apps: FastifyInstance[] = [];
 const token = 'synthetic-voice-auth-token';
@@ -73,9 +78,14 @@ beforeEach(() => {
   vi.stubEnv('TWILIO_SMS_WEBHOOK_URL', smsUrl);
   vi.stubEnv('TWILIO_STATUS_WEBHOOK_URL', statusUrl);
   vi.stubEnv('RYANAI_OWNER_PHONE', '+15555550123');
+  vi.stubEnv('RYANAI_OWNER_AUTH_USER_ID', 'owner-test');
   vi.stubEnv('RYANAI_OWNER_TITLE', 'Sir G');
   vi.stubEnv('RYANAI_OWNER_LANGUAGE', 've-ZA');
-  invoke.mockResolvedValue({ messages: [{ content: 'RyanAI says hello & welcome' }] });
+  prismaMock.communicationMessage.create.mockResolvedValue({ id: 'voice-message-1' });
+  enqueueInboundCommunicationRun.mockResolvedValue({ runId: 'voice-run-1', status: 'queued', replayed: false, notified: true });
+  waitForInboundCommunicationRun.mockResolvedValue({ completed: true, answer: 'RyanAI says hello & welcome' });
+  enqueueCommsAssistRun.mockResolvedValue({ runId: 'assist-run-1', status: 'queued' });
+  waitForAutonomousTask.mockResolvedValue({ result: 'RyanAI says hello & welcome' });
 });
 
 afterEach(async () => {
@@ -90,7 +100,7 @@ describe('Twilio inbound SMS retry handling', () => {
     const response = await send('/api/webhooks/twilio/sms', smsUrl, { MessageSid: 'SM-DISABLED', From: '+15555550123', Body: 'Do not auto-reply' });
     expect(response.statusCode).toBe(200);
     expect(response.body).toContain('<Response/>');
-    expect(invoke).not.toHaveBeenCalled();
+    expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
     expect(prismaMock.communicationMessage.create).not.toHaveBeenCalled();
   });
 
@@ -106,7 +116,7 @@ describe('Twilio inbound SMS retry handling', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.body).toContain('Already processed.');
-    expect(invoke).not.toHaveBeenCalled();
+    expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
   });
 });
 
@@ -114,7 +124,7 @@ describe('Twilio conversational voice webhooks', () => {
   it('rejects forged incoming call webhooks', async () => {
     const response = await send('/api/webhooks/twilio/voice', voiceUrl, { CallSid: 'CA123', From: '+15555550123' }, false);
     expect(response.statusCode).toBe(401);
-    expect(invoke).not.toHaveBeenCalled();
+    expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
   });
 
   it('hangs up without speaking when explicit communications test authorization is absent', async () => {
@@ -122,7 +132,7 @@ describe('Twilio conversational voice webhooks', () => {
     const response = await send('/api/webhooks/twilio/voice', voiceUrl, { CallSid: 'CA-DISABLED', From: '+15555550123' });
     expect(response.statusCode).toBe(200);
     expect(response.body).toContain('<Response><Hangup/></Response>');
-    expect(invoke).not.toHaveBeenCalled();
+    expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
   });
 
   it('answers authenticated incoming calls with a speech gather loop', async () => {
@@ -137,7 +147,7 @@ describe('Twilio conversational voice webhooks', () => {
     expect(response.body).toContain('language="en-ZA" voice="Polly.Ayanda-Neural"');
     expect(response.body).toContain('<Gather input="speech"');
     expect(response.body).toContain(actionUrl);
-    expect(invoke).not.toHaveBeenCalled();
+    expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
   });
 
   it('does not generate a voice response without explicit communications test authorization', async () => {
@@ -145,41 +155,28 @@ describe('Twilio conversational voice webhooks', () => {
     const response = await send('/api/webhooks/twilio/voice/respond', actionUrl, { CallSid: 'CA-DISABLED', From: '+15555550123', SpeechResult: 'Please do not reply' });
     expect(response.statusCode).toBe(200);
     expect(response.body).toContain('<Response><Hangup/></Response>');
-    expect(invoke).not.toHaveBeenCalled();
+    expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
   });
 
-  it('routes recognized speech to RyanAI and returns escaped TwiML', async () => {
+  it('routes each signed speech turn through one durable AgentRun', async () => {
+    const turnId = '11111111-1111-4111-8111-111111111111';
     const payload = { CallSid: 'CA123', From: '+15555550123', SpeechResult: 'Please check my system' };
-    const response = await send('/api/webhooks/twilio/voice/respond', actionUrl, payload);
+    const response = await send('/api/webhooks/twilio/voice/respond?turnId=' + turnId, actionUrl + '?turnId=' + turnId, payload);
     expect(response.statusCode).toBe(200);
     expect(response.body).toContain('Certainly, Sir G. RyanAI says hello &amp; welcome');
-    expect(prismaMock.communicationMessage.create).toHaveBeenCalled();
-    expect(invoke).toHaveBeenCalledExactlyOnceWith(
-      {
-        messages: [
-          { role: 'system', content: ownerCommunicationInstruction() },
-          { role: 'user', content: 'Please check my system' },
-        ],
-      },
-      { configurable: { thread_id: 'voice_CA123' } },
-    );
+    expect(enqueueInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith({
+      messageId: 'voice-message-1', ownerUserId: 'owner-test', providerMessageId: 'voice:CA123:' + turnId,
+    });
+    expect(waitForInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith('voice-run-1', 'owner-test');
   });
 
   it('accepts the owner as the To party on outbound AI voice calls', async () => {
+    const turnId = '22222222-2222-4222-8222-222222222222';
     const payload = { CallSid: 'CAOUT123', From: '+15555550000', To: '+15555550123', SpeechResult: 'What is the system status?' };
-    const response = await send('/api/webhooks/twilio/voice/respond', actionUrl, payload);
+    const response = await send('/api/webhooks/twilio/voice/respond?turnId=' + turnId, actionUrl + '?turnId=' + turnId, payload);
     expect(response.statusCode).toBe(200);
     expect(response.body).toContain('Certainly, Sir G. RyanAI says hello &amp; welcome');
-    expect(prismaMock.communicationMessage.create).toHaveBeenCalled();
-    expect(invoke).toHaveBeenCalledExactlyOnceWith(
-      {
-        messages: [
-          { role: 'system', content: ownerCommunicationInstruction() },
-          { role: 'user', content: 'What is the system status?' },
-        ],
-      },
-      { configurable: { thread_id: 'voice_CAOUT123' } },
-    );
+    expect(enqueueInboundCommunicationRun).toHaveBeenCalledWith(expect.objectContaining({ providerMessageId: 'voice:CAOUT123:' + turnId }));
   });
 
   it('fails closed when the signature token is not configured', async () => {
@@ -227,16 +224,17 @@ describe('Comms conversation intelligence', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/comms/assist',
-      payload: { operation: 'summarize', conversationId: '7b0f1c1e-3c0a-4d3e-9a52-0b5f3b6a1c11' },
+      payload: { operation: 'summarize', conversationId: '7b0f1c1e-3c0a-4d3e-9a52-0b5f3b6a1c11', idempotencyKey: 'assist-request-key-0001' },
     });
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
-      operation: 'summarize',
-      output: 'RyanAI says hello & welcome',
-      sourceMessageCount: 1,
+      operation: 'summarize', output: 'RyanAI says hello & welcome', sourceMessageCount: 1, runId: 'assist-run-1',
     });
-    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(enqueueCommsAssistRun).toHaveBeenCalledWith(expect.objectContaining({
+      ownerUserId: 'owner-test', idempotencyKey: 'assist-request-key-0001',
+    }));
+    expect(waitForAutonomousTask).toHaveBeenCalledExactlyOnceWith('assist-run-1', 'owner-test', 8_000);
     expect(prismaMock.communicationMessage.create).not.toHaveBeenCalled();
   });
 });
@@ -316,7 +314,7 @@ describe('Comms feature gates', () => {
     const response = await send('/api/comms/send', '', {});
     expect(response.statusCode).toBe(503);
     expect(response.json().error).toContain('history and workspace access remain available');
-    expect(invoke).not.toHaveBeenCalled();
+    expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
   });
 
   it('blocks attachment upload preparation until the scanner and attachment flag are enabled', async () => {
