@@ -10,13 +10,19 @@ const sid = 'SM' + 'a'.repeat(32);
 const commitSha = 'b'.repeat(40);
 const apps: FastifyInstance[] = [];
 const prisma = {
-  communicationMessage: {
+  outboundCommsDispatch: {
     findUnique: vi.fn().mockResolvedValue({
-      id: 'message-1',
-      direction: 'outbound',
-      conversation: { channel: 'sms' },
+      id: 'dispatch-1',
+      communicationMessageId: 'message-1',
+      state: 'accepted',
+      agentRunId: 'run-1',
+      channel: 'sms',
     }),
     update: vi.fn().mockResolvedValue({}),
+  },
+  commsDeliveryReceipt: {
+    findUnique: vi.fn().mockResolvedValue(null),
+    create: vi.fn().mockResolvedValue({ id: 'receipt-1' }),
   },
   $executeRawUnsafe: vi.fn().mockResolvedValue(1),
 };
@@ -58,18 +64,18 @@ describe('Twilio delivery status callback', () => {
   });
 
   it('rejects a missing authentication configuration', async () => {
-    delete process.env.TWILIO_AUTH_TOKEN;
     const response = await post({ MessageSid: sid, MessageStatus: 'delivered' }, { authToken: null, configuredUrl: '' });
     expect(response.statusCode).toBe(503);
   });
 
-  it('rejects a forged Twilio signature', async () => {
+  it('rejects a forged Twilio signature before touching the dispatch store', async () => {
     const response = await post({ MessageSid: sid, MessageStatus: 'delivered' }, { signature: 'forged' });
     expect(response.statusCode).toBe(401);
-    expect(prisma.communicationMessage.update).not.toHaveBeenCalled();
+    expect(prisma.outboundCommsDispatch.findUnique).not.toHaveBeenCalled();
+    expect(prisma.commsDeliveryReceipt.create).not.toHaveBeenCalled();
   });
 
-  it('persists an authenticated receipt and forwards metadata-only event to PA', async () => {
+  it('appends an authenticated receipt, advances only dispatch state, and forwards metadata-only PA evidence', async () => {
     const received = vi.fn();
     ryanAIPaEventBridge.on('event', received);
     const body = {
@@ -83,9 +89,11 @@ describe('Twilio delivery status callback', () => {
       const response = await post(body);
       expect(response.statusCode).toBe(202);
       expect(response.json()).toMatchObject({ accepted: true, state: 'delivered' });
-      expect(prisma.communicationMessage.update).toHaveBeenCalledWith({
-        where: { id: 'message-1' }, data: { status: 'delivered' },
-      });
+      expect(prisma.commsDeliveryReceipt.create).toHaveBeenCalledTimes(1);
+      expect(prisma.outboundCommsDispatch.update).toHaveBeenCalledWith(expect.objectContaining({
+        where: { id: 'dispatch-1' },
+        data: expect.objectContaining({ state: 'delivered' }),
+      }));
       expect(received).toHaveBeenCalledTimes(1);
       expect(received.mock.calls[0][0]).toMatchObject({
         eventType: 'comms.delivery.receipt',
@@ -95,15 +103,23 @@ describe('Twilio delivery status callback', () => {
         commitSha,
       });
       expect(JSON.stringify(received.mock.calls[0][0])).not.toContain('+15555550123');
+      expect(JSON.stringify(received.mock.calls[0][0])).not.toContain('+15555550124');
     } finally {
       ryanAIPaEventBridge.off('event', received);
     }
   });
 
-  it('does not mark an unknown provider ID delivered', async () => {
-    prisma.communicationMessage.findUnique.mockResolvedValueOnce(null);
+  it('returns retryable when the governed dispatch is not committed yet', async () => {
+    prisma.outboundCommsDispatch.findUnique.mockResolvedValueOnce(null);
     const response = await post({ AccountSid: 'AC' + 'c'.repeat(32), MessageSid: sid, MessageStatus: 'delivered' });
     expect(response.statusCode).toBe(503);
-    expect(prisma.communicationMessage.update).not.toHaveBeenCalled();
+    expect(prisma.commsDeliveryReceipt.create).not.toHaveBeenCalled();
+  });
+
+  it('deduplicates an authenticated replay without creating a second receipt', async () => {
+    prisma.commsDeliveryReceipt.findUnique.mockResolvedValueOnce({ id: 'receipt-1' });
+    const response = await post({ AccountSid: 'AC' + 'c'.repeat(32), MessageSid: sid, MessageStatus: 'delivered' });
+    expect(response.statusCode).toBe(202);
+    expect(prisma.commsDeliveryReceipt.create).not.toHaveBeenCalled();
   });
 });
