@@ -596,15 +596,17 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
         metadata: { subject: email.subject || '', attachmentCount: inboundAttachments.length },
         ...(ownerUserId ? { ownerUserId } : {}),
       });
-      if (!claim.claimed) return { received: true, duplicate: true };
+      if (!claim.claimed && (!claim.existing?.agentRunId || ['replied', 'reply_dispatch_unknown'].includes(claim.existing.status))) {
+        return { received: true, duplicate: true, status: claim.existing?.status ?? 'unknown' };
+      }
       claimedEmailId = email.id;
-      if (inboundAttachments.length) {
+      if (claim.claimed && inboundAttachments.length) {
         try {
           const storedMessage = await fastify.prisma.communicationMessage.findUnique({
-          where: { providerMessageId: email.id },
+          where: { id: claim.messageId },
           select: { id: true, conversationId: true },
         });
-        if (!storedMessage || !ownerUserId) throw new Error('Inbound email attachments lack an owner-bound communication message.');
+        if (!storedMessage) throw new Error('Inbound email attachments lack a persisted communication message.');
         for (const attachment of inboundAttachments) {
           if (!attachment.download_url || !attachment.content_type) throw new Error('Resend attachment metadata is incomplete.');
           const bytes = await downloadResendMedia(attachment.download_url);
@@ -628,7 +630,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
         ? bodyText + (inboundAttachments.length ? `\\n\\nThe email included ${inboundAttachments.length} securely stored file(s). Their contents have not been analyzed; do not claim to have inspected them.` : '')
         : `The email included ${inboundAttachments.length} securely stored file(s). Their contents have not been analyzed. Tell Sir they were received without claiming to inspect them.`;
       const queued = await enqueueInboundCommunicationRun({
-        messageId: claim.messageId!,
+        messageId: claim.messageId ?? claim.existing!.messageId,
         ownerUserId,
         providerMessageId: email.id,
       });
