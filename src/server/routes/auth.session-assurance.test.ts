@@ -64,8 +64,7 @@ describe('Supabase session assurance on the backend', () => {
   });
 
   it('fails closed when verified claims are unavailable', async () => {
-    const context = mocks.createContextClient.mock.results[0]?.value;
-    if (context) context.auth.getClaims.mockResolvedValue({ data: null, error: { status: 503 } });
+    mocks.getClaims.mockResolvedValue({ data: null, error: { status: 503 } });
     const response = await authenticate();
     expect(response.statusCode).toBe(503);
   });
