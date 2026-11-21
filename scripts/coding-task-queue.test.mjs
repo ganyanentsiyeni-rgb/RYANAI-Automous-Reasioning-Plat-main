@@ -95,7 +95,7 @@ test('expired leases are recovered into retry, failed or cancelled states by one
   const recovered = await queue.recoverExpired();
   assert.equal(recovered[0].status, 'queued');
   assert.match(query, /UPDATE public\.coding_tasks/);
-  assert.match(query, /lease_expires_at < NOW\(\)/);
+  assert.match(query, /lease_expires_at <= NOW\(\)/);
   assert.match(query, /cancel_requested_at IS NOT NULL/);
 });
 
