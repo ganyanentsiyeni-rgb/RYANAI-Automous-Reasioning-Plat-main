@@ -10,6 +10,7 @@ export interface BackupPreflight {
   status: BackupStatus;
   databaseConfigured: boolean;
   storageConfigured: boolean;
+  privateDestinationVerified: boolean;
   destinationBucket: string | null;
   sourceBuckets: string[];
   pgDumpAvailable: boolean;
@@ -37,6 +38,14 @@ function storageConfig() {
   } catch {
     return null;
   }
+}
+
+async function privateBucketAvailable(storage: NonNullable<ReturnType<typeof storageConfig>>): Promise<boolean> {
+  try {
+    const response = await storageRequest(storage.baseUrl, storage.key, '/storage/v1/bucket/' + encodeURIComponent(storage.bucket));
+    const bucket = await response.json() as { public?: unknown };
+    return bucket.public === false;
+  } catch { return false; }
 }
 
 function pgDumpAvailable(): Promise<boolean> {
@@ -72,6 +81,7 @@ export async function backupPreflight(): Promise<BackupPreflight> {
       status: 'not_configured',
       databaseConfigured,
       storageConfigured: Boolean(storage),
+      privateDestinationVerified: false,
       destinationBucket: storage?.bucket ?? null,
       sourceBuckets: [],
       pgDumpAvailable: dumpAvailable,
@@ -83,19 +93,25 @@ export async function backupPreflight(): Promise<BackupPreflight> {
       status: 'unavailable',
       databaseConfigured: true,
       storageConfigured: true,
+      privateDestinationVerified: false,
       destinationBucket: storage.bucket,
       sourceBuckets: [],
       pgDumpAvailable: false,
       reason: 'pg_dump is not installed in this runtime image.',
     };
   }
+  const privateDestinationVerified = await privateBucketAvailable(storage);
+  const sourceBuckets = (process.env.RYANAI_BACKUP_STORAGE_BUCKETS || '').split(',').map((v) => v.trim()).filter(Boolean);
+  if (!privateDestinationVerified || sourceBuckets.includes(storage.bucket)) {
+    return {
+      status: 'unavailable', databaseConfigured: true, storageConfigured: true,
+      privateDestinationVerified, destinationBucket: storage.bucket, sourceBuckets, pgDumpAvailable: true,
+      reason: !privateDestinationVerified ? 'Backup destination bucket privacy or reachability could not be verified.' : 'Backup destination must be separate from configured source buckets.',
+    };
+  }
   return {
-    status: 'ready',
-    databaseConfigured: true,
-    storageConfigured: true,
-    destinationBucket: storage.bucket,
-    sourceBuckets: (process.env.RYANAI_BACKUP_STORAGE_BUCKETS || '').split(',').map((v) => v.trim()).filter(Boolean),
-    pgDumpAvailable: true,
+    status: 'ready', databaseConfigured: true, storageConfigured: true, privateDestinationVerified: true,
+    destinationBucket: storage.bucket, sourceBuckets, pgDumpAvailable: true,
   };
 }
 
@@ -296,6 +312,11 @@ export async function createDatabaseBackup(): Promise<BackupResult> {
       body: dump,
     });
 
+    const verification = await storageRequest(storage.baseUrl, storage.key, '/storage/v1/object/' + encodeURIComponent(storage.bucket) + '/' + prefix.split('/').map(encodeURIComponent).join('/') + '/database.dump');
+    const storedDump = Buffer.from(await verification.arrayBuffer());
+    const storedSha256 = createHash('sha256').update(storedDump).digest('hex');
+    if (storedDump.length !== dump.length || storedSha256 !== sha256) throw new Error('Uploaded backup failed read-back size or SHA-256 integrity verification.');
+
     const manifest = {
       format: 'ryanai-admin-backup-v1',
       backupId,
@@ -320,7 +341,7 @@ export async function createDatabaseBackup(): Promise<BackupResult> {
 }
 
 export interface RecoveryPreflight {
-  status: 'not_configured' | 'invalid_target' | 'blocked_same_as_source' | 'isolated_target_configured';
+  status: 'not_configured' | 'invalid_target' | 'blocked_same_as_source' | 'identity_unverified';
   targetLabel: string | null;
   productionRestore: 'disabled';
   writesPerformed: false;
@@ -354,8 +375,8 @@ export function recoveryPreflight(): RecoveryPreflight {
     }
     const sourceUrl = new URL(sourceValue);
     const sameHost = targetUrl.hostname.toLowerCase() === sourceUrl.hostname.toLowerCase();
-    const sameDatabase = decodeURIComponent(targetUrl.pathname) === decodeURIComponent(sourceUrl.pathname);
-    if (sameHost && sameDatabase) {
+    const sameDatabase = decodeURIComponent(targetUrl.pathname).replace(/^\\//, '').toLowerCase() === decodeURIComponent(sourceUrl.pathname).replace(/^\\//, '').toLowerCase();
+    if (sameHost || sameDatabase) {
       return {
         status: 'blocked_same_as_source',
         targetLabel,
@@ -368,10 +389,11 @@ export function recoveryPreflight(): RecoveryPreflight {
       throw new Error('Unsupported recovery database protocol.');
     }
     return {
-      status: 'isolated_target_configured',
+      status: 'identity_unverified',
       targetLabel,
       productionRestore: 'disabled',
       writesPerformed: false,
+      reason: 'The target URL differs syntactically, but database identity and network isolation have not been proven. Restore remains disabled.',
     };
   } catch {
     return {
