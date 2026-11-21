@@ -402,7 +402,7 @@ export function recoveryPreflight(): RecoveryPreflight {
     }
     const sourceUrl = new URL(sourceValue);
     const sameHost = targetUrl.hostname.toLowerCase() === sourceUrl.hostname.toLowerCase();
-    const sameDatabase = decodeURIComponent(targetUrl.pathname).replace(/^\\//, '').toLowerCase() === decodeURIComponent(sourceUrl.pathname).replace(/^\\//, '').toLowerCase();
+    const sameDatabase = decodeURIComponent(targetUrl.pathname).replace(/^\//, '').toLowerCase() === decodeURIComponent(sourceUrl.pathname).replace(/^\//, '').toLowerCase();
     if (sameHost || sameDatabase) {
       return {
         status: 'blocked_same_as_source',
