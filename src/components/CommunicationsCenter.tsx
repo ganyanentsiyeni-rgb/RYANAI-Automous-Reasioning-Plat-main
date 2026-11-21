@@ -105,6 +105,24 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
     };
   }, [refresh]);
 
+  useEffect(() => {
+    const pending = conversations
+      .filter(conversation => conversation.channel === 'in_app')
+      .flatMap(conversation => conversation.messages)
+      .filter(item => item.direction === 'inbound' && item.status === 'processing')
+      .slice(0, 10);
+    if (!pending.length) return;
+    let disposed = false;
+    const timer = window.setTimeout(async () => {
+      await Promise.allSettled(pending.map(item => getInAppCommsReply(item.id, userId)));
+      if (!disposed) void refresh();
+    }, 4000);
+    return () => {
+      disposed = true;
+      window.clearTimeout(timer);
+    };
+  }, [conversations, userId, refresh]);
+
   const active = useMemo(
     () => conversations.find((conversation) => conversation.id === activeId) ?? null,
     [conversations, activeId],
@@ -497,7 +515,7 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
           <form onSubmit={submit} className="space-y-3 border-t border-white/10 bg-slate-950/50 p-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="space-y-1 text-xs text-slate-400">Channel
-                <select value={channel} disabled={reviewing || sending} onChange={(event) => { setChannel(event.target.value as CommsChannel); startNewDraft(); }} className="w-full rounded-lg border border-white/10 bg-slate-900 p-2 text-sm text-white">
+                <select value={channel} disabled={reviewing || sending} onChange={(event) => { setChannel(event.target.value as CommsChannel); setSelectedFiles([]); startNewDraft(); }} className="w-full rounded-lg border border-white/10 bg-slate-900 p-2 text-sm text-white">
                   {channels.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
                 </select>
               </label>
