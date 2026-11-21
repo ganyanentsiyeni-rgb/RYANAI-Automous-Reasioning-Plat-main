@@ -98,7 +98,7 @@ export function useRealtimeEvents(
     if (!enabled || !channel) return;
 
     stoppedRef.current = false;
-    let initialCursor = '0';
+    let initialCursor: string;
     try {
       initialCursor = canonicalCursor(localStorage.getItem(cursorKey(channel))) ?? '0';
     } catch {
@@ -134,7 +134,7 @@ export function useRealtimeEvents(
           const sequence = canonicalCursor(data.sequence);
           if (!sequence || typeof message.id !== 'string' || typeof data.eventType !== 'string' || typeof data.createdAt !== 'string') return;
 
-          let isNew = true;
+          let isNew: boolean;
           try {
             isNew = BigInt(sequence) > BigInt(cursorRef.current);
           } catch {
