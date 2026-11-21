@@ -80,7 +80,6 @@ jobs:
                     { "context": "Issue 435 migrations and attachment security" },
                     { "context": "Analyze (javascript-typescript)" },
                     { "context": "Analyze (python)" },
-                    { "context": "TruffleHog secret audit" },
                     { "context": "TruffleHog secret audit" }
                   ]
                 }
