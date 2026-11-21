@@ -11,6 +11,7 @@ const externalConfig: AerialConfig = {
   model: 'aerial-test-model',
   timeoutMs: 1_000,
   apiKey: 'test-only-key',
+  allowedHosts: ['aerial.example.test'],
 };
 
 afterEach(() => {
@@ -34,6 +35,27 @@ describe('AerialClient external runtime contract', () => {
       authorization: 'Bearer test-only-key',
     });
     expect(fetchMock.mock.calls[0][1].redirect).toBe('error');
+  });
+
+  it('blocks health probes when the endpoint host is not explicitly allowlisted', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const client = new AerialClient({ ...externalConfig, allowedHosts: [] });
+
+    const result = await client.health();
+
+    expect(result.status).toBe('degraded');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks inference before network access when the endpoint host is not allowlisted', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const client = new AerialClient({ ...externalConfig, allowedHosts: [] });
+
+    await expect(client.infer({ prompt: 'run inference' }))
+      .rejects.toThrow('Aerial endpoint host is not in AERIAL_ALLOWED_HOSTS.');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('reports non-success health responses as degraded', async () => {
