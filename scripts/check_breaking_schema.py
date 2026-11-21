@@ -42,7 +42,7 @@ def normalize_base_schema(schema_text: str) -> str:
     Conflicting duplicate declarations remain a hard error; the PR schema itself is
     never normalized.
     """
-    declaration = re.compile(r"(?ms)^(model|enum)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\{.*?^\\}")
+    declaration = re.compile(r"(?ms)^(model|enum)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{.*?^\}")
     seen: dict[tuple[str, str], str] = {}
     remove_spans: list[tuple[int, int]] = []
     for match in declaration.finditer(schema_text):
