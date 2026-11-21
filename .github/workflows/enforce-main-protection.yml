@@ -150,8 +150,11 @@ jobs:
               "TruffleHog secret audit",
 
           }
-          missing = required - contexts
-          assert not missing, f"Required check contexts missing: {sorted(missing)}"
+          assert len(checks) == len(required), "Required check list contains duplicates or unexpected entries"
+          assert contexts == required, (
+              f"Required check contexts differ; missing={sorted(required - contexts)}, "
+              f"unexpected={sorted(contexts - required)}"
+          )
           assert rules["required_status_checks"].get("strict_required_status_checks_policy") is True, "Strict status-check policy is disabled"
 
           print("Verified reviewed ruleset 27357206:")
