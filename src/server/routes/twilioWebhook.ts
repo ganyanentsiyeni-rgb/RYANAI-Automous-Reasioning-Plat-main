@@ -73,8 +73,10 @@ export const twilioWebhookPlugin: FastifyPluginAsync = async (fastify) => {
         const previousReply = claim.existing?.metadata && typeof claim.existing.metadata === 'object'
           && !Array.isArray(claim.existing.metadata) ? (claim.existing.metadata as { reply?: unknown }).reply : undefined;
         if (typeof previousReply === 'string' && previousReply.length) {
+          // The original request already persisted its reply. A provider replay
+          // must be acknowledged without emitting a second TwiML <Message>.
           reply.type('text/xml');
-          return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(previousReply)}</Message></Response>`;
+          return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
         }
         if (claim.existing?.agentRunId) {
           const resumed = await waitForInboundCommunicationRun(claim.existing.agentRunId, ownerUserId);
