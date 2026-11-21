@@ -44,7 +44,7 @@ const COLUMN_CONTRACTS = {
     approval_id: ['text', false, null], plan_hash: ['text', false, null],
     base_commit_sha: ['text', false, null], proposed_diff_hash: ['text', false, null],
     agent: ['text', false, null], prompt: ['text', false, null], workspace_key: ['text', false, null],
-    status: ['text', false, 'queued'], attempts: ['integer', false, '0'], max_attempts: ['integer', false, '3'],
+    status: ['text', false, "'queued'"], attempts: ['integer', false, '0'], max_attempts: ['integer', false, '3'],
     worker_id: ['text', true, null], locked_at: ['timestamp(6) with time zone', true, null],
     lease_expires_at: ['timestamp(6) with time zone', true, null],
     heartbeat_at: ['timestamp(6) with time zone', true, null],

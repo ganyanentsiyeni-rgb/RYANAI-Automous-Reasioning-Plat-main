@@ -34,6 +34,8 @@ class MockWebSocket {
 }
 
 describe('RyanAIClient transport continuity', () => {
+  const clients: RyanAIClient[] = [];
+
   beforeEach(() => {
     vi.useFakeTimers();
     // Reconnect delay includes jitter; keep timer assertions deterministic.
@@ -44,6 +46,7 @@ describe('RyanAIClient transport continuity', () => {
   });
 
   afterEach(() => {
+    for (const client of clients.splice(0)) client.destroy();
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
@@ -55,6 +58,7 @@ describe('RyanAIClient transport continuity', () => {
       maxReconnectAttempts: 2,
       maxReconnectDelay: 250,
     });
+    clients.push(client);
 
     const handler = vi.fn();
     client.on('metrics', handler);
@@ -111,6 +115,7 @@ describe('RyanAIClient transport continuity', () => {
       reconnectInterval: 250,
       maxReconnectAttempts: 2,
     });
+    clients.push(client);
 
     const connection = client.connect();
     const first = MockWebSocket.instances[0];
@@ -139,6 +144,7 @@ describe('RyanAIClient transport continuity', () => {
       reconnectInterval: 250,
       maxReconnectAttempts: 2,
     });
+    clients.push(client);
 
     const connection = client.connect();
     const first = MockWebSocket.instances[0];
