@@ -254,9 +254,10 @@ export const twilioWebhookPlugin: FastifyPluginAsync = async (fastify) => {
         request.log.error({ err: error }, 'WhatsApp media storage failed');
         return reply.code(503).send({ error: 'Inbound media is temporarily unavailable; the provider may retry this webhook.' });
       }
-      request.log.error({ err: error }, 'Error processing WhatsApp message');
-      reply.type('text/xml');
-      return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>RyanAI is temporarily unavailable. Please try again shortly.</Message></Response>`;
+      request.log.error({ err: error }, 'Error processing WhatsApp message; returning a retryable provider response');
+      return reply.code(503).send({
+        error: 'Inbound WhatsApp processing is temporarily unavailable. The provider may retry this webhook.',
+      });
     }
   });
 };

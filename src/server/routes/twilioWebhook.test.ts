@@ -34,7 +34,7 @@ const token = 'synthetic-twilio-auth-token';
 const webhookUrl = 'https://app.example.test/api/webhooks/twilio/whatsapp';
 const body = { From: 'whatsapp:+15555550123', Body: 'Please help', MessageSid: 'SM123' };
 
-async function sendWebhook(signature?: string, payload = body, host?: string) {
+async function sendWebhook(signature?: string, payload = body, host?: string, path = '/api/webhooks/twilio/whatsapp') {
   const app = Fastify();
   applications.push(app);
   installAuthentication(app);
@@ -42,7 +42,7 @@ async function sendWebhook(signature?: string, payload = body, host?: string) {
   await app.register(twilioWebhookPlugin);
   return app.inject({
     method: 'POST',
-    url: '/api/webhooks/twilio/whatsapp',
+    url: path,
     payload: new URLSearchParams(payload).toString(),
     headers: {
       'content-type': 'application/x-www-form-urlencoded',
@@ -282,6 +282,39 @@ describe('Twilio webhook provider authentication', () => {
       '11111111-1111-4111-8111-111111111111',
     );
     expect(invoke).not.toHaveBeenCalled();
+  });
+  it('returns a retryable non-2xx response when durable AgentRun enqueue fails', async () => {
+    enqueueInboundCommunicationRun.mockRejectedValueOnce(new Error('database unavailable'));
+    const signature = twilio.getExpectedTwilioSignature(token, webhookUrl, body);
+
+    const response = await sendWebhook(signature);
+
+    expect(response.statusCode).toBe(503);
+    expect(response.headers['content-type']).toContain('application/json');
+    expect(response.body).toContain('provider may retry');
+    expect(response.body).not.toContain('<Response');
+    expect(prismaMock.communicationMessage.create).toHaveBeenCalled();
+    expect(enqueueInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith({
+      messageId: 'message-1',
+      ownerUserId: '11111111-1111-4111-8111-111111111111',
+      providerMessageId: 'SM123',
+    });
+  });
+
+  it('returns a retryable non-2xx response when inbound message persistence fails', async () => {
+    prismaMock.communicationMessage.create.mockRejectedValueOnce(new Error('postgres unavailable'));
+    const signature = twilio.getExpectedTwilioSignature(token, webhookUrl, body);
+
+    const response = await sendWebhook(signature);
+
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toContain('provider may retry');
+    expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
+  });
+
+  it('does not register the legacy webhook path', async () => {
+    const response = await sendWebhook(undefined, body, undefined, '/webhooks/twilio/whatsapp');
+    expect(response.statusCode).toBe(404);
   });
 });
 
