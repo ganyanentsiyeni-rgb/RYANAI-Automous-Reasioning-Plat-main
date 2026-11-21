@@ -209,21 +209,24 @@ interface ClaimedAgentRun {
   approved_plan_hash: string | null;
   approved_commit_sha: string | null;
   approved_diff_hash: string | null;
+  lease_expires_at: Date;
+  heartbeat_at: Date;
 }
 
 /** Atomically claim one queued run; stale leases are recoverable after worker restarts. */
-export async function claimNextAgentRun(workerId: string): Promise<ClaimedAgentRun | null> {
+export async function claimNextAgentRun(workerId: string, leaseMs = 30_000): Promise<ClaimedAgentRun | null> {
   const exhausted = await prisma.$queryRaw<Array<{ id: string }>>`
     UPDATE "agent_runs"
     SET "status" = 'failed',
         "error" = 'Worker lease expired after the maximum number of attempts.',
         "completed_at" = NOW(),
         "worker_id" = NULL,
-        "locked_at" = NULL
+        "locked_at" = NULL,
+        "lease_expires_at" = NULL
     WHERE "status" = 'running'
       AND "queue_type" = 'reasoning'
       AND "approval_status" = 'approved'
-      AND "locked_at" < NOW() - INTERVAL '3 minutes'
+      AND "lease_expires_at" <= NOW()
       AND "attempts" >= "max_attempts"
     RETURNING "id"
   `;
@@ -235,11 +238,11 @@ export async function claimNextAgentRun(workerId: string): Promise<ClaimedAgentR
     });
   }
   const rows = await prisma.$queryRawUnsafe<ClaimedAgentRun[]>(
-    'UPDATE "agent_runs" SET "status" = \'running\', "worker_id" = $1, "locked_at" = NOW(), "attempts" = "attempts" + 1 ' +
-    'WHERE "id" = (SELECT "id" FROM "agent_runs" WHERE "queue_type" = \'reasoning\' AND "approval_status" = \'approved\' AND ("plan_snapshot" IS NULL OR ("approved_plan_hash" = "plan_hash" AND "approved_commit_sha" = "base_commit_sha" AND "approved_diff_hash" = "proposed_diff_hash")) AND "cancel_requested_at" IS NULL AND (("status" = \'queued\' AND "next_attempt_at" <= NOW()) OR ("status" = \'running\' AND "locked_at" < NOW() - INTERVAL \'3 minutes\' AND "attempts" < "max_attempts" AND "next_attempt_at" <= NOW())) ' +
+    'UPDATE "agent_runs" SET "status" = \'running\', "worker_id" = $1, "locked_at" = NOW(), "lease_expires_at" = NOW() + ($2 * INTERVAL \'1 millisecond\'), "heartbeat_at" = NOW(), "attempts" = "attempts" + 1 ' +
+    'WHERE "id" = (SELECT "id" FROM "agent_runs" WHERE "queue_type" = \'reasoning\' AND "approval_status" = \'approved\' AND ("plan_snapshot" IS NULL OR ("approved_plan_hash" = "plan_hash" AND "approved_commit_sha" = "base_commit_sha" AND "approved_diff_hash" = "proposed_diff_hash")) AND "cancel_requested_at" IS NULL AND (("status" = \'queued\' AND "next_attempt_at" <= NOW()) OR ("status" = \'running\' AND "lease_expires_at" <= NOW() AND "attempts" < "max_attempts" AND "next_attempt_at" <= NOW())) ' +
     'ORDER BY "created_at" ASC LIMIT 1 FOR UPDATE SKIP LOCKED) ' +
-    'RETURNING "id", "user_id", "objective", "requested_model", "trace_context", "attempts", "max_attempts", "worker_id", "execution_scope", "approval_status", "steering_notes", "cancel_requested_at", "plan_snapshot", "plan_hash", "base_commit_sha", "proposed_diff_hash", "approved_plan_hash", "approved_commit_sha", "approved_diff_hash"',
-    workerId,
+    'RETURNING "id", "user_id", "objective", "requested_model", "trace_context", "attempts", "max_attempts", "worker_id", "execution_scope", "approval_status", "steering_notes", "cancel_requested_at", "plan_snapshot", "plan_hash", "base_commit_sha", "proposed_diff_hash", "approved_plan_hash", "approved_commit_sha", "approved_diff_hash", "lease_expires_at", "heartbeat_at"',
+    workerId, leaseMs,
   );
   return rows[0] ?? null;
 }
@@ -260,7 +263,7 @@ async function processAgentRun(
   ) => recordRunEvidence({ runId: run.id, eventType: 'region.' + state, payload: { region, ...details } });
   const stopHeartbeat = startAgentRunLeaseHeartbeat(
     { id: run.id, workerId: run.worker_id, attempts: run.attempts },
-    (where) => prisma.agentRun.updateMany({ where: { ...where, cancelRequestedAt: null }, data: { lockedAt: new Date() } }),
+    (where, heartbeatAt, leaseExpiresAt) => prisma.agentRun.updateMany({ where: { ...where, cancelRequestedAt: null }, data: { heartbeatAt, leaseExpiresAt } }),
     (error) => {
       console.error('[agent-worker] Lease ownership/heartbeat lost for run ' + run.id + ': ' + (error instanceof Error ? error.message : String(error)));
       if (!cancellation.signal.aborted) {
@@ -268,6 +271,7 @@ async function processAgentRun(
       }
     },
     5_000,
+    30_000,
   );
   try {
     const assertExecutionLeaseActive = () => assertAgentRunLeaseActive(
@@ -429,13 +433,14 @@ async function processAgentRun(
       // Compare-and-set against the cancellation flag. If cancellation races this
       // update, the retry/failure write cannot overwrite the cancellation request.
       let ownership = await tx.agentRun.updateMany({
-        where: { ...lease, cancelRequestedAt: null },
+        where: { ...lease, cancelRequestedAt: null, leaseExpiresAt: { gt: new Date() } },
         data: {
           status: retry ? 'queued' : 'failed',
           error: message,
           completedAt: retry ? null : new Date(),
           nextAttemptAt: retry ? nextAttemptAt : undefined,
           lockedAt: null,
+          leaseExpiresAt: null,
           workerId: null,
         },
       });
@@ -444,12 +449,13 @@ async function processAgentRun(
         // after the earlier read. Finalize cancellation only if this worker still
         // owns the same running attempt and the durable cancellation flag is set.
         ownership = await tx.agentRun.updateMany({
-          where: { ...lease, cancelRequestedAt: { not: null } },
+          where: { ...lease, cancelRequestedAt: { not: null }, leaseExpiresAt: { gt: new Date() } },
           data: {
             status: 'cancelled',
             error: message,
             completedAt: new Date(),
             lockedAt: null,
+            leaseExpiresAt: null,
             workerId: null,
           },
         });
@@ -774,7 +780,7 @@ export function startAgentTaskWorker(options: {
         pendingDrainTrigger = null;
         while (!stopped && inFlight < concurrency) {
           updateStatus({ lastClaimAttemptAt: new Date().toISOString() });
-          const run = await claimNextAgentRun(workerId);
+          const run = await claimNextAgentRun(workerId, 30_000);
           updateStatus({ queueClaimState: 'ready', lastSuccessfulClaimAt: new Date().toISOString(), lastClaimError: null, lastClaimErrorCode: null });
           if (!run) break;
           const pendingTrigger = pendingDrainTrigger;
