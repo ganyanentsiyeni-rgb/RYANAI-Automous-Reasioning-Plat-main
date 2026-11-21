@@ -166,7 +166,7 @@ describe('admin resilience recovery target comparison', () => {
 
   it('does not claim isolation for a separately hosted URL without proving target identity', () => {
     process.env.DATABASE_URL = 'postgresql://source:secret@db.example.com:5432/ryanai';
-    process.env.RYANAI_RECOVERY_DATABASE_URL = 'postgresql://recovery:other@recovery.example.com:5432/ryanai';
+    process.env.RYANAI_RECOVERY_DATABASE_URL = 'postgresql://recovery:other@recovery.example.com:5432/ryanai-recovery';
     process.env.RYANAI_RECOVERY_TARGET_LABEL = 'recovery-drill';
 
     expect(recoveryPreflight()).toEqual(expect.objectContaining({
