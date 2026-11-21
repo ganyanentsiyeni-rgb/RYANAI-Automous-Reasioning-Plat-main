@@ -6,14 +6,15 @@ import formbody from '@fastify/formbody';
 import rawBody from 'fastify-raw-body';
 import { Resend } from 'resend';
 import { enqueueInboundCommunicationRun, waitForInboundCommunicationRun, enqueueCommsAssistRun } from './agentRuns.js';
-import { beginOutboundCommunication, claimInboundCommunication, completeOutboundCommunication, markOutboundCommunicationUnknown, OutboundIdempotencyConflictError, prepareOutboundCommunication, recordCommunication } from './history.js';
+import { beginOutboundCommunication, claimInboundCommunication, completeOutboundCommunication, OutboundIdempotencyConflictError, prepareOutboundCommunication, recordCommunication } from './history.js';
 import { addressOwnerMessage, getOwnerGreeting } from './personalization.js';
 import { waitForAutonomousTask } from '../../agent/operations.js';
 import { createCommsUploadIntents, createCommsStorageAdmin, cleanCommsAttachmentUrls, downloadResendMedia, getCommsAttachmentScanStates, getCommsAttachmentStatuses, getOwnerInboundUserId, storeInboundCommsAttachment, storeTwilioMediaForCommunication } from './attachments.js';
 import { addressOwnerResponse, RYANAI_LOCALE } from '../../shared/ryanIdentity.js';
 import { areCommunicationAttachmentsEnabled, isCommunicationsEnabled, isCommunicationsTestAuthorized } from './featureFlags.js';
 import { assertCommsActionAuthorized, buildCommsActionPayload, claimCommsAction, finishCommsAction } from './authorization.js';
-import { reserveOutboundCommsDispatch, claimOutboundCommsDispatch, markOutboundCommsDispatchAccepted, markOutboundCommsDispatchUncertain } from './outboundDispatch.js';
+import { reserveOutboundCommsDispatch, claimOutboundCommsDispatch, markOutboundCommsDispatchAccepted, markOutboundCommsDispatchUncertain, advanceOutboundCommsDispatchFromReceipt } from './outboundDispatch.js';
+import { appendCommsDeliveryReceiptIdempotent } from './deliveryReceipts.js';
 
 type Channel = 'whatsapp' | 'sms' | 'voice' | 'email';
 type CommsBody = { channel?: Channel; recipient?: string; message?: string; subject?: string; contentSid?: string; contentVariables?: string; idempotencyKey?: string; attachmentIds?: string[]; approvalId?: string; agentRunId?: string };
@@ -885,13 +886,48 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
         ownerUserId,
         metadata: { inReplyTo: email.id, subject: `Re: ${email.subject || 'Message to RyanAI'}`, agentRunId: queued.runId },
       });
-      if (outbound.replayed) {
-        const alreadyAccepted = outbound.status === 'accepted' && Boolean(outbound.providerMessageId);
+      const dispatch = await reserveOutboundCommsDispatch(fastify.prisma, {
+        communicationMessageId: outbound.id,
+        agentRunId: queued.runId,
+        channel: 'email',
+        recipient: sender,
+        idempotencyKey: `resend-inbound-reply:${email.id}`,
+        provider: 'smtp',
+        metadata: { inReplyTo: email.id, subject: `Re: ${email.subject || 'Message to RyanAI'}` },
+      });
+      if (dispatch.state === 'uncertain') {
+        return { received: true, replied: false, dispatchPending: true, reconciliationRequired: true };
+      }
+      if (outbound.replayed && !dispatch.replayed) {
+        if (outbound.status === 'accepted' && outbound.providerMessageId) {
+          await markOutboundCommsDispatchAccepted(fastify.prisma, {
+            dispatchId: dispatch.id,
+            providerMessageId: outbound.providerMessageId,
+          });
+          return { received: true, replied: true, providerAccepted: true, reconciledFromLegacyReservation: true };
+        }
+        await markOutboundCommsDispatchUncertain(
+          fastify.prisma,
+          dispatch.id,
+          'legacy_outbound_reservation_without_governed_dispatch',
+        );
+        return { received: true, replied: false, dispatchPending: true, reconciliationRequired: true };
+      }
+      if (dispatch.replayed && dispatch.state !== 'reserved') {
+        const alreadyAccepted = ['accepted', 'delivered', 'reconciled'].includes(dispatch.state) && Boolean(dispatch.providerMessageId);
         await fastify.prisma.communicationMessage.update({
           where: { providerMessageId: email.id },
-          data: { status: alreadyAccepted ? 'replied' : 'reply_dispatch_unknown',
+          data: { status: alreadyAccepted ? 'replied' : 'reply_dispatch_pending',
             metadata: { subject: email.subject || '', reply: answer, agentRunId: queued.runId, outboundMessageId: outbound.id } },
         });
+        return { received: true, replied: alreadyAccepted, dispatchPending: !alreadyAccepted };
+      }
+      const dispatchClaim = await claimOutboundCommsDispatch(fastify.prisma, dispatch.id);
+      if (dispatchClaim.state === 'uncertain') {
+        return { received: true, replied: false, dispatchPending: true, reconciliationRequired: true };
+      }
+      if (dispatchClaim.replayed && dispatchClaim.state !== 'dispatching') {
+        const alreadyAccepted = ['accepted', 'delivered', 'reconciled'].includes(dispatchClaim.state) && Boolean(dispatch.providerMessageId);
         return { received: true, replied: alreadyAccepted, dispatchPending: !alreadyAccepted };
       }
       try {
@@ -902,14 +938,27 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
         await completeOutboundCommunication(fastify.prisma, {
           id: outbound.id, providerMessageId: sent.messageId, status: 'accepted',
         });
+        await markOutboundCommsDispatchAccepted(fastify.prisma, { dispatchId: dispatch.id, providerMessageId: sent.messageId });
+        await appendCommsDeliveryReceiptIdempotent(fastify.prisma, {
+          dispatchId: dispatch.id,
+          communicationMessageId: outbound.id,
+          providerMessageId: sent.messageId,
+          providerStatus: 'accepted',
+          deliveryState: 'accepted_by_provider',
+          metadata: { provider: 'smtp' },
+        });
+        await advanceOutboundCommsDispatchFromReceipt(fastify.prisma, {
+          dispatchId: dispatch.id,
+          deliveryState: 'accepted_by_provider',
+        });
         await fastify.prisma.communicationMessage.update({
           where: { providerMessageId: email.id },
           data: { status: 'replied', metadata: { subject: email.subject || '', reply: answer, agentRunId: queued.runId, outboundMessageId: outbound.id } },
         });
         return { received: true, replied: true, providerAccepted: true };
       } catch (sendError) {
-        await markOutboundCommunicationUnknown(fastify.prisma, outbound.id).catch((persistError) => {
-          request.log.error({ err: persistError, outboundMessageId: outbound.id }, 'Unable to persist ambiguous SMTP dispatch state');
+        await markOutboundCommsDispatchUncertain(fastify.prisma, dispatch.id, 'smtp_send_outcome_unknown').catch((persistError) => {
+          request.log.error({ err: persistError, outboundDispatchId: dispatch.id }, 'Unable to persist ambiguous SMTP dispatch state');
         });
         await fastify.prisma.communicationMessage.update({
           where: { providerMessageId: email.id },

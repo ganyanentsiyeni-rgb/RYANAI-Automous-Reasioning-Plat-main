@@ -5,6 +5,7 @@ export type OutboundCommsDispatchState =
   | 'reserved'
   | 'dispatching'
   | 'accepted'
+  | 'delivered'
   | 'uncertain'
   | 'failed'
   | 'reconciled';
@@ -182,7 +183,7 @@ export async function reconcileOutboundCommsDispatch(
   if (!input.operatorId || !input.reason.trim()) {
     throw new Error('Explicit operator identity and reconciliation reason are required.');
   }
-  await prisma.outboundCommsDispatch.update({
+  const updated = await prisma.outboundCommsDispatch.updateMany({
     where: { id: input.dispatchId, state: 'uncertain' },
     data: {
       state: input.state,
@@ -192,6 +193,7 @@ export async function reconcileOutboundCommsDispatch(
       reconciliationReason: input.reason.trim(),
     },
   });
+  if (updated.count !== 1) throw new Error('The outbound dispatch is not in an uncertain state or was already reconciled.');
 }
 
 /**
