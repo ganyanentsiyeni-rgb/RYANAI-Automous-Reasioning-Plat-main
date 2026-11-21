@@ -35,6 +35,8 @@ describe('RyanAI multilingual welcome settings', () => {
     const language = container.querySelector('#ryanai-language') as HTMLSelectElement;
     expect(language.value).toBe('ve-ZA');
     expect(container.textContent).toContain('Tshivenda (Venda)');
+    expect(container.textContent).toContain('Africa/Johannesburg');
+    expect(container.textContent).toContain('Local time updates every minute');
   });
 
   it('preserves title and voice choices saved by the legacy welcome panel', async () => {
@@ -114,6 +116,7 @@ describe('RyanAI multilingual welcome settings', () => {
     const title = container.querySelector('#ryanai-title') as HTMLSelectElement;
     expect([...title.options].map((option) => option.value)).toContain('Sir G');
     expect([...title.options].map((option) => option.value)).toContain('Ntsiyeni Ganyane');
+    expect([...title.options].map((option) => option.value)).toContain('Ntsiyeni Ganyane, Sir G');
     expect(container.querySelector('#ryanai-voice')).not.toBeNull();
   });
 });
