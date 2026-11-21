@@ -78,7 +78,6 @@ test('claim uses a dedicated atomic SKIP LOCKED coding queue, not agent_runs', a
 
 test('heartbeat renews only a live coding-task lease and advances heartbeatAt', async () => {
   let call;
-  const timestamp = new Date('2026-11-21T08:00:00.000Z');
   const queue = createCodingTaskQueue({
     codingTask: {
       updateMany: async (args) => { call = args; return { count: 1 }; },
