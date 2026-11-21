@@ -59,11 +59,11 @@ async function github(path, token) {
   const response = await fetch(new URL(path, API), {
     headers: {
       accept: 'application/vnd.github+json',
-      authorization: \`Bearer \${token}\`,
+      authorization: 'Bearer ' + token,
       'x-github-api-version': '2022-11-28',
     },
   });
-  if (!response.ok) throw new Error(\`GitHub API \${response.status} for \${path}\`);
+  if (!response.ok) throw new Error('GitHub API ' + response.status + ' for ' + path);
   return response.json();
 }
 
@@ -81,15 +81,15 @@ export async function runAudit({ repository, sha, token, env = process.env }) {
   if (!sha || !/^[a-f0-9]{40}$/i.test(sha)) throw new Error('GITHUB_SHA must be a full commit SHA.');
   if (!token) throw new Error('A read-only GitHub token is required.');
   const [checkData, statusData, workflowsData, environmentsInventory, variableInventory] = await Promise.all([
-    github(\`/repos/\${repository}/commits/\${sha}/check-runs?per_page=100\`, token),
-    github(\`/repos/\${repository}/commits/\${sha}/status\`, token),
-    github(\`/repos/\${repository}/actions/workflows?per_page=100\`, token),
-    inventory(\`/repos/\${repository}/environments?per_page=100\`, token, 'environments'),
-    inventory(\`/repos/\${repository}/actions/variables?per_page=100\`, token, 'variables'),
+    github('/repos/' + repository + '/commits/' + sha + '/check-runs?per_page=100', token),
+    github('/repos/' + repository + '/commits/' + sha + '/status', token),
+    github('/repos/' + repository + '/actions/workflows?per_page=100', token),
+    inventory('/repos/' + repository + '/environments?per_page=100', token, 'environments'),
+    inventory('/repos/' + repository + '/actions/variables?per_page=100', token, 'variables'),
   ]);
   const runsByWorkflow = await Promise.all((workflowsData.workflows || []).map(async (workflow) => {
     try {
-      const data = await github(\`/repos/\${repository}/actions/workflows/\${workflow.id}/runs?per_page=5\`, token);
+      const data = await github('/repos/' + repository + '/actions/workflows/' + workflow.id + '/runs?per_page=5', token);
       return {
         id: workflow.id, name: workflow.name, path: workflow.path, state: workflow.state,
         inventoryStatus: 'available',
@@ -144,15 +144,15 @@ async function main() {
   const output = JSON.stringify(report, null, 2);
   if (process.env.GITHUB_OUTPUT) {
     const fs = await import('node:fs');
-    fs.appendFileSync(process.env.GITHUB_OUTPUT, \`overall=\${report.ci.overall}\n\`);
+    fs.appendFileSync(process.env.GITHUB_OUTPUT, 'overall=' + report.ci.overall + '\n');
   }
   process.stdout.write(output + '\n');
   if (report.ci.overall === 'failing') process.exitCode = 1;
 }
 
-if (process.argv[1] && import.meta.url === new URL(\`file://\${process.argv[1]}\`).href) {
+if (process.argv[1] && import.meta.url === 'file://' + process.argv[1]) {
   main().catch((error) => {
-    process.stderr.write(\`RyanAI CI audit failed: \${error.message}\n\`);
+    process.stderr.write('RyanAI CI audit failed: ' + error.message + '\n');
     process.exitCode = 1;
   });
 }
