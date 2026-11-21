@@ -102,7 +102,7 @@ describe('Twilio delivery status callback', () => {
 
   it('does not mark an unknown provider ID delivered', async () => {
     prisma.communicationMessage.findUnique.mockResolvedValueOnce(null);
-    const response = await post({ MessageSid: sid, MessageStatus: 'delivered' });
+    const response = await post({ AccountSid: 'AC' + 'c'.repeat(32), MessageSid: sid, MessageStatus: 'delivered' });
     expect(response.statusCode).toBe(503);
     expect(prisma.communicationMessage.update).not.toHaveBeenCalled();
   });
