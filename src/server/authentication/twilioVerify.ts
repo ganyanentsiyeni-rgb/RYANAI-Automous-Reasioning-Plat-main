@@ -121,8 +121,8 @@ export function createTwilioVerifyService(options: TwilioVerifyServiceOptions) {
   };
   const challengeKey = (id: string) => `ryanai:verify:challenge:${hash(id)}`;
   const lockKey = (id: string) => `ryanai:verify:lock:${hash(id)}`;
-  const throttleKey = (subjectId: string, purpose: string, channel: string) =>
-    `ryanai:verify:start:${hash(subjectId)}:${purpose}:${channel}`;
+  const throttleKey = (subjectId: string, purpose: string, channel: string, destination: string) =>
+    `ryanai:verify:start:${hash(subjectId)}:${purpose}:${channel}:${hash(destination.toLowerCase())}`;
 
   return {
     async start(input: StartVerificationInput): Promise<StartVerificationResult> {
@@ -141,7 +141,7 @@ export function createTwilioVerifyService(options: TwilioVerifyServiceOptions) {
         verificationSid: '', state: 'pending', attempts: 0, createdAt: now().toISOString(),
       };
       const allowed = await redis.set(
-        throttleKey(policy.subjectId, input.purpose, input.channel),
+        throttleKey(policy.subjectId, input.purpose, input.channel, input.destination),
         '1', 'EX', VERIFY_RESEND_WINDOW_SECONDS, 'NX',
       );
       if (allowed !== 'OK') throw new VerifyServiceError('rate_limited');
