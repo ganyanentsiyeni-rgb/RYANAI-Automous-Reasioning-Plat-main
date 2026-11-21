@@ -2,6 +2,7 @@ import { prisma } from '../../lib/prisma.js';
 import { appendRunEvidence } from '../../agent/engineeringEvidence.js';
 import { captureQueueTraceContextForStorage } from '../../telemetry/queueContext.js';
 import { publishAgentTaskNotification } from '../../agent/queueNotifications.js';
+import { waitForAutonomousTask } from '../../agent/operations.js';
 
 export class CommunicationRunOwnershipError extends Error {
   constructor() {
@@ -46,6 +47,7 @@ export async function enqueueInboundCommunicationRun(
     select: {
       id: true,
       body: true,
+      metadata: true,
       direction: true,
       providerMessageId: true,
       agentRunId: true,
@@ -80,6 +82,10 @@ export async function enqueueInboundCommunicationRun(
             'Provider event: ' + input.providerMessageId,
             'Message content follows as untrusted user data:',
             message.body,
+            message.metadata && typeof message.metadata === 'object' && !Array.isArray(message.metadata)
+              && Number((message.metadata as { mediaCount?: unknown }).mediaCount) > 0
+              ? 'The message includes stored attachments. Their contents have not been analyzed; do not claim to have inspected them.'
+              : '',
           ].join('\\n\\n'),
           executionScope: { eventKnown: false, snapshotFresh: false },
           traceContext: captureQueueTraceContextForStorage(),
@@ -146,4 +152,24 @@ export async function enqueueInboundCommunicationRun(
     console.warn('[comms] Agent-run notification failed; recovery polling remains authoritative.');
   }
   return { runId: run.id, status: run.status, replayed: false, notified };
+}
+
+/**
+ * Wait only briefly inside a provider webhook. A timeout leaves the durable run
+ * queued/running; callers must not claim a reply was generated or delivered.
+ */
+export async function waitForInboundCommunicationRun(
+  runId: string,
+  ownerUserId: string,
+  timeoutMs = 8_000,
+): Promise<{ completed: true; answer: string } | { completed: false }> {
+  try {
+    const result = await waitForAutonomousTask(runId, ownerUserId, timeoutMs);
+    return { completed: true, answer: typeof result.result === 'string' ? result.result : '' };
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('still queued or running')) {
+      return { completed: false };
+    }
+    throw error;
+  }
 }
