@@ -47,15 +47,21 @@ jobs:
     steps:
       - name: Check out Blueprints
         uses: actions/checkout@v7
-      - name: Validate both Blueprints against the Render workspace
+      - name: Validate both Blueprints against the RyanAI Render workspace
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          RENDER_WORKSPACE_ID: tea-d5ogqtcoud1c73b266f0
+          # Confirmed from the connected Render workspace inventory (RyanAI-2).
+          # Workspace IDs are identifiers, not credentials.
+          RENDER_WORKSPACE_ID: tea-dbteno6c6qcc7390gjlg
         shell: bash
         run: |
           set -euo pipefail
           if [[ -z "${RENDER_API_KEY:-}" ]]; then
             echo "::error::RENDER_API_KEY Actions secret is missing. Render schema validation is blocked; configure it in repository secrets without pasting it into logs or chat."
+            exit 1
+          fi
+          if [[ -z "${RENDER_WORKSPACE_ID:-}" ]]; then
+            echo "::error::RENDER_WORKSPACE_ID is missing. Set it to the verified RyanAI Render workspace ID."
             exit 1
           fi
 
@@ -70,7 +76,7 @@ jobs:
               --form "ownerId=${RENDER_WORKSPACE_ID}" \
               --form "file=@${blueprint};type=application/x-yaml" \
               --output "${response_file}"
-            jq . "${response_file}"
+            jq .
             jq -e '.valid == true' "${response_file}"
             echo "::endgroup::"
           done
