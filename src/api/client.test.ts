@@ -124,7 +124,7 @@ describe('RyanAIClient transport continuity', () => {
   it('does not reconnect after an explicit disconnect', async () => {
     const client = new RyanAIClient({
       url: 'ws://example.test/ws',
-      reconnectInterval: 100,
+      reconnectInterval: 250,
       maxReconnectAttempts: 2,
     });
 
