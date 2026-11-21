@@ -144,15 +144,26 @@ integration('Comms Twilio status callback with disposable PostgreSQL', () => {
     expect(first.statusCode).toBe(202);
     expect(first.json()).toEqual({ accepted: true, state: 'delivered' });
 
+    // AgentRun/message execution state is not overwritten by a delivery callback.
+    // The append-only receipt and dispatch projection carry provider delivery state.
     const stored = await prisma.communicationMessage.findUnique({
       where: { id: messageId },
       select: { status: true, providerMessageId: true, metadata: true },
     });
     expect(stored).toEqual({
-      status: 'delivered',
+      status: 'accepted',
       providerMessageId,
       metadata: { integrationFixture: true, preservedValue: 'before-callback' },
     });
+
+    const dispatch = await prisma.outboundCommsDispatch.findUnique({
+      where: { communicationMessageId: messageId },
+      select: { id: true, state: true },
+    });
+    expect(dispatch).toMatchObject({ state: 'delivered' });
+    expect(await prisma.commsDeliveryReceipt.count({
+      where: { dispatchId: dispatch!.id, providerMessageId },
+    })).toBe(1);
 
     const retry = await sendCallback();
     expect(retry.statusCode).toBe(202);
@@ -162,5 +173,8 @@ integration('Comms Twilio status callback with disposable PostgreSQL', () => {
       select: { status: true, providerMessageId: true, metadata: true },
     });
     expect(afterRetry).toEqual(stored);
+    expect(await prisma.commsDeliveryReceipt.count({
+      where: { dispatchId: dispatch!.id, providerMessageId },
+    })).toBe(1);
   });
 });
