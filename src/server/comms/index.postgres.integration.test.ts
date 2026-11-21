@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import twilio from 'twilio';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { commsPlugin } from './index.js';
+import { twilioStatusCallbackPlugin } from './twilioStatusCallback.js';
 import { installAuthentication } from '../routes/auth.js';
 
 vi.mock('../../agent/approvalEngine.js', () => ({
@@ -40,6 +41,7 @@ integration('Comms Twilio status callback with disposable PostgreSQL', () => {
         CREATE TABLE public.comms_send_approvals (
           provider_message_id text,
           provider_status text,
+          status text,
           updated_at timestamptz
         )
       `);
@@ -69,6 +71,7 @@ integration('Comms Twilio status callback with disposable PostgreSQL', () => {
     installAuthentication(app);
     app.decorate('prisma', prisma as never);
     await app.register(commsPlugin);
+    await app.register(twilioStatusCallbackPlugin);
   });
 
   afterAll(async () => {
@@ -117,7 +120,7 @@ integration('Comms Twilio status callback with disposable PostgreSQL', () => {
     });
 
     const first = await sendCallback();
-    expect(first.statusCode).toBe(200);
+    expect(first.statusCode).toBe(202);
     expect(first.json()).toEqual({ received: true });
 
     const stored = await prisma.communicationMessage.findUnique({
@@ -131,7 +134,7 @@ integration('Comms Twilio status callback with disposable PostgreSQL', () => {
     });
 
     const retry = await sendCallback();
-    expect(retry.statusCode).toBe(200);
+    expect(retry.statusCode).toBe(202);
     const afterRetry = await prisma.communicationMessage.findUnique({
       where: { id: messageId },
       select: { status: true, providerMessageId: true, metadata: true },
