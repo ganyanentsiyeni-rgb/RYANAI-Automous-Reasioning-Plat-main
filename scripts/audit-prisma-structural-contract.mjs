@@ -234,7 +234,8 @@ export function assessStructuralContract(snapshot) {
   }
   const servicePrivileges = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER', 'MAINTAIN'];
   finding(findings, 'grant public.users to service_role', 'service_role has SELECT, INSERT, UPDATE, DELETE',
-    servicePrivileges.filter((privilege) => hasGrant('service_role', privilege)), true,
+    servicePrivileges.filter((privilege) => hasGrant('service_role', privilege)),
+    servicePrivileges.some((privilege) => hasGrant('service_role', privilege)),
     servicePrivileges.every((privilege) => hasGrant('service_role', privilege)));
 
   const functionGrants = snapshot.functionGrants ?? [];
