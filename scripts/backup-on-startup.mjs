@@ -67,7 +67,8 @@ async function copyBucket(baseUrl, sourceBucket, targetBucket, prefix) {
 }
 
 async function main() {
-  const manualRun = process.argv.includes("--run");\n  if (process.env.BACKUP_ON_STARTUP !== "true" && !manualRun) {
+  const manualRun = process.argv.includes("--run");
+  if (process.env.BACKUP_ON_STARTUP !== "true" && !manualRun) {
     log("disabled; set BACKUP_ON_STARTUP=true to enable");
     return;
   }
@@ -91,7 +92,8 @@ async function main() {
   try {
     const dumpPath = path.join(temp, "database.dump");
     await pgDump(dumpPath);
-    const dump = await readFile(dumpPath);\n    const dumpSha256 = createHash("sha256").update(dump).digest("hex");
+    const dump = await readFile(dumpPath);
+    const dumpSha256 = createHash("sha256").update(dump).digest("hex");
     await request(baseUrl + "/storage/v1/object/" + encodeURIComponent(destination) + "/" + prefix + "/database.dump", {
       method: "POST", headers: { "Content-Type": "application/octet-stream", "x-upsert": "true" }, body: dump,
     });
@@ -103,7 +105,9 @@ async function main() {
       createdAt: new Date().toISOString(),
       gitCommit: process.env.RENDER_GIT_COMMIT || process.env.GITHUB_SHA || null,
       renderServiceId: process.env.RENDER_SERVICE_ID || null,
-      databaseDump: "database.dump (pg_dump custom format; schema and data)",\n      databaseDumpSha256: dumpSha256,\n      databaseDumpBytes: dump.byteLength,
+      databaseDump: "database.dump (pg_dump custom format; schema and data)",
+      databaseDumpSha256: dumpSha256,
+      databaseDumpBytes: dump.byteLength,
       storageBuckets: sources,
       environmentVariablePresence: presence,
       secretsIncluded: false,
@@ -115,7 +119,8 @@ async function main() {
     for (const source of sources) await copyBucket(baseUrl, source, destination, prefix);
     log("completed: private bucket " + destination + ", backupId " + prefix + ", sha256 " + dumpSha256);
   } catch (error) {
-    warn("backup failed; API startup will continue: " + error.message);\n    process.exitCode = 1;
+    warn("backup failed; API startup will continue: " + error.message);
+    process.exitCode = 1;
   } finally {
     await rm(temp, { recursive: true, force: true });
   }

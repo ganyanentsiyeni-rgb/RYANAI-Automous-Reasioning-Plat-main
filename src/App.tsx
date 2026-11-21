@@ -23,7 +23,6 @@ import {
   ClipboardList,
   HelpCircle,
   LogIn,
-  LogOut,
   UserPlus,
   type LucideIcon,
 } from 'lucide-react';
@@ -60,6 +59,7 @@ const MissionOperatingSystem = lazy(() => import('@/pages/MissionOperatingSystem
 import { useAuth } from '@/hooks/useAuth';
 import Greeting from '@/components/Greeting';
 import NeuralIcon from '@/components/brand/NeuralIcon';
+import AccountControlCentre from '@/components/AccountControlCentre';
 import { authenticatedFetch } from '@/lib/authenticatedFetch';
 import { DEFAULT_LANGUAGE, OWNER_DEFAULT_LANGUAGE, isRyanLanguage } from '@/shared/languages';
 import { DEFAULT_MODEL, MODEL_LIST } from '@/lib/models';
@@ -69,7 +69,7 @@ import { normalizeAudiobookSettings, normalizeCopilotSettings, normalizeDashboar
 type Route = (typeof appManifest.routes)[number]['id'];
 
 const routeFromHash = (): Route => {
-  const segment = window.location.hash.replace(/^#\/?/, '').split('/')[0];
+  const segment = window.location.hash.replace(/^#\/?/, '').split(/[/?]/)[0];
   const route =
     segment === 'login'
       ? 'signin'
@@ -239,18 +239,14 @@ export default function App() {
           ))}
         </nav>
         <div className="border-t border-white/5 p-4">
-          {user ? <div className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.03] p-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-cyan-300/10 text-xs font-bold text-cyan-100">{(displayName || 'R').slice(0, 1).toUpperCase()}</span>
-            <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-slate-200">{displayName || 'Signed-in operator'}</span><span className="mt-1 block text-[9px] uppercase tracking-wider text-slate-500">{isOwner ? 'Owner session' : isAdmin ? 'Admin session' : 'Authenticated session'}</span><a href="#/survey" aria-label="Open RyanAI Community Survey" className="mt-2 inline-flex items-center gap-1.5 text-[10px] font-semibold text-cyan-200 transition hover:text-cyan-100"><ClipboardList className="h-3 w-3" /> Community Survey</a></span>
-            <button type="button" onClick={() => void handleSignOut()} disabled={signingOut} aria-label="Sign out" className="rounded-lg p-2 text-slate-500 hover:bg-rose-400/10 hover:text-rose-300 disabled:opacity-50"><LogOut className="h-4 w-4" /></button>
-          </div> : <p className="px-2 py-2 text-[11px] text-slate-600">Secure sign-in required for operator tools.</p>}
+          {user ? <AccountControlCentre displayName={displayName || ''} email={user.email ?? ''} roleLabel={isOwner ? 'Owner account' : isAdmin ? 'Administrator account' : 'Member account'} isOwner={isOwner} isAdmin={isAdmin} signingOut={signingOut} onSignOut={() => void handleSignOut()} /> : <p className="px-2 py-2 text-[11px] text-slate-600">Secure sign-in required for operator tools.</p>}
         </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="relative z-20 shrink-0 border-b border-cyan-300/10 bg-[#0d111b]/95 shadow-lg shadow-black/10 backdrop-blur-xl">
           <div className="hidden min-h-[64px] items-center justify-between gap-4 px-6 md:flex xl:px-9">
             <div><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-600">RyanAI / Platform</p><p className="mt-1 text-sm font-semibold text-slate-200">{currentTitle}</p></div>
-            <div className="flex items-center gap-3"><span className="rounded-full border border-cyan-300/15 bg-cyan-300/[0.04] px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider text-cyan-200/80">Operator console</span>{user && <span className="max-w-[220px] truncate text-xs text-slate-500">{displayName}</span>}{user && <button type="button" onClick={() => void handleSignOut()} disabled={signingOut} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50">{signingOut ? 'Signing out…' : 'Sign out'}</button>}</div>
+            <div className="flex items-center gap-3"><span className="rounded-full border border-cyan-300/15 bg-cyan-300/[0.04] px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider text-cyan-200/80">Operator console</span></div>
           </div>
           <div className="flex min-h-[58px] items-center justify-between gap-3 px-4 md:hidden">
             <a href="#/" className="flex items-center gap-2 font-display text-sm font-black tracking-[0.18em] text-cyan-100"><NeuralIcon icon={BrainCircuit} active size="mobile-brand" />RYANAI</a>
@@ -258,7 +254,7 @@ export default function App() {
               {mobileNavOpen ? <X className="h-4 w-4" aria-hidden="true" /> : <Menu className="h-4 w-4" aria-hidden="true" />}
               <span>{mobileNavOpen ? 'Close' : 'Menu'}</span>
             </button>
-            <div className="flex min-w-0 items-center gap-2">{user && <div className="flex min-w-0 flex-col items-end"><span className="max-w-[140px] truncate text-[11px] text-slate-500">{displayName}</span><a href="#/survey" aria-label="Open RyanAI Community Survey" className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-cyan-200"><ClipboardList className="h-3 w-3" /> Survey</a></div>}{user && <button type="button" onClick={() => void handleSignOut()} disabled={signingOut} aria-label="Sign out" className="rounded-lg border border-white/10 px-2.5 py-2 text-[11px] text-slate-300 disabled:opacity-50">{signingOut ? '…' : 'Sign out'}</button>}</div>
+            <div className="flex min-w-0 items-center gap-2">{user && <AccountControlCentre compact displayName={displayName || ''} email={user.email ?? ''} roleLabel={isOwner ? 'Owner account' : isAdmin ? 'Administrator account' : 'Member account'} isOwner={isOwner} isAdmin={isAdmin} signingOut={signingOut} onSignOut={() => void handleSignOut()} />}</div>
           </div>
           <nav id="mobile-navigation" hidden={!mobileNavOpen} aria-label="Mobile navigation" className="absolute inset-x-0 top-full z-40 grid max-h-[70dvh] grid-cols-1 gap-1 overflow-y-auto border-b border-cyan-300/15 bg-[#0a0d14] p-3 shadow-2xl shadow-black/40 sm:grid-cols-2 md:hidden">
             {visibleDestinations.map(({ id, path, label, icon: Icon }) => <a key={id} href={id === 'landing' ? '#/' : `#${path}`} aria-current={route === id ? 'page' : undefined} onClick={() => setMobileNavOpen(false)} className={`flex min-h-11 items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300 ${route === id ? 'border-cyan-300/25 bg-cyan-300/10 text-cyan-100' : 'border-white/5 text-slate-300 hover:bg-white/5'}`}><NeuralIcon icon={Icon} active={route === id} size="mobile" /><span>{label}</span>{route === id && <span className="ml-auto text-[10px] font-semibold uppercase tracking-wider text-cyan-200">Current</span>}</a>)}
