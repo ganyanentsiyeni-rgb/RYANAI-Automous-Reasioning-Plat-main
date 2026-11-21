@@ -49,3 +49,15 @@ Rules:
 - Do not reset roles, rotate credentials, change Neon project settings, alter Neon Auth, create paid resources, deploy services, or modify the protected production `main` branch without explicit user approval.
 - Before running destructive SQL, deleting branches, importing data, or applying migrations, explain the target branch, impact and rollback plan and obtain explicit approval. Never run schema/data mutations against `main`.
 
+
+## Current RyanAI execution and release contract (21 November 2026)
+
+- The current documented release topology includes Railway as the primary gate, plus independent Render, Vercel, and MCP/MCP-server CI/deployment checks. Verify the exact workflow definitions and service mapping before making provider-specific claims.
+- A release is not green until every required target has a terminal passing result on the exact candidate SHA, security checks have passed, the deployment has an identifiable provider deployment record, and runtime health has been verified. Queued, skipped, cancelled, missing, or provider-blocked is not passed.
+- Do not push documentation or application changes directly to `main`. Use a focused branch and pull request. Never enable auto-merge or bypass review/checks.
+- No production deploy, production database migration, secret creation/modification/rotation, paid upgrade, or production infrastructure mutation without separate explicit owner approval.
+- Comms inbound admission must be durable/idempotent. An interrupted `in_flight` operation is not silently marked failed or retried as safe: reconcile with the provider and record an explicit uncertain/reconciled outcome.
+- Keep AgentRun execution lifecycle separate from outbound dispatch and provider delivery receipts. Delivery callbacks are append-only evidence and may update dispatch projections; they must not overwrite execution state.
+- Follow the migration owner for each schema object. Prisma and Supabase migration histories are separate; do not use `db push`, reset, or edited historical migrations to conceal drift.
+- Live external communications require verified provider callback signatures, verified owner/destination, and explicit authorization for the test action. Credentials stay in protected runtime settings and never enter docs, source, logs, or chat.
+- Report the exact branch, base/head SHA, changed paths, commands/tests actually run, and observed results. Distinguish not-run, queued, skipped, failed, passed, provider-blocked, deployed, and runtime-verified.
