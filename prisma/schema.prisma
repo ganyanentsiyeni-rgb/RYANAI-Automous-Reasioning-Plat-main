@@ -706,6 +706,58 @@ model CommsDeliveryReceipt {
   @@schema("public")
 }
 
+
+model OutboundCommsDispatch {
+  id                     String                    @id @default(uuid())
+  communicationMessageId String                    @unique @map("communication_message_id")
+  communicationMessage   CommunicationMessage     @relation(fields: [communicationMessageId], references: [id], onDelete: Cascade)
+  agentRunId             String?                   @map("agent_run_id")
+  agentRun               AgentRun?                 @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
+  channel                String
+  recipient              String                    @db.Text
+  idempotencyKey         String                    @unique @map("idempotency_key")
+  provider               String
+  providerMessageId      String?                   @unique @map("provider_message_id")
+  state                  String                    @default("reserved")
+  attemptCount           Int                       @default(0) @map("attempt_count")
+  lastAttemptAt          DateTime?                 @map("last_attempt_at") @db.Timestamptz(6)
+  uncertainAt            DateTime?                 @map("uncertain_at") @db.Timestamptz(6)
+  reconciledAt           DateTime?                 @map("reconciled_at") @db.Timestamptz(6)
+  reconciledBy           String?                   @map("reconciled_by")
+  reconciliationReason   String?                   @map("reconciliation_reason") @db.Text
+  metadata               Json?
+  createdAt              DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  receipts               CommsDeliveryReceipt[]
+
+  @@index([state, updatedAt], map: "outbound_comms_dispatch_state_updated_idx")
+  @@index([agentRunId, createdAt], map: "outbound_comms_dispatch_run_created_idx")
+  @@index([providerMessageId], map: "outbound_comms_dispatch_provider_id_idx")
+  @@map("outbound_comms_dispatches")
+  @@schema("public")
+}
+
+model CommsDeliveryReceipt {
+  id                     String                @id @default(uuid())
+  dispatchId             String                @map("dispatch_id")
+  dispatch               OutboundCommsDispatch @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  communicationMessageId String                @map("communication_message_id")
+  providerMessageId      String                @map("provider_message_id")
+  providerStatus         String                @map("provider_status")
+  deliveryState           String                @map("delivery_state")
+  providerEventKey       String                @unique @map("provider_event_key")
+  providerReferenceHash  String                @map("provider_reference_hash")
+  occurredAt              DateTime              @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  metadata                Json?
+  createdAt               DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([dispatchId, createdAt], map: "comms_delivery_receipts_dispatch_created_idx")
+  @@index([providerMessageId, createdAt], map: "comms_delivery_receipts_provider_created_idx")
+  @@index([communicationMessageId, createdAt], map: "comms_delivery_receipts_message_created_idx")
+  @@map("comms_delivery_receipts")
+  @@schema("public")
+}
+
 model CommunicationAttachment {
   id                     String                @id @default(uuid())
   communicationMessageId String                @map("communication_message_id")
