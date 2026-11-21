@@ -6,7 +6,7 @@ import formbody from '@fastify/formbody';
 import rawBody from 'fastify-raw-body';
 import { Resend } from 'resend';
 import { enqueueInboundCommunicationRun, waitForInboundCommunicationRun, enqueueCommsAssistRun } from './agentRuns.js';
-import { beginOutboundCommunication, claimInboundCommunication, completeOutboundCommunication, markOutboundCommunicationUnknown, OutboundIdempotencyConflictError, prepareOutboundCommunication, recordCommunication } from './history.js';
+import { beginOutboundCommunication, claimInboundCommunication, completeOutboundCommunication, OutboundIdempotencyConflictError, prepareOutboundCommunication, recordCommunication } from './history.js';
 import { addressOwnerMessage, getOwnerGreeting } from './personalization.js';
 import { waitForAutonomousTask } from '../../agent/operations.js';
 import { createCommsUploadIntents, createCommsStorageAdmin, cleanCommsAttachmentUrls, downloadResendMedia, getCommsAttachmentScanStates, getCommsAttachmentStatuses, getOwnerInboundUserId, storeInboundCommsAttachment, storeTwilioMediaForCommunication } from './attachments.js';
@@ -942,8 +942,8 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
         });
         return { received: true, replied: true, providerAccepted: true };
       } catch (sendError) {
-        await markOutboundCommunicationUnknown(fastify.prisma, outbound.id).catch((persistError) => {
-          request.log.error({ err: persistError, outboundMessageId: outbound.id }, 'Unable to persist ambiguous SMTP dispatch state');
+        await markOutboundCommsDispatchUncertain(fastify.prisma, dispatch.id, 'smtp_send_outcome_unknown').catch((persistError) => {
+          request.log.error({ err: persistError, outboundDispatchId: dispatch.id }, 'Unable to persist ambiguous SMTP dispatch state');
         });
         await fastify.prisma.communicationMessage.update({
           where: { providerMessageId: email.id },
