@@ -202,7 +202,7 @@ export function assessStructuralContract(snapshot) {
     ['function public.sync_ryanai_auth_user search_path', "set search_path = ''", functionConfig.includes('search_path=""') || functionDefinition.includes("set search_path = ''") || functionDefinition.includes("set search_path to ''")],
     ['function public.sync_ryanai_auth_user empty-email fallback', "NULLIF(NEW.email, '') and auth-user-<id>@no-email.invalid", functionDefinition.includes("nullif(new.email, '')") && functionDefinition.includes("'auth-user-' || new.id::text || '@no-email.invalid'")],
     ['function public.sync_ryanai_auth_user auth timestamps', 'NEW.updated_at then NEW.created_at then pg_catalog.now(), cast timestamp(3)', functionDefinition.includes('coalesce(new.updated_at, new.created_at, pg_catalog.now())::timestamp(3)')],
-    ['function public.sync_ryanai_auth_user name preservation', 'COALESCE(EXCLUDED.name, public.users.name), without trimming', functionDefinition.includes('coalesce(excluded.name, public.users.name)') && !functionDefinition.includes('btrim(') && !functionDefinition.includes('trim(')],
+    ['function public.sync_ryanai_auth_user name preservation', 'COALESCE(EXCLUDED.name, public.users.name), without trimming', functionDefinition.includes('coalesce(excluded.name, users.name)') && !functionDefinition.includes('btrim(') && !functionDefinition.includes('trim(')],
     ['function public.sync_ryanai_auth_user conflict timestamp', 'updated_at = pg_catalog.now() on conflict', /updated_at\s*=\s*pg_catalog\.now\(\)/.test(functionDefinition)],
   ];
   for (const [object, expected, matches] of functionChecks) {
