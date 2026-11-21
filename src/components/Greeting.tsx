@@ -177,6 +177,7 @@ export default function Greeting({ userId: accountId, displayName, isOwner = fal
           <option value="Sir">Sir</option>
           <option value="Sir G">Sir G</option>
           {isOwner && <option value="Ntsiyeni Ganyane">Ntsiyeni Ganyane</option>}
+          {isOwner && <option value="Ntsiyeni Ganyane, Sir G">Ntsiyeni Ganyane, Sir G</option>}
         </select>
         <label className="sr-only" htmlFor="ryanai-language">RyanAI language and translation preference</label>
         <select id="ryanai-language" value={language} onChange={(event) => chooseLanguage(event.target.value)} className="max-w-56 rounded-lg border border-cyan-400/30 bg-slate-950 px-2 py-2 text-xs text-cyan-100">
