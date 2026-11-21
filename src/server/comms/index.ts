@@ -586,7 +586,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       if (inboundAttachments.length > 8 || listed.data.has_more) return reply.code(413).send({ error: 'Inbound email exceeds the eight-attachment limit.' });
       if (!bodyText && inboundAttachments.length === 0) return reply.code(400).send({ error: 'Inbound email has no readable text body or supported attachments.' });
       const ownerUserId = getOwnerInboundUserId();
-      if (inboundAttachments.length && !ownerUserId) return reply.code(503).send({ error: 'Inbound media storage requires the verified owner Supabase user ID.' });
+      if (!ownerUserId) return reply.code(503).send({ error: 'Inbound email processing requires the verified owner Supabase user ID.' });
       const claim = await claimInboundCommunication(fastify.prisma, {
         channel: 'email',
         externalAddress: sender,
@@ -596,15 +596,17 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
         metadata: { subject: email.subject || '', attachmentCount: inboundAttachments.length },
         ...(ownerUserId ? { ownerUserId } : {}),
       });
-      if (!claim.claimed) return { received: true, duplicate: true };
+      if (!claim.claimed && (!claim.existing?.agentRunId || ['replied', 'reply_dispatch_unknown'].includes(claim.existing.status))) {
+        return { received: true, duplicate: true, status: claim.existing?.status ?? 'unknown' };
+      }
       claimedEmailId = email.id;
-      if (inboundAttachments.length) {
+      if (claim.claimed && inboundAttachments.length) {
         try {
           const storedMessage = await fastify.prisma.communicationMessage.findUnique({
-          where: { providerMessageId: email.id },
+          where: { id: claim.messageId },
           select: { id: true, conversationId: true },
         });
-        if (!storedMessage || !ownerUserId) throw new Error('Inbound email attachments lack an owner-bound communication message.');
+        if (!storedMessage) throw new Error('Inbound email attachments lack a persisted communication message.');
         for (const attachment of inboundAttachments) {
           if (!attachment.download_url || !attachment.content_type) throw new Error('Resend attachment metadata is incomplete.');
           const bytes = await downloadResendMedia(attachment.download_url);
@@ -627,26 +629,69 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       const prompt = bodyText
         ? bodyText + (inboundAttachments.length ? `\\n\\nThe email included ${inboundAttachments.length} securely stored file(s). Their contents have not been analyzed; do not claim to have inspected them.` : '')
         : `The email included ${inboundAttachments.length} securely stored file(s). Their contents have not been analyzed. Tell Sir they were received without claiming to inspect them.`;
-      const answer = addressOwnerResponse(await askRyanAI(prompt, `email_${sender.replace(/[^a-z0-9]/gi, '_')}`));
+      const queued = await enqueueInboundCommunicationRun({
+        messageId: claim.messageId ?? claim.existing!.messageId,
+        ownerUserId,
+        providerMessageId: email.id,
+      });
+      const completed = await waitForInboundCommunicationRun(queued.runId, ownerUserId);
+      if (!completed.completed) {
+        request.log.info({ runId: queued.runId, providerMessageId: email.id }, 'Inbound email agent run remains queued or running');
+        return reply.code(202).send({ received: true, processing: true, runId: queued.runId });
+      }
+      const answer = addressOwnerResponse(completed.answer || 'I could not prepare a response.');
+      await fastify.prisma.communicationMessage.update({
+        where: { providerMessageId: email.id },
+        data: { status: 'reply_prepared', metadata: { subject: email.subject || '', reply: answer, agentRunId: queued.runId } },
+      });
       const smtp = smtpTransport();
       if (!smtp) {
         await fastify.prisma.communicationMessage.update({
-          where: { providerMessageId: email.id }, data: { status: 'reply_not_sent', metadata: { subject: email.subject || '', reply: answer } },
+          where: { providerMessageId: email.id },
+          data: { status: 'reply_not_sent', metadata: { subject: email.subject || '', reply: answer, agentRunId: queued.runId } },
         });
-        return reply.code(503).send({ error: 'SMTP reply channel is not configured; inbound message was saved.' });
+        return reply.code(503).send({ error: 'SMTP reply channel is not configured; inbound message and agent run were saved.' });
       }
-      const sent = await smtp.transporter.sendMail({
-        from: smtp.from, to: sender,
-        subject: `Re: ${email.subject || 'Message to RyanAI'}`, text: answer,
+      const outbound = await beginOutboundCommunication(fastify.prisma, {
+        channel: 'email',
+        externalAddress: sender,
+        body: answer,
+        idempotencyKey: `resend-inbound-reply:${email.id}`,
+        ownerUserId,
+        metadata: { inReplyTo: email.id, subject: `Re: ${email.subject || 'Message to RyanAI'}`, agentRunId: queued.runId },
       });
-      await fastify.prisma.communicationMessage.update({
-        where: { providerMessageId: email.id }, data: { status: 'replied', metadata: { subject: email.subject || '', reply: answer } },
-      });
-      await recordCommunication(fastify.prisma, {
-        channel: 'email', externalAddress: sender, direction: 'outbound',
-        body: answer, providerMessageId: sent.messageId, status: 'accepted', ownerUserId: process.env.RYANAI_OWNER_AUTH_USER_ID,
-      });
-      return { received: true, replied: true };
+      if (outbound.replayed) {
+        const alreadyAccepted = outbound.status === 'accepted' && Boolean(outbound.providerMessageId);
+        await fastify.prisma.communicationMessage.update({
+          where: { providerMessageId: email.id },
+          data: { status: alreadyAccepted ? 'replied' : 'reply_dispatch_unknown',
+            metadata: { subject: email.subject || '', reply: answer, agentRunId: queued.runId, outboundMessageId: outbound.id } },
+        });
+        return { received: true, replied: alreadyAccepted, dispatchPending: !alreadyAccepted };
+      }
+      try {
+        const sent = await smtp.transporter.sendMail({
+          from: smtp.from, to: sender,
+          subject: `Re: ${email.subject || 'Message to RyanAI'}`, text: answer,
+        });
+        await completeOutboundCommunication(fastify.prisma, {
+          id: outbound.id, providerMessageId: sent.messageId, status: 'accepted',
+        });
+        await fastify.prisma.communicationMessage.update({
+          where: { providerMessageId: email.id },
+          data: { status: 'replied', metadata: { subject: email.subject || '', reply: answer, agentRunId: queued.runId, outboundMessageId: outbound.id } },
+        });
+        return { received: true, replied: true, providerAccepted: true };
+      } catch (sendError) {
+        await markOutboundCommunicationUnknown(fastify.prisma, outbound.id).catch((persistError) => {
+          request.log.error({ err: persistError, outboundMessageId: outbound.id }, 'Unable to persist ambiguous SMTP dispatch state');
+        });
+        await fastify.prisma.communicationMessage.update({
+          where: { providerMessageId: email.id },
+          data: { status: 'reply_dispatch_unknown', metadata: { subject: email.subject || '', reply: answer, agentRunId: queued.runId, outboundMessageId: outbound.id } },
+        }).catch((persistError) => request.log.error({ err: persistError }, 'Unable to persist inbound email reply state'));
+        throw sendError;
+      }
     } catch (error) {
       if (inboundAttachmentStorageFailed && claimedEmailId) {
         await fastify.prisma.communicationMessage.updateMany({
