@@ -16,6 +16,7 @@ function configureStorage() {
   process.env.RYANAI_BACKUP_RETENTION_DAYS = '30';
 }
 
+function jsonResponse(body: unknown, ok = true, status = 200): Response {
 function jsonResponse(body: unknown, _ok = true, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
