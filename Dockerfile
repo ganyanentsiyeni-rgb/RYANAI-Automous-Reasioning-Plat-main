@@ -121,7 +121,7 @@ RUN npm run build:web
 FROM nginx:alpine AS web
 # Pull patched packages from the current Alpine repository before shipping nginx.
 RUN apk upgrade --no-cache \
-    && apk add --no-cache 'libexpat>=2.10.0-r0'
+    && apk add --no-cache 'libexpat>=2.10.0-r0' 'libxml2>=2.13.9-r3'
 ENV PORT=80 \
     API_HOST=api \
     API_PORT=3000
