@@ -428,7 +428,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
     const sender = fromPhone === ownerPhone ? fromPhone : toPhone === ownerPhone ? toPhone : '';
     const speech = body.SpeechResult?.trim().slice(0, MAX_MESSAGE_LENGTH);
     if (!sender) return reply.code(403).send({ error: 'This voice assistant is privately configured.' });
-    if (!isCommunicationsTestAuthorized()) { reply.type('text/xml'); return '<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>'; }
+    const outboundReplyAllowed = isCommunicationsTestAuthorized();
     reply.type('text/xml');
     if (!speech) return twimlSay('I did not catch that. Please try again.', true);
     const callSid = body.CallSid?.trim();
@@ -466,6 +466,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       const queued = await enqueueInboundCommunicationRun({ messageId: claim.messageId, ownerUserId, providerMessageId: providerTurnId });
       const completed = await waitForInboundCommunicationRun(queued.runId, ownerUserId);
       if (!completed.completed) return twimlSay('I am still processing that. Please give me a moment and try again.', true);
+      if (!outboundReplyAllowed) return '<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>';
       const answer = addressOwnerResponse(completed.answer);
       await fastify.prisma.communicationMessage.update({
         where: { id: claim.messageId },
@@ -494,7 +495,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
     if (!sender || !body.MessageSid || (!text && media.length === 0)) return reply.code(400).send({ error: 'Invalid SMS webhook payload.' });
     if (!owner) return reply.code(503).send({ error: 'RyanAI owner contact is not configured.' });
     if (sender !== normalizePhone(owner)) return reply.code(403).send({ error: 'This assistant is privately configured.' });
-    if (!isCommunicationsTestAuthorized()) { reply.type('text/xml'); return '<?xml version="1.0" encoding="UTF-8"?><Response/>'; }
+    const outboundReplyAllowed = isCommunicationsTestAuthorized();
     const ownerUserId = getOwnerInboundUserId();
     if (!ownerUserId) return reply.code(503).send({ error: 'Inbound SMS processing requires the verified owner Supabase user ID.' });
     let mediaStorageFailed = false;
@@ -513,12 +514,12 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
           && !Array.isArray(claim.existing.metadata)
           ? (claim.existing.metadata as { reply?: unknown }).reply : undefined;
         reply.type('text/xml');
-        if (typeof previousReply === 'string' && previousReply.length) {
+        if (typeof previousReply === 'string' && previousReply.length && outboundReplyAllowed) {
           return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(previousReply.slice(0, 1600))}</Message></Response>`;
         }
         if (claim.existing?.agentRunId) {
           const resumed = await waitForInboundCommunicationRun(claim.existing.agentRunId, ownerUserId);
-          if (resumed.completed) {
+          if (resumed.completed && outboundReplyAllowed) {
             const answer = addressOwnerResponse(resumed.answer || 'I could not prepare a response.');
             await fastify.prisma.communicationMessage.update({
               where: { id: claim.existing.messageId },
@@ -545,6 +546,14 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       const completed = await waitForInboundCommunicationRun(queued.runId, ownerUserId);
       if (!completed.completed) {
         request.log.info({ runId: queued.runId, providerMessageId: body.MessageSid }, 'SMS agent run remains queued or running; webhook will not fabricate a reply');
+        reply.type('text/xml');
+        return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
+      }
+      if (!outboundReplyAllowed) {
+        await fastify.prisma.communicationMessage.update({
+          where: { providerMessageId: body.MessageSid },
+          data: { status: 'received', metadata: { mediaCount: media.length, replySuppressed: true, agentRunId: queued.runId } },
+        });
         reply.type('text/xml');
         return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
       }
