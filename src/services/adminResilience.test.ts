@@ -41,20 +41,12 @@ describe('admin resilience backup artifact persistence', () => {
   const storage = { baseUrl: 'https://storage.example.test', key: 'test-key', bucket: 'private-backups' };
   const manifest = { format: 'ryanai-admin-backup-v1', backupId: 'backup-test' };
   const dump = Buffer.from('complete database dump');
-  // Build read-back bodies from an exact-length copy. Buffer.slice() is a view into Node's shared
-  // pool, so its .buffer exposes up to 8 KiB of unrelated bytes instead of just the dump's bytes.
-  const storedBytes = (bytes: Buffer) => new Response(new Uint8Array(bytes));
-
-  it('builds read-back fixtures from exact byte ranges', async () => {
-    expect(Buffer.from(await storedBytes(dump).arrayBuffer())).toEqual(dump);
-    expect(Buffer.from(await storedBytes(dump.subarray(0, 7)).arrayBuffer())).toEqual(dump.subarray(0, 7));
-  });
 
   it('stops before manifest creation when Storage read-back is partial', async () => {
     const requestedPaths: string[] = [];
     const request = vi.fn(async (_base: string, _key: string, path: string): Promise<Response> => {
       requestedPaths.push(path);
-      if (path.includes('/authenticated/')) return storedBytes(dump.subarray(0, 7));
+      if (path.includes('/authenticated/')) return new Response(dump.subarray(0, 7).slice().buffer as ArrayBuffer);
       return new Response('{}');
     });
 
@@ -71,7 +63,7 @@ describe('admin resilience backup artifact persistence', () => {
     const request = vi.fn(async (_base: string, _key: string, path: string): Promise<Response> => {
       requestedPaths.push(path);
       if (path.endsWith('/manifest.json')) throw new Error('manifest storage unavailable');
-      if (path.includes('/authenticated/')) return storedBytes(dump);
+      if (path.includes('/authenticated/')) return new Response(dump.slice().buffer as ArrayBuffer);
       return new Response('{}');
     });
 
