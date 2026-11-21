@@ -1,0 +1,25 @@
+# Public discovery endpoints only. Authenticated workspaces and API routes are not crawl targets.
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /dashboard
+Disallow: /copilot
+Disallow: /pa
+Disallow: /programming
+Disallow: /settings
+Disallow: /operator
+Disallow: /operations
+Disallow: /admin
+Disallow: /quant
+Disallow: /trading
+Disallow: /cockpit
+Disallow: /studio
+Disallow: /comms
+Disallow: /audiobook
+Disallow: /music
+Disallow: /phonelink
+Disallow: /workspace
+Disallow: /signin
+Disallow: /signup
+
+Sitemap: https://ryanai-web.onrender.com/sitemap.xml
