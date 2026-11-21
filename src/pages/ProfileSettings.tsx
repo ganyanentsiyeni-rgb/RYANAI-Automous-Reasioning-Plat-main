@@ -34,7 +34,7 @@ export default function ProfileSettings({
   signingOut = false,
 }: Props) {
   useEffect(() => {
-    const sectionId = new URLSearchParams(window.location.search).get('section');
+    const sectionId = new URLSearchParams(window.location.search).get('section') ?? new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('section');
     if (!sectionId || !/^[a-z][a-z0-9-]{0,80}$/.test(sectionId)) return;
     document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
