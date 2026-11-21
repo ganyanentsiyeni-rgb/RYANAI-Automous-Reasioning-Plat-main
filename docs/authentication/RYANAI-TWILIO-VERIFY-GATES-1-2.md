@@ -17,7 +17,7 @@ twilioVerify.ts implements Twilio Verify SMS, WhatsApp, voice call, and email th
 
 Missing/invalid configuration fails closed. No credential is created, changed, or printed.
 
-Challenge metadata is kept in Redis for 10 minutes. It stores an opaque subject binding, purpose, channel, provider verification SID, state, attempt count, and creation timestamp. It does not store OTPs or destinations. A per-subject/purpose/channel start throttle is 60 seconds; check attempts are serialized with a short Redis lock and capped at five. Challenge checks are bound to the same subject and purpose that started them.
+Challenge metadata is kept in Redis for 10 minutes. It stores an opaque subject binding, purpose, channel, provider verification SID, state, attempt count, and creation timestamp. It does not store OTPs or destinations. A per-subject/purpose/channel/destination-hash start throttle is 60 seconds; check attempts are serialized with a short Redis lock and capped at five. Challenge checks are bound to the same subject and purpose that started them.
 
 Supported channels in this first adapter: sms, whatsapp, call, email. Silent Network Authentication, Verify Push, Twilio TOTP, passkeys, and Lookup are deliberately not enabled here; they need separate capability/risk evaluation and must not be implied by this adapter.
 
