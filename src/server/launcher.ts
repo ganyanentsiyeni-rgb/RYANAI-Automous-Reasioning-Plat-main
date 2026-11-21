@@ -30,6 +30,8 @@ import { registerWebSocketRoutes } from '../api/websocket.js';
 import { authPlugin, installAuthentication } from './routes/auth.js';
 import authSigninRoute from '../api/auth/signin.js';
 import { commsPlugin } from './comms/index.js';
+import { ryanAIEventReceiverPlugin } from './selfPatch/ryanAIEventReceiver.js';
+import { ryanAIPaEventBridge } from './selfPatch/ryanAIPaEventBridge.js';
 import { commsAuthorizationRoutes } from './comms/authorization.js';
 import { githubIntegrationRoutes } from './routes/githubIntegration.js';
 import { approvalRoutes } from './routes/approvalRoutes.js';
@@ -810,6 +812,7 @@ async function registerPlugins() {
   await fastify.register(adminEventQueueRoutes);
   await fastify.register(aerialRoutes);
   await fastify.register(commsPlugin);
+  await fastify.register(ryanAIEventReceiverPlugin);
   await fastify.register(commsAuthorizationRoutes);
   await fastify.register(approvalRoutes);
   await fastify.register(engineeringEvidenceRoutes);
@@ -990,12 +993,24 @@ async function start() {
         return snapshot;
       },
     });
+    const onRyanAIEvent = (event: import('./selfPatch/ryanAIEventContract.js').RyanAIEvent) => {
+      // PA observes sanitized event metadata only. This bridge cannot dispatch tools,
+      // mutate policy, trigger patches, or execute communications.
+      paObserver.emit('ryanAIEvent', event);
+      fastify.log.info({
+        eventType: event.eventType,
+        eventId: event.eventId,
+        correlationId: event.correlationId,
+        source: event.source,
+      }, 'PA observed authenticated RyanAI event');
+    };
+    ryanAIPaEventBridge.on('event', onRyanAIEvent);
     paObserver.on('report', (report) => fastify.log.info({ pa: report }, 'PA observer report'));
     paObserver.on('healthCheckFailed', (report) => fastify.log.warn({ pa: report }, 'PA observer health degraded'));
     paObserver.on('transition', (transition) => fastify.log.warn({ paTransition: transition }, 'PA dependency state transition'));
     setAgentPAObserver(paObserver);
     await paObserver.start();
-    stopAgentPA = () => { void paObserver.stop().finally(() => setAgentPAObserver(null)); };
+    stopAgentPA = () => { ryanAIPaEventBridge.off('event', onRyanAIEvent); void paObserver.stop().finally(() => setAgentPAObserver(null)); };
 
     if (process.env.ATTACHMENT_SCANNER_ENABLED === 'true') {
       stopAttachmentScanner = startAttachmentScanner();
