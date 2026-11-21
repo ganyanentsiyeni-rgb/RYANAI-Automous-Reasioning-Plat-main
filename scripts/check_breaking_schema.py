@@ -34,6 +34,35 @@ def git_text(*args: str) -> str:
     return subprocess.check_output(["git", *args], text=True, stderr=subprocess.STDOUT)
 
 
+def normalize_base_schema(schema_text: str) -> str:
+    """Collapse only byte-identical duplicate model/enum blocks in the legacy base schema.
+
+    Older main revisions contain repeated identical Comms declarations, which make
+    Prisma's schema-diff parser reject the baseline before it can compare the PR.
+    Conflicting duplicate declarations remain a hard error; the PR schema itself is
+    never normalized.
+    """
+    declaration = re.compile(r"(?ms)^(model|enum)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\{.*?^\\}")
+    seen: dict[tuple[str, str], str] = {}
+    remove_spans: list[tuple[int, int]] = []
+    for match in declaration.finditer(schema_text):
+        key = (match.group(1), match.group(2))
+        block = match.group(0)
+        previous = seen.get(key)
+        if previous is None:
+            seen[key] = block
+        elif previous == block:
+            remove_spans.append(match.span())
+        else:
+            raise RuntimeError(
+                f"Target branch contains conflicting duplicate {key[0].lower()} "
+                f"declarations for {key[1]}; refusing to normalize an ambiguous baseline."
+            )
+    for start, end in reversed(remove_spans):
+        schema_text = schema_text[:start] + schema_text[end:]
+    return schema_text
+
+
 def prisma_schema_diff(base_schema: Path, current_schema: Path) -> str:
     command = [
         "npx", "--no-install", "prisma", "migrate", "diff",
@@ -72,6 +101,12 @@ def main() -> int:
     except subprocess.CalledProcessError as exc:
         print("::error::Could not read the target branch Prisma schema; guard cannot pass.")
         print(exc.output)
+        return 2
+
+    try:
+        base_schema_text = normalize_base_schema(base_schema_text)
+    except RuntimeError as exc:
+        print(f"::error::{exc}")
         return 2
 
     current_schema = Path("prisma/schema.prisma")
