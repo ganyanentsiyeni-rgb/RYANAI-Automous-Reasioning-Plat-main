@@ -30,6 +30,7 @@ import { registerWebSocketRoutes } from '../api/websocket.js';
 import { authPlugin, installAuthentication } from './routes/auth.js';
 import authSigninRoute from '../api/auth/signin.js';
 import { commsPlugin } from './comms/index.js';
+import { twilioStatusCallbackPlugin } from './comms/twilioStatusCallback.js';
 import { ryanAIEventReceiverPlugin } from './selfPatch/ryanAIEventReceiver.js';
 import { ryanAIPaEventBridge } from './selfPatch/ryanAIPaEventBridge.js';
 import { commsAuthorizationRoutes } from './comms/authorization.js';
@@ -812,6 +813,7 @@ async function registerPlugins() {
   await fastify.register(adminEventQueueRoutes);
   await fastify.register(aerialRoutes);
   await fastify.register(commsPlugin);
+  await fastify.register(twilioStatusCallbackPlugin);
   await fastify.register(ryanAIEventReceiverPlugin);
   await fastify.register(commsAuthorizationRoutes);
   await fastify.register(approvalRoutes);
