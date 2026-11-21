@@ -76,6 +76,12 @@ describe('RyanAIClient transport continuity', () => {
     });
     expect(handler).toHaveBeenCalledWith({ cpu: 10 });
 
+    // Keep a real request in flight across the disconnect. It must not be
+    // replayed on the new socket because the server may already have committed it.
+    const pendingRequest = client.send('reasoning.start', { prompt: 'do not replay' });
+    const requestTimeout = expect(pendingRequest).rejects.toThrow('Request timeout');
+    expect(first.send).toHaveBeenCalledWith(expect.stringContaining('"channel":"reasoning.start"'));
+
     first.close();
     expect(client.connectionState.value).toBe('reconnecting');
 
@@ -86,19 +92,6 @@ describe('RyanAIClient transport continuity', () => {
 
     expect(client.connectionState.value).toBe('connected');
     expect(second.send).toHaveBeenCalledWith(expect.stringContaining('"channel":"subscribe"'));
-
-    // Keep a real request in flight across the disconnect. It must not be
-    // replayed on the new socket because the server may already have committed it.
-    const pendingRequest = client.send('reasoning.start', { prompt: 'do not replay' });
-    const requestTimeout = expect(pendingRequest).rejects.toThrow('Request timeout');
-    expect(first.send).toHaveBeenCalledWith(expect.stringContaining('"channel":"reasoning.start"'));
-
-    first.close();
-    await vi.advanceTimersByTimeAsync(250);
-    const second = MockWebSocket.instances[1];
-    expect(second).toBeDefined();
-    second.open();
-
     expect(second.send.mock.calls.some((call) => {
       const message = JSON.parse(String(call[0]));
       return message.channel === 'reasoning.start';
