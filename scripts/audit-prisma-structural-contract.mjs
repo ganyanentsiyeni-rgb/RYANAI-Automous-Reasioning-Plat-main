@@ -211,6 +211,7 @@ export function assessStructuralContract(snapshot) {
   const functionDefinition = normalize(functionRow?.function_definition);
   const functionConfig = (functionRow?.proconfig ?? []).map(normalize).join(';');
   const functionChecks = [
+    ['function public.sync_ryanai_auth_user security mode', 'SECURITY DEFINER', functionDefinition.includes('security definer')],
     ['function public.sync_ryanai_auth_user search_path', "set search_path = ''", functionConfig.includes('search_path=""') || functionDefinition.includes("set search_path = ''") || functionDefinition.includes("set search_path to ''")],
     ['function public.sync_ryanai_auth_user empty-email fallback', "NULLIF(NEW.email, '') and auth-user-<id>@no-email.invalid", functionDefinition.includes("nullif(new.email, '')") && functionDefinition.includes("'auth-user-' || new.id::text || '@no-email.invalid'")],
     ['function public.sync_ryanai_auth_user auth timestamps', 'NEW.updated_at then NEW.created_at then pg_catalog.now(), cast timestamp(3)', functionDefinition.includes('coalesce(new.updated_at, new.created_at, pg_catalog.now())::timestamp(3)')],
@@ -261,7 +262,8 @@ export function assessMigrationSourceContracts(sources) {
   add('migration Auth identity bridge trigger, function and privilege contract',
     'empty search_path; NULLIF email fallback; name COALESCE; exact auth.users triggers; client revoke and service_role grant',
     authBridge,
-    Boolean(authBridge && /SET search_path\s*=\s*''/i.test(authBridge)
+    Boolean(authBridge && /SECURITY DEFINER/i.test(authBridge)
+      && /SET search_path\s*=\s*''/i.test(authBridge)
       && /COALESCE\(NULLIF\(NEW\.email, ''\),\s*'auth-user-'\s*\|\|\s*NEW\.id::text\s*\|\|\s*'@no-email\.invalid'\)/i.test(authBridge)
       && /COALESCE\(EXCLUDED\.name,\s*public\.users\.name\)/i.test(authBridge)
       && !/\btrim\s*\(/i.test(authBridge)
