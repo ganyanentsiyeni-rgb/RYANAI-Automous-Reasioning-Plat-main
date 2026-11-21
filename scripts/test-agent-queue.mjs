@@ -122,8 +122,30 @@ try {
       nextAttemptAt: new Date(Date.now() - 1_000),
     },
   });
+  const exhaustedCancelled = await prisma.agentRun.create({
+    data: {
+      userId,
+      objective: 'CI cancelled exhausted lease fixture',
+      status: 'running',
+      approvalStatus: 'approved',
+      queueType: 'reasoning',
+      workerId: 'ci-worker-cancelled-exhausted-' + suffix,
+      attempts: 3,
+      maxAttempts: 3,
+      lockedAt: new Date(Date.now() - 4 * 60_000),
+      leaseExpiresAt: new Date(Date.now() - 1_000),
+      cancelRequestedAt: new Date(Date.now() - 2_000),
+      nextAttemptAt: new Date(Date.now() - 1_000),
+    },
+  });
   const noExhaustedClaim = await claimNextAgentRun('ci-worker-exhausted-' + suffix);
   assert.equal(noExhaustedClaim, null, 'exhausted stale work must not be claimed');
+  const cancelledExhaustedState = await prisma.agentRun.findUnique({
+    where: { id: exhaustedCancelled.id },
+    select: { status: true, workerId: true, lockedAt: true },
+  });
+  assert.deepEqual(cancelledExhaustedState, { status: 'cancelled', workerId: null, lockedAt: null },
+    'an exhausted lease with a pending cancellation must finalize as cancelled');
   const exhaustedState = await prisma.agentRun.findUnique({
     where: { id: exhausted.id },
     select: { status: true, workerId: true, lockedAt: true },
