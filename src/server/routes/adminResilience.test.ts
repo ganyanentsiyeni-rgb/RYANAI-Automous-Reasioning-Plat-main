@@ -47,7 +47,7 @@ beforeEach(() => {
   auditFindMany.mockResolvedValue([]);
   auditFindFirst.mockResolvedValue(null);
   resilience.backupPreflight.mockResolvedValue({
-    status: 'ready', databaseConfigured: true, storageConfigured: true,
+    status: 'ready', databaseConfigured: true, storageConfigured: true, privateDestinationVerified: true,
     destinationBucket: 'private-backups', sourceBuckets: [], pgDumpAvailable: true,
   });
   resilience.listDatabaseBackups.mockResolvedValue({
@@ -89,11 +89,11 @@ describe('Admin resilience routes', () => {
 
   it('reports an isolated recovery target without enabling production restore', async () => {
     resilience.recoveryPreflight.mockReturnValue({
-      status: 'isolated_target_configured', targetLabel: 'recovery-drill', productionRestore: 'disabled', writesPerformed: false,
+      status: 'identity_unverified', targetLabel: 'recovery-drill', productionRestore: 'disabled', writesPerformed: false, reason: 'Target identity has not been proven.'
     });
     const response = await app.inject({ method: 'GET', url: '/api/admin/resilience/status', headers: adminHeaders });
     expect(response.statusCode).toBe(200);
-    expect(response.json().recovery.status).toBe('isolated_target_configured');
+    expect(response.json().recovery.status).toBe('identity_unverified');
     expect(response.json().recovery.productionRestore).toBe('disabled');
   });
 
@@ -105,11 +105,21 @@ describe('Admin resilience routes', () => {
 
   it('allows owner backup and records redacted audit evidence', async () => {
     const response = await app.inject({ method: 'POST', url: '/api/admin/resilience/backups', headers: ownerHeaders });
-    expect(response.statusCode).toBe(202);
+    expect(response.statusCode).toBe(200);
     expect(response.json().result.backupId).toBe('backup-1');
+    expect(response.json().auditReceipt.status).toBe('persisted');
     expect(auditCreate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ actorId: 'owner-1', eventType: 'admin.resilience.backup.succeeded', details: expect.objectContaining({ secretsIncluded: false }) }),
     }));
+  });
+
+  it('reports a successful artifact separately when its audit receipt fails', async () => {
+    auditCreate.mockRejectedValueOnce(new Error('audit store unavailable'));
+    const response = await app.inject({ method: 'POST', url: '/api/admin/resilience/backups', headers: ownerHeaders });
+    expect(response.statusCode).toBe(500);
+    expect(response.json().result.status).toBe('succeeded');
+    expect(response.json().auditReceipt.status).toBe('failed');
+    expect(response.json().auditReceipt.reason).toContain('Manual reconciliation');
   });
 
   it('rejects maintenance scheduling by non-owners', async () => {

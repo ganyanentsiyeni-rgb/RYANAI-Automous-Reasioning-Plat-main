@@ -95,9 +95,19 @@ export default function ResiliencePanel({ userId }: { userId: string }) {
     setBusy(true); setNotice(''); setError('');
     try {
       const response = await authenticatedFetch('/api/admin/resilience/backups', { method: 'POST' }, userId);
-      const payload = await response.json() as { result?: { reason?: string; backupId?: string } };
-      if (!response.ok) throw new Error(payload.result?.reason || 'Backup request failed (' + response.status + ').');
-      setNotice('Backup execution accepted: ' + (payload.result?.backupId || 'receipt recorded') + '.');
+      const payload = await response.json() as {
+        result?: { status?: string; reason?: string; backupId?: string };
+        auditReceipt?: { status?: string; reason?: string };
+      };
+      if (!response.ok) {
+        if (payload.result?.status === 'succeeded' && payload.auditReceipt?.status === 'failed') {
+          setError('Backup artifact was created, but audit receipt persistence failed. ' + (payload.auditReceipt.reason || 'Manual reconciliation is required.'));
+          await refresh();
+          return;
+        }
+        throw new Error(payload.result?.reason || payload.auditReceipt?.reason || 'Backup request failed (' + response.status + ').');
+      }
+      setNotice('Backup completed and audit receipt recorded: ' + (payload.result?.backupId || 'receipt recorded') + '.');
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Backup failed.');

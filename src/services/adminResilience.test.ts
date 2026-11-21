@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { listDatabaseBackups, recoveryPreflight } from './adminResilience.js';
+import { backupReadbackMatches, listDatabaseBackups, recoveryPreflight } from './adminResilience.js';
 
 const originalEnv = { ...process.env };
 
@@ -22,6 +22,20 @@ function jsonResponse(body: unknown, status = 200): Response {
     headers: { 'content-type': 'application/json' },
   });
 }
+
+describe('admin resilience backup integrity', () => {
+  it('accepts a complete read-back only when byte length and SHA-256 match', () => {
+    const original = Buffer.from('complete database dump');
+    expect(backupReadbackMatches(original, Buffer.from(original))).toBe(true);
+    expect(backupReadbackMatches(original, Buffer.from('tampered database dump'))).toBe(false);
+  });
+
+  it('rejects a partial upload read-back even when its prefix matches', () => {
+    const original = Buffer.from('complete database dump');
+    const partial = original.subarray(0, 8);
+    expect(backupReadbackMatches(original, partial)).toBe(false);
+  });
+});
 
 describe('admin resilience backup inventory', () => {
   it('parses backup folders, manifest metadata, and retention state', async () => {
@@ -150,14 +164,26 @@ describe('admin resilience recovery target comparison', () => {
     }));
   });
 
-  it('accepts a separately hosted recovery database', () => {
+  it('does not claim isolation for a separately hosted URL without proving target identity', () => {
     process.env.DATABASE_URL = 'postgresql://source:secret@db.example.com:5432/ryanai';
-    process.env.RYANAI_RECOVERY_DATABASE_URL = 'postgresql://recovery:other@recovery.example.com:5432/ryanai';
+    process.env.RYANAI_RECOVERY_DATABASE_URL = 'postgresql://recovery:other@recovery.example.com:5432/ryanai-recovery';
     process.env.RYANAI_RECOVERY_TARGET_LABEL = 'recovery-drill';
 
     expect(recoveryPreflight()).toEqual(expect.objectContaining({
-      status: 'isolated_target_configured',
+      status: 'identity_unverified',
       targetLabel: 'recovery-drill',
+      productionRestore: 'disabled',
+      writesPerformed: false,
+    }));
+  });
+
+  it('blocks a matching database name even when a misleading hostname alias is used', () => {
+    process.env.DATABASE_URL = 'postgresql://source:secret@db-primary.example.com:5432/ryanai';
+    process.env.RYANAI_RECOVERY_DATABASE_URL = 'postgresql://recovery:other@db-alias.example.com:6432/ryanai';
+    process.env.RYANAI_RECOVERY_TARGET_LABEL = 'recovery-drill';
+
+    expect(recoveryPreflight()).toEqual(expect.objectContaining({
+      status: 'blocked_same_as_source',
       productionRestore: 'disabled',
       writesPerformed: false,
     }));

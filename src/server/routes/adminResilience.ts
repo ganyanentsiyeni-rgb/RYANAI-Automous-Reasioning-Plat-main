@@ -129,30 +129,48 @@ export const adminResilienceRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     const result = await createDatabaseBackup();
     if (result.status === 'succeeded') {
+      try {
+        await fastify.prisma.jarvisAuditEvent.create({
+          data: {
+            actorId: request.authUser?.id || 'unknown',
+            eventType: 'admin.resilience.backup.succeeded',
+            resourceId: result.backupId,
+            details: {
+              prefix: result.prefix,
+              databaseBytes: result.databaseBytes,
+              databaseSha256: result.databaseSha256,
+              secretsIncluded: false,
+            },
+          },
+        });
+      } catch {
+        return reply.code(500).send({
+          success: false,
+          result,
+          auditReceipt: { status: 'failed', reason: 'Backup artifact succeeded, but its audit receipt could not be persisted. Manual reconciliation is required.' },
+        });
+      }
+      return reply.code(200).send({ success: true, result, auditReceipt: { status: 'persisted' } });
+    }
+
+    try {
       await fastify.prisma.jarvisAuditEvent.create({
         data: {
           actorId: request.authUser?.id || 'unknown',
-          eventType: 'admin.resilience.backup.succeeded',
-          resourceId: result.backupId,
-          details: {
-            prefix: result.prefix,
-            databaseBytes: result.databaseBytes,
-            databaseSha256: result.databaseSha256,
-            secretsIncluded: false,
-          },
+          eventType: 'admin.resilience.backup.failed',
+          resourceId: result.backupId || null,
+          details: { reason: result.reason || 'Backup failed.' },
         },
       });
-      return reply.code(202).send({ success: true, result });
+    } catch {
+      return reply.code(500).send({
+        success: false,
+        result,
+        auditReceipt: { status: 'failed', reason: 'Backup failure occurred and its audit receipt could not be persisted.' },
+      });
     }
-
-    await fastify.prisma.jarvisAuditEvent.create({
-      data: {
-        actorId: request.authUser?.id || 'unknown',
-        eventType: 'admin.resilience.backup.failed',
-        resourceId: result.backupId || null,
-        details: { reason: result.reason || 'Backup failed.' },
-      },
+    return reply.code(result.status === 'not_configured' ? 503 : 500).send({
+      success: false, result, auditReceipt: { status: 'persisted' },
     });
-    return reply.code(result.status === 'not_configured' ? 503 : 500).send({ success: false, result });
   });
 };
