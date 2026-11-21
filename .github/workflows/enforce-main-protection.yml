@@ -72,6 +72,15 @@ jobs:
                   "strict_required_status_checks_policy": true,
                   "do_not_enforce_on_create": false,
                   "required_status_checks": [
+                    { "context": "Single-owner release gate" },
+                    { "context": "Validate (typecheck, lint, test, build)" },
+                    { "context": "MCP server and workflow worker" },
+                    { "context": "Integration and end-to-end checks" },
+                    { "context": "PostgreSQL 19 compatibility" },
+                    { "context": "Issue 435 migrations and attachment security" },
+                    { "context": "Analyze (javascript-typescript)" },
+                    { "context": "Analyze (python)" },
+                    { "context": "TruffleHog secret audit" }
                     { "context": "validate-database" },
                     { "context": "Ephemeral PostgreSQL integration dry-run" },
                     { "context": "Verify Supabase and Prisma fresh-stack migrations" },
@@ -153,13 +162,17 @@ jobs:
               "Upgrade legacy pgvector database safely (unquoted)",
               "Validate configuration files",
               "TruffleHog secret audit",
+
               "Upgrade legacy pgvector database safely (quoted)",
               "Single-owner release gate",
               "Audit GitHub workflows",
               "Triage & Auto-Label",
           }
-          missing = required - contexts
-          assert not missing, f"Required check contexts missing: {sorted(missing)}"
+          assert len(checks) == len(required), "Required check list contains duplicates or unexpected entries"
+          assert contexts == required, (
+              f"Required check contexts differ; missing={sorted(required - contexts)}, "
+              f"unexpected={sorted(contexts - required)}"
+          )
           assert rules["required_status_checks"].get("strict_required_status_checks_policy") is True, "Strict status-check policy is disabled"
 
           print("Verified reviewed ruleset 27357206:")
