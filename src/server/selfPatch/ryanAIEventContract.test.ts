@@ -39,6 +39,9 @@ describe('RyanAI event contract', () => {
   it('requires a valid provider receipt hash before accepting delivered state', () => {
     expect(parseRyanAIEvent({ ...commsReceipt, state: 'delivered' })).toBeNull();
     expect(parseRyanAIEvent({
+      ...base,
+      eventType: 'selfpatch.audit.finding',
+      source: 'ryanai-self-patch',
       ...commsReceipt,
       state: 'delivered',
       providerReferenceHash: 'b'.repeat(64),
@@ -64,6 +67,11 @@ describe('RyanAI event contract', () => {
     expect(parseRyanAIEvent({ ...commsReceipt, commitSha: 'main' })).toBeNull();
     expect(parseRyanAIEvent({ ...commsReceipt, occurredAt: 'yesterday' })).toBeNull();
     expect(parseRyanAIEvent({ ...commsReceipt, correlationId: 'short' })).toBeNull();
+  });
+
+  it('rejects delivered state unless explicitly represented by a validated receipt', () => {
+    expect(parseRyanAIEvent({ ...base, state: 'sent' })).toBeNull();
+    expect(parseRyanAIEvent({ ...base, state: 'delivered', providerReferenceHash: 'bad' })).toBeNull();
   });
 
   it('rejects Gen-X/Jarvis sources, unknown event types and unknown fields', () => {

@@ -91,6 +91,8 @@ export function parseRyanAIEvent(input: unknown): RyanAIEvent | null {
       || input.source !== 'ryanai-comms'
       || !['whatsapp', 'sms', 'voice', 'email'].includes(String(input.channel))
       || !COMMS_DELIVERY_STATES.includes(input.state as CommsDeliveryState)
+      || (input.state === 'delivered' && (typeof input.providerReferenceHash !== 'string'
+        || !/^[0-9a-f]{64}$/i.test(input.providerReferenceHash)))
       || (input.providerReferenceHash !== undefined
         && (typeof input.providerReferenceHash !== 'string'
           || !/^[0-9a-f]{64}$/i.test(input.providerReferenceHash)))
