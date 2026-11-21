@@ -17,6 +17,8 @@ function configureStorage() {
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse(body: unknown, ok = true, status = 200): Response {
+function jsonResponse(body: unknown, _ok = true, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json' },
