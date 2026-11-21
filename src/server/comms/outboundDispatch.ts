@@ -231,3 +231,33 @@ export function buildCommsProviderEventKey(input: {
     }))
     .digest('hex');
 }
+
+
+export async function advanceOutboundCommsDispatchFromReceipt(
+  prisma: PrismaClient,
+  input: { dispatchId: string; deliveryState: string },
+): Promise<void> {
+  const current = await prisma.outboundCommsDispatch.findUnique({
+    where: { id: input.dispatchId },
+    select: { state: true },
+  });
+  if (!current) throw new Error('Outbound dispatch was not found.');
+
+  if (current.state === 'delivered' || current.state === 'reconciled') return;
+
+  const nextState: OutboundCommsDispatchState =
+    input.deliveryState === 'delivered'
+      ? 'delivered'
+      : input.deliveryState === 'failed'
+        ? 'failed'
+        : 'accepted';
+
+  // Provider receipts may arrive late or out of order. Never let a later
+  // non-terminal event downgrade a terminal dispatch state.
+  if (current.state === 'failed' && nextState !== 'delivered') return;
+
+  await prisma.outboundCommsDispatch.update({
+    where: { id: input.dispatchId },
+    data: { state: nextState, updatedAt: new Date() },
+  });
+}
