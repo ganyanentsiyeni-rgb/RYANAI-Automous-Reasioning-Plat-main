@@ -29,6 +29,12 @@ integration('Comms Twilio status callback with disposable PostgreSQL', () => {
     process.env.TWILIO_AUTH_TOKEN = authToken;
     process.env.TWILIO_STATUS_WEBHOOK_URL = callbackUrl;
     await prisma.$connect();
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE public.communication_messages ADD COLUMN IF NOT EXISTS agent_run_id TEXT',
+    );
+    await prisma.$executeRawUnsafe(
+      'CREATE UNIQUE INDEX IF NOT EXISTS communication_messages_agent_run_id_key ON public.communication_messages (agent_run_id)',
+    );
 
     // The callback also updates the optional outbound-approval ledger. This
     // integration workflow intentionally does not apply that production

@@ -96,7 +96,7 @@ describe('owner communications authorization payload', () => {
     expect(query).toHaveBeenCalledTimes(2);
     expect(query.mock.calls[0][0]).toContain('comms_verified_destinations');
     expect(execute.mock.calls[0][0]).toContain("status = 'pending'");
-    expect(execute.mock.calls[0][2]).toBe('approved');
+    expect(execute.mock.calls[0][3]).toBe('approved');
   });
 
   it('fails closed when the inbound owner WhatsApp number is not verified', async () => {
