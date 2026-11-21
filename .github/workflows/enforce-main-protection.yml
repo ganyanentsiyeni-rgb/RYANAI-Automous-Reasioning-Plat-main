@@ -81,8 +81,8 @@ jobs:
                     { "context": "Analyze (javascript-typescript)" },
                     { "context": "Analyze (python)" },
                     { "context": "TruffleHog secret audit" },
-                    { "context": "Validate Docker Compose configuration" },
-                    { "context": "MCPJungle Enterprise runtime authentication" },
+                    { "context": "Validate application and MCP dependencies" },
+                    { "context":  },
                     { "context": "Audit GitHub workflows" }
                   ]
                 }
