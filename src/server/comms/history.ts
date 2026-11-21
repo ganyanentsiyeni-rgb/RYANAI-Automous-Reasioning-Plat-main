@@ -214,6 +214,9 @@ export interface InboundCommunicationClaim {
     status: string;
     metadata: Prisma.JsonValue | null;
     agentRunId?: string | null;
+    body?: string;
+    channel?: string;
+    ownerUserId?: string | null;
   };
 }
 
@@ -268,7 +271,7 @@ export async function claimInboundCommunication(
 
     const existing = await prisma.communicationMessage.findUnique({
       where: { providerMessageId: input.providerMessageId },
-      select: { id: true, status: true, metadata: true, createdAt: true, agentRunId: true },
+      select: { id: true, status: true, metadata: true, createdAt: true, agentRunId: true, body: true, conversation: { select: { channel: true, ownerUserId: true } } },
     });
     if (!existing) throw error;
 
@@ -302,6 +305,9 @@ export async function claimInboundCommunication(
         status: existing.status,
         metadata: existing.metadata,
         agentRunId: existing.agentRunId,
+        body: existing.body,
+        channel: existing.conversation.channel,
+        ownerUserId: existing.conversation.ownerUserId,
       },
     };
   }
