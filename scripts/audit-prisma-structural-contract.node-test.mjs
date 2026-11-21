@@ -6,6 +6,7 @@ test('classifies absent tables, columns, indexes, foreign keys, triggers and Aut
   const result = assessStructuralContract({ tables: [], columns: [], indexes: [], constraints: [], triggers: [], functions: [], grants: [] });
   assert.ok(result.counts.missing > 50);
   assert.equal(result.counts.structurally_wrong, 0);
+  assert.equal(result.findings.find((item) => item.object === 'grant public.users to service_role')?.status, 'missing');
   for (const name of ['table public.users','column public.users.email','index public.coding_tasks.coding_tasks_user_created_idx','foreign_key public.coding_tasks.coding_tasks_user_id_fkey','trigger auth.users.ryanai_auth_user_sync_update','function public.sync_ryanai_auth_user search_path']) {
     assert.equal(result.findings.find((item) => item.object === name)?.status, 'missing', name);
   }
