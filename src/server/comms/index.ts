@@ -96,13 +96,21 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
   await fastify.register(formbody);
   await fastify.register(rawBody, { field: 'rawBody', global: false, encoding: 'utf8', runFirst: true });
 
+  const getInAppConversationId = async (messageId: string) => {
+    const message = await fastify.prisma.communicationMessage.findUnique({
+      where: { id: messageId },
+      select: { conversationId: true },
+    });
+    return message?.conversationId ?? null;
+  };
+
   const finishInAppChatTurn = async (messageId: string, runId: string, ownerUserId: string, timeoutMs = 8_000) => {
     const completed = await waitForInboundCommunicationRun(runId, ownerUserId, timeoutMs);
     if (!completed.completed) return null;
     const answer = addressOwnerResponse(completed.answer || 'I could not prepare a response.');
     const inbound = await fastify.prisma.communicationMessage.findUnique({
       where: { id: messageId },
-      select: { metadata: true },
+      select: { metadata: true, conversationId: true },
     });
     if (!inbound) throw new Error('The persisted in-app message could not be found.');
     const priorMetadata = inbound.metadata && typeof inbound.metadata === 'object' && !Array.isArray(inbound.metadata)
@@ -126,10 +134,13 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       data: { status: 'replied', metadata: { ...priorMetadata, agentRunId: runId, replyMessageId: replyMessage?.id ?? null } },
     });
     return replyMessage ? {
-      id: replyMessage.id,
-      body: replyMessage.body,
-      status: replyMessage.status,
-      createdAt: replyMessage.createdAt.toISOString(),
+      conversationId: inbound.conversationId,
+      reply: {
+        id: replyMessage.id,
+        body: replyMessage.body,
+        status: replyMessage.status,
+        createdAt: replyMessage.createdAt.toISOString(),
+      },
     } : null;
   };
 
@@ -286,10 +297,10 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
         }
         if (claim.existing?.agentRunId) {
           const response = await finishInAppChatTurn(claim.existing.messageId, claim.existing.agentRunId, ownerUserId);
-          if (response) return { messageId: claim.existing.messageId, runId: claim.existing.agentRunId, status: 'replied', reply: response, replayed: true };
-          return reply.code(202).send({ messageId: claim.existing.messageId, runId: claim.existing.agentRunId, status: 'processing', replayed: true });
+          if (response) return { messageId: claim.existing.messageId, conversationId: response.conversationId, runId: claim.existing.agentRunId, status: 'replied', reply: response.reply, replayed: true };
+          return reply.code(202).send({ messageId: claim.existing.messageId, conversationId: await getInAppConversationId(claim.existing.messageId), runId: claim.existing.agentRunId, status: 'processing', replayed: true });
         }
-        return reply.code(202).send({ messageId: claim.existing?.messageId, status: 'processing', replayed: true });
+        return reply.code(202).send({ messageId: claim.existing?.messageId, conversationId: claim.existing?.messageId ? await getInAppConversationId(claim.existing.messageId) : null, status: 'processing', replayed: true });
       }
       if (!claim.messageId) throw new Error('The in-app message reservation did not return an ID.');
       const queued = await enqueueInboundCommunicationRun({
@@ -298,8 +309,8 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
         providerMessageId,
       });
       const response = await finishInAppChatTurn(claim.messageId, queued.runId, ownerUserId);
-      if (!response) return reply.code(202).send({ messageId: claim.messageId, runId: queued.runId, status: 'processing', replayed: false });
-      return { messageId: claim.messageId, runId: queued.runId, status: 'replied', reply: response, replayed: false };
+      if (!response) return reply.code(202).send({ messageId: claim.messageId, conversationId: await getInAppConversationId(claim.messageId), runId: queued.runId, status: 'processing', replayed: false });
+      return { messageId: claim.messageId, conversationId: response.conversationId, runId: queued.runId, status: 'replied', reply: response.reply, replayed: false };
     } catch (error) {
       request.log.error({ err: error }, 'RyanAI in-app Comms turn failed');
       return reply.code(503).send({ error: 'RyanAI could not complete this message yet. The message remains safely recorded; retry with the same idempotency key.' });
@@ -313,6 +324,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       where: { id: request.params.messageId },
       select: {
         id: true,
+        conversationId: true,
         direction: true,
         agentRunId: true,
         conversation: { select: { channel: true, ownerUserId: true } },
@@ -322,11 +334,11 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       || message.conversation.ownerUserId !== request.authUser.id) {
       return reply.code(404).send({ error: 'In-app message not found.' });
     }
-    if (!message.agentRunId) return reply.code(202).send({ messageId: message.id, status: 'processing' });
+    if (!message.agentRunId) return reply.code(202).send({ messageId: message.id, conversationId: message.conversationId, status: 'processing' });
     try {
       const response = await finishInAppChatTurn(message.id, message.agentRunId, request.authUser.id, 1_000);
-      if (!response) return reply.code(202).send({ messageId: message.id, runId: message.agentRunId, status: 'processing' });
-      return { messageId: message.id, runId: message.agentRunId, status: 'replied', reply: response };
+      if (!response) return reply.code(202).send({ messageId: message.id, conversationId: message.conversationId, runId: message.agentRunId, status: 'processing' });
+      return { messageId: message.id, conversationId: response.conversationId, runId: message.agentRunId, status: 'replied', reply: response.reply };
     } catch (error) {
       request.log.warn({ err: error, messageId: message.id }, 'Unable to finalize in-app Comms reply');
       return reply.code(503).send({ error: 'RyanAI is still processing this message. Please check again shortly.' });
