@@ -117,6 +117,7 @@ function finding(findings, object, expected, actual, present, matches) {
   findings.push({
     object,
     status: expected === 'absent' && !present ? 'matching' : !present ? 'missing' : matches ? 'matching' : 'structurally_wrong',
+    recommendedRepairClass: expected === 'absent' && !present ? 'no_action' : !present ? 'create_after_review' : matches ? 'no_action' : 'alter_or_recreate_after_dependency_review',
     expected,
     actual: actual ?? null,
   });
@@ -229,7 +230,7 @@ export function assessStructuralContract(snapshot) {
     const privileges = grants.filter((row) => row.table_name === 'users' && row.grantee === role).map((row) => row.privilege_type);
     finding(findings, 'grant public.users to ' + role, 'no table privileges', privileges, true, privileges.length === 0);
   }
-  const servicePrivileges = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'];
+  const servicePrivileges = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER', 'MAINTAIN'];
   finding(findings, 'grant public.users to service_role', 'service_role has SELECT, INSERT, UPDATE, DELETE',
     servicePrivileges.filter((privilege) => hasGrant('service_role', privilege)), true,
     servicePrivileges.every((privilege) => hasGrant('service_role', privilege)));
