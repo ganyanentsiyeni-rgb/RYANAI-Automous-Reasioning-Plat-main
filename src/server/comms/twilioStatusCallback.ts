@@ -34,8 +34,13 @@ function webhookAuth(urlEnv: string) {
     const token = process.env.TWILIO_AUTH_TOKEN?.trim();
     const configuredUrl = process.env[urlEnv]?.trim();
     const signature = request.headers['x-twilio-signature'];
-    let secureUrl = false;
-    try { secureUrl = Boolean(configuredUrl && new URL(configuredUrl).protocol === 'https:'); } catch { secureUrl = false; }
+    const secureUrl = (() => {
+      try {
+        return Boolean(configuredUrl && new URL(configuredUrl).protocol === 'https:');
+      } catch {
+        return false;
+      }
+    })();
     if (!token || !configuredUrl || !secureUrl) {
       return reply.code(503).send({ accepted: false, state: 'not_configured' });
     }
