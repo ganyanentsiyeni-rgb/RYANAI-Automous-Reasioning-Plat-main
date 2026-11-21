@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { listDatabaseBackups, recoveryPreflight } from './adminResilience.js';
+import { backupReadbackMatches, listDatabaseBackups, recoveryPreflight } from './adminResilience.js';
 
 const originalEnv = { ...process.env };
 
@@ -22,6 +22,20 @@ function jsonResponse(body: unknown, status = 200): Response {
     headers: { 'content-type': 'application/json' },
   });
 }
+
+describe('admin resilience backup integrity', () => {
+  it('accepts a complete read-back only when byte length and SHA-256 match', () => {
+    const original = Buffer.from('complete database dump');
+    expect(backupReadbackMatches(original, Buffer.from(original))).toBe(true);
+    expect(backupReadbackMatches(original, Buffer.from('tampered database dump'))).toBe(false);
+  });
+
+  it('rejects a partial upload read-back even when its prefix matches', () => {
+    const original = Buffer.from('complete database dump');
+    const partial = original.subarray(0, 8);
+    expect(backupReadbackMatches(original, partial)).toBe(false);
+  });
+});
 
 describe('admin resilience backup inventory', () => {
   it('parses backup folders, manifest metadata, and retention state', async () => {
