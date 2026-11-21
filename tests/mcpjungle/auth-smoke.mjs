@@ -91,6 +91,17 @@ assert.ok(
   `Authorized client did not receive the permitted platform_health tool; received: ${toolNames.join(", ")}`,
 );
 console.log("PASS: authorized client discovers the explicitly allowed RyanAI health tool");
+const allowedCall = await post(
+  "tools/call",
+  3,
+  allowedToken,
+  allowedListing.session,
+  { name: healthToolName, arguments: {} },
+);
+assert.equal(allowedCall.response.status, 200, `Allowed tools/call failed: HTTP ${allowedCall.response.status}`);
+assert.ok(allowedCall.payload?.result, "Allowed tools/call did not return a JSON-RPC result");
+assert.notEqual(allowedCall.payload.result.isError, true, "Authorized health tool invocation returned an MCP error");
+console.log("PASS: authorized client can invoke the explicitly allowed RyanAI health tool");
 
 const restrictedListing = await listTools(restrictedToken);
 if (restrictedListing.response.status === 401 || restrictedListing.response.status === 403) {
@@ -109,7 +120,7 @@ if (restrictedListing.response.status === 401 || restrictedListing.response.stat
     // Prove authorization at invocation time instead of treating null as a pass.
     const deniedCall = await post(
       "tools/call",
-      3,
+      4,
       restrictedToken,
       restrictedListing.session,
       { name: healthToolName, arguments: {} },
