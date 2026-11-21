@@ -13,21 +13,35 @@ SPEC.loader.exec_module(guard)
 
 class BreakingSchemaGuardTests(unittest.TestCase):
     def test_normalizes_only_identical_duplicate_baseline_models(self):
-        baseline = (
-            "model A {\n  id String @id\n}\n"
-            "model A {\n  id String @id\n}\n"
-            "model B {\n  id String @id\n}\n"
+        dispatch = (
+            "model OutboundCommsDispatch {\\n"
+            "  communicationMessage CommunicationMessage @relation(fields: [communicationMessageId], references: [id], onDelete: Cascade)\\n"
+            "}\\n"
         )
-        normalized = guard.normalize_base_schema(
-            baseline,
+        receipt = (
+            "model CommsDeliveryReceipt {\\n"
+            "  dispatch OutboundCommsDispatch @relation(fields: [dispatchId], references: [id], onDelete: Cascade)\\n"
+            "  communicationMessageId String @map(\\"communication_message_id\\")\\n"
+            "  providerMessageId String\\n"
+            "}\\n"
+        )
+        baseline = (
+            "model CommunicationMessage {\\n  outboundDispatch OutboundCommsDispatch?\\n}\\n"
+            + dispatch + receipt + dispatch + receipt
+        )
+        migration_sql = (
             '"outbound_comms_dispatches_communication_message_id_fkey" '
             'REFERENCES "public"."communication_messages"("id") ON DELETE RESTRICT ON UPDATE CASCADE '
             '"comms_delivery_receipts_dispatch_id_fkey" '
             'REFERENCES "public"."outbound_comms_dispatches"("id") '
-            '"comms_delivery_receipts_communication_message_id_fkey"',
+            '"comms_delivery_receipts_communication_message_id_fkey"'
         )
-        self.assertEqual(normalized.count("model A"), 1)
-        self.assertEqual(normalized.count("model B"), 1)
+        normalized = guard.normalize_base_schema(baseline, migration_sql)
+        self.assertEqual(normalized.count("model OutboundCommsDispatch"), 1)
+        self.assertEqual(normalized.count("model CommsDeliveryReceipt"), 1)
+        self.assertIn("deliveryReceipts  CommsDeliveryReceipt[]", normalized)
+        self.assertIn("onDelete: Restrict", normalized)
+        self.assertIn("comms_delivery_receipts_communication_message_id_fkey", normalized)
 
     def test_rejects_conflicting_duplicate_baseline_models(self):
         baseline = (
