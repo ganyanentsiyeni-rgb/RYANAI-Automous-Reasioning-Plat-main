@@ -103,7 +103,7 @@ export async function enqueueInboundCommunicationRun(
           direction: 'inbound',
           providerMessageId: input.providerMessageId,
           agentRunId: null,
-          conversation: { ownerUserId: input.ownerUserId },
+          conversation: { is: { ownerUserId: input.ownerUserId } },
         },
         data: { agentRunId: created.id },
       });
