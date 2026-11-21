@@ -1409,6 +1409,28 @@ model CommsSendApproval {
   @@schema("public")
 }
 
+/// One-time, owner-approved GitHub PR review bound to an immutable repository, PR and head SHA.
+model GitHubPullRequestReviewApproval {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerUserId         String    @map("owner_user_id") @db.Uuid
+  repositoryFullName  String    @map("repository_full_name") @db.VarChar(255)
+  pullRequestNumber   Int       @map("pull_request_number")
+  expectedHeadSha     String    @map("expected_head_sha") @db.Char(40)
+  status              String    @default("pending") @db.VarChar(16)
+  expiresAt           DateTime  @map("expires_at") @db.Timestamptz(6)
+  approvedAt          DateTime? @map("approved_at") @db.Timestamptz(6)
+  inboundMessageSid   String?   @unique @map("inbound_message_sid") @db.VarChar(128)
+  consumedAt          DateTime? @map("consumed_at") @db.Timestamptz(6)
+  githubReviewId      BigInt?   @map("github_review_id")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([ownerUserId, status, expiresAt], map: "github_pr_review_approvals_owner_status_expiry_idx")
+  @@index([repositoryFullName, pullRequestNumber, expectedHeadSha], map: "github_pr_review_approvals_target_idx")
+  @@map("github_pr_review_approvals")
+  @@schema("public")
+}
+
 // Durable, provider-neutral inbox for validated external intelligence events.
 model IntelligenceEventInbox {
   id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
