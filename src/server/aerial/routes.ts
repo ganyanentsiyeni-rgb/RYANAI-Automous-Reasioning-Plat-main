@@ -1,6 +1,16 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { evaluateGenXSecurityEvent } from '../../security/genxPolicy.js';
-import { AerialClient } from './client.js';
+import { AerialClient, type AerialHealth } from './client.js';
+
+/** Public diagnostics intentionally omit internal endpoint and model metadata. */
+export function toPublicAerialHealth(health: AerialHealth) {
+  return {
+    status: health.status,
+    mode: health.mode,
+    ...(health.latencyMs === undefined ? {} : { latencyMs: health.latencyMs }),
+    ...(health.detail === undefined ? {} : { detail: health.detail }),
+  };
+}
 
 interface InferBody {
   prompt: string;
@@ -40,7 +50,7 @@ export const aerialRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/api/aerial/health', async () => ({
     success: true,
     provider: 'nvidia-aerial',
-    ...(await client.health()),
+    ...toPublicAerialHealth(await client.health()),
   }));
 
   fastify.get('/api/aerial/status', async () => ({
@@ -81,9 +91,8 @@ export const aerialRoutes: FastifyPluginAsync = async (fastify) => {
         policyDecision: 'ALLOW',
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Aerial inference failed.';
-      fastify.log.warn({ reason: message }, 'Aerial AI-RAN inference failed');
-      return reply.code(503).send({ success: false, error: message });
+      fastify.log.warn({ errorType: error instanceof Error ? error.name : 'UnknownError' }, 'Aerial AI-RAN inference failed');
+      return reply.code(503).send({ success: false, error: 'Aerial inference is temporarily unavailable.' });
     }
   });
 };

@@ -83,7 +83,7 @@ projects:
               - key: MCP_HOST
                 value: 0.0.0.0
               - key: MCP_ALLOWED_HOSTS
-                value: ryanai-mcp-u2eb-u2eb.onrender.com,ryanai-mcp-u2eb.onrender.com
+                value: ryanai-mcp-u2eb-u2eb.onrender.com
               - key: MCP_ALLOWED_ORIGINS
                 value: https://ryanai-web-u2eb.onrender.com,https://ryanai-web-authfix.onrender.com
               - key: RYANAI_API_BASE_URL

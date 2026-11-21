@@ -52,12 +52,12 @@
     "db:audiobook:status": "prisma migrate status --schema=prisma/audiobook/schema.prisma",
     "db:audiobook:migrate": "prisma migrate deploy --schema=prisma/audiobook/schema.prisma",
     "db:migration:audit": "node scripts/audit-prisma-migration-readiness.mjs",
-    "test:migration:audit": "node --test scripts/audit-prisma-migration-readiness.node-test.mjs scripts/langgraph-checkpoint-schema.node-test.mjs && npm run test:migration:scope",
+    "test:migration:audit": "node --test scripts/audit-prisma-migration-readiness.node-test.mjs scripts/langgraph-checkpoint-schema.node-test.mjs && npm run test:migration:scope && npm run test:db:structural-contract",
     "test:migration:scope": "node --import tsx --test scripts/scoped-prisma-migration.node-test.mjs",
     "db:push": "prisma db push",
     "db:migrate": "node --import tsx/esm src/db/migrate.ts",
     "db:setup": "npm run db:generate && npm run db:migrate",
-    "test": "node --test scripts/supabase-port-config.node-test.mjs scripts/verify-node-ca.test.mjs && npm run test:security-schema && npm run test:community-survey-contract && vitest run --exclude src/tests/auth.test.ts --exclude scripts/repository-inventory.test.mjs --exclude scripts/genaicode-adapter.test.mjs --exclude scripts/container-sandbox-runner.test.mjs --exclude scripts/coding-task-queue.test.mjs --exclude scripts/ryanai-monitor-ci.test.cjs --exclude scripts/security-schema-contract.test.mjs --exclude scripts/verify-node-ca.test.mjs && npm run test:genaicode && npm run test:quant-engine && npm run test:container-sandbox && npm run test:coding-queue && npm run test:benchmark:contracts && npm run test:server-assets",
+    "test": "node --test scripts/supabase-port-config.node-test.mjs scripts/verify-node-ca.test.mjs scripts/ryanai-self-patch-audit.test.mjs && npm run test:security-schema && npm run test:community-survey-contract && vitest run --exclude src/tests/auth.test.ts --exclude scripts/repository-inventory.test.mjs --exclude scripts/genaicode-adapter.test.mjs --exclude scripts/container-sandbox-runner.test.mjs --exclude scripts/coding-task-queue.test.mjs --exclude scripts/ryanai-monitor-ci.test.cjs --exclude scripts/security-schema-contract.test.mjs --exclude scripts/verify-node-ca.test.mjs --exclude scripts/ryanai-self-patch-audit.test.mjs && npm run test:genaicode && npm run test:quant-engine && npm run test:container-sandbox && npm run test:coding-queue && npm run test:benchmark:contracts && npm run test:server-assets",
     "test:supabase:ports": "node --test scripts/supabase-port-config.node-test.mjs",
     "test:community-survey-contract": "node --test scripts/community-survey-contract.node-test.mjs",
     "test:cs-script": "node --test scripts/check-cs-script.mjs",
@@ -171,7 +171,8 @@
     "worker:studio": "tsx scripts/ryanai-studio-worker.ts",
     "dns:verify:eu-org": "node scripts/verify-eu-org-dns.mjs",
     "test:dns:verify:eu-org": "node --test scripts/verify-eu-org-dns.node-test.mjs",
-    "prestart": "npm run build:server"
+    "prestart": "npm run build:server",
+    "test:db:structural-contract": "node --test scripts/audit-prisma-structural-contract.node-test.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1169.0",

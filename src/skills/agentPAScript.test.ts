@@ -28,7 +28,7 @@ describe('AgentPAScript read-only observer', () => {
       health: { api: true, database: true, redis: true },
       observationsCompleted: 1,
       eBPFPolicyEnforced: false,
-      genXPolicyEngineAvailable: true,
+      genXPolicyEngineAvailable: false,
     });
     expect(reports).toHaveLength(1);
     expect(observer.getStatus().lastTransitionAt).toBeTruthy();

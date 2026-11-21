@@ -7,7 +7,7 @@ const restrictedToken = process.env.MCPJUNGLE_RESTRICTED_CLIENT_TOKEN;
 assert.ok(allowedToken, "MCPJUNGLE_ALLOWED_CLIENT_TOKEN is required");
 assert.ok(restrictedToken, "MCPJUNGLE_RESTRICTED_CLIENT_TOKEN is required");
 
-async function post(method, id, token, sessionId) {
+async function post(method, id, token, sessionId, params = {}) {
   const headers = {
     "content-type": "application/json",
     accept: "application/json, text/event-stream",
@@ -28,7 +28,7 @@ async function post(method, id, token, sessionId) {
             capabilities: {},
             clientInfo: { name: "ryanai-ci-auth-test", version: "1.0.0" },
           }
-        : {},
+        : params,
     }),
     signal: AbortSignal.timeout(15000),
   });
@@ -85,11 +85,23 @@ assert.equal(allowedListing.response.status, 200, `Allowed tools/list failed: HT
 assert.ok(Array.isArray(allowedListing.payload?.result?.tools), "Allowed client tools/list did not return a tools array");
 const allowedTools = allowedListing.payload.result.tools;
 const toolNames = allowedTools.map((tool) => tool.name);
+const healthToolName = toolNames.find((name) => name.endsWith("__platform_health"));
 assert.ok(
-  toolNames.some((name) => name.endsWith("__platform_health")),
+  healthToolName,
   `Authorized client did not receive the permitted platform_health tool; received: ${toolNames.join(", ")}`,
 );
 console.log("PASS: authorized client discovers the explicitly allowed RyanAI health tool");
+const allowedCall = await post(
+  "tools/call",
+  3,
+  allowedToken,
+  allowedListing.session,
+  { name: healthToolName, arguments: {} },
+);
+assert.equal(allowedCall.response.status, 200, `Allowed tools/call failed: HTTP ${allowedCall.response.status}`);
+assert.ok(allowedCall.payload?.result, "Allowed tools/call did not return a JSON-RPC result");
+assert.notEqual(allowedCall.payload.result.isError, true, "Authorized health tool invocation returned an MCP error");
+console.log("PASS: authorized client can invoke the explicitly allowed RyanAI health tool");
 
 const restrictedListing = await listTools(restrictedToken);
 if (restrictedListing.response.status === 401 || restrictedListing.response.status === 403) {
@@ -103,11 +115,29 @@ if (restrictedListing.response.status === 401 || restrictedListing.response.stat
       0,
       `Client with an empty server allowlist must see no tools; received: ${restrictedTools.map((tool) => tool.name).join(", ")}`,
     );
+  } else if (restrictedTools === null || restrictedTools === undefined) {
+    // MCPJungle 0.4.6 may encode an empty restricted catalogue as tools:null.
+    // Prove authorization at invocation time instead of treating null as a pass.
+    const deniedCall = await post(
+      "tools/call",
+      4,
+      restrictedToken,
+      restrictedListing.session,
+      { name: healthToolName, arguments: {} },
+    );
+    const deniedByHttp = deniedCall.response.status === 401 || deniedCall.response.status === 403;
+    // MCP tool-level authorization failures are valid JSON-RPC results with isError=true.
+    const deniedByRpc = deniedCall.payload?.error && deniedCall.payload.error.code !== undefined;
+    const deniedByTool = deniedCall.payload?.result?.isError === true;
+    assert.ok(
+      deniedByHttp || deniedByRpc || deniedByTool,
+      `Restricted client must be denied when invoking a server tool; received HTTP ${deniedCall.response.status}: ${JSON.stringify(deniedCall.payload)}`,
+    );
   } else {
     assert.ok(
       restrictedListing.payload?.error && restrictedListing.payload.error.code !== undefined,
       `Restricted client must receive an empty tools array or an explicit JSON-RPC denial; received: ${JSON.stringify(restrictedListing.payload)}`,
     );
   }
-  console.log("PASS: authenticated client with an empty allowlist receives no tools or an explicit JSON-RPC denial");
+  console.log("PASS: authenticated client with an empty allowlist cannot discover or invoke the RyanAI health tool");
 }

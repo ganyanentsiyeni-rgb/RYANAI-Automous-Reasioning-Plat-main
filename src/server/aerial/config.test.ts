@@ -25,6 +25,23 @@ describe('Aerial development configuration', () => {
     expect(config.inferenceUrl).toBe('https://aerial.example.test/v1/inference');
   });
 
+  it('parses exact allowed hostnames and normalizes case and whitespace', () => {
+    const config = loadAerialConfig({
+      AERIAL_BASE_URL: 'https://aerial.example.test',
+      AERIAL_ALLOWED_HOSTS: ' AERIAL.EXAMPLE.TEST, metrics.example.test ',
+    } as NodeJS.ProcessEnv);
+
+    expect(config.allowedHosts).toEqual(['aerial.example.test', 'metrics.example.test']);
+  });
+
+  it('defaults the external host allowlist to empty (fail closed)', () => {
+    const config = loadAerialConfig({
+      AERIAL_BASE_URL: 'https://aerial.example.test',
+    } as NodeJS.ProcessEnv);
+
+    expect(config.allowedHosts).toEqual([]);
+  });
+
   it('keeps the external runtime when the simulator flag is also enabled', () => {
     const config = loadAerialConfig({
       NODE_ENV: 'development',
