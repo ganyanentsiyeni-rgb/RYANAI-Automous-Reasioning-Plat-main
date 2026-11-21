@@ -69,57 +69,70 @@ async function github(path, token) {
   return response.json();
 }
 
+async function inventory(path, token, key) {
+  try {
+    const data = await github(path, token);
+    return { status: 'available', items: data[key] || [] };
+  } catch (error) {
+    return { status: 'unavailable', items: [], error: error.message };
+  }
+}
+
 export async function runAudit({ repository, sha, token, env = process.env }) {
-  if (!repository || !/^[^/]+\/[^/]+$/.test(repository)) throw new Error('GITHUB_REPOSITORY must be owner/repository.');
+  if (!repository || !/^[^/]+\\/[^/]+$/.test(repository)) throw new Error('GITHUB_REPOSITORY must be owner/repository.');
   if (!sha || !/^[a-f0-9]{40}$/i.test(sha)) throw new Error('GITHUB_SHA must be a full commit SHA.');
   if (!token) throw new Error('A read-only GitHub token is required.');
-  const [checkData, statusData, workflowsData, environmentsData] = await Promise.all([
+  const [checkData, statusData, workflowsData, environmentsInventory, variableInventory] = await Promise.all([
     github(`/repos/${repository}/commits/${sha}/check-runs?per_page=100`, token),
     github(`/repos/${repository}/commits/${sha}/status`, token),
     github(`/repos/${repository}/actions/workflows?per_page=100`, token),
-    github(`/repos/${repository}/environments?per_page=100`, token),
+    inventory(`/repos/${repository}/environments?per_page=100`, token, 'environments'),
+    inventory(`/repos/${repository}/actions/variables?per_page=100`, token, 'variables'),
   ]);
-  const [runsByWorkflow, variableInventory] = await Promise.all([
-    Promise.all((workflowsData.workflows || []).map(async (workflow) => {
+  const runsByWorkflow = await Promise.all((workflowsData.workflows || []).map(async (workflow) => {
+    try {
       const data = await github(`/repos/${repository}/actions/workflows/${workflow.id}/runs?per_page=5`, token);
       return {
-        id: workflow.id,
-        name: workflow.name,
-        path: workflow.path,
-        state: workflow.state,
+        id: workflow.id, name: workflow.name, path: workflow.path, state: workflow.state,
+        inventoryStatus: 'available',
         runs: (data.workflow_runs || []).map((run) => ({
-          id: run.id,
-          event: run.event,
-          status: run.status,
-          conclusion: run.conclusion,
-          headSha: run.head_sha,
-          createdAt: run.created_at,
-          updatedAt: run.updated_at,
-          htmlUrl: run.html_url,
+          id: run.id, event: run.event, status: run.status, conclusion: run.conclusion,
+          headSha: run.head_sha, createdAt: run.created_at, updatedAt: run.updated_at, htmlUrl: run.html_url,
         })),
       };
-    })),
-    github(`/repos/${repository}/actions/variables?per_page=100`, token).catch(() => ({ variables: [], unavailable: true })),
-  ]);
+    } catch (error) {
+      return { id: workflow.id, name: workflow.name, path: workflow.path, state: workflow.state,
+        inventoryStatus: 'unavailable', error: error.message, runs: [] };
+    }
+  }));
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: new Date().toISOString(),
     scope: { repository, commitSha: sha, exclusions: ['Gen-X', 'Jarvis'] },
     permissions: 'read-only',
     ci: summarizeChecks(checkData.check_runs || [], statusData.state || 'unknown'),
-    workflows: runsByWorkflow,
-    environments: (environmentsData.environments || []).map((item) => ({
-      name: item.name,
-      protectionRules: (item.protection_rules || []).map((rule) => rule.type),
-      waitTimer: item.wait_timer ?? null,
-    })),
-    repositoryVariables: (variableInventory.variables || []).map(({ name }) => ({ name, valueExposed: false })),
+    workflows: { status: 'available', items: runsByWorkflow },
+    environments: {
+      status: environmentsInventory.status,
+      items: environmentsInventory.items.map((item) => ({
+        name: item.name,
+        protectionRules: (item.protection_rules || []).map((rule) => rule.type),
+        waitTimer: item.wait_timer ?? null,
+      })),
+      ...(environmentsInventory.error ? { error: environmentsInventory.error } : {}),
+    },
+    repositoryVariables: {
+      status: variableInventory.status,
+      items: variableInventory.items.map(({ name }) => ({ name, valueExposed: false })),
+      ...(variableInventory.error ? { error: variableInventory.error } : {}),
+    },
     runtimeConfigurationPresence: redactEnvironment(env),
     limitations: [
       'GitHub Actions secrets and environment secret values are never read.',
       'Remote provider variable values are never read.',
+      'An unavailable inventory is reported as unavailable, never as an empty successful inventory.',
       'This audit does not dispatch, rerun, patch, merge, migrate, deploy, or mutate infrastructure.',
-      'PA Agent and outbound Comms delivery require the separately approved integration adapter and destination/provider verification.',
+      'PA Agent and outbound Comms delivery require the separately approved RyanAI-only adapter and destination/provider verification.',
     ],
   };
 }
@@ -133,15 +146,15 @@ async function main() {
   const output = JSON.stringify(report, null, 2);
   if (process.env.GITHUB_OUTPUT) {
     const fs = await import('node:fs');
-    fs.appendFileSync(process.env.GITHUB_OUTPUT, `overall=${report.ci.overall}\n`);
+    fs.appendFileSync(process.env.GITHUB_OUTPUT, `overall=${report.ci.overall}\\n`);
   }
-  process.stdout.write(output + '\n');
+  process.stdout.write(output + '\\n');
   if (report.ci.overall === 'failing') process.exitCode = 1;
 }
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
   main().catch((error) => {
-    process.stderr.write(`RyanAI CI audit failed: ${error.message}\n`);
+    process.stderr.write(`RyanAI CI audit failed: ${error.message}\\n`);
     process.exitCode = 1;
   });
 }
