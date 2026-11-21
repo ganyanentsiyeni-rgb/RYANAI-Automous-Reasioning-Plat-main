@@ -5,6 +5,7 @@ import formbody from '@fastify/formbody';
 import rawBody from 'fastify-raw-body';
 import { Resend } from 'resend';
 import { humanInTheLoopAgent } from '../../agent/approvalEngine.js';
+import { enqueueInboundCommunicationRun, waitForInboundCommunicationRun } from './agentRuns.js';
 import { beginOutboundCommunication, claimInboundCommunication, completeOutboundCommunication, markOutboundCommunicationUnknown, OutboundIdempotencyConflictError, prepareOutboundCommunication, recordCommunication } from './history.js';
 import { addressOwnerMessage, getOwnerGreeting } from './personalization.js';
 import { createCommsUploadIntents, createCommsStorageAdmin, cleanCommsAttachmentUrls, downloadResendMedia, getCommsAttachmentScanStates, getCommsAttachmentStatuses, getOwnerInboundUserId, storeInboundCommsAttachment, storeTwilioMediaForCommunication } from './attachments.js';
@@ -460,7 +461,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
     if (sender !== normalizePhone(owner)) return reply.code(403).send({ error: 'This assistant is privately configured.' });
     if (!isCommunicationsTestAuthorized()) { reply.type('text/xml'); return '<?xml version="1.0" encoding="UTF-8"?><Response/>'; }
     const ownerUserId = getOwnerInboundUserId();
-    if (media.length && !ownerUserId) return reply.code(503).send({ error: 'Inbound media storage requires the verified owner Supabase user ID.' });
+    if (!ownerUserId) return reply.code(503).send({ error: 'Inbound SMS processing requires the verified owner Supabase user ID.' });
     let mediaStorageFailed = false;
     try {
       const claim = await claimInboundCommunication(fastify.prisma, {
@@ -469,7 +470,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
         body: text || `[${media.length} media attachment(s)]`,
         providerMessageId: body.MessageSid,
         status: 'processing',
-        ...(ownerUserId ? { ownerUserId } : {}),
+        ownerUserId,
         ...(media.length ? { metadata: { mediaCount: media.length } } : {}),
       });
       if (!claim.claimed) {
@@ -480,19 +481,42 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
         if (typeof previousReply === 'string' && previousReply.length) {
           return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(previousReply.slice(0, 1600))}</Message></Response>`;
         }
+        if (claim.existing?.agentRunId) {
+          const resumed = await waitForInboundCommunicationRun(claim.existing.agentRunId, ownerUserId);
+          if (resumed.completed) {
+            const answer = addressOwnerResponse(resumed.answer || 'I could not prepare a response.');
+            await fastify.prisma.communicationMessage.update({
+              where: { id: claim.existing.messageId },
+              data: { status: 'replied', metadata: { reply: answer, mediaCount: media.length, agentRunId: claim.existing.agentRunId } },
+            });
+            await recordCommunication(fastify.prisma, {
+              channel: 'sms', externalAddress: sender, direction: 'outbound', body: answer,
+              status: 'response_generated', metadata: { inReplyTo: body.MessageSid }, ownerUserId,
+            });
+            return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(answer.slice(0, 1600))}</Message></Response>`;
+          }
+        }
         return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
       }
       if (media.length) {
         try { await storeTwilioMediaForCommunication(fastify.prisma, body.MessageSid, media); }
         catch (error) { mediaStorageFailed = true; throw error; }
       }
-      const prompt = text
-        ? text + (media.length ? `\\n\\nThe sender attached ${media.length} file(s). They have been stored securely but have not been analyzed. Do not claim to have inspected their contents.` : '')
-        : `The sender attached ${media.length} file(s). They have been stored securely, but their contents have not been analyzed. Tell Sir they were received without claiming to inspect them.`;
-      const answer = addressOwnerResponse(await askRyanAI(prompt, `sms_${sender.replace(/\\D/g, '')}`));
+      const queued = await enqueueInboundCommunicationRun({
+        messageId: claim.messageId!,
+        ownerUserId,
+        providerMessageId: body.MessageSid,
+      });
+      const completed = await waitForInboundCommunicationRun(queued.runId, ownerUserId);
+      if (!completed.completed) {
+        request.log.info({ runId: queued.runId, providerMessageId: body.MessageSid }, 'SMS agent run remains queued or running; webhook will not fabricate a reply');
+        reply.type('text/xml');
+        return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
+      }
+      const answer = addressOwnerResponse(completed.answer || 'I could not prepare a response.');
       await fastify.prisma.communicationMessage.update({
         where: { providerMessageId: body.MessageSid },
-        data: { status: 'replied', metadata: { reply: answer, mediaCount: media.length } },
+        data: { status: 'replied', metadata: { reply: answer, mediaCount: media.length, agentRunId: queued.runId } },
       });
       await recordCommunication(fastify.prisma, {
         channel: 'sms', externalAddress: sender, direction: 'outbound', body: answer,
