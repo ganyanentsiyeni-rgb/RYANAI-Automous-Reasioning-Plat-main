@@ -16,10 +16,6 @@ UPDATE public.agent_runs
 SET lease_expires_at = COALESCE(locked_at + INTERVAL '3 minutes', NOW()),
     heartbeat_at = COALESCE(heartbeat_at, locked_at, NOW())
 WHERE status = 'running'
-SET lease_expires_at = locked_at + INTERVAL '3 minutes',
-    heartbeat_at = COALESCE(heartbeat_at, locked_at)
-WHERE status = 'running'
-  AND locked_at IS NOT NULL
   AND lease_expires_at IS NULL;
 
 UPDATE public.coding_tasks

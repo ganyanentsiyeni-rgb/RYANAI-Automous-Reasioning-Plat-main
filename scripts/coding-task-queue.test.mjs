@@ -76,6 +76,23 @@ test('claim uses a dedicated atomic SKIP LOCKED coding queue, not agent_runs', a
   assert.deepEqual(params, ['worker-1', 30_000]);
 });
 
+test('heartbeat renews only a live coding-task lease and advances heartbeatAt', async () => {
+  let call;
+  const queue = createCodingTaskQueue({
+    codingTask: {
+      updateMany: async (args) => { call = args; return { count: 1 }; },
+    },
+  });
+  const result = await queue.heartbeat('coding-lease', 'worker-lease', 30_000);
+  assert.equal(result, true);
+  assert.equal(call.where.id, 'coding-lease');
+  assert.equal(call.where.workerId, 'worker-lease');
+  assert.equal(call.where.status, 'running');
+  assert.ok(call.where.leaseExpiresAt.gt instanceof Date);
+  assert.equal(call.data.heartbeatAt instanceof Date, true);
+  assert.equal(call.data.leaseExpiresAt.getTime() - call.data.heartbeatAt.getTime(), 30_000);
+});
+
 test('running task cancellation is persisted and lease heartbeat stops', async () => {
   const calls = [];
   const queue = createCodingTaskQueue({
