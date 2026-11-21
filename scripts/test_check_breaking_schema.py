@@ -18,7 +18,14 @@ class BreakingSchemaGuardTests(unittest.TestCase):
             "model A {\n  id String @id\n}\n"
             "model B {\n  id String @id\n}\n"
         )
-        normalized = guard.normalize_base_schema(baseline)
+        normalized = guard.normalize_base_schema(
+            baseline,
+            '"outbound_comms_dispatches_communication_message_id_fkey" '
+            'REFERENCES "public"."communication_messages"("id") ON DELETE RESTRICT ON UPDATE CASCADE '
+            '"comms_delivery_receipts_dispatch_id_fkey" '
+            'REFERENCES "public"."outbound_comms_dispatches"("id") '
+            '"comms_delivery_receipts_communication_message_id_fkey"',
+        )
         self.assertEqual(normalized.count("model A"), 1)
         self.assertEqual(normalized.count("model B"), 1)
 
@@ -28,7 +35,14 @@ class BreakingSchemaGuardTests(unittest.TestCase):
             "model A {\n  id String @id\n  name String\n}\n"
         )
         with self.assertRaises(RuntimeError):
-            guard.normalize_base_schema(baseline)
+            guard.normalize_base_schema(
+                baseline,
+                '"outbound_comms_dispatches_communication_message_id_fkey" '
+                'REFERENCES "public"."communication_messages"("id") ON DELETE RESTRICT ON UPDATE CASCADE '
+                '"comms_delivery_receipts_dispatch_id_fkey" '
+                'REFERENCES "public"."outbound_comms_dispatches"("id") '
+                '"comms_delivery_receipts_communication_message_id_fkey"',
+            )
 
     def test_detects_drop_table_and_column(self):
         sql = "DROP TABLE public.legacy;\nALTER TABLE users DROP COLUMN old_name;"
