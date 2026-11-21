@@ -1,10 +1,10 @@
-name: Enforce single-owner main protection
+name: Enforce reviewed main protection
 
 on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: Type ENFORCE-SINGLE-OWNER-PROTECTION to update ruleset 27357206
+        description: Type ENFORCE-REVIEWED-PROTECTION to update ruleset 27357206
         required: true
         type: string
 
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   enforce:
-    name: Apply and verify single-owner main protection
+    name: Apply and verify reviewed main protection
     runs-on: ubuntu-latest
     steps:
       - name: Validate confirmation and administrator credential
@@ -26,7 +26,7 @@ jobs:
           GH_ADMIN_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
         run: |
           set -euo pipefail
-          [[ "$CONFIRMATION" == "ENFORCE-SINGLE-OWNER-PROTECTION" ]] || {
+          [[ "$CONFIRMATION" == "ENFORCE-REVIEWED-PROTECTION" ]] || {
             echo "::error::Confirmation string did not match; ruleset was not changed"
             exit 1
           }
@@ -35,7 +35,7 @@ jobs:
             exit 1
           }
 
-      - name: Build complete single-owner ruleset payload
+      - name: Build complete reviewed ruleset payload
         run: |
           set -euo pipefail
           cat > ruleset.json <<'JSON'
@@ -57,7 +57,7 @@ jobs:
               {
                 "type": "pull_request",
                 "parameters": {
-                  "required_approving_review_count": 0,
+                  "required_approving_review_count": 1,
                   "dismiss_stale_reviews_on_push": true,
                   "require_code_owner_review": false,
                   "require_last_push_approval": false,
@@ -72,7 +72,7 @@ jobs:
                   "strict_required_status_checks_policy": true,
                   "do_not_enforce_on_create": false,
                   "required_status_checks": [
-                    { "context": "Single-owner release gate" },
+                    { "context": "Reviewed release gate" },
                     { "context": "Validate (typecheck, lint, test, build)" },
                     { "context": "MCP server and workflow worker" },
                     { "context": "Integration and end-to-end checks" },
@@ -131,17 +131,17 @@ jobs:
           assert {"deletion", "non_fast_forward", "required_linear_history", "pull_request", "required_status_checks"} <= set(rules), "A required protection rule is missing"
 
           pr = rules["pull_request"]
-          assert pr.get("required_approving_review_count") == 0, "Single-owner mode must not require a second reviewer"
+          assert pr.get("required_approving_review_count") == 1, "At least one independent approval is required"
           assert pr.get("dismiss_stale_reviews_on_push") is True, "Stale review dismissal must be enabled"
-          assert pr.get("require_code_owner_review") is False, "Code-owner approval must not block a single-owner repository"
+          assert pr.get("require_code_owner_review") is False, "Code-owner approval must not block a reviewed repository"
           assert pr.get("require_last_push_approval") is False, "Last-push approval cannot be required without a second reviewer"
-          assert pr.get("require_extra_approval_for_unattributed_changes") is False, "Extra approval for unattributed changes cannot be required in single-owner mode"
+          assert pr.get("require_extra_approval_for_unattributed_changes") is False, "Extra approval for unattributed changes cannot be required in reviewed mode"
           assert pr.get("required_review_thread_resolution") is True, "Review thread resolution must be required"
 
           checks = rules["required_status_checks"].get("required_status_checks", [])
           contexts = {item.get("context") for item in checks}
           required = {
-              "Single-owner release gate",
+              "Reviewed release gate",
               "Validate (typecheck, lint, test, build)",
               "MCP server and workflow worker",
               "Integration and end-to-end checks",
@@ -158,7 +158,7 @@ jobs:
           assert not missing, f"Required check contexts missing: {sorted(missing)}"
           assert rules["required_status_checks"].get("strict_required_status_checks_policy") is True, "Strict status-check policy is disabled"
 
-          print("Verified single-owner ruleset 27357206:")
+          print("Verified reviewed ruleset 27357206:")
           print(json.dumps({
               "enforcement": data["enforcement"],
               "bypass_actors": data.get("bypass_actors", []),
