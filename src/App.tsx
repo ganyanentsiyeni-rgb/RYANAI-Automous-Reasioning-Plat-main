@@ -23,7 +23,6 @@ import {
   ClipboardList,
   HelpCircle,
   LogIn,
-  LogOut,
   UserPlus,
   type LucideIcon,
 } from 'lucide-react';
