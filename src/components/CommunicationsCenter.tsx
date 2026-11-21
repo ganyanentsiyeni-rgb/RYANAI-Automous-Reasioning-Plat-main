@@ -183,6 +183,7 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
           await new Promise(resolve => window.setTimeout(resolve, 1500));
           outcome = await getInAppCommsReply(outcome.messageId, userId);
         }
+        if (outcome.conversationId) setActiveId(outcome.conversationId);
         setNotice(outcome.status === 'replied'
           ? 'RyanAI has replied. Your private conversation has been saved.'
           : 'Your message is saved. RyanAI is still processing it; the conversation will show the reply when the AgentRun completes.');
