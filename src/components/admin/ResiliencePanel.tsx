@@ -85,7 +85,10 @@ export default function ResiliencePanel({ userId }: { userId: string }) {
     }
   }, [userId]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void refresh(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [refresh]);
 
   async function runBackup() {
     if (busy || !window.confirm('Start a database backup now? This creates a backup artifact and does not modify production data.')) return;
