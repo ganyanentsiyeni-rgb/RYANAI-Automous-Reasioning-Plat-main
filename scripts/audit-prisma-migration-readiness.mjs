@@ -14,6 +14,22 @@ export function compareMigrationState(localNames, appliedRows) {
   return { local, applied: [...applied].sort(), pending: local.filter((name) => !applied.has(name)), databaseOnly: [...applied].filter((name) => !local.includes(name)).sort() };
 }
 
+export function assessMissingMigrationLedger(localMigrations) {
+  return {
+    status: 'missing',
+    ledgerPresent: false,
+    local: [...localMigrations.map((item) => item.name)].sort(),
+    applied: null,
+    pending: null,
+    databaseOnly: null,
+    checksumMismatches: null,
+    unresolved: null,
+    rolledBack: null,
+    duplicateCompleted: null,
+    note: 'Applied migration history is unknown because public._prisma_migrations is absent.',
+  };
+}
+
 export function assessMigrationLedger(localMigrations, ledgerRows) {
   const localByName = new Map(localMigrations.map((item) => [item.name, item.checksum]));
   const completedRows = ledgerRows.filter((row) => row.finished_at && !row.rolled_back_at);
@@ -141,8 +157,15 @@ async function main() {
   const { Pool } = await import('pg');
   const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1, connectionTimeoutMillis: 8000 });
   try {
-    const migrationResult = await pool.query('SELECT migration_name, checksum, started_at, finished_at, rolled_back_at, logs, applied_steps_count FROM public._prisma_migrations ORDER BY migration_name, started_at');
-    const state = assessMigrationLedger(localMigrations, migrationResult.rows);
+    const ledgerPresence = await pool.query("SELECT to_regclass('public._prisma_migrations') IS NOT NULL AS present");
+    const ledgerPresent = ledgerPresence.rows[0]?.present === true;
+    let state;
+    if (ledgerPresent) {
+      const migrationResult = await pool.query('SELECT migration_name, checksum, started_at, finished_at, rolled_back_at, logs, applied_steps_count FROM public._prisma_migrations ORDER BY migration_name, started_at');
+      state = { status: 'available', ledgerPresent: true, ...assessMigrationLedger(localMigrations, migrationResult.rows) };
+    } else {
+      state = assessMissingMigrationLedger(localMigrations);
+    }
     const [columnResult, tableResult, indexResult, extensionResult, memoryColumnResult, cacheColumnResult, sharedColumnResult, attemptColumnResult, attemptConstraintResult, attemptIndexResult, attemptRlsResult, checkpointWritePrimaryKeyResult] = await Promise.all([
       pool.query("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='agent_runs'"),
       pool.query("SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'"),
@@ -172,7 +195,7 @@ async function main() {
       checkpointWritePrimaryKeyColumns: checkpointWritePrimaryKeyResult.rows[0]?.columns ?? null,
     });
     console.log(JSON.stringify({ mode: 'read-only', migrationState: state, schema, remediation: 'Review each pending migration against live schema before applying. This command never applies DDL.' }, null, 2));
-    if (state.pending.length || state.databaseOnly.length || state.checksumMismatches.length || state.unresolved.length || state.duplicateCompleted.length || schema.missingColumns.length || schema.missingTables.length || schema.missingSharedColumns.length || !schema.vector.extensionPresent || schema.vector.missingTables.length || schema.vector.missingMemoryColumns.length || schema.vector.missingCacheColumns.length || schema.vector.missingIndexes.length || !schema.eventAttempts.tablePresent || schema.eventAttempts.missingColumns.length || schema.eventAttempts.mismatchedColumns.length || schema.eventAttempts.missingConstraints.length || schema.eventAttempts.mismatchedConstraints.length || schema.eventAttempts.missingIndexes.length || schema.eventAttempts.mismatchedIndexes.length || schema.eventAttempts.rlsEnabled !== true || !schema.checkpointWrites.primaryKeyMatches) process.exitCode = 1;
+    if (!state.ledgerPresent || (state.pending?.length ?? 0) || (state.databaseOnly?.length ?? 0) || (state.checksumMismatches?.length ?? 0) || (state.unresolved?.length ?? 0) || (state.duplicateCompleted?.length ?? 0) || schema.missingColumns.length || schema.missingTables.length || schema.missingSharedColumns.length || !schema.vector.extensionPresent || schema.vector.missingTables.length || schema.vector.missingMemoryColumns.length || schema.vector.missingCacheColumns.length || schema.vector.missingIndexes.length || !schema.eventAttempts.tablePresent || schema.eventAttempts.missingColumns.length || schema.eventAttempts.mismatchedColumns.length || schema.eventAttempts.missingConstraints.length || schema.eventAttempts.mismatchedConstraints.length || schema.eventAttempts.missingIndexes.length || schema.eventAttempts.mismatchedIndexes.length || schema.eventAttempts.rlsEnabled !== true || !schema.checkpointWrites.primaryKeyMatches) process.exitCode = 1;
   } catch {
     console.error('BLOCKED: migration metadata/schema audit failed. Check database connectivity and permissions; connection details were suppressed.');
     process.exitCode = 2;
