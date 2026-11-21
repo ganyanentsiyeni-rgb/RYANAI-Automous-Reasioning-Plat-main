@@ -56,6 +56,10 @@ async function createApp(standaloneApprovals = false) {
         user: request.authUser,
       }));
       nested.post('/api/reasoning/stream', async () => ({ allowed: true }));
+      nested.post('/api/aerial/inference', async (request) => ({
+        user: request.authUser,
+      }));
+      nested.get('/api/aerial/status', async () => ({ allowed: true }));
       nested.get('/api/metrics', async () => ({ allowed: true }));
       nested.post('/api/comms/send', async () => ({ allowed: true }));
       nested.get('/ws', async () => ({ allowed: true }));
@@ -275,6 +279,39 @@ describe('Supabase API authentication', () => {
       ).toBe(200);
     },
   );
+
+  it('allows a verified ordinary member to reach Aerial inference for its route-level Gen-X decision', async () => {
+    const app = await createApp();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/aerial/inference',
+      headers: bearer,
+      payload: { prompt: 'synthetic test prompt' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().user).toMatchObject({ id: user.id, role: 'user' });
+    expect(getUser).toHaveBeenCalledExactlyOnceWith('synthetic-access-token');
+  });
+
+  it('rejects unauthenticated Aerial inference before the route handler', async () => {
+    const app = await createApp();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/aerial/inference',
+      payload: { prompt: 'synthetic test prompt' },
+    });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('keeps Aerial status behind the admin boundary', async () => {
+    const app = await createApp();
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/aerial/status',
+      headers: bearer,
+    });
+    expect(response.statusCode).toBe(403);
+  });
 
   it('allows a verified non-admin to read brain health without granting admin access', async () => {
     const app = await createApp();
