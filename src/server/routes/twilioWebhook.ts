@@ -91,9 +91,13 @@ export const twilioWebhookPlugin: FastifyPluginAsync = async (fastify) => {
             reply.type('text/xml');
             return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(answer.slice(0, 4000))}</Message></Response>`;
           }
+          return reply.code(503).send({
+            error: 'The durable RyanAI run is still processing. The provider may retry for its completed reply.',
+          });
         }
-        reply.type('text/xml');
-        return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
+        return reply.code(503).send({
+          error: 'The inbound message is persisted but its durable RyanAI run is not linked yet. The provider may retry.',
+        });
       }
       if (media.length) {
         try { await storeTwilioMediaForCommunication(fastify.prisma, body.MessageSid, media); }
