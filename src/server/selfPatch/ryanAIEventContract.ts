@@ -1,62 +1,8 @@
-import { z } from 'zod';
-
 /**
- * RyanAI's narrow, provider-neutral event boundary for Comms receipts and
- * Self-Patch audit findings. Parsing validates shape only: it does not publish,
- * persist, authorize, or execute events.
- */
-export const RYANAI_REPOSITORY = 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main';
-
-const commonFields = {
-  schemaVersion: z.literal(1),
-  repository: z.literal(RYANAI_REPOSITORY),
-  commitSha: z.string().regex(/^[a-f0-9]{40}$/i),
-  eventId: z.string().uuid(),
-  correlationId: z.string().min(8).max(160).regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
-  occurredAt: z.string().datetime({ offset: true }),
-};
-
-const commsReceiptSchema = z.object({
-  ...commonFields,
-  eventType: z.literal('comms.delivery.receipt'),
-  source: z.literal('ryanai-comms'),
-  channel: z.enum(['sms', 'whatsapp', 'voice', 'email']),
-  state: z.enum(['accepted_by_provider', 'delivered', 'failed']),
-  providerReferenceHash: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
-}).strict().superRefine((event, context) => {
-  if (event.state === 'delivered' && !event.providerReferenceHash) {
-    context.addIssue({
-      code: 'custom',
-      path: ['providerReferenceHash'],
-      message: 'A delivered receipt requires a validated provider reference hash.',
-    });
-  }
-});
-
-const selfPatchFindingSchema = z.object({
-  ...commonFields,
-  eventType: z.literal('selfpatch.audit.finding'),
-  source: z.literal('ryanai-self-patch'),
-  severity: z.enum(['info', 'warning', 'error', 'critical']),
-  findingCode: z.string().min(3).max(120).regex(/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/),
-}).strict();
-
-export const RyanAIEventSchema = z.discriminatedUnion('eventType', [
-  commsReceiptSchema,
-  selfPatchFindingSchema,
-]);
-
-export type RyanAIEvent = z.infer<typeof RyanAIEventSchema>;
-
-/** Return a validated event, or null for malformed, untrusted, or out-of-scope input. */
-export function parseRyanAIEvent(value: unknown): RyanAIEvent | null {
-  const parsed = RyanAIEventSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
-/**
- * RyanAI-only event contract for Self-Patch / PA observation.
+ * RyanAI-only event contract for Comms receipts and Self-Patch / PA observation.
  *
  * This module validates shape and scope only. It does not authenticate transport,
- * authorize actions, send communications, or import Gen-X/Jarvis policy.
+ * authorize actions, send communications, or execute patches.
  * The receiving adapter must authenticate the transport before calling this parser.
  */
 
@@ -75,6 +21,7 @@ export const COMMS_DELIVERY_STATES = [
 ] as const;
 
 export type CommsDeliveryState = (typeof COMMS_DELIVERY_STATES)[number];
+
 export type RyanAIEvent =
   | {
       schemaVersion: 1;
@@ -129,7 +76,7 @@ function validBase(value: Record<string, unknown>): boolean {
 /**
  * Returns a sanitized, typed event or null. Unknown fields are rejected so
  * message bodies, recipient addresses, credentials and arbitrary payloads
- * cannot accidentally cross this event boundary.
+ * cannot cross this event boundary.
  */
 export function parseRyanAIEvent(input: unknown): RyanAIEvent | null {
   if (!isRecord(input) || !validBase(input)) return null;
@@ -146,7 +93,10 @@ export function parseRyanAIEvent(input: unknown): RyanAIEvent | null {
       || !COMMS_DELIVERY_STATES.includes(input.state as CommsDeliveryState)
       || (input.providerReferenceHash !== undefined
         && (typeof input.providerReferenceHash !== 'string'
-          || !/^[0-9a-f]{64}$/i.test(input.providerReferenceHash)))) return null;
+          || !/^[0-9a-f]{64}$/i.test(input.providerReferenceHash)))
+      || (input.state === 'delivered' && typeof input.providerReferenceHash !== 'string')) {
+      return null;
+    }
 
     return {
       schemaVersion: 1,
@@ -159,7 +109,9 @@ export function parseRyanAIEvent(input: unknown): RyanAIEvent | null {
       occurredAt: input.occurredAt as string,
       channel: input.channel as 'whatsapp' | 'sms' | 'voice' | 'email',
       state: input.state as CommsDeliveryState,
-      ...(input.providerReferenceHash ? { providerReferenceHash: input.providerReferenceHash as string } : {}),
+      ...(input.providerReferenceHash
+        ? { providerReferenceHash: input.providerReferenceHash as string }
+        : {}),
     };
   }
 
@@ -171,7 +123,9 @@ export function parseRyanAIEvent(input: unknown): RyanAIEvent | null {
     if (!hasOnlyKeys(input, allowed)
       || input.source !== 'ryanai-self-patch'
       || !['info', 'warning', 'error', 'critical'].includes(String(input.severity))
-      || typeof input.findingCode !== 'string' || !SAFE_CODE.test(input.findingCode)) return null;
+      || typeof input.findingCode !== 'string' || !SAFE_CODE.test(input.findingCode)) {
+      return null;
+    }
 
     return {
       schemaVersion: 1,
