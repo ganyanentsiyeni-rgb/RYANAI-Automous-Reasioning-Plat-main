@@ -115,7 +115,7 @@ async function shutdown(signal: string) {
         workerId: runtime.snapshot().workerId,
         shutdownErrors,
       });
-      disabledKeepAlive && clearInterval(disabledKeepAlive);
+      if (disabledKeepAlive) clearInterval(disabledKeepAlive);
       disabledKeepAlive = null;
       disabledStopResolver?.();
       disabledStopResolver = null;
