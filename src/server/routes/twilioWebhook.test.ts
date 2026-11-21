@@ -2,25 +2,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import twilio from 'twilio';
 import { twilioWebhookPlugin } from './twilioWebhook.js';
-import { ownerCommunicationInstruction } from '../../shared/ryanIdentity.js';
 import { installAuthentication } from './auth.js';
 
-const { invoke, decideCommsApprovalFromOwner, recordOwnerGitHubPrReviewDecision, prismaMock } = vi.hoisted(() => ({
+const { invoke, enqueueInboundCommunicationRun, waitForInboundCommunicationRun, decideCommsApprovalFromOwner, recordOwnerGitHubPrReviewDecision, prismaMock } = vi.hoisted(() => ({
   decideCommsApprovalFromOwner: vi.fn(),
   recordOwnerGitHubPrReviewDecision: vi.fn(),
   invoke: vi.fn(),
+  enqueueInboundCommunicationRun: vi.fn(),
+  waitForInboundCommunicationRun: vi.fn(),
   prismaMock: {
     communicationConversation: { upsert: vi.fn().mockResolvedValue({ id: 'conversation-1' }) },
     communicationMessage: {
       findUnique: vi.fn().mockResolvedValue(null),
       upsert: vi.fn().mockResolvedValue({}),
       update: vi.fn().mockResolvedValue({}),
-      create: vi.fn().mockResolvedValue({}),
+      create: vi.fn().mockResolvedValue({ id: 'message-1' }),
     },
   },
 }));
 vi.mock('../../agent/approvalEngine.js', () => ({
   humanInTheLoopAgent: { invoke },
+}));
+vi.mock('../comms/agentRuns.js', () => ({
+  enqueueInboundCommunicationRun,
+  waitForInboundCommunicationRun,
 }));
 vi.mock('../comms/authorization.js', () => ({ decideCommsApprovalFromOwner }));
 vi.mock('../githubPrReviewApproval.js', () => ({ recordOwnerGitHubPrReviewDecision }));
@@ -65,6 +70,8 @@ beforeEach(() => {
   invoke.mockResolvedValue({
     messages: [{ content: 'Approved <reply> & ready' }],
   });
+  enqueueInboundCommunicationRun.mockResolvedValue({ runId: 'run-1', status: 'queued', replayed: false, notified: true });
+  waitForInboundCommunicationRun.mockResolvedValue({ completed: true, answer: 'Approved <reply> & ready' });
 });
 
 afterEach(async () => {
@@ -199,7 +206,7 @@ describe('Twilio webhook provider authentication', () => {
     recordOwnerGitHubPrReviewDecision.mockResolvedValue({
       id: approvalId, pull_request_number: 624, expected_head_sha: sha, status: 'approved',
     });
-    const payload = { ...body, Body: \`GITHUB APPROVE \${approvalId} \${sha}\` };
+    const payload = { ...body, Body: `GITHUB APPROVE ${approvalId} ${sha}` };
     const signature = twilio.getExpectedTwilioSignature(token, webhookUrl, payload);
 
     const response = await sendWebhook(signature, payload);
@@ -265,15 +272,16 @@ describe('Twilio webhook provider authentication', () => {
       '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Certainly, Sir G. Approved &lt;reply&gt; &amp; ready</Message></Response>',
     );
     expect(prismaMock.communicationMessage.create).toHaveBeenCalled();
-    expect(invoke).toHaveBeenCalledExactlyOnceWith(
-      {
-        messages: [
-          { role: 'system', content: ownerCommunicationInstruction() },
-          { role: 'user', content: 'Please help' },
-        ],
-      },
-      { configurable: { thread_id: 'whatsapp_15555550123' } },
+    expect(enqueueInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith({
+      messageId: 'message-1',
+      ownerUserId: '11111111-1111-4111-8111-111111111111',
+      providerMessageId: 'SM123',
+    });
+    expect(waitForInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith(
+      'run-1',
+      '11111111-1111-4111-8111-111111111111',
     );
+    expect(invoke).not.toHaveBeenCalled();
   });
 });
 
