@@ -78,6 +78,9 @@ jobs:
       - name: Run Admin Resilience service tests
         run: npx vitest run src/services/adminResilience.test.ts
 
+      - name: Run Admin Resilience backup execution tests
+        run: npx vitest run src/services/adminResilience.backupExecution.test.ts
+
       - name: Run Admin Resilience route tests
         run: npx vitest run src/server/routes/adminResilience.test.ts
 
