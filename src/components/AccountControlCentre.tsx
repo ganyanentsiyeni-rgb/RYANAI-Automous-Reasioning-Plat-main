@@ -22,7 +22,7 @@ interface AccountControlCentreProps {
   compact?: boolean;
 }
 
-const accountLinks = [
+export const ACCOUNT_CONTROL_LINKS = [
   { label: 'Profile & account preferences', description: 'Your name, language, voice and workspace defaults', href: '#/settings', icon: UserRound },
   { label: 'Personalization & AI preferences', description: 'Assistant behaviour, model and voice preferences', href: '#/settings', icon: Settings2 },
   { label: 'Security & sessions', description: 'Password, email verification and other signed-in devices', href: '#/settings?section=account-security-title', icon: ShieldCheck },
@@ -86,7 +86,7 @@ export default function AccountControlCentre({
               </div>
             </div>
             <nav aria-label="Account controls" className="max-h-[min(65dvh,32rem)] overflow-y-auto p-2">
-              {accountLinks.map(({ label, description, href, icon: Icon }) => (
+              {ACCOUNT_CONTROL_LINKS.map(({ label, description, href, icon: Icon }) => (
                 <a key={label} href={href} onClick={() => setOpen(false)} className="flex items-start gap-3 rounded-xl px-3 py-3 transition hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300">
                   <Icon className="mt-0.5 h-4 w-4 shrink-0 text-cyan-200" aria-hidden="true" />
                   <span className="min-w-0"><span className="block text-xs font-semibold text-slate-100">{label}</span><span className="mt-1 block text-[10px] leading-4 text-slate-500">{description}</span></span>
