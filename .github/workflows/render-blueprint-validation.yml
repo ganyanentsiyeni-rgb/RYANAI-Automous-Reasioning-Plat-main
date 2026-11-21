@@ -76,7 +76,7 @@ jobs:
               --form "ownerId=${RENDER_WORKSPACE_ID}" \
               --form "file=@${blueprint};type=application/x-yaml" \
               --output "${response_file}"
-            jq .
+            jq . "${response_file}"
             jq -e '.valid == true' "${response_file}"
             echo "::endgroup::"
           done
