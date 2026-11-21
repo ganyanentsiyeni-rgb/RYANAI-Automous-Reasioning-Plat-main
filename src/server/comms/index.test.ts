@@ -359,6 +359,7 @@ describe('private RyanAI in-app Comms chat', () => {
     app.decorate('prisma', prismaMock as never);
     await app.register(commsPlugin);
     prismaMock.communicationMessage.create.mockResolvedValueOnce({ id: 'in-app-message-2' });
+    enqueueInboundCommunicationRun.mockResolvedValueOnce({ runId: 'in-app-run-1', status: 'queued', replayed: false, notified: true });
     waitForInboundCommunicationRun.mockResolvedValueOnce({ completed: false });
 
     const response = await app.inject({
