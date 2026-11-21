@@ -208,7 +208,6 @@ describe('Twilio webhook provider authentication', () => {
     expect(response.body).toContain('records consent only; no GitHub review has been submitted');
     expect(recordOwnerGitHubPrReviewDecision).toHaveBeenCalledExactlyOnceWith(
       prismaMock,
-      '11111111-1111-4111-8111-111111111111',
       expect.objectContaining({
         ownerUserId: '11111111-1111-4111-8111-111111111111',
         approvalId,
