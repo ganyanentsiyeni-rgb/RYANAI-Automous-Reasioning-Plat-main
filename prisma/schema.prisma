@@ -486,6 +486,7 @@ model AgentRun {
   evidence AgentRunEvidence[]
   codingTasks CodingTask[]
   paDelegation PaDelegation?
+  communicationMessage CommunicationMessage?
   queueType String @default("reasoning") @map("queue_type")
   @@index([queueType, status, createdAt], map: "agent_runs_queue_type_status_created_idx")
   @@index([userId, createdAt])
@@ -631,6 +632,8 @@ model CommunicationConversation {
 
 model CommunicationMessage {
   id                String                    @id @default(uuid())
+  agentRunId        String?                   @unique @map("agent_run_id")
+  agentRun          AgentRun?                 @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
   conversationId    String                    @map("conversation_id")
   conversation      CommunicationConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   direction         String

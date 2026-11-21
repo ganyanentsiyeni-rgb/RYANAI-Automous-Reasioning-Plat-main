@@ -208,9 +208,12 @@ const INBOUND_PROCESSING_LEASE_MS = 5 * 60 * 1000;
 
 export interface InboundCommunicationClaim {
   claimed: boolean;
+  messageId?: string;
   existing?: {
+    messageId: string;
     status: string;
     metadata: Prisma.JsonValue | null;
+    agentRunId?: string | null;
   };
 }
 
@@ -245,7 +248,7 @@ export async function claimInboundCommunication(
   });
 
   try {
-    await prisma.communicationMessage.create({
+    const created = await prisma.communicationMessage.create({
       data: {
         conversationId: conversation.id,
         direction: 'inbound',
@@ -254,8 +257,9 @@ export async function claimInboundCommunication(
         status: input.status ?? 'processing',
         ...(input.metadata ? { metadata: input.metadata } : {}),
       },
+      select: { id: true },
     });
-    return { claimed: true };
+    return { claimed: true, messageId: created.id };
   } catch (error) {
     const code = typeof error === 'object' && error !== null && 'code' in error
       ? (error as { code?: unknown }).code
@@ -264,7 +268,7 @@ export async function claimInboundCommunication(
 
     const existing = await prisma.communicationMessage.findUnique({
       where: { providerMessageId: input.providerMessageId },
-      select: { id: true, status: true, metadata: true, createdAt: true },
+      select: { id: true, status: true, metadata: true, createdAt: true, agentRunId: true },
     });
     if (!existing) throw error;
 
@@ -288,14 +292,16 @@ export async function claimInboundCommunication(
           ...(input.metadata ? { metadata: input.metadata } : {}),
         },
       });
-      if (reclaimed.count === 1) return { claimed: true };
+      if (reclaimed.count === 1) return { claimed: true, messageId: existing.id };
     }
 
     return {
       claimed: false,
       existing: {
+        messageId: existing.id,
         status: existing.status,
         metadata: existing.metadata,
+        agentRunId: existing.agentRunId,
       },
     };
   }
