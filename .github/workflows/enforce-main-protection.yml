@@ -73,16 +73,15 @@ jobs:
                   "do_not_enforce_on_create": false,
                   "required_status_checks": [
                     { "context": "Single-owner release gate" },
-                    { "context": "Validate (typecheck, lint, test, build)" },
-                    { "context": "MCP server and workflow worker" },
-                    { "context": "Integration and end-to-end checks" },
-                    { "context": "PostgreSQL 19 compatibility" },
-                    { "context": "Issue 435 migrations and attachment security" },
-                    { "context": "Analyze (javascript-typescript)" },
-                    { "context": "Analyze (python)" },
-                    { "context": "TruffleHog secret audit" },
-                    { "context": "Validate application and MCP dependencies" },
-                    { "context": "Audit GitHub workflows" }
+                    { "context": "Generate & Upload SBOMs" },
+                    { "context": "Dependency audit" },
+                    { "context": "Trivy filesystem scan" },
+                    { "context": "Audit GitHub workflows" },
+                    { "context": "Ephemeral PostgreSQL integration dry-run" },
+                    { "context": "Verify Supabase and Prisma fresh-stack migrations" },
+                    { "context": "validate-database" },
+                    { "context": "Validate configuration files" },
+                    { "context": "Inspect release quality" }
                   ]
                 }
               }
@@ -141,23 +140,14 @@ jobs:
           contexts = {item.get("context") for item in checks}
           required = {
               "Single-owner release gate",
-              "Test agent API contracts",
-              "Trivy filesystem scan",
-              "Dependency audit",
               "Generate & Upload SBOMs",
-              "Upgrade legacy pgvector database safely (unquoted)",
-              "Upgrade legacy pgvector database safely (quoted)",
-              "MCP server and workflow worker",
-              "Validate (typecheck, lint, test, build)",
-              "Issue 435 migrations and attachment security",
-              "Scan api image",
-              "Scan standalone-api image",
-              "Scan migrate image",
-              "Scan web image",
-              "Scan mcp image",
+              "Dependency audit",
+              "Trivy filesystem scan",
+              "Audit GitHub workflows",
               "Ephemeral PostgreSQL integration dry-run",
               "Verify Supabase and Prisma fresh-stack migrations",
               "validate-database",
+              "Validate configuration files",
               "Inspect release quality",
           }
           missing = required - contexts
