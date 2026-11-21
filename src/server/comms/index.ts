@@ -281,6 +281,9 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
         metadata: { source: 'comms_in_app' },
       });
       if (!claim.claimed) {
+        if (claim.existing?.channel !== 'in_app' || claim.existing.ownerUserId !== ownerUserId || claim.existing.body !== message) {
+          return reply.code(409).send({ error: 'This idempotency key is already bound to a different owner or message.' });
+        }
         if (claim.existing?.agentRunId) {
           const response = await finishInAppChatTurn(claim.existing.messageId, claim.existing.agentRunId, ownerUserId);
           if (response) return { messageId: claim.existing.messageId, runId: claim.existing.agentRunId, status: 'replied', reply: response, replayed: true };
