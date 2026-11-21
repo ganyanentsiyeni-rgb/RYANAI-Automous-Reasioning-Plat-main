@@ -33,6 +33,7 @@ describe('AerialClient external runtime contract', () => {
     expect(fetchMock.mock.calls[0][1].headers).toEqual({
       authorization: 'Bearer test-only-key',
     });
+    expect(fetchMock.mock.calls[0][1].redirect).toBe('error');
   });
 
   it('reports non-success health responses as degraded', async () => {
@@ -67,6 +68,7 @@ describe('AerialClient external runtime contract', () => {
       'content-type': 'application/json',
       authorization: 'Bearer test-only-key',
     });
+    expect(fetchMock.mock.calls[0][1].redirect).toBe('error');
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
       model: 'aerial-test-model',
       prompt: 'inspect cell metrics',
