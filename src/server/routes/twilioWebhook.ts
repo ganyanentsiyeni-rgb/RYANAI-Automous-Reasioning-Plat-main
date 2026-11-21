@@ -73,8 +73,10 @@ export const twilioWebhookPlugin: FastifyPluginAsync = async (fastify) => {
         const previousReply = claim.existing?.metadata && typeof claim.existing.metadata === 'object'
           && !Array.isArray(claim.existing.metadata) ? (claim.existing.metadata as { reply?: unknown }).reply : undefined;
         if (typeof previousReply === 'string' && previousReply.length) {
+          // The original request already persisted its reply. A provider replay
+          // must be acknowledged without emitting a second TwiML <Message>.
           reply.type('text/xml');
-          return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(previousReply)}</Message></Response>`;
+          return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
         }
         if (claim.existing?.agentRunId) {
           const resumed = await waitForInboundCommunicationRun(claim.existing.agentRunId, ownerUserId);
@@ -91,9 +93,13 @@ export const twilioWebhookPlugin: FastifyPluginAsync = async (fastify) => {
             reply.type('text/xml');
             return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(answer.slice(0, 4000))}</Message></Response>`;
           }
+          return reply.code(503).send({
+            error: 'The durable RyanAI run is still processing. The provider may retry for its completed reply.',
+          });
         }
-        reply.type('text/xml');
-        return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
+        return reply.code(503).send({
+          error: 'The inbound message is persisted but its durable RyanAI run is not linked yet. The provider may retry.',
+        });
       }
       if (media.length) {
         try { await storeTwilioMediaForCommunication(fastify.prisma, body.MessageSid, media); }
@@ -215,24 +221,27 @@ export const twilioWebhookPlugin: FastifyPluginAsync = async (fastify) => {
         }
       }
 
-      if (!isCommunicationsTestAuthorized()) {
-        await fastify.prisma.communicationMessage.update({
-          where: { providerMessageId: body.MessageSid },
-          data: { status: 'received', metadata: { mediaCount: media.length, replySuppressed: true } },
-        });
-        reply.type('text/xml');
-        return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
-      }
+      // Persist and link the durable AgentRun before acknowledging the provider,
+      // even when the separate outbound-test authorization gate suppresses replies.
       const queued = await enqueueInboundCommunicationRun({
         messageId: claim.messageId!,
         ownerUserId,
         providerMessageId: body.MessageSid,
       });
-      const completed = await waitForInboundCommunicationRun(queued.runId, ownerUserId);
-      if (!completed.completed) {
-        request.log.info({ runId: queued.runId, providerMessageId: body.MessageSid }, 'WhatsApp agent run remains queued or running; webhook will not fabricate a reply');
+      if (!isCommunicationsTestAuthorized()) {
+        await fastify.prisma.communicationMessage.update({
+          where: { providerMessageId: body.MessageSid },
+          data: { status: 'received', metadata: { mediaCount: media.length, replySuppressed: true, agentRunId: queued.runId } },
+        });
         reply.type('text/xml');
         return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
+      }
+      const completed = await waitForInboundCommunicationRun(queued.runId, ownerUserId);
+      if (!completed.completed) {
+        request.log.info({ runId: queued.runId, providerMessageId: body.MessageSid }, 'WhatsApp agent run remains queued or running; provider retry is required for a completed reply');
+        return reply.code(503).send({
+          error: 'The durable RyanAI run is still processing. The provider may retry for its completed reply.',
+        });
       }
       const agentReply = addressOwnerResponse(completed.answer || 'I could not prepare a response.');
       await fastify.prisma.communicationMessage.update({

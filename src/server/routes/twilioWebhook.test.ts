@@ -135,7 +135,7 @@ describe('Twilio webhook provider authentication', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
-  it('does not invoke RyanAI again when Twilio retries an already-claimed message', async () => {
+  it('acknowledges an already-replied Twilio replay without emitting a duplicate outbound TwiML message', async () => {
     prismaMock.communicationMessage.create.mockRejectedValueOnce({ code: 'P2002' });
     prismaMock.communicationMessage.findUnique.mockResolvedValueOnce({
       status: 'replied',
@@ -146,8 +146,11 @@ describe('Twilio webhook provider authentication', () => {
     const response = await sendWebhook(signature);
 
     expect(response.statusCode).toBe(200);
-    expect(response.body).toContain('This was already handled.');
+    expect(response.headers['content-type']).toContain('text/xml');
+    expect(response.body).toBe('<?xml version="1.0" encoding="UTF-8"?><Response/>');
+    expect(response.body).not.toContain('<Message>');
     expect(invoke).not.toHaveBeenCalled();
+    expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
   });
 
   it('stores an authentic inbound WhatsApp message but suppresses the auto-reply until explicitly authorized', async () => {
@@ -162,8 +165,14 @@ describe('Twilio webhook provider authentication', () => {
     expect(response.body).not.toContain('<Message>');
     expect(prismaMock.communicationMessage.update).toHaveBeenCalledWith({
       where: { providerMessageId: 'SM123' },
-      data: { status: 'received', metadata: { mediaCount: 0, replySuppressed: true } },
+      data: { status: 'received', metadata: { mediaCount: 0, replySuppressed: true, agentRunId: 'run-1' } },
     });
+    expect(enqueueInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith({
+      messageId: 'message-1',
+      ownerUserId: '11111111-1111-4111-8111-111111111111',
+      providerMessageId: 'SM123',
+    });
+    expect(waitForInboundCommunicationRun).not.toHaveBeenCalled();
     expect(invoke).not.toHaveBeenCalled();
   });
 
@@ -283,6 +292,21 @@ describe('Twilio webhook provider authentication', () => {
     );
     expect(invoke).not.toHaveBeenCalled();
   });
+  it('returns retryable 503 when a newly queued AgentRun has not completed before the webhook deadline', async () => {
+    waitForInboundCommunicationRun.mockResolvedValueOnce({ completed: false });
+    const signature = twilio.getExpectedTwilioSignature(token, webhookUrl, body);
+
+    const response = await sendWebhook(signature);
+
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toContain('durable RyanAI run is still processing');
+    expect(enqueueInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith({
+      messageId: 'message-1',
+      ownerUserId: '11111111-1111-4111-8111-111111111111',
+      providerMessageId: 'SM123',
+    });
+  });
+
   it('returns a retryable non-2xx response when durable AgentRun enqueue fails', async () => {
     enqueueInboundCommunicationRun.mockRejectedValueOnce(new Error('database unavailable'));
     const signature = twilio.getExpectedTwilioSignature(token, webhookUrl, body);
@@ -310,6 +334,46 @@ describe('Twilio webhook provider authentication', () => {
     expect(response.statusCode).toBe(503);
     expect(response.body).toContain('provider may retry');
     expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
+  });
+
+  it('keeps a claimed message retryable when no AgentRun was linked before a prior failure', async () => {
+    prismaMock.communicationMessage.create.mockRejectedValueOnce({ code: 'P2002' });
+    prismaMock.communicationMessage.findUnique.mockResolvedValueOnce({
+      id: 'message-1',
+      status: 'processing',
+      metadata: null,
+      createdAt: new Date(),
+      agentRunId: null,
+    });
+    const signature = twilio.getExpectedTwilioSignature(token, webhookUrl, body);
+
+    const response = await sendWebhook(signature);
+
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toContain('durable RyanAI run is not linked');
+    expect(waitForInboundCommunicationRun).not.toHaveBeenCalled();
+  });
+
+  it('keeps a linked but unfinished AgentRun retryable instead of acknowledging an empty reply', async () => {
+    prismaMock.communicationMessage.create.mockRejectedValueOnce({ code: 'P2002' });
+    prismaMock.communicationMessage.findUnique.mockResolvedValueOnce({
+      id: 'message-1',
+      status: 'processing',
+      metadata: null,
+      createdAt: new Date(),
+      agentRunId: 'run-1',
+    });
+    waitForInboundCommunicationRun.mockResolvedValueOnce({ completed: false });
+    const signature = twilio.getExpectedTwilioSignature(token, webhookUrl, body);
+
+    const response = await sendWebhook(signature);
+
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toContain('durable RyanAI run is still processing');
+    expect(waitForInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith(
+      'run-1',
+      '11111111-1111-4111-8111-111111111111',
+    );
   });
 
   it('does not register the legacy webhook path', async () => {
