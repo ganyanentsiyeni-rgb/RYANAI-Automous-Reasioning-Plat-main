@@ -15,6 +15,8 @@ export interface AuthenticatedUser {
   role: 'user' | 'admin';
   displayName?: string;
   isOwner: boolean;
+  /** AAL is taken only from Supabase-verified JWT claims. */
+  sessionAssurance: 'aal1' | 'aal2';
 }
 
 // Augment Fastify types to include custom request properties and Prisma instance
@@ -66,7 +68,7 @@ export async function requireUser(
     });
 
     const { data, error } = await client.auth.getUser(token);
-    
+
     if (error || !data.user || data.user.is_anonymous) {
       const status =
         error && (!error.status || error.status >= 500) ? 503 : 401;
@@ -78,8 +80,23 @@ export async function requireUser(
       });
     }
 
+    // getUser confirms the live identity; getClaims verifies the JWT signature
+    // and supplies the session assurance claim. Never infer AAL from user metadata.
+    const { data: claimsData, error: claimsError } = await client.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims
+      || claimsData.claims.sub !== data.user.id
+      || !['aal1', 'aal2'].includes(String(claimsData.claims.aal))) {
+      const status = claimsError && (!claimsError.status || claimsError.status >= 500) ? 503 : 401;
+      return reply.code(status).send({
+        error: status === 503
+          ? 'Session assurance is temporarily unavailable.'
+          : 'Invalid session claims. Please sign in again.',
+      });
+    }
+
     request.authUser = {
       id: data.user.id,
+      sessionAssurance: claimsData.claims.aal as 'aal1' | 'aal2',
       email: data.user.email,
       role: data.user.app_metadata?.role === 'admin' ? 'admin' : 'user',
       displayName: typeof data.user.user_metadata?.full_name === 'string' ? data.user.user_metadata.full_name : undefined,
