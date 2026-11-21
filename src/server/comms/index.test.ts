@@ -170,6 +170,25 @@ describe('Twilio conversational voice webhooks', () => {
     expect(waitForInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith('voice-run-1', 'owner-test');
   });
 
+  it('replays the persisted answer for a duplicate signed voice turn without enqueueing another run', async () => {
+    const turnId = '33333333-3333-4333-8333-333333333333';
+    prismaMock.communicationMessage.create.mockRejectedValueOnce({ code: 'P2002' });
+    prismaMock.communicationMessage.findUnique.mockResolvedValueOnce({
+      id: 'voice-message-existing',
+      status: 'replied',
+      metadata: { reply: 'That turn was already answered.' },
+      agentRunId: 'voice-run-existing',
+    });
+    const response = await send(
+      '/api/webhooks/twilio/voice/respond?turnId=' + turnId,
+      actionUrl + '?turnId=' + turnId,
+      { CallSid: 'CA123', From: '+15555550123', SpeechResult: 'Please check my system' },
+    );
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain('That turn was already answered.');
+    expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
+  });
+
   it('accepts the owner as the To party on outbound AI voice calls', async () => {
     const turnId = '22222222-2222-4222-8222-222222222222';
     const payload = { CallSid: 'CAOUT123', From: '+15555550000', To: '+15555550123', SpeechResult: 'What is the system status?' };
@@ -211,6 +230,25 @@ describe('Comms conversation ownership', () => {
 });
 
 describe('Comms conversation intelligence', () => {
+  it('requires a request idempotency key before queuing Comms assist', async () => {
+    const app = Fastify();
+    apps.push(app);
+    app.decorateRequest('authUser', null);
+    app.addHook('preHandler', async (request) => {
+      request.authUser = { id: 'owner-test', role: 'user', isOwner: true };
+    });
+    app.decorate('prisma', prismaMock as never);
+    await app.register(commsPlugin);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/comms/assist',
+      payload: { operation: 'summarize', conversationId: '7b0f1c1e-3c0a-4d3e-9a52-0b5f3b6a1c11' },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(enqueueCommsAssistRun).not.toHaveBeenCalled();
+  });
+
   it('keeps analysis owner-scoped and never dispatches a provider request', async () => {
     const app = Fastify();
     apps.push(app);
