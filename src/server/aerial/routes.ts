@@ -91,9 +91,8 @@ export const aerialRoutes: FastifyPluginAsync = async (fastify) => {
         policyDecision: 'ALLOW',
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Aerial inference failed.';
-      fastify.log.warn({ reason: message }, 'Aerial AI-RAN inference failed');
-      return reply.code(503).send({ success: false, error: message });
+      fastify.log.warn({ errorType: error instanceof Error ? error.name : 'UnknownError' }, 'Aerial AI-RAN inference failed');
+      return reply.code(503).send({ success: false, error: 'Aerial inference is temporarily unavailable.' });
     }
   });
 };

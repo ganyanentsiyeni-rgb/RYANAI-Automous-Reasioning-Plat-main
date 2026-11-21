@@ -7,6 +7,7 @@ export interface AerialConfig {
   model: string;
   timeoutMs: number;
   apiKey: string | null;
+  allowedHosts: string[];
 }
 
 function readBool(value: string | undefined): boolean {
@@ -50,5 +51,10 @@ export function loadAerialConfig(env: NodeJS.ProcessEnv = process.env): AerialCo
     model: env.AERIAL_MODEL?.trim() || 'aerial-dev',
     timeoutMs: readPositiveInt(env.AERIAL_TIMEOUT_MS, 10_000),
     apiKey: env.AERIAL_API_KEY?.trim() || null,
+    // Exact hostnames only; empty means external calls fail closed.
+    allowedHosts: (env.AERIAL_ALLOWED_HOSTS ?? '')
+      .split(',')
+      .map((host) => host.trim().toLowerCase())
+      .filter(Boolean),
   };
 }
