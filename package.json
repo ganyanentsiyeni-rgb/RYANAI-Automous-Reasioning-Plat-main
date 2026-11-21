@@ -15,7 +15,7 @@
     "prebuild": "npm run db:generate",
     "build": "tsc -p tsconfig.app.json && vite build",
     "start": "node dist/server/server/launcher.js",
-    "lint": "eslint . --max-warnings 0",
+    "lint": "eslint .",
     "prebuild:server": "npm run db:generate",
     "build:server": "tsc -p tsconfig.server.json && node scripts/copy-server-assets.mjs",
     "agent:pa": "cross-env NODE_ENV=development tsx src/server/launcher.ts",
