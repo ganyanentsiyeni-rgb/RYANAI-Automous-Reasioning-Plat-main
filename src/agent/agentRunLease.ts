@@ -4,33 +4,44 @@ export interface AgentRunLease {
   attempts: number;
 }
 
-/** A worker owns a run only while its worker ID and claim attempt still match. */
-export function agentRunLeaseFilter(lease: AgentRunLease) {
+/** A worker owns a run only while its worker ID, claim attempt and lease deadline still match. */
+export function agentRunLeaseFilter(lease: AgentRunLease, now = new Date()) {
   return {
     id: lease.id,
     status: 'running' as const,
     workerId: lease.workerId,
     attempts: lease.attempts,
+    leaseExpiresAt: { gt: now },
   };
 }
 
 /**
- * Keep long-running work leased. The attempt + worker ID filter fences stale
- * workers after another worker has reclaimed an expired lease.
+ * Renew a live lease atomically. The callback receives the ownership predicate,
+ * heartbeat timestamp and new expiry; a zero-row update fences a stale worker.
  */
 export function startAgentRunLeaseHeartbeat(
   lease: AgentRunLease,
-  refresh: (where: ReturnType<typeof agentRunLeaseFilter>) => Promise<{ count: number }>,
+  refresh: (
+    where: ReturnType<typeof agentRunLeaseFilter>,
+    heartbeatAt: Date,
+    leaseExpiresAt: Date,
+  ) => Promise<{ count: number }>,
   onError: (error: unknown) => void = () => undefined,
-  intervalMs = 30_000,
+  intervalMs = 5_000,
+  leaseMs = 30_000,
 ): () => void {
   let stopped = false;
   let inFlight = false;
   const timer = setInterval(async () => {
     if (stopped || inFlight) return;
     inFlight = true;
+    const heartbeatAt = new Date();
     try {
-      const result = await refresh(agentRunLeaseFilter(lease));
+      const result = await refresh(
+        agentRunLeaseFilter(lease, heartbeatAt),
+        heartbeatAt,
+        new Date(heartbeatAt.getTime() + leaseMs),
+      );
       if (!stopped && result.count !== 1) {
         onError(new Error('Agent run lease ownership was lost; this worker must stop processing.'));
       }

@@ -98,9 +98,9 @@ export function createCodingTaskQueue(prisma, { now = () => new Date() } = {}) {
       if (typeof workerId !== 'string' || !workerId.trim()) throw new Error('Worker ID is required.');
       if (!Number.isInteger(leaseMs) || leaseMs < 5_000 || leaseMs > 300_000) throw new Error('Lease must be between 5 seconds and 5 minutes.');
       const rows = await prisma.$queryRawUnsafe(
-        "UPDATE public.coding_tasks SET status = 'running', worker_id = $1, locked_at = NOW(), lease_expires_at = NOW() + ($2 * INTERVAL '1 millisecond'), attempts = attempts + 1, updated_at = NOW() " +
-        "WHERE id = (SELECT id FROM public.coding_tasks WHERE cancel_requested_at IS NULL AND attempts < max_attempts AND next_attempt_at <= NOW() AND (status = 'queued' OR (status = 'running' AND lease_expires_at < NOW())) ORDER BY created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED) " +
-        'RETURNING id, user_id AS "userId", workbench_run_id AS "workbenchRunId", approval_id AS "approvalId", plan_hash AS "planHash", base_commit_sha AS "baseCommitSha", proposed_diff_hash AS "proposedDiffHash", agent, prompt, workspace_key AS "workspaceKey", status, attempts, max_attempts AS "maxAttempts", worker_id AS "workerId", locked_at AS "lockedAt", lease_expires_at AS "leaseExpiresAt", next_attempt_at AS "nextAttemptAt", cancel_requested_at AS "cancelRequestedAt", created_at AS "createdAt", updated_at AS "updatedAt", completed_at AS "completedAt"',
+        "UPDATE public.coding_tasks SET status = 'running', worker_id = $1, locked_at = NOW(), lease_expires_at = NOW() + ($2 * INTERVAL '1 millisecond'), heartbeat_at = NOW(), attempts = attempts + 1, updated_at = NOW() " +
+        "WHERE id = (SELECT id FROM public.coding_tasks WHERE cancel_requested_at IS NULL AND attempts < max_attempts AND next_attempt_at <= NOW() AND (status = 'queued' OR (status = 'running' AND lease_expires_at <= NOW())) ORDER BY created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED) " +
+        'RETURNING id, user_id AS "userId", workbench_run_id AS "workbenchRunId", approval_id AS "approvalId", plan_hash AS "planHash", base_commit_sha AS "baseCommitSha", proposed_diff_hash AS "proposedDiffHash", agent, prompt, workspace_key AS "workspaceKey", status, attempts, max_attempts AS "maxAttempts", worker_id AS "workerId", locked_at AS "lockedAt", lease_expires_at AS "leaseExpiresAt", heartbeat_at AS "heartbeatAt", next_attempt_at AS "nextAttemptAt", cancel_requested_at AS "cancelRequestedAt", created_at AS "createdAt", updated_at AS "updatedAt", completed_at AS "completedAt"',
         workerId, leaseMs,
       );
       return rows[0] ?? null;
@@ -112,7 +112,7 @@ export function createCodingTaskQueue(prisma, { now = () => new Date() } = {}) {
       const timestamp = now();
       const result = await prisma.codingTask.updateMany({
         where: { id: taskId, status: 'running', workerId, cancelRequestedAt: null, leaseExpiresAt: { gt: timestamp } },
-        data: { lockedAt: timestamp, leaseExpiresAt: new Date(timestamp.getTime() + leaseMs), updatedAt: timestamp },
+        data: { heartbeatAt: timestamp, leaseExpiresAt: new Date(timestamp.getTime() + leaseMs), updatedAt: timestamp },
       });
       return result.count === 1;
     },
@@ -132,7 +132,7 @@ export function createCodingTaskQueue(prisma, { now = () => new Date() } = {}) {
     async markCancelled(taskId, workerId, attempts) {
       const timestamp = now();
       const result = await prisma.codingTask.updateMany({
-        where: { id: taskId, workerId, attempts, status: 'cancel_requested' },
+        where: { id: taskId, workerId, attempts, status: 'cancel_requested', leaseExpiresAt: { gt: timestamp } },
         data: { status: 'cancelled', workerId: null, lockedAt: null, leaseExpiresAt: null, completedAt: timestamp, updatedAt: timestamp },
       });
       return result.count === 1;
@@ -153,7 +153,7 @@ export function createCodingTaskQueue(prisma, { now = () => new Date() } = {}) {
       const retry = !cancelled && retryable && attempts < current.maxAttempts;
       const delayMs = Math.min(15 * 60_000, 5_000 * (2 ** Math.max(0, attempts - 1)));
       const updated = await prisma.codingTask.updateMany({
-        where: { id: taskId, workerId, attempts, status: current.status },
+        where: { id: taskId, workerId, attempts, status: current.status, leaseExpiresAt: { gt: timestamp } },
         data: {
           status: cancelled ? 'cancelled' : retry ? 'queued' : retryable ? 'failed' : 'orphaned',
           error: String(error instanceof Error ? error.message : error).slice(0, 2000),
@@ -171,7 +171,7 @@ export function createCodingTaskQueue(prisma, { now = () => new Date() } = {}) {
         "next_attempt_at = CASE WHEN cancel_requested_at IS NULL AND attempts < max_attempts THEN NOW() + LEAST(900000, 5000 * POWER(2, GREATEST(0, attempts - 1))) * INTERVAL '1 millisecond' ELSE next_attempt_at END, " +
         "worker_id = NULL, locked_at = NULL, lease_expires_at = NULL, " +
         "completed_at = CASE WHEN cancel_requested_at IS NOT NULL OR attempts >= max_attempts THEN NOW() ELSE NULL END, updated_at = NOW() " +
-        "WHERE status IN ('running', 'cancel_requested') AND lease_expires_at < NOW() RETURNING id, status, attempts"
+        "WHERE status IN ('running', 'cancel_requested') AND lease_expires_at <= NOW() RETURNING id, status, attempts"
       );
     }
   });

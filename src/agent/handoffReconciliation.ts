@@ -6,7 +6,7 @@ export function buildRunHandoffUpdateWhere(
 ) {
   return {
     runId: run.id,
-    run: { is: { status: 'running', workerId: run.worker_id, attempts: run.attempts } },
+    run: { is: { status: 'running', workerId: run.worker_id, attempts: run.attempts, leaseExpiresAt: { gt: new Date() } } },
     ...(brain === 'logic'
       ? { toAgent: 'logic', status: { in: ['pending', 'running'] } }
       : { fromAgent: { in: ['supervisor', 'jarvis'] }, toAgent: brain }),
