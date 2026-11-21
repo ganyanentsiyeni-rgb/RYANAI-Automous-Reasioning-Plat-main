@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { Activity, BrainCircuit, Download, Mail, MessageCircle, Paperclip, Phone, RefreshCw, Send, ShieldCheck, Smartphone } from 'lucide-react';
 import {
   getCommsAttachmentDownloadUrl, getCommsAttachmentStatuses, getCommsConversations,
-  getCommsStatus, prepareCommsAttachments, requestCommsApproval, approveCommsApproval,
+  getCommsStatus, prepareCommsAttachments, requestCommsApproval, getCommsApprovalStatus,
   sendCommsMessage, assistCommsConversation, uploadCommsAttachment, publishPhoneLinkEvent,
   type CommsAttachment, type CommsChannel, type CommsConversation, type CommsStatus,
 } from '@/lib/commsApi';
@@ -46,6 +46,8 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  const [approvalId, setApprovalId] = useState('');
+  const [approvalStatus, setApprovalStatus] = useState('');
   const [assistBusy, setAssistBusy] = useState(false);
   const [assistOutput, setAssistOutput] = useState('');
   const [error, setError] = useState('');
@@ -56,6 +58,8 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
   const communicationsEnabled = status?.enabled === true;
 
   function startNewDraft() {
+    setApprovalId('');
+    setApprovalStatus('');
     setIdempotencyKey(crypto.randomUUID());
     setAttachmentIds([]);
     setAttachmentStatuses([]);
@@ -206,8 +210,6 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
           return;
         }
       }
-      // The owner's explicit Check and send action creates and approves a
-      // short-lived, payload-bound authorization before any provider dispatch.
       const approval = await requestCommsApproval({
         channel,
         message: message.trim(),
@@ -216,15 +218,53 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
         ...(channel === 'email' && subject.trim() ? { subject: subject.trim() } : {}),
         ...(currentIds.length ? { attachmentIds: currentIds } : {}),
       }, userId);
-      await approveCommsApproval(approval.approvalId, userId);
+      setApprovalId(approval.approvalId);
+      setApprovalStatus('pending');
+      setNotice(`Owner approval requested. From your verified WhatsApp number, reply exactly: APPROVE ${approval.approvalId} or REJECT ${approval.approvalId}. Then check the approval status here. No provider dispatch has occurred.`);
+      setReviewing(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'The message could not be sent.');
+    } finally {
+      setSending(false);
+      setReviewing(false);
+    }
+  }
+
+  async function checkApprovalStatus() {
+    if (!approvalId || sending) return;
+    setSending(true);
+    setError('');
+    try {
+      const result = await getCommsApprovalStatus(approvalId, userId);
+      setApprovalStatus(result.status);
+      setNotice(result.status === 'approved'
+        ? 'Your verified Comms reply approved this exact message. Select Send approved message to dispatch it.'
+        : result.status === 'rejected'
+          ? 'Your Comms reply rejected this message. It cannot be dispatched.'
+          : result.status === 'pending'
+            ? 'Still awaiting your verified Comms reply. No provider dispatch has occurred.'
+            : `Approval state: ${result.status}. This request is not ready to send.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Approval status could not be checked.');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function sendApprovedMessage() {
+    if (!approvalId || approvalStatus !== 'approved' || sending) return;
+    setSending(true);
+    setError('');
+    setNotice('');
+    try {
       const result = await sendCommsMessage({
         channel,
         message: message.trim(),
         idempotencyKey,
-        approvalId: approval.approvalId,
+        approvalId,
         ...(recipient.trim() ? { recipient: recipient.trim() } : {}),
         ...(channel === 'email' && subject.trim() ? { subject: subject.trim() } : {}),
-        ...(currentIds.length ? { attachmentIds: currentIds } : {}),
+        ...(attachmentIds.length ? { attachmentIds } : {}),
       }, userId);
       let phoneLinkQueued = 0;
       if (!result.replayed && phoneLinkSettings?.notifyComms !== false) {
@@ -237,27 +277,25 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
           }, userId);
           phoneLinkQueued = bridge.queued;
         } catch {
-          // The provider dispatch result remains authoritative; PhoneLink inbox
-          // availability must never change or replay an outbound Comms action.
+          // The provider dispatch result remains authoritative.
         }
       }
       setNotice((result.replayed
         ? `Duplicate submission suppressed. Existing request status: ${result.status}. No second provider request was sent.`
-        : `${result.channel} request accepted by provider (${result.status}). Delivery is confirmed only by a later provider status callback.`)
+        : `${result.channel} request accepted by provider (${result.status}). Delivery requires a verified provider callback.`)
         + (phoneLinkQueued ? ` PhoneLink queued an update for ${phoneLinkQueued} paired device(s).` : ''));
-      if (!result.replayed || !['dispatching', 'dispatch_unknown'].includes(result.status)) {
-        setMessage('');
-        setSelectedFiles([]);
-        setAttachmentIds([]);
-        setAttachmentStatuses([]);
-        startNewDraft();
-      }
+      setMessage('');
+      setSelectedFiles([]);
+      setAttachmentIds([]);
+      setAttachmentStatuses([]);
+      setApprovalId('');
+      setApprovalStatus('');
+      startNewDraft();
       await refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'The message could not be sent.');
+      setError(cause instanceof Error ? cause.message : 'The approved message could not be sent.');
     } finally {
       setSending(false);
-      setReviewing(false);
     }
   }
 
