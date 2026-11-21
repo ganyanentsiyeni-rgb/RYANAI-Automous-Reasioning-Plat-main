@@ -75,6 +75,10 @@ export async function decideCommsApprovalFromOwner(
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(approvalId)) {
     throw new Error('invalid_approval_id');
   }
+  const inboundOwnerPhone = process.env.RYANAI_OWNER_PHONE?.trim() ?? '';
+  if (!inboundOwnerPhone || !(await verifiedDestination(prisma, ownerUserId, 'whatsapp', inboundOwnerPhone))) {
+    throw new Error('inbound_owner_phone_not_verified');
+  }
   const rows = await prisma.$queryRawUnsafe<Array<{ channel: CommsChannel; payload_hash: string }>>(
     `SELECT channel, payload_hash FROM public.comms_send_approvals
       WHERE id = $1::uuid AND owner_user_id = $2 AND status = 'pending' AND expires_at > NOW()
@@ -326,7 +330,9 @@ export const commsAuthorizationRoutes: FastifyPluginAsync = async (fastify) => {
     if (!userId) return reply.code(403).send({ error: 'Owner access is required.' });
     const body = request.body ?? {};
     const channel = body.channel;
-    const recipient = typeof body.recipient === 'string' ? body.recipient.trim() : '';
+    const recipient = typeof body.recipient === 'string' && body.recipient.trim()
+      ? body.recipient.trim()
+      : process.env.RYANAI_OWNER_PHONE?.trim() || '';
     const message = typeof body.message === 'string' ? body.message.trim() : '';
     const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : '';
     if (body.attachmentIds !== undefined && !Array.isArray(body.attachmentIds)) return reply.code(400).send({ error: 'Attachment IDs must be a list.' });

@@ -5,7 +5,8 @@ import { twilioWebhookPlugin } from './twilioWebhook.js';
 import { ownerCommunicationInstruction } from '../../shared/ryanIdentity.js';
 import { installAuthentication } from './auth.js';
 
-const { invoke, prismaMock } = vi.hoisted(() => ({
+const { invoke, decideCommsApprovalFromOwner, prismaMock } = vi.hoisted(() => ({
+  decideCommsApprovalFromOwner: vi.fn(),
   invoke: vi.fn(),
   prismaMock: {
     communicationConversation: { upsert: vi.fn().mockResolvedValue({ id: 'conversation-1' }) },
@@ -20,6 +21,7 @@ const { invoke, prismaMock } = vi.hoisted(() => ({
 vi.mock('../../agent/approvalEngine.js', () => ({
   humanInTheLoopAgent: { invoke },
 }));
+vi.mock('../comms/authorization.js', () => ({ decideCommsApprovalFromOwner }));
 const applications: FastifyInstance[] = [];
 const token = 'synthetic-twilio-auth-token';
 const webhookUrl = 'https://app.example.test/api/webhooks/twilio/whatsapp';
@@ -54,6 +56,8 @@ beforeEach(() => {
   vi.stubEnv('TWILIO_AUTH_TOKEN', token);
   vi.stubEnv('TWILIO_WHATSAPP_WEBHOOK_URL', webhookUrl);
   vi.stubEnv('RYANAI_OWNER_PHONE', '+15555550123');
+  vi.stubEnv('RYANAI_OWNER_AUTH_USER_ID', '11111111-1111-4111-8111-111111111111');
+  decideCommsApprovalFromOwner.mockReset();
   vi.stubEnv('RYANAI_OWNER_LANGUAGE', 've-ZA');
   invoke.mockResolvedValue({
     messages: [{ content: 'Approved <reply> & ready' }],
@@ -150,6 +154,58 @@ describe('Twilio webhook provider authentication', () => {
       where: { providerMessageId: 'SM123' },
       data: { status: 'received', metadata: { mediaCount: 0, replySuppressed: true } },
     });
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('records an explicit owner approval received through signed WhatsApp even when outbound test replies are disabled', async () => {
+    vi.stubEnv('RYANAI_COMMS_TEST_AUTHORIZED', 'false');
+    const approvalId = '22222222-2222-4222-8222-222222222222';
+    decideCommsApprovalFromOwner.mockResolvedValue({ approvalId, status: 'approved' });
+    const payload = { ...body, Body: `APPROVE ${approvalId}` };
+    const signature = twilio.getExpectedTwilioSignature(token, webhookUrl, payload);
+
+    const response = await sendWebhook(signature, payload);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain('<Response/>');
+    expect(response.body).not.toContain('<Message>');
+    expect(decideCommsApprovalFromOwner).toHaveBeenCalledExactlyOnceWith(
+      prismaMock,
+      '11111111-1111-4111-8111-111111111111',
+      approvalId,
+      'approve',
+    );
+    expect(prismaMock.communicationMessage.update).toHaveBeenCalledWith({
+      where: { providerMessageId: payload.MessageSid },
+      data: {
+        status: 'received',
+        metadata: {
+          approvalId,
+          approvalDecision: 'approve',
+          approvalStatus: 'approved',
+          replySuppressed: true,
+        },
+      },
+    });
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('records an explicit owner rejection and never invokes the agent', async () => {
+    const approvalId = '33333333-3333-4333-8333-333333333333';
+    decideCommsApprovalFromOwner.mockResolvedValue({ approvalId, status: 'rejected' });
+    const payload = { ...body, Body: `REJECT ${approvalId}` };
+    const signature = twilio.getExpectedTwilioSignature(token, webhookUrl, payload);
+
+    const response = await sendWebhook(signature, payload);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain('recorded your rejection');
+    expect(decideCommsApprovalFromOwner).toHaveBeenCalledExactlyOnceWith(
+      prismaMock,
+      '11111111-1111-4111-8111-111111111111',
+      approvalId,
+      'reject',
+    );
     expect(invoke).not.toHaveBeenCalled();
   });
 
