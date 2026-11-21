@@ -21,14 +21,14 @@ const COLUMN_CONTRACTS = {
   agent_runs: {
     id: ['text', false, null], user_id: ['text', false, null], objective: ['text', false, null],
     requested_model: ['text', true, null], trace_context: ['jsonb', true, null],
-    execution_scope: ['jsonb', false, '{}'], approval_status: ['text', false, 'approved'],
+    execution_scope: ['jsonb', false, "'{}'"], approval_status: ['text', false, "'approved'"],
     plan_snapshot: ['jsonb', true, null], plan_hash: ['text', true, null],
     base_commit_sha: ['text', true, null], proposed_diff_hash: ['text', true, null],
     approved_plan_hash: ['text', true, null], approved_commit_sha: ['text', true, null],
     approved_diff_hash: ['text', true, null], approved_by: ['text', true, null],
     approved_at: ['timestamp(3) without time zone', true, null],
     steering_notes: ['text', true, null], cancel_requested_at: ['timestamp(3) without time zone', true, null],
-    status: ['text', false, 'queued'], result: ['jsonb', true, null], error: ['text', true, null],
+    status: ['text', false, "'queued'"], result: ['jsonb', true, null], error: ['text', true, null],
     attempts: ['integer', false, '0'], max_attempts: ['integer', false, '3'],
     worker_id: ['text', true, null], locked_at: ['timestamp(3) without time zone', true, null],
     lease_expires_at: ['timestamp(3) without time zone', true, null],
@@ -37,7 +37,7 @@ const COLUMN_CONTRACTS = {
     created_at: ['timestamp(3) without time zone', false, 'now'],
     updated_at: ['timestamp(3) without time zone', false, 'now'],
     completed_at: ['timestamp(3) without time zone', true, null],
-    queue_type: ['text', false, 'reasoning'],
+    queue_type: ['text', false, "'reasoning'"],
   },
   coding_tasks: {
     id: ['text', false, null], user_id: ['text', false, null], workbench_run_id: ['text', false, null],
@@ -56,7 +56,7 @@ const COLUMN_CONTRACTS = {
   },
   agent_handoffs: {
     id: ['text', false, null], run_id: ['text', false, null], from_agent: ['text', false, null],
-    to_agent: ['text', false, null], status: ['text', false, 'pending'], input: ['text', false, null],
+    to_agent: ['text', false, null], status: ['text', false, "'pending'"], input: ['text', false, null],
     output: ['text', true, null], error: ['text', true, null],
     started_at: ['timestamp(3) without time zone', false, 'now'],
     completed_at: ['timestamp(3) without time zone', true, null],
@@ -114,7 +114,7 @@ function normalizeDefault(value) {
 function finding(findings, object, expected, actual, present, matches) {
   findings.push({
     object,
-    status: !present ? 'missing' : matches ? 'matching' : 'structurally_wrong',
+    status: expected === 'absent' && !present ? 'matching' : !present ? 'missing' : matches ? 'matching' : 'structurally_wrong',
     expected,
     actual: actual ?? null,
   });
@@ -167,7 +167,7 @@ export function assessStructuralContract(snapshot) {
     const row = indexMap.get(name);
     const actual = normalize(row?.indexdef);
     const expected = normalize(definition);
-    const matches = Boolean(row) && actual.includes(expected);
+    const matches = Boolean(row) && (definition.startsWith('unique ') ? actual.includes('create unique index') && actual.includes(expected.slice('unique '.length)) : actual.includes(expected));
     finding(findings, 'index public.' + table + '.' + name, definition, row?.indexdef ?? null, Boolean(row), matches);
   }
 
@@ -238,6 +238,7 @@ export function assessMigrationSourceContracts(sources) {
   const coding = sources.codingQueue;
   const correction = sources.queueCorrection;
   const lease = sources.leaseHeartbeat;
+  const authBridge = sources.authBridge;
   add('migration coding queue legacy classification',
     "approval_status = 'pending' OR plan_snapshot IS NOT NULL OR proposed_diff_hash IS NOT NULL",
     coding,
@@ -251,6 +252,11 @@ export function assessMigrationSourceContracts(sources) {
       && /approval_status\s*=\s*'pending'/.test(correction)
       && /plan_snapshot\s+IS\s+NULL/.test(correction)
       && /proposed_diff_hash\s+IS\s+NULL/.test(correction)));
+  add('migration Auth identity backfill timestamp semantics',
+    'backfill created_at and updated_at from auth.users values with timestamp(3) fallback',
+    authBridge,
+    Boolean(authBridge && /COALESCE\(au\.updated_at,\s*au\.created_at,\s*pg_catalog\.now\(\)\)::timestamp\(3\)/i.test(authBridge)
+      && /COALESCE\(au\.created_at,\s*pg_catalog\.now\(\)\)::timestamp\(3\)/i.test(authBridge)));
   add('migration agent_runs lease timestamp precision',
     'lease_expires_at TIMESTAMP(3), heartbeat_at TIMESTAMP(3)',
     lease,
@@ -275,7 +281,8 @@ async function main() {
     return;
   }
   const root = resolve(process.cwd());
-  const [codingQueue, queueCorrection, leaseHeartbeat] = await Promise.all([
+  const [authBridge, codingQueue, queueCorrection, leaseHeartbeat] = await Promise.all([
+    readFile(resolve(root, 'prisma/migrations/20261102123000_supabase_auth_identity_bridge/migration.sql'), 'utf8'),
     readFile(resolve(root, 'prisma/migrations/20261104120000_isolated_coding_task_queue/migration.sql'), 'utf8'),
     readFile(resolve(root, 'prisma/migrations/20261108120000_correct_pending_reasoning_queue_classification/migration.sql'), 'utf8'),
     readFile(resolve(root, 'prisma/migrations/20261121120000_agent_run_lease_heartbeat/migration.sql'), 'utf8'),
@@ -304,7 +311,7 @@ async function main() {
       tables: tables.rows, columns: columns.rows, indexes: indexes.rows, constraints: constraints.rows,
       triggers: triggers.rows, functions: functions.rows, grants: grants.rows,
     });
-    const migration = assessMigrationSourceContracts({ codingQueue, queueCorrection, leaseHeartbeat });
+    const migration = assessMigrationSourceContracts({ authBridge, codingQueue, queueCorrection, leaseHeartbeat });
     await client.query('COMMIT');
     console.log(JSON.stringify({
       mode: 'read-only',
