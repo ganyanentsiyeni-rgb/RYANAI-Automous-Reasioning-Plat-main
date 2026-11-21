@@ -1,11 +1,10 @@
-/**
- * RyanAI-only event contract for Self-Patch / PA observation.
- *
- * This module validates shape and scope only. It does not authenticate transport,
- * authorize actions, send communications, or import Gen-X/Jarvis policy.
- * The receiving adapter must authenticate the transport before calling this parser.
- */
+import { z } from 'zod';
 
+/**
+ * RyanAI-only event contract for Comms receipts and Self-Patch observations.
+ * Shape validation only: no transport, persistence, authorization, execution,
+ * or message delivery is performed here.
+ */
 export const RYANAI_REPOSITORY = 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main';
 
 export const COMMS_DELIVERY_STATES = [
@@ -20,34 +19,29 @@ export const COMMS_DELIVERY_STATES = [
   'not_tested',
 ] as const;
 
-export type CommsDeliveryState = (typeof COMMS_DELIVERY_STATES)[number];
-export type RyanAIEvent =
-  | {
-      schemaVersion: 1;
-      eventType: 'comms.delivery.receipt';
-      source: 'ryanai-comms';
-      repository: typeof RYANAI_REPOSITORY;
-      commitSha: string;
-      eventId: string;
-      correlationId: string;
-      occurredAt: string;
-      channel: 'whatsapp' | 'sms' | 'voice' | 'email';
-      state: CommsDeliveryState;
-      providerReferenceHash?: string;
-    }
-  | {
-      schemaVersion: 1;
-      eventType: 'selfpatch.audit.finding';
-      source: 'ryanai-self-patch';
-      repository: typeof RYANAI_REPOSITORY;
-      commitSha: string;
-      eventId: string;
-      correlationId: string;
-      occurredAt: string;
-      severity: 'info' | 'warning' | 'error' | 'critical';
-      findingCode: string;
-    };
+const commonFields = {
+  schemaVersion: z.literal(1),
+  repository: z.literal(RYANAI_REPOSITORY),
+  commitSha: z.string().regex(/^[a-f0-9]{40}$/i),
+  eventId: z.string().uuid(),
+  correlationId: z.string().min(8).max(160).regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
+  occurredAt: z.string().datetime({ offset: true }),
+};
 
+const commsReceiptSchema = z.object({
+  ...commonFields,
+  eventType: z.literal('comms.delivery.receipt'),
+  source: z.literal('ryanai-comms'),
+  channel: z.enum(['sms', 'whatsapp', 'voice', 'email']),
+  state: z.enum(COMMS_DELIVERY_STATES),
+  providerReferenceHash: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
+}).strict().superRefine((event, context) => {
+  if (event.state === 'delivered' && !event.providerReferenceHash) {
+    context.addIssue({
+      code: 'custom',
+      path: ['providerReferenceHash'],
+      message: 'A delivered receipt requires a validated provider reference hash.',
+    });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA = /^[0-9a-f]{40}$/i;
 const SAFE_CODE = /^[a-z][a-z0-9._-]{1,63}$/;
@@ -110,30 +104,26 @@ export function parseRyanAIEvent(input: unknown): RyanAIEvent | null {
       ...(input.providerReferenceHash ? { providerReferenceHash: input.providerReferenceHash as string } : {}),
     };
   }
+});
 
-  if (input.eventType === 'selfpatch.audit.finding') {
-    const allowed = [
-      'schemaVersion', 'eventType', 'source', 'repository', 'commitSha',
-      'eventId', 'correlationId', 'occurredAt', 'severity', 'findingCode',
-    ] as const;
-    if (!hasOnlyKeys(input, allowed)
-      || input.source !== 'ryanai-self-patch'
-      || !['info', 'warning', 'error', 'critical'].includes(String(input.severity))
-      || typeof input.findingCode !== 'string' || !SAFE_CODE.test(input.findingCode)) return null;
+const selfPatchFindingSchema = z.object({
+  ...commonFields,
+  eventType: z.literal('selfpatch.audit.finding'),
+  source: z.literal('ryanai-self-patch'),
+  severity: z.enum(['info', 'warning', 'error', 'critical']),
+  findingCode: z.string().min(3).max(120).regex(/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/),
+}).strict();
 
-    return {
-      schemaVersion: 1,
-      eventType: 'selfpatch.audit.finding',
-      source: 'ryanai-self-patch',
-      repository: RYANAI_REPOSITORY,
-      commitSha: input.commitSha as string,
-      eventId: input.eventId as string,
-      correlationId: input.correlationId as string,
-      occurredAt: input.occurredAt as string,
-      severity: input.severity as 'info' | 'warning' | 'error' | 'critical',
-      findingCode: input.findingCode,
-    };
-  }
+export const RyanAIEventSchema = z.discriminatedUnion('eventType', [
+  commsReceiptSchema,
+  selfPatchFindingSchema,
+]);
 
-  return null;
+export type CommsDeliveryState = (typeof COMMS_DELIVERY_STATES)[number];
+export type RyanAIEvent = z.infer<typeof RyanAIEventSchema>;
+
+/** Return a validated event, or null for malformed, untrusted, or out-of-scope input. */
+export function parseRyanAIEvent(value: unknown): RyanAIEvent | null {
+  const parsed = RyanAIEventSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
