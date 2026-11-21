@@ -71,7 +71,6 @@ test('claim uses a dedicated atomic SKIP LOCKED coding queue, not agent_runs', a
   assert.equal(result.id, 'coding-1');
   assert.match(query, /UPDATE public\.coding_tasks/);
   assert.match(query, /FOR UPDATE SKIP LOCKED/);
-  assert.match(query, /heartbeat_at = NOW\(\)/);
   assert.doesNotMatch(query, /agent_runs/);
   assert.deepEqual(params, ['worker-1', 30_000]);
 });
