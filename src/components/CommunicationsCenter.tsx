@@ -502,9 +502,19 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
               </div>}
               {attachmentIds.length > 0 && <button type="button" onClick={clearAttachmentDraft} disabled={sending} className="text-xs text-rose-300 hover:text-rose-200">Remove attached files</button>}
             </div>
+            {approvalId && <div role="status" aria-label="Owner Comms approval" className="space-y-2 rounded-lg border border-cyan-300/20 bg-cyan-300/[0.04] p-3 text-xs text-cyan-50">
+              <p className="font-semibold">Human approval through RyanAI Comms</p>
+              <p>Status: <span className="font-semibold uppercase">{approvalStatus || 'pending'}</span></p>
+              <p className="break-all text-cyan-100/80">Approval ID: {approvalId}</p>
+              <p className="leading-5 text-cyan-100/80">From your verified owner WhatsApp number, send exactly one reply to RyanAI: <strong>APPROVE {approvalId}</strong> or <strong>REJECT {approvalId}</strong>. The signed inbound webhook records your decision against this exact message. No message is dispatched before that approval.</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" onClick={() => void checkApprovalStatus()} disabled={sending} className="rounded-lg border border-cyan-300/30 px-3 py-2 text-xs text-cyan-100 hover:bg-cyan-300/10 disabled:opacity-50">{sending ? 'Checking…' : 'Check approval status'}</button>
+                {approvalStatus === 'approved' && <button type="button" onClick={() => void sendApprovedMessage()} disabled={sending || !communicationsEnabled} className="rounded-lg bg-cyan-300 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-cyan-200 disabled:opacity-50">{sending ? 'Sending…' : 'Send approved message'}</button>}
+              </div>
+            </div>}
             {reviewing && <div role="status" aria-label="Message review" className="rounded-lg border border-amber-300/20 bg-amber-300/[0.04] p-3 text-xs text-amber-100">
               <p className="font-semibold">Review before dispatch</p>
-              <p className="mt-1 text-amber-100/75">Check the channel, recipient and exact message. Nothing is sent until you select Approve &amp; send.</p>
+              <p className="mt-1 text-amber-100/75">Check the channel, recipient and exact message. This creates a pending request only. RyanAI waits for your separate, verified Comms reply before dispatch.</p>
               <p className="mt-2 break-all text-slate-200">Channel: {channel} · Recipient: {recipient.trim() || 'Owner default'}</p>
               {channel === 'email' && subject.trim() && <p className="mt-1 text-slate-300">Subject: {subject}</p>}
               <p className="mt-2 whitespace-pre-wrap break-words text-slate-100">{message}</p>
@@ -515,7 +525,7 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <button type="button" onClick={() => setReviewing(false)} disabled={sending} className="rounded-lg border border-white/15 px-3 py-2 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50">Back to edit</button>
                   <button type="button" onClick={() => void dispatchReviewedMessage()} disabled={sending || !message.trim() || !communicationsEnabled} className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50">
-                    <ShieldCheck className="h-4 w-4" />{sending ? 'Working…' : communicationsEnabled ? 'Approve & send' : 'Outbound disabled'}
+                    <ShieldCheck className="h-4 w-4" />{sending ? 'Working…' : communicationsEnabled ? 'Request owner approval' : 'Outbound disabled'}
                   </button>
                 </div>
               ) : (
