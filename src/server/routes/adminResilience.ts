@@ -1,0 +1,176 @@
+import { randomUUID } from 'node:crypto';
+import type { Prisma } from '@prisma/client';
+import type { FastifyPluginAsync } from 'fastify';
+import { requireAdmin, requireOwner } from './auth.js';
+import { backupPreflight, createDatabaseBackup, listDatabaseBackups, recoveryPreflight } from '../../services/adminResilience.js';
+
+interface MaintenanceBody {
+  action?: 'scheduled' | 'started' | 'completed' | 'cancelled';
+  id?: string;
+  title?: string;
+  reason?: string;
+  startsAt?: string;
+  endsAt?: string;
+}
+interface MaintenanceDetails {
+  title?: string;
+  reason?: string;
+  startsAt?: string;
+  endsAt?: string;
+}
+
+const MAX_MAINTENANCE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+export const adminResilienceRoutes: FastifyPluginAsync = async (fastify) => {
+  fastify.get('/api/admin/resilience/status', { preHandler: requireAdmin }, async () => {
+    const backup = await backupPreflight();
+    return {
+      status: 'available',
+      generatedAt: new Date().toISOString(),
+      online: true,
+      backup,
+      recovery: recoveryPreflight(),
+      selfPatch: {
+        status: process.env.RYANAI_GITHUB_TOKEN && process.env.RYANAI_GITHUB_REPOSITORY ? 'configured' : 'not_configured',
+        mode: 'isolated-github-pr',
+      },
+      maintenance: { status: 'audited_lifecycle', automation: 'disabled' },
+    };
+  });
+
+  fastify.get('/api/admin/resilience/backups', { preHandler: requireAdmin }, async () => listDatabaseBackups());
+
+  fastify.get('/api/admin/resilience/maintenance', { preHandler: requireAdmin }, async () => {
+    const events = await fastify.prisma.jarvisAuditEvent.findMany({
+      where: { eventType: { startsWith: 'admin.maintenance.' } },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    });
+    const latest = new Map<string, { id: string; state: string; title: string; reason: string; startsAt: string | null; endsAt: string | null; updatedAt: string }>();
+    for (const event of events) {
+      if (!event.resourceId || latest.has(event.resourceId)) continue;
+      const details = event.details && typeof event.details === 'object' ? event.details as MaintenanceDetails : {};
+      latest.set(event.resourceId, {
+        id: event.resourceId,
+        state: event.eventType.replace('admin.maintenance.', ''),
+        title: typeof details.title === 'string' ? details.title : 'Maintenance window',
+        reason: typeof details.reason === 'string' ? details.reason : 'No reason recorded',
+        startsAt: typeof details.startsAt === 'string' ? details.startsAt : null,
+        endsAt: typeof details.endsAt === 'string' ? details.endsAt : null,
+        updatedAt: event.createdAt.toISOString(),
+      });
+    }
+    return { status: 'available', items: Array.from(latest.values()) };
+  });
+
+  fastify.post<{ Body: MaintenanceBody }>('/api/admin/resilience/maintenance', {
+    preHandler: requireOwner,
+    config: { rateLimit: { max: 20, timeWindow: '1 hour' } },
+  }, async (request, reply) => {
+    const body = request.body;
+    const action = body?.action;
+    if (!body || !action || !['scheduled', 'started', 'completed', 'cancelled'].includes(action)) {
+      return reply.code(400).send({ error: 'A valid maintenance action is required.' });
+    }
+
+    const now = Date.now();
+    const id = action === 'scheduled' ? randomUUID() : body.id?.trim();
+    if (!id) return reply.code(400).send({ error: 'A maintenance window ID is required.' });
+
+    let details: Prisma.InputJsonObject;
+    if (action === 'scheduled') {
+      const startsAt = body.startsAt ? Date.parse(body.startsAt) : Number.NaN;
+      const endsAt = body.endsAt ? Date.parse(body.endsAt) : Number.NaN;
+      if (
+        !body.title?.trim() || body.title.trim().length > 120 ||
+        !body.reason?.trim() || body.reason.trim().length < 8 || body.reason.trim().length > 500 ||
+        !Number.isFinite(startsAt) || !Number.isFinite(endsAt) ||
+        startsAt <= now || endsAt <= startsAt || endsAt - startsAt > MAX_MAINTENANCE_WINDOW_MS
+      ) {
+        return reply.code(400).send({ error: 'Provide a title, reason and valid future maintenance window no longer than 30 days.' });
+      }
+      details = {
+        title: body.title.trim(),
+        reason: body.reason.trim(),
+        startsAt: new Date(startsAt).toISOString(),
+        endsAt: new Date(endsAt).toISOString(),
+      };
+    } else {
+      const prior = await fastify.prisma.jarvisAuditEvent.findFirst({
+        where: { resourceId: id, eventType: { startsWith: 'admin.maintenance.' } },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (!prior) return reply.code(404).send({ error: 'Maintenance window not found.' });
+      const state = prior.eventType.replace('admin.maintenance.', '');
+      const valid = !['completed', 'cancelled'].includes(state) &&
+        ((action === 'started' && state === 'scheduled') ||
+         (action === 'completed' && state === 'started') ||
+         (action === 'cancelled' && ['scheduled', 'started'].includes(state)));
+      if (!valid) return reply.code(409).send({ error: 'Invalid maintenance lifecycle transition.' });
+      details = prior.details && typeof prior.details === 'object' && !Array.isArray(prior.details)
+        ? prior.details as Prisma.InputJsonObject
+        : {};
+    }
+
+    await fastify.prisma.jarvisAuditEvent.create({
+      data: {
+        actorId: request.authUser?.id || 'unknown',
+        eventType: 'admin.maintenance.' + action,
+        resourceId: id,
+        details,
+      },
+    });
+    return reply.code(action === 'scheduled' ? 201 : 202).send({ success: true, id, state: action });
+  });
+
+  fastify.post('/api/admin/resilience/backups', {
+    preHandler: requireOwner,
+    config: { rateLimit: { max: 1, timeWindow: '10 minutes' } },
+  }, async (request, reply) => {
+    const result = await createDatabaseBackup();
+    if (result.status === 'succeeded') {
+      try {
+        await fastify.prisma.jarvisAuditEvent.create({
+          data: {
+            actorId: request.authUser?.id || 'unknown',
+            eventType: 'admin.resilience.backup.succeeded',
+            resourceId: result.backupId,
+            details: {
+              prefix: result.prefix,
+              databaseBytes: result.databaseBytes,
+              databaseSha256: result.databaseSha256,
+              secretsIncluded: false,
+            },
+          },
+        });
+      } catch {
+        return reply.code(500).send({
+          success: false,
+          result,
+          auditReceipt: { status: 'failed', reason: 'Backup artifact succeeded, but its audit receipt could not be persisted. Manual reconciliation is required.' },
+        });
+      }
+      return reply.code(200).send({ success: true, result, auditReceipt: { status: 'persisted' } });
+    }
+
+    try {
+      await fastify.prisma.jarvisAuditEvent.create({
+        data: {
+          actorId: request.authUser?.id || 'unknown',
+          eventType: 'admin.resilience.backup.failed',
+          resourceId: result.backupId || null,
+          details: { reason: result.reason || 'Backup failed.' },
+        },
+      });
+    } catch {
+      return reply.code(500).send({
+        success: false,
+        result,
+        auditReceipt: { status: 'failed', reason: 'Backup failure occurred and its audit receipt could not be persisted.' },
+      });
+    }
+    return reply.code(result.status === 'not_configured' ? 503 : 500).send({
+      success: false, result, auditReceipt: { status: 'persisted' },
+    });
+  });
+};

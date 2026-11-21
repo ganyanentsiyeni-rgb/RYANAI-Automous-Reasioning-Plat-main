@@ -1,0 +1,132 @@
+import { resolveSupabaseSessionPoolerUrl } from './supabasePooler.ts';
+
+export interface ConnectionUrls {
+  databaseUrl: string;
+  redisUrl: string;
+}
+
+function localDevelopmentDatabaseUrl(): string {
+  const url = new URL('postgresql://localhost:5432/ryanai');
+  url.username = 'postgres';
+  url.password = 'postgres';
+  return url.toString();
+}
+
+function parseProductionDatabaseUrl(value: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(
+      'Invalid DATABASE_URL: expected a complete PostgreSQL connection URI (postgresql:// or postgres://). Percent-encode reserved characters in the username or password. Credentials are not logged.',
+    );
+  }
+
+  if (
+    (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:')
+    || !parsed.hostname
+  ) {
+    throw new Error(
+      'Invalid DATABASE_URL: expected a PostgreSQL URI with a hostname. Credentials are not logged.',
+    );
+  }
+
+  return parsed;
+}
+
+function isSupabaseDatabaseUrl(value: string): boolean {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return /^db\.[a-z0-9]{20}\.supabase\.co$/.test(hostname)
+      || hostname.endsWith('.pooler.supabase.com');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve required service URLs without silently selecting local services in production.
+ * Supabase production URLs are normalized to the explicitly configured Session Pooler
+ * endpoint before either Prisma or node-postgres receives the connection string.
+ * Local defaults remain available only for development and test environments.
+ */
+export function resolveConnectionUrls(
+  nodeEnv: string,
+  databaseUrl?: string,
+  redisUrl?: string,
+  supabaseUrl?: string,
+  sessionPoolerHost?: string,
+  sslRootCertPath?: string,
+): ConnectionUrls {
+  let database = databaseUrl?.trim();
+  const redis = redisUrl?.trim();
+
+  const strictRuntime = nodeEnv === 'production' || nodeEnv === 'staging';
+
+  if (strictRuntime && database) {
+    parseProductionDatabaseUrl(database);
+  }
+
+  if (database && isSupabaseDatabaseUrl(database)) {
+    const pooler = resolveSupabaseSessionPoolerUrl(
+      database,
+      supabaseUrl,
+      sessionPoolerHost,
+      sslRootCertPath,
+    );
+
+    if (
+      pooler.reason !== 'rewritten'
+      && pooler.reason !== 'already-pooled'
+    ) {
+      throw new Error(
+        `Invalid Supabase Session Pooler configuration (${pooler.reason}). Set SUPABASE_URL and the exact SUPABASE_SESSION_POOLER_HOST copied from Supabase Connect; ensure DATABASE_URL contains the database password. Credentials are not logged.`,
+      );
+    }
+
+    database = pooler.databaseUrl;
+  }
+
+  if (strictRuntime) {
+    const missing = [
+      !database ? 'DATABASE_URL' : undefined,
+      !redis ? 'REDIS_URL' : undefined,
+    ].filter(Boolean);
+
+    if (missing.length) {
+      throw new Error(
+        `Missing required production connection configuration: ${missing.join(', ')}. Set these variables before starting the API.`,
+      );
+    }
+  }
+
+  return {
+    databaseUrl: database || localDevelopmentDatabaseUrl(),
+    redisUrl: redis || 'redis://localhost:6379',
+  };
+}
+
+
+/**
+ * Prevent production and staging API processes from listening when required
+ * infrastructure failed its startup connectivity check. Local development and
+ * isolated tests retain degraded-start behavior.
+ */
+export function assertProductionDependencies(
+  nodeEnv: string,
+  services: { database: boolean; redis: boolean; agentCheckpointer: boolean },
+): void {
+  if (nodeEnv !== 'production' && nodeEnv !== 'staging') return;
+
+  const unavailable = [
+    !services.database ? 'PostgreSQL' : undefined,
+    !services.redis ? 'Redis' : undefined,
+    !services.agentCheckpointer ? 'agent checkpointer' : undefined,
+  ].filter(Boolean);
+
+  if (unavailable.length) {
+    throw new Error(
+      `${nodeEnv} startup blocked: required dependency checks failed for ${unavailable.join(', ')}. The API listener was not started.`,
+    );
+  }
+}

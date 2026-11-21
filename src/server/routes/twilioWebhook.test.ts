@@ -1,0 +1,188 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import Fastify, { type FastifyInstance } from 'fastify';
+import twilio from 'twilio';
+import { twilioWebhookPlugin } from './twilioWebhook.js';
+import { ownerCommunicationInstruction } from '../../shared/ryanIdentity.js';
+import { installAuthentication } from './auth.js';
+
+const { invoke, prismaMock } = vi.hoisted(() => ({
+  invoke: vi.fn(),
+  prismaMock: {
+    communicationConversation: { upsert: vi.fn().mockResolvedValue({ id: 'conversation-1' }) },
+    communicationMessage: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      upsert: vi.fn().mockResolvedValue({}),
+      update: vi.fn().mockResolvedValue({}),
+      create: vi.fn().mockResolvedValue({}),
+    },
+  },
+}));
+vi.mock('../../agent/approvalEngine.js', () => ({
+  humanInTheLoopAgent: { invoke },
+}));
+const applications: FastifyInstance[] = [];
+const token = 'synthetic-twilio-auth-token';
+const webhookUrl = 'https://app.example.test/api/webhooks/twilio/whatsapp';
+const body = { From: 'whatsapp:+15555550123', Body: 'Please help', MessageSid: 'SM123' };
+
+async function sendWebhook(signature?: string, payload = body, host?: string) {
+  const app = Fastify();
+  applications.push(app);
+  installAuthentication(app);
+  app.decorate('prisma', prismaMock as never);
+  await app.register(twilioWebhookPlugin);
+  return app.inject({
+    method: 'POST',
+    url: '/api/webhooks/twilio/whatsapp',
+    payload: new URLSearchParams(payload).toString(),
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      ...(signature ? { 'x-twilio-signature': signature } : {}),
+      ...(host ? { host } : {}),
+    },
+  });
+}
+
+beforeEach(() => {
+  vi.stubEnv('COMMUNICATIONS_ENABLED', 'true');
+  vi.stubEnv('RYANAI_COMMS_TEST_AUTHORIZED', 'true');
+  prismaMock.communicationConversation.upsert.mockResolvedValue({ id: 'conversation-1' });
+  prismaMock.communicationMessage.findUnique.mockResolvedValue(null);
+  prismaMock.communicationMessage.upsert.mockResolvedValue({});
+  prismaMock.communicationMessage.update.mockResolvedValue({});
+  prismaMock.communicationMessage.create.mockResolvedValue({});
+  vi.stubEnv('TWILIO_AUTH_TOKEN', token);
+  vi.stubEnv('TWILIO_WHATSAPP_WEBHOOK_URL', webhookUrl);
+  vi.stubEnv('RYANAI_OWNER_PHONE', '+15555550123');
+  vi.stubEnv('RYANAI_OWNER_LANGUAGE', 've-ZA');
+  invoke.mockResolvedValue({
+    messages: [{ content: 'Approved <reply> & ready' }],
+  });
+});
+
+afterEach(async () => {
+  await Promise.all(applications.splice(0).map((app) => app.close()));
+  vi.unstubAllEnvs();
+  vi.resetAllMocks();
+});
+
+describe('Twilio webhook provider authentication', () => {
+  it.each(['TWILIO_AUTH_TOKEN', 'TWILIO_WHATSAPP_WEBHOOK_URL'])(
+    'fails closed without %s',
+    async (name) => {
+      vi.stubEnv(name, '');
+      expect((await sendWebhook()).statusCode).toBe(503);
+      expect(invoke).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([undefined, 'forged-signature'])(
+    'rejects missing or forged signatures (%s)',
+    async (signature) => {
+      expect((await sendWebhook(signature)).statusCode).toBe(401);
+      expect(invoke).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects tampered signed message content', async () => {
+    const signature = twilio.getExpectedTwilioSignature(
+      token,
+      webhookUrl,
+      body,
+    );
+    expect(
+      (
+        await sendWebhook(signature, {
+          ...body,
+          Body: 'Perform different action',
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('uses the configured external URL rather than a forged Host header', async () => {
+    const signature = twilio.getExpectedTwilioSignature(
+      token,
+      'https://attacker.example/api/webhooks/twilio/whatsapp',
+      body,
+    );
+    expect(
+      (await sendWebhook(signature, body, 'attacker.example')).statusCode,
+    ).toBe(401);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('rejects a validly signed message from a non-owner number', async () => {
+    const other = { ...body, From: 'whatsapp:+15555550999' };
+    const signature = twilio.getExpectedTwilioSignature(token, webhookUrl, other);
+    const response = await sendWebhook(signature, other);
+    expect(response.statusCode).toBe(403);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('does not invoke RyanAI again when Twilio retries an already-claimed message', async () => {
+    prismaMock.communicationMessage.create.mockRejectedValueOnce({ code: 'P2002' });
+    prismaMock.communicationMessage.findUnique.mockResolvedValueOnce({
+      status: 'replied',
+      metadata: { reply: 'Certainly, Sir G. This was already handled.' },
+    });
+    const signature = twilio.getExpectedTwilioSignature(token, webhookUrl, body);
+
+    const response = await sendWebhook(signature);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain('This was already handled.');
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('stores an authentic inbound WhatsApp message but suppresses the auto-reply until explicitly authorized', async () => {
+    vi.stubEnv('RYANAI_COMMS_TEST_AUTHORIZED', 'false');
+    const signature = twilio.getExpectedTwilioSignature(token, webhookUrl, body);
+
+    const response = await sendWebhook(signature);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('text/xml');
+    expect(response.body).toContain('<Response/>');
+    expect(response.body).not.toContain('<Message>');
+    expect(prismaMock.communicationMessage.update).toHaveBeenCalledWith({
+      where: { providerMessageId: 'SM123' },
+      data: { status: 'received', metadata: { mediaCount: 0, replySuppressed: true } },
+    });
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('accepts an authentic provider request without a user bearer and escapes the reply XML', async () => {
+    const signature = twilio.getExpectedTwilioSignature(
+      token,
+      webhookUrl,
+      body,
+    );
+    const response = await sendWebhook(signature);
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('text/xml');
+    expect(response.body).toBe(
+      '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Certainly, Sir G. Approved &lt;reply&gt; &amp; ready</Message></Response>',
+    );
+    expect(prismaMock.communicationMessage.create).toHaveBeenCalled();
+    expect(invoke).toHaveBeenCalledExactlyOnceWith(
+      {
+        messages: [
+          { role: 'system', content: ownerCommunicationInstruction() },
+          { role: 'user', content: 'Please help' },
+        ],
+      },
+      { configurable: { thread_id: 'whatsapp_15555550123' } },
+    );
+  });
+});
+
+describe('Twilio communications feature gate', () => {
+  it('does not register provider webhooks when communications are disabled', async () => {
+    vi.stubEnv('COMMUNICATIONS_ENABLED', 'false');
+    const response = await sendWebhook();
+    expect(response.statusCode).toBe(404);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+});

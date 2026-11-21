@@ -1,0 +1,58 @@
+name: Single-owner release gate
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: single-owner-release-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  single-owner-release-gate:
+    name: Single-owner release gate
+    # Never skip this required check for drafts or missing owner attestation.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify owner attestation matches the exact current PR head
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const pull = context.payload.pull_request;
+            if (!pull) {
+              core.setFailed('Pull request payload is missing; refusing to pass the single-owner gate.');
+              return;
+            }
+
+            if (pull.user?.login?.toLowerCase() !== 'ganyanentsiyeni-rgb') {
+              core.setFailed('This repository uses a single-owner release process; the PR author is not the configured owner.');
+              return;
+            }
+
+            if (pull.draft) {
+              core.setFailed('Draft PRs cannot satisfy the single-owner release gate.');
+              return;
+            }
+
+            const head = pull.head?.sha;
+            if (!head) {
+              core.setFailed('Current PR head SHA is unavailable.');
+              return;
+            }
+
+            // The sole owner adds this marker only after personally reviewing
+            // the complete diff at this exact SHA. Any new push invalidates it.
+            const marker = `<!-- OWNER_VERIFIED_SHA: ${head} -->`;
+            if (!pull.body?.includes(marker)) {
+              core.setFailed(
+                `Owner verification is missing or stale. After reviewing the complete diff, add this exact marker to the PR description: ${marker}`
+              );
+              return;
+            }
+
+            core.info(`Owner attestation matches current PR head ${head}. Automated checks remain independently mandatory.`);

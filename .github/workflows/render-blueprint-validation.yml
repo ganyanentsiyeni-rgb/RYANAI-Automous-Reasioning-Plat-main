@@ -1,0 +1,76 @@
+name: Validate Render Blueprints
+
+on:
+  pull_request:
+    paths:
+      - "render.yaml"
+      - "render.staging.yaml"
+      - "scripts/validate-deployment-contracts.mjs"
+      - ".github/workflows/render-blueprint-validation.yml"
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "render.yaml"
+      - "render.staging.yaml"
+      - "scripts/validate-deployment-contracts.mjs"
+      - ".github/workflows/render-blueprint-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  static-contract:
+    name: Static production and staging Blueprint contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out Blueprints
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --legacy-peer-deps
+      - name: Validate both Blueprint contracts
+        run: npm run deploy:validate
+
+  render-schema:
+    name: Authenticated Render schema validation (read-only)
+    needs: static-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out Blueprints
+        uses: actions/checkout@v7
+      - name: Validate both Blueprints against the Render workspace
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_WORKSPACE_ID: tea-d5ogqtcoud1c73b266f0
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${RENDER_API_KEY:-}" ]]; then
+            echo "::error::RENDER_API_KEY Actions secret is missing. Render schema validation is blocked; configure it in repository secrets without pasting it into logs or chat."
+            exit 1
+          fi
+
+          for blueprint in render.yaml render.staging.yaml; do
+            response_file="render-validation-${blueprint//./-}.json"
+            echo "::group::Render validation: ${blueprint}"
+            curl --fail-with-body --silent --show-error \
+              --request POST \
+              --url "https://api.render.com/v1/blueprints/validate" \
+              --header "Authorization: Bearer ${RENDER_API_KEY}" \
+              --header "accept: application/json" \
+              --form "ownerId=${RENDER_WORKSPACE_ID}" \
+              --form "file=@${blueprint};type=application/x-yaml" \
+              --output "${response_file}"
+            jq . "${response_file}"
+            jq -e '.valid == true' "${response_file}"
+            echo "::endgroup::"
+          done

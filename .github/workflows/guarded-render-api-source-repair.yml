@@ -1,0 +1,145 @@
+name: Guarded Render API source repair
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Exact validated main commit to repair
+        required: true
+        type: string
+      confirmation:
+        description: Type REPAIR-ONLY to correct settings without deploying
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  checks: read
+
+concurrency:
+  group: render-api-source-repair
+  cancel-in-progress: false
+
+jobs:
+  repair-only:
+    name: Validate main CI/security, repair Render settings only
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.confirmation == 'REPAIR-ONLY' }}
+    environment: production
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      TARGET_SHA: ${{ inputs.commit_sha }}
+    steps:
+      - name: Validate exact current main SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            [[ "$CONFIRMATION" == "REPAIR-ONLY" ]] || { echo "::error::Confirmation string did not match"; exit 1; }
+          fi
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Invalid commit SHA"; exit 1; }
+          MAIN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+          [[ "$TARGET_SHA" == "$MAIN_SHA" ]] || { echo "::error::Repair commit is no longer current main"; exit 1; }
+
+      - name: Require successful CI and security checks for the exact commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          required=(
+            "Validate (typecheck, lint, test, build)"
+            "MCP server and workflow worker"
+            "Integration and end-to-end checks"
+            "Issue 435 migrations and attachment security"
+            "Test agent API contracts"
+            "Dependency audit"
+            "Trivy filesystem scan"
+            "Analyze (javascript-typescript)"
+            "Analyze (python)"
+            "TruffleHog secret audit"
+            "Codacy Security Scan"
+          )
+          ready=false
+          for attempt in $(seq 1 60); do
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/check-runs?per_page=100" > checks-pages.json
+            jq -s '[.[].check_runs[]]' checks-pages.json > checks.json
+            missing=0
+            pending=0
+            failed=0
+            for name in "${required[@]}"; do
+              count="$(jq --arg n "$name" '[.[] | select(.name == $n)] | length' checks.json)"
+              if [[ "$count" -eq 0 ]]; then
+                missing=$((missing + 1))
+                continue
+              fi
+              bad="$(jq --arg n "$name" '[.[] | select(.name == $n) | select(.status == "completed" and .conclusion != "success")] | length' checks.json)"
+              wait="$(jq --arg n "$name" '[.[] | select(.name == $n) | select(.status != "completed")] | length' checks.json)"
+              failed=$((failed + bad))
+              pending=$((pending + wait))
+            done
+            [[ "$failed" -eq 0 ]] || { echo "::error::A required CI/security check failed"; jq '[.[] | select(.conclusion == "failure" or .conclusion == "cancelled") | {name,conclusion}]' checks.json; exit 1; }
+            if [[ "$missing" -eq 0 && "$pending" -eq 0 ]]; then
+              ready=true
+              break
+            fi
+            echo "Waiting for required checks: $missing missing, $pending pending (attempt $attempt/60)"
+            sleep 30
+          done
+          [[ "$ready" == true ]] || { echo "::error::Required CI/security checks did not all complete successfully"; exit 1; }
+
+      - name: Confirm Render credential is available
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          set -euo pipefail
+          [[ -n "$RENDER_API_KEY" ]] || { echo "::error::RENDER_API_KEY is missing; no Render change was made"; exit 1; }
+
+      - name: Read current API service configuration
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error             --url "https://api.render.com/v1/services/srv-dbk4giu7bikc7394a4r0"             --header "Authorization: Bearer ${RENDER_API_KEY}"             --header "accept: application/json"             --output render-service-before.json
+
+      - name: Repair API source and Docker settings without deploying
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          set -euo pipefail
+          desired='
+            .repo == "https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main" and
+            .branch == "main" and
+            .rootDir == "." and
+            .autoDeployTrigger == "off" and
+            .serviceDetails.envSpecificDetails.dockerContext == "." and
+            .serviceDetails.envSpecificDetails.dockerfilePath == "./Dockerfile.api" and
+            (.serviceDetails.envSpecificDetails.dockerCommand // "") == "" and
+            .serviceDetails.healthCheckPath == "/health"
+          '
+          if jq -e "$desired" render-service-before.json >/dev/null; then
+            echo "Existing API service already matches the required configuration; no update needed."
+            exit 0
+          fi
+          curl --fail-with-body --silent --show-error             --request PATCH             --url "https://api.render.com/v1/services/srv-dbk4giu7bikc7394a4r0"             --header "Authorization: Bearer ${RENDER_API_KEY}"             --header "accept: application/json"             --header "content-type: application/json"             --data '{"repo":"https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main","branch":"main","rootDir":".","autoDeployTrigger":"off","serviceDetails":{"dockerContext":".","dockerfilePath":"./Dockerfile.api","dockerCommand":"","healthCheckPath":"/health"}}'             --output render-service-update.json
+          jq -e "$desired" render-service-update.json
+
+      - name: Read back and verify live API configuration
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error             --url "https://api.render.com/v1/services/srv-dbk4giu7bikc7394a4r0"             --header "Authorization: Bearer ${RENDER_API_KEY}"             --header "accept: application/json"             --output render-service-final.json
+          jq -e '
+            .repo == "https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main" and
+            .branch == "main" and
+            .rootDir == "." and
+            .autoDeployTrigger == "off" and
+            .serviceDetails.envSpecificDetails.dockerContext == "." and
+            .serviceDetails.envSpecificDetails.dockerfilePath == "./Dockerfile.api" and
+            (.serviceDetails.envSpecificDetails.dockerCommand // "") == "" and
+            .serviceDetails.healthCheckPath == "/health"
+          ' render-service-final.json
+          echo "Render API configuration corrected and verified. No deploy endpoint was called."
+          echo "The API deployment gate remains closed."

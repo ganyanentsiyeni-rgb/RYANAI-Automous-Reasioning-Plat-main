@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "capabilities": {
+    "agent-pa-core": {
+      "status": "registered",
+      "mode": "read-only-observer"
+    },
+    "genx-hardcore-security": {
+      "status": "registered",
+      "mode": "deterministic-policy-plus-ai-triage"
+    }
+  }
+}

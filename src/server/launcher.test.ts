@@ -1,0 +1,375 @@
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { FastifyInstance } from 'fastify';
+
+const state = vi.hoisted(() => ({
+  app: undefined as FastifyInstance | undefined,
+  invoke: vi.fn(),
+  listen: vi.fn().mockResolvedValue('http://localhost:3000'),
+  events: [] as string[],
+}));
+
+// Exercise the real launcher's routes without external services or a TCP listener.
+vi.mock('../loadEnv.js', () => ({}));
+vi.mock('../instrument.js', () => ({}));
+vi.mock('../telemetry.js', () => ({}));
+vi.mock('fastify', async (importOriginal) => {
+  const { default: Fastify } = await importOriginal<typeof import('fastify')>();
+  return {
+    default: () => {
+      state.app = Fastify();
+      state.app.listen = state.listen;
+      return state.app;
+    },
+  };
+});
+vi.mock('pg', () => {
+  class MockPool {
+    on() {
+      return this;
+    }
+
+    on = vi.fn().mockReturnThis();
+    query = vi.fn().mockImplementation(async () => {
+      state.events.push('database');
+      return { rows: [{ now: 'test' }] };
+    });
+  }
+  return {
+    Pool: MockPool,
+    default: { Pool: MockPool },
+  };
+});
+vi.mock('./audiobookPrisma.js', () => ({
+  getAudiobookPrismaClient: vi.fn(() => null),
+}));
+vi.mock('./connectRedis.js', () => ({
+  connectRedis: vi.fn().mockImplementation(async () => {
+    state.events.push('redis');
+    return {};
+  }),
+}));
+
+// Launcher route tests must not start real provider probes or a PostgreSQL worker.
+// Those background services have their own integration tests and can outlive this suite.
+vi.mock('../agent/operations.js', () => ({
+  startBrainHealthMonitor: vi.fn(() => vi.fn()),
+  startAgentTaskWorker: vi.fn(() => vi.fn()),
+}));
+vi.mock('@fastify/redis', async () => {
+  const { default: fp } = await import('fastify-plugin');
+  return {
+    default: fp(async (app) => {
+      app.decorate('redis', { ping: async () => 'PONG' });
+    }),
+  };
+});
+vi.mock('@fastify/rate-limit', () => ({ default: async () => {} }));
+vi.mock('../api/websocket.js', () => ({
+  registerWebSocketRoutes: async () => {},
+}));
+vi.mock('./routes/auth.js', async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>;
+  return {
+    ...actual,
+    installAuthentication: (app: FastifyInstance) => {
+      app.addHook('preHandler', async (request) => {
+        if (request.headers.authorization === 'Bearer test-token') {
+          Object.assign(request, { authUser: { id: 'test-user', role: 'user' } });
+        }
+      });
+    },
+  };
+});
+vi.mock('./comms/index.js', () => ({ commsPlugin: async () => {} }));
+vi.mock('./routes/approvalRoutes.js', () => ({
+  approvalRoutes: async () => {},
+}));
+vi.mock('./routes/slackInteractions.js', () => ({
+  slackInteractionsPlugin: async () => {},
+}));
+vi.mock('./routes/twilioWebhook.js', () => ({
+  twilioWebhookPlugin: async () => {},
+}));
+vi.mock('./routes/metrics.js', () => ({ metricsRoutes: async () => {} }));
+vi.mock('./databaseSchema.js', () => ({
+  inspectDatabaseSchema: async () => ({
+    communications: true,
+    agentCheckpointer: true,
+  }),
+}));
+// Keep launcher route tests isolated from background workers. The test exercises
+// HTTP startup and routes; starting real workers here opens durable queue consumers
+// and timers that outlive the test server and can fail the Vitest process.
+vi.mock('../agent/operations.js', () => ({
+  startAgentTaskWorker: vi.fn(() => () => {}),
+  startBrainHealthMonitor: vi.fn(() => () => {}),
+}));
+
+vi.mock('../agent/invoke.js', () => ({
+  invokeReasoningAgent: state.invoke,
+}));
+
+const signals = ['SIGTERM', 'SIGINT'] as const;
+const originalListeners = new Map(
+  signals.map((signal) => [signal, process.listeners(signal)]),
+);
+
+beforeAll(async () => {
+  vi.stubEnv(
+    'CORS_ORIGINS',
+    'https://ryanai-web-u2eb.onrender.com,https://ryanai-web-authfix.onrender.com,https://ryanai-web.onrender.com',
+  );
+  state.listen.mockImplementation(async () => {
+    state.events.push('listen');
+    return 'http://localhost:3000';
+  });
+  await import('./launcher');
+  await vi.waitFor(() => expect(state.listen).toHaveBeenCalledOnce());
+  // The mocked listen() call does not mutate Node's underlying server state.
+  // Model the post-listen state so the liveness contract is tested faithfully.
+  Object.defineProperty(state.app!.server, 'listening', { configurable: true, value: true });
+});
+
+afterAll(async () => {
+  await state.app?.close();
+  for (const signal of signals) {
+    for (const listener of process.listeners(signal)) {
+      if (!originalListeners.get(signal)?.includes(listener))
+        process.removeListener(signal, listener);
+    }
+  }
+  vi.unstubAllEnvs();
+});
+
+describe('Render liveness endpoint', () => {
+  it('returns HTTP 200 when the API process is listening even if dependencies are degraded', async () => {
+    const response = await state.app!.inject({ method: 'GET', url: '/health' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: 'alive',
+      service: 'ryanai-api-gateway',
+      services: { api: true },
+    });
+  });
+});
+
+describe('launcher startup dependency order', () => {
+  it('binds the HTTP listener before probing PostgreSQL', () => {
+    expect(state.events.indexOf('redis')).toBeGreaterThanOrEqual(0);
+    expect(state.events.indexOf('listen')).toBeGreaterThan(state.events.indexOf('redis'));
+    expect(state.events.indexOf('database')).toBeGreaterThan(state.events.indexOf('listen'));
+  });
+});
+
+describe('launcher reasoning routes', () => {
+  it('serves cross-origin SSE with the CORS headers intact', async () => {
+    state.invoke.mockResolvedValue({ messages: [{ content: 'answer' }], engine: 'RyanAI Three-Brain Orchestrator', runId: 'run-test', handoffs: [] });
+    const response = await state.app!.inject({
+      method: 'POST',
+      url: '/api/reasoning/stream',
+      headers: { origin: 'https://ryanai-web.onrender.com', authorization: 'Bearer test-token' },
+      payload: { prompt: 'hello', language: 've-ZA' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['access-control-allow-origin']).toBe('https://ryanai-web.onrender.com');
+    expect(response.headers['content-type']).toBe('text/event-stream');
+    expect(response.body).toContain('"status":"complete","result":"answer"');
+    expect(state.invoke).toHaveBeenCalledWith(expect.objectContaining({ language: 've-ZA' }));
+  });
+
+  it('streams persisted brain handoff transitions during authenticated reasoning', async () => {
+    state.invoke.mockImplementationOnce((input: {
+      onProgress?: (event: {
+        runId: string;
+        status: string;
+        handoffs: Array<{
+          fromAgent: string;
+          toAgent: string;
+          status: string;
+          startedAt: Date;
+          completedAt: Date | null;
+          error: string | null;
+        }>;
+      }) => void;
+    }) => {
+      input.onProgress?.({
+        runId: 'run-live',
+        status: 'running',
+        handoffs: [{
+          fromAgent: 'supervisor',
+          toAgent: 'primary',
+          status: 'running',
+          startedAt: new Date('2026-11-02T12:00:00.000Z'),
+          completedAt: null,
+          error: null,
+        }],
+      });
+      return Promise.resolve({
+        messages: [{ content: 'answer' }],
+        engine: 'RyanAI Three-Brain Orchestrator',
+        runId: 'run-live',
+        handoffs: [],
+      });
+    });
+    const response = await state.app!.inject({
+      method: 'POST',
+      url: '/api/reasoning/stream',
+      headers: { authorization: 'Bearer test-token' },
+      payload: { prompt: 'hello' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain('"status":"processing","message":"Persisted brain handoff state changed."');
+    expect(response.body).toContain('"toAgent":"primary","status":"running"');
+  });
+
+  it('rejects unauthenticated reasoning requests before invoking the orchestrator', async () => {
+    state.invoke.mockClear();
+    const response = await state.app!.inject({
+      method: 'POST',
+      url: '/api/reason',
+      payload: { prompt: 'hello' },
+    });
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({ success: false });
+    expect(state.invoke).not.toHaveBeenCalled();
+  });
+
+  it('handles the browser CORS preflight', async () => {
+    const response = await state.app!.inject({
+      method: 'OPTIONS',
+      url: '/api/reasoning/stream',
+      headers: {
+        origin: 'https://ryanai-web.onrender.com',
+        'access-control-request-method': 'POST',
+        'access-control-request-headers': 'content-type',
+      },
+    });
+    expect(response.statusCode).toBe(204);
+    expect(response.headers['access-control-allow-methods']).toContain('POST');
+    expect(response.headers['access-control-allow-headers']?.toLowerCase()).toContain(
+      'content-type',
+    );
+  });
+
+  it('handles preflight for the active U2EB frontend on registry and connection endpoints', async () => {
+    for (const url of ['/api/plugins/registry', '/api/plugins/connections', '/api/github/status']) {
+      const response = await state.app!.inject({
+        method: 'OPTIONS',
+        url,
+        headers: {
+          origin: 'https://ryanai-web-u2eb.onrender.com',
+          'access-control-request-method': 'GET',
+          'access-control-request-headers': 'authorization,content-type',
+        },
+      });
+      expect(response.statusCode, url).toBe(204);
+      expect(response.headers['access-control-allow-origin'], url).toBe('https://ryanai-web-u2eb.onrender.com');
+      expect(response.headers['access-control-allow-methods'], url).toContain('GET');
+      expect(response.headers['access-control-allow-headers']?.toLowerCase(), url).toContain('authorization');
+    }
+  });
+
+  it('does not grant CORS access to an unconfigured origin', async () => {
+    const response = await state.app!.inject({
+      method: 'OPTIONS',
+      url: '/api/reasoning/stream',
+      headers: {
+        origin: 'https://attacker.invalid',
+        'access-control-request-method': 'POST',
+      },
+    });
+    expect(response.statusCode).toBe(404);
+    expect(response.headers['access-control-allow-origin']).toBeUndefined();
+  });
+
+  it('keeps the JSON reasoning endpoint available', async () => {
+    state.invoke.mockResolvedValue({ messages: [{ content: 'answer' }], engine: 'RyanAI Three-Brain Orchestrator', runId: 'run-test', handoffs: [] });
+    const response = await state.app!.inject({
+      method: 'POST',
+      url: '/api/reason',
+      headers: { authorization: 'Bearer test-token' },
+      payload: { prompt: 'hello' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ success: true, output: 'answer' });
+  });
+
+  it('rejects an empty prompt before starting the stream', async () => {
+    const response = await state.app!.inject({
+      method: 'POST',
+      url: '/api/reasoning/stream',
+      headers: { authorization: 'Bearer test-token' },
+      payload: { prompt: ' ' },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('delivers provider failures as stream errors, not route 404s', async () => {
+    state.invoke.mockRejectedValueOnce(new Error('Provider unavailable'));
+    const response = await state.app!.inject({
+      method: 'POST',
+      url: '/api/reasoning/stream',
+      headers: { authorization: 'Bearer test-token' },
+      payload: { prompt: 'hello' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain('"error":"Reasoning provider request failed. Please try again later."');
+    expect(response.body).not.toContain('Provider unavailable');
+    expect(response.body).not.toContain('"status":"complete"');
+  });
+
+  it('does not report success for an MCP action the API gateway did not execute', async () => {
+    const response = await state.app!.inject({
+      method: 'POST',
+      url: '/api/mcp',
+      payload: { action: 'run_project_checks', payload: { target: 'main' } },
+    });
+    expect(response.statusCode).toBe(501);
+    expect(response.json()).toMatchObject({
+      success: false,
+      error: expect.stringContaining('dedicated Streamable HTTP MCP service'),
+    });
+    expect(response.body).not.toContain('processedPayload');
+  });
+
+  it('redacts provider details from JSON reasoning errors', async () => {
+    state.invoke.mockRejectedValueOnce(new Error('provider secret: upstream-key-123'));
+    const response = await state.app!.inject({
+      method: 'POST',
+      url: '/api/reason',
+      headers: { authorization: 'Bearer test-token' },
+      payload: { prompt: 'hello' },
+    });
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({
+      success: false,
+      error: 'Reasoning provider request failed. Please try again later.',
+    });
+    expect(response.body).not.toContain('upstream-key-123');
+  });
+
+  it('rejects oversized JSON reasoning prompts before invoking the agent', async () => {
+    state.invoke.mockClear();
+    const response = await state.app!.inject({
+      method: 'POST',
+      url: '/api/reason',
+      headers: { authorization: 'Bearer test-token' },
+      payload: { prompt: 'x'.repeat(20001) },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(state.invoke).not.toHaveBeenCalled();
+  });
+
+  it('rejects oversized streaming prompts before opening an SSE response', async () => {
+    state.invoke.mockClear();
+    const response = await state.app!.inject({
+      method: 'POST',
+      url: '/api/reasoning/stream',
+      headers: { authorization: 'Bearer test-token' },
+      payload: { prompt: 'x'.repeat(20001) },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.headers['content-type']).not.toContain('text/event-stream');
+    expect(state.invoke).not.toHaveBeenCalled();
+  });
+});

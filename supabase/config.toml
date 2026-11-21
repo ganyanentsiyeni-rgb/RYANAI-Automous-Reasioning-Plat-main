@@ -1,0 +1,43 @@
+# Supabase local development configuration for RyanAI.
+# This file contains no credentials and does not link or deploy to a hosted project.
+# Leave service port keys unset; the experimental managed stack allocates ports.
+# Do not set SUPABASE_*_PORT overrides to fixed values when running concurrent local stacks.
+project_id = "ryanai"
+
+[api]
+enabled = true
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+health_timeout = "2m"
+
+[db.migrations]
+enabled = true
+
+[db.seed]
+enabled = true
+sql_paths = ["./migrations/seed.sql"]
+
+[studio]
+enabled = true
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:1420"
+additional_redirect_urls = ["http://localhost:1420", "http://127.0.0.1:1420", "http://localhost:3000", "http://127.0.0.1:3000"]
+
+[auth.oauth_server]
+enabled = true
+authorization_url_path = "/oauth/consent"
+allow_dynamic_registration = false
+
+[storage]
+enabled = true
+file_size_limit = "20MiB"
+
+# Use Supabase's experimental local-stack manager so omitted service ports are
+# automatically allocated per project instead of falling back to fixed defaults.
+[experimental]
+stack = true

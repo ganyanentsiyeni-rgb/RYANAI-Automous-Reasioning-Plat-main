@@ -1,0 +1,27 @@
+RYANAI PLATFORM STATUS NOTE
+Updated: 2026-10-28
+Repository: RyanAI-Automated/RYANAI-Automous-Reasioning-Plat
+
+IMPORTANT
+This file is a historical status note, not a production-readiness certificate.
+A green unit/build job does not prove live integrations or deployments are healthy.
+Use the exact commit's GitHub Actions checks and hosting dashboards as the source of truth.
+
+RECENT CONFIGURATION AUDIT
+- Added a canonical .env.example and clarified local versus deployment configuration.
+- Corrected Kubernetes PostgreSQL and Redis startup settings.
+- Aligned Kubernetes image names with the GitHub Container Registry publishing workflow.
+- Configured Render's static frontend API origin and required server-side environment variables.
+- Restricted credentialed API CORS to configured origins.
+- Prevented provider API credentials from being read from VITE_* browser variables.
+- Removed stale root-level IntelliJ project metadata and fixed .gitignore documentation rules.
+- Added regression coverage for forbidden VITE-prefixed provider credentials.
+
+RELEASE GATES
+- Confirm the latest CI, integration, security, and container-build workflows pass for the release SHA.
+- Configure Render DATABASE_URL and REDIS_URL with real managed-service URLs before deploying the API.
+- Configure Render and Railway staging targets only after their isolation and exact-commit CI/security gates are verified.
+- Verify the deployed frontend, API, database, Redis, MCP service, authentication, and provider requests in staging.
+- Confirm backup/restore and rollback procedures before production release.
+
+Do not infer production readiness from this note. Review live run results and deployment health before release.

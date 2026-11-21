@@ -1,0 +1,127 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+# This workflow checks out code, performs a Codacy security scan
+# and integrates the results with the
+# GitHub Advanced Security code scanning feature.  For more information on
+# the Codacy security scan action usage and parameters, see
+# https://github.com/codacy/codacy-analysis-cli-action.
+# For more information on Codacy Analysis CLI in general, see
+# https://github.com/codacy/codacy-analysis-cli.
+
+name: Codacy Security Scan
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    # The branches below must be a subset of the branches above
+    branches: [ "main" ]
+  schedule:
+    - cron: '25 7 * * 3'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # PR updates supersede older runs for the same PR only. Main uses its own
+  # stable ref group and is never cancelled by a pull_request event.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  codacy-security-scan:
+    permissions:
+      contents: read # for actions/checkout to fetch code
+      security-events: write # for github/codeql-action/upload-sarif to upload SARIF results
+      actions: read # only required for a private repository by github/codeql-action/upload-sarif to get the Action run status
+    name: Codacy Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout the repository to the GitHub Actions runner
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      # Execute Codacy Analysis CLI and generate a SARIF output with the security issues identified during the analysis
+      - name: Run Codacy Analysis CLI
+        uses: codacy/codacy-analysis-cli-action@562ee3e92b8e92df8b67e0a5ff8aa8e261919c08
+        with:
+          # Check https://github.com/codacy/codacy-analysis-cli#project-token to get your project token from your Codacy repository
+          # You can also omit the token and run the tools that support default configurations
+          project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
+          verbose: true
+          output: results.sarif
+          format: sarif
+          # Adjust severity of non-security issues
+          gh-code-scanning-compat: true
+          # Force 0 exit code to allow SARIF file generation
+          # This will handover control about PR rejection to the GitHub side
+          max-allowed-issues: 2147483647
+
+      # Preserve the original report even when splitting or uploading fails.
+      - name: Preserve raw Codacy SARIF report
+        if: always() && hashFiles('results.sarif') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: codacy-raw-sarif
+          path: results.sarif
+          if-no-files-found: warn
+          retention-days: 14
+
+      # GitHub requires one SARIF run per category. Codacy can emit multiple
+      # runs in one file, so split them and give each run a stable unique category.
+      - name: Split Codacy SARIF into uniquely categorized runs
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+
+          const report = JSON.parse(fs.readFileSync('results.sarif', 'utf8'));
+          if (!Array.isArray(report.runs) || report.runs.length === 0) {
+            throw new Error('Codacy produced no SARIF runs');
+          }
+
+          const batchSize = 20;
+          const batchCount = Math.ceil(report.runs.length / batchSize);
+          if (batchCount > 3) {
+            throw new Error(`Codacy emitted ${report.runs.length} SARIF runs; expected at most 60 so uploads can stay within GitHub's 20-run request limit.`);
+          }
+
+          for (let index = 0; index < report.runs.length; index += 1) {
+            const run = report.runs[index];
+            const tool = (run.tool?.driver?.name ?? 'tool')
+              .toLowerCase()
+              .replace(/[^a-z0-9-]+/g, '-')
+              .replace(/^-+|-+$/g, '') || 'tool';
+            run.automationDetails = {
+              ...(run.runAutomationDetails ?? {}),
+              id: `codacy-${tool}-${index}/analysis`,
+            };
+            const batch = Math.floor(index / batchSize) + 1;
+            const directory = `sarif-output/batch-${batch}`;
+            fs.mkdirSync(directory, { recursive: true });
+            const filename = `${directory}/${String(index).padStart(3, '0')}-${tool}.sarif`;
+            fs.writeFileSync(filename, JSON.stringify({ ...report, runs: [run] }));
+          }
+          NODE
+
+      # GitHub code scanning accepts at most 20 SARIF runs in one upload request.
+      - name: Upload Codacy SARIF batch 1
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sarif-output/batch-1/
+
+      - name: Upload Codacy SARIF batch 2
+        if: hashFiles('sarif-output/batch-2/*.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sarif-output/batch-2/
+
+      - name: Upload Codacy SARIF batch 3
+        if: hashFiles('sarif-output/batch-3/*.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sarif-output/batch-3/

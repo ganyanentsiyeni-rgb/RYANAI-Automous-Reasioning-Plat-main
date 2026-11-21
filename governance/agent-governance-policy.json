@@ -1,0 +1,163 @@
+{
+  "schema_version": 1,
+  "policy_id": "ryanai.agent-governance",
+  "policy_version": "2026-11-08.1",
+  "status": "phase1-policy-contract-and-mcp-tool-metadata",
+  "default_decision": "DENY",
+  "authority": {
+    "identity_source": "API-issued short-lived delegated identity",
+    "authorization_owner": "Gen-X and trusted API authorization boundary",
+    "model_outputs_are_untrusted": true,
+    "agents_may_grant_or_expand_permissions": false,
+    "agents_may_approve_their_own_actions": false,
+    "agents_may_merge": false,
+    "agents_may_deploy": false,
+    "agents_may_access_secrets": false,
+    "production_access": false,
+    "human_approval_required_for_consequential_actions": true
+  },
+  "agent_profiles": {
+    "jarvis_engineering": {
+      "purpose": "Restricted engineering inspection, validation and pull-request preparation",
+      "default_decision": "DENY",
+      "allowed_capabilities": [
+        "mcp.registry.read",
+        "repository.status.read",
+        "engineering.checks.execute",
+        "platform.stack.read",
+        "platform.health.read"
+      ],
+      "conditional_capabilities": [
+        {
+          "capability": "reasoning.request",
+          "condition": "explicit user-requested reasoning task and approved provider route"
+        },
+        {
+          "capability": "communications.draft.prepare",
+          "condition": "draft creation only; separate human approval required before any dispatch"
+        }
+      ],
+      "denied_capabilities": [
+        "secrets.read",
+        "production.deploy",
+        "production.migrate",
+        "pull_request.merge",
+        "branch_protection.bypass",
+        "permissions.grant",
+        "policy.modify",
+        "communications.dispatch"
+      ],
+      "human_review_required_for": [
+        "pull_request.review_and_merge",
+        "production.deployment",
+        "production_database_migration",
+        "secret_changes",
+        "permission_changes"
+      ]
+    },
+    "reasoning_specialists": {
+      "purpose": "Task-scoped inference and analysis only",
+      "default_decision": "DENY",
+      "allowed_capabilities": [
+        "reasoning.request"
+      ],
+      "denied_capabilities": [
+        "repository.write",
+        "secrets.read",
+        "production.deploy",
+        "production.migrate",
+        "pull_request.merge",
+        "permissions.grant",
+        "policy.modify",
+        "communications.dispatch"
+      ]
+    }
+  },
+  "tool_policy": {
+    "default_decision": "DENY",
+    "operator_allowlist_required": true,
+    "delegated_identity_required_for_http": true,
+    "execution_time_api_reauthorization_required": true,
+    "audit_metadata_required": true,
+    "tool_registry": {
+      "capability": "mcp.registry.read",
+      "decision": "ALLOW_READ_ONLY",
+      "approval": "none"
+    },
+    "run_project_checks": {
+      "capability": "engineering.checks.execute",
+      "decision": "ALLOW_IF_OPERATOR_ALLOWLISTED_IN_TRUSTED_LOCAL_RUNTIME",
+      "approval": "operator_allowlist",
+      "production_access": false,
+      "secret_access": false,
+      "http_availability": "NOT_GRANTED_BY_CURRENT_DELEGATION_SCOPE"
+    },
+    "repository_status": {
+      "capability": "repository.status.read",
+      "decision": "ALLOW_IF_OPERATOR_ALLOWLISTED_AND_DELEGATED",
+      "approval": "none"
+    },
+    "ryanai_stack_manifest": {
+      "capability": "platform.stack.read",
+      "decision": "ALLOW_IF_OPERATOR_ALLOWLISTED_AND_DELEGATED",
+      "approval": "none",
+      "secret_access": false
+    },
+    "platform_health": {
+      "capability": "platform.health.read",
+      "decision": "ALLOW_IF_OPERATOR_ALLOWLISTED_AND_DELEGATED",
+      "approval": "none",
+      "network_scope": "configured_health_endpoint_only"
+    },
+    "reasoning_route": {
+      "capability": "reasoning.request",
+      "decision": "ALLOW_IF_OPERATOR_ALLOWLISTED_IN_TRUSTED_LOCAL_RUNTIME",
+      "approval": "explicit_user_requested_task",
+      "provider_scope": "configured_approved_providers_only",
+      "http_availability": "NOT_GRANTED_BY_CURRENT_DELEGATION_SCOPE"
+    },
+    "comms_policy_read": {
+      "capability": "communications.policy.read",
+      "decision": "ALLOW_IF_OPERATOR_ALLOWLISTED_AND_DELEGATED",
+      "approval": "none"
+    },
+    "comms_draft_prepare": {
+      "capability": "communications.draft.prepare",
+      "decision": "ALLOW_IF_OPERATOR_ALLOWLISTED_IN_TRUSTED_LOCAL_RUNTIME",
+      "approval": "human_before_dispatch",
+      "dispatch_allowed": false,
+      "http_availability": "NOT_GRANTED_BY_CURRENT_DELEGATION_SCOPE"
+    }
+  },
+  "audit": {
+    "event_metadata": [
+      "actor_id",
+      "agent_id",
+      "tool_name",
+      "capability",
+      "decision",
+      "approval_reference",
+      "resource_class",
+      "outcome",
+      "timestamp",
+      "correlation_id"
+    ],
+    "secret_values_recorded": false,
+    "raw_prompt_or_tool_payload_recorded": false,
+    "persistence_status": "NOT_IMPLEMENTED_IN_THIS_CHANGE",
+    "siem_streaming_status": "NOT_IMPLEMENTED_IN_THIS_CHANGE"
+  },
+  "deployment": {
+    "production_activation": false,
+    "database_migration": false,
+    "secret_mutation": false,
+    "infrastructure_mutation": false
+  },
+  "runtime_enforcement": {
+    "existing_controls": "Operator MCP tool allowlist and existing API delegated-scope reauthorization remain the active execution controls.",
+    "new_profile_enforcement": "Agent-profile capability mapping is a validated policy contract only in this phase; runtime identity-to-profile binding is not implemented.",
+    "transport_limits": "run_project_checks, reasoning_route, and communications MCP tools are currently local-stdio capabilities only; they are not granted by the current HTTP delegation scope map.",
+    "sandbox_status": "NOT_ISOLATED",
+    "profile_enforcement_status": "CONTRACT_ONLY"
+  }
+}
