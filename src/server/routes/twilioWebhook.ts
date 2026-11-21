@@ -109,7 +109,7 @@ export const twilioWebhookPlugin: FastifyPluginAsync = async (fastify) => {
         });
         reply.type('text/xml');
         if (!isCommunicationsTestAuthorized()) return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
-        return \`<?xml version="1.0" encoding="UTF-8"?><Response><Message>\${escapeXml('Use: GITHUB APPROVE <approval-id> <40-character-commit-SHA>, or GITHUB REJECT <approval-id> <40-character-commit-SHA>. No GitHub review was submitted.')}</Message></Response>\`;
+        return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml('Use: GITHUB APPROVE <approval-id> <40-character-commit-SHA>, or GITHUB REJECT <approval-id> <40-character-commit-SHA>. No GitHub review was submitted.')}</Message></Response>`;
       }
       if (githubApprovalCommand) {
         if (!ownerUserId) {
@@ -130,8 +130,8 @@ export const twilioWebhookPlugin: FastifyPluginAsync = async (fastify) => {
             decision: requestedDecision,
           });
           const confirmation = decision.status === 'approved'
-            ? \`RyanAI recorded your owner approval for PR #\${decision.pull_request_number} at commit \${decision.expected_head_sha}. This records consent only; no GitHub review has been submitted.\`
-            : \`RyanAI recorded your rejection for PR #\${decision.pull_request_number} at commit \${decision.expected_head_sha}. No GitHub review was submitted.\`;
+            ? `RyanAI recorded your owner approval for PR #${decision.pull_request_number} at commit ${decision.expected_head_sha}. This records consent only; no GitHub review has been submitted.`
+            : `RyanAI recorded your rejection for PR #${decision.pull_request_number} at commit ${decision.expected_head_sha}. No GitHub review was submitted.`;
           await fastify.prisma.communicationMessage.update({
             where: { providerMessageId: body.MessageSid },
             data: {
@@ -149,7 +149,7 @@ export const twilioWebhookPlugin: FastifyPluginAsync = async (fastify) => {
           request.log.info({ approvalId: decision.id, decision: decision.status, pullRequestNumber: decision.pull_request_number, expectedHeadSha: decision.expected_head_sha }, 'Owner GitHub PR review decision recorded; no review submitted');
           reply.type('text/xml');
           if (!isCommunicationsTestAuthorized()) return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
-          return \`<?xml version="1.0" encoding="UTF-8"?><Response><Message>\${escapeXml(confirmation)}</Message></Response>\`;
+          return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(confirmation)}</Message></Response>`;
         } catch (error) {
           const reason = error instanceof Error ? error.message : 'github_pr_review_approval_failed';
           await fastify.prisma.communicationMessage.update({
@@ -159,7 +159,7 @@ export const twilioWebhookPlugin: FastifyPluginAsync = async (fastify) => {
           request.log.warn({ err: error, approvalId: githubApprovalCommand[2] }, 'Inbound owner GitHub PR approval was not accepted');
           reply.type('text/xml');
           if (!isCommunicationsTestAuthorized()) return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
-          return \`<?xml version="1.0" encoding="UTF-8"?><Response><Message>\${escapeXml('RyanAI could not accept that GitHub PR decision. Check the approval ID, exact SHA, owner destination verification and expiry. No GitHub review was submitted.')}</Message></Response>\`;
+          return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml('RyanAI could not accept that GitHub PR decision. Check the approval ID, exact SHA, owner destination verification and expiry. No GitHub review was submitted.')}</Message></Response>`;
         }
       }
 
