@@ -1,6 +1,16 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { evaluateGenXSecurityEvent } from '../../security/genxPolicy.js';
-import { AerialClient } from './client.js';
+import { AerialClient, type AerialHealth } from './client.js';
+
+/** Public diagnostics intentionally omit internal endpoint and model metadata. */
+export function toPublicAerialHealth(health: AerialHealth) {
+  return {
+    status: health.status,
+    mode: health.mode,
+    ...(health.latencyMs === undefined ? {} : { latencyMs: health.latencyMs }),
+    ...(health.detail === undefined ? {} : { detail: health.detail }),
+  };
+}
 
 interface InferBody {
   prompt: string;
@@ -40,7 +50,7 @@ export const aerialRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/api/aerial/health', async () => ({
     success: true,
     provider: 'nvidia-aerial',
-    ...(await client.health()),
+    ...toPublicAerialHealth(await client.health()),
   }));
 
   fastify.get('/api/aerial/status', async () => ({
