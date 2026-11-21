@@ -13,6 +13,24 @@ export const PRODUCTION_MIGRATION_EXCLUSIONS = Object.freeze([
   '20261104120000_isolated_coding_task_queue',
 ]);
 
+export function assertAppliedMigrationChecksumsMatch({
+  localMigrationChecksums,
+  appliedMigrationRecords,
+}) {
+  const localChecksums = new Map(Object.entries(localMigrationChecksums));
+  for (const record of appliedMigrationRecords) {
+    const expected = localChecksums.get(record.migration_name);
+    if (!expected) {
+      throw new Error('The production database contains migration history missing from this checkout.');
+    }
+    if (record.checksum !== expected) {
+      throw new Error(
+        'An applied Prisma migration checksum differs from this checkout: ' + record.migration_name,
+      );
+    }
+  }
+}
+
 export function assertOnlyApprovedMigrationPending({
   localMigrationNames,
   appliedMigrationNames,
