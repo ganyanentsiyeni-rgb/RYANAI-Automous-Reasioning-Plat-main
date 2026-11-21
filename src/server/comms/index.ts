@@ -898,6 +898,21 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       if (dispatch.state === 'uncertain') {
         return { received: true, replied: false, dispatchPending: true, reconciliationRequired: true };
       }
+      if (outbound.replayed && !dispatch.replayed) {
+        if (outbound.status === 'accepted' && outbound.providerMessageId) {
+          await markOutboundCommsDispatchAccepted(fastify.prisma, {
+            dispatchId: dispatch.id,
+            providerMessageId: outbound.providerMessageId,
+          });
+          return { received: true, replied: true, providerAccepted: true, reconciledFromLegacyReservation: true };
+        }
+        await markOutboundCommsDispatchUncertain(
+          fastify.prisma,
+          dispatch.id,
+          'legacy_outbound_reservation_without_governed_dispatch',
+        );
+        return { received: true, replied: false, dispatchPending: true, reconciliationRequired: true };
+      }
       if (dispatch.replayed && dispatch.state !== 'reserved') {
         const alreadyAccepted = ['accepted', 'delivered', 'reconciled'].includes(dispatch.state) && Boolean(dispatch.providerMessageId);
         await fastify.prisma.communicationMessage.update({
