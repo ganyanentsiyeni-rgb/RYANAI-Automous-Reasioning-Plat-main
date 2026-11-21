@@ -94,6 +94,9 @@ npx prisma migrate diff \
   --to-schema-datamodel prisma/schema.prisma \
   --exit-code
 
+log "Verifying lease migration inverse DDL and transactional rollback"
+node scripts/test-agent-run-lease-migration-rollback.mjs
+
 log "Building server output required by the durable-queue integration runner"
 npm run build:server
 
