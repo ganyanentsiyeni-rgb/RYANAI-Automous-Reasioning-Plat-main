@@ -46,6 +46,10 @@ describe('RyanAIClient transport continuity', () => {
   });
 
   afterEach(() => {
+    // Always remove browser listeners, including when an assertion fails.
+    for (const client of clients.splice(0)) client.destroy();
+    vi.clearAllTimers();
+    vi.restoreAllMocks();
     for (const client of clients.splice(0)) client.destroy();
     vi.unstubAllGlobals();
     vi.useRealTimers();
@@ -60,6 +64,7 @@ describe('RyanAIClient transport continuity', () => {
     });
     clients.push(client);
 
+    clients.push(client);
     const handler = vi.fn();
     client.on('metrics', handler);
 
@@ -117,6 +122,7 @@ describe('RyanAIClient transport continuity', () => {
     });
     clients.push(client);
 
+    clients.push(client);
     const connection = client.connect();
     const first = MockWebSocket.instances[0];
     first.open();
@@ -146,6 +152,7 @@ describe('RyanAIClient transport continuity', () => {
     });
     clients.push(client);
 
+    clients.push(client);
     const connection = client.connect();
     const first = MockWebSocket.instances[0];
     first.open();
