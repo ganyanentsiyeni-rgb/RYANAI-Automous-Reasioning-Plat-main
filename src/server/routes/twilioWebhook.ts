@@ -219,24 +219,27 @@ export const twilioWebhookPlugin: FastifyPluginAsync = async (fastify) => {
         }
       }
 
-      if (!isCommunicationsTestAuthorized()) {
-        await fastify.prisma.communicationMessage.update({
-          where: { providerMessageId: body.MessageSid },
-          data: { status: 'received', metadata: { mediaCount: media.length, replySuppressed: true } },
-        });
-        reply.type('text/xml');
-        return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
-      }
+      // Persist and link the durable AgentRun before acknowledging the provider,
+      // even when the separate outbound-test authorization gate suppresses replies.
       const queued = await enqueueInboundCommunicationRun({
         messageId: claim.messageId!,
         ownerUserId,
         providerMessageId: body.MessageSid,
       });
-      const completed = await waitForInboundCommunicationRun(queued.runId, ownerUserId);
-      if (!completed.completed) {
-        request.log.info({ runId: queued.runId, providerMessageId: body.MessageSid }, 'WhatsApp agent run remains queued or running; webhook will not fabricate a reply');
+      if (!isCommunicationsTestAuthorized()) {
+        await fastify.prisma.communicationMessage.update({
+          where: { providerMessageId: body.MessageSid },
+          data: { status: 'received', metadata: { mediaCount: media.length, replySuppressed: true, agentRunId: queued.runId } },
+        });
         reply.type('text/xml');
         return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
+      }
+      const completed = await waitForInboundCommunicationRun(queued.runId, ownerUserId);
+      if (!completed.completed) {
+        request.log.info({ runId: queued.runId, providerMessageId: body.MessageSid }, 'WhatsApp agent run remains queued or running; provider retry is required for a completed reply');
+        return reply.code(503).send({
+          error: 'The durable RyanAI run is still processing. The provider may retry for its completed reply.',
+        });
       }
       const agentReply = addressOwnerResponse(completed.answer || 'I could not prepare a response.');
       await fastify.prisma.communicationMessage.update({
