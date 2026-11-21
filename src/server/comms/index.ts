@@ -448,7 +448,9 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       if (!claim.claimed && claim.existing) {
         const metadata = claim.existing.metadata && typeof claim.existing.metadata === 'object' && !Array.isArray(claim.existing.metadata)
           ? claim.existing.metadata as Record<string, unknown> : {};
-        if (typeof metadata.reply === 'string' && metadata.reply) return twimlSay(metadata.reply, true);
+        if (typeof metadata.reply === 'string' && metadata.reply) {
+          return outboundReplyAllowed ? twimlSay(metadata.reply, true) : '<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>';
+        }
         if (claim.existing.agentRunId) {
           const resumed = await waitForInboundCommunicationRun(claim.existing.agentRunId, ownerUserId);
           if (resumed.completed) {
@@ -460,7 +462,9 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
             return twimlSay(answer.slice(0, MAX_MESSAGE_LENGTH), true);
           }
         }
-        return twimlSay('I am still processing your previous request. Please hold for a moment.', true);
+        return outboundReplyAllowed
+          ? twimlSay('I am still processing your previous request. Please hold for a moment.', true)
+          : '<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>';
       }
       if (!claim.messageId) throw new Error('Voice message claim did not return a persisted message ID.');
       const queued = await enqueueInboundCommunicationRun({ messageId: claim.messageId, ownerUserId, providerMessageId: providerTurnId });
