@@ -9,7 +9,7 @@ Preparation only. This document does not enable the GitHub App, create credentia
 - Repository: `ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main`
 - GitHub App: `RyanAI Comms GitHub Approvals`
 - App ID: `5864885`
-- Installation ID: `182512094`
+- Installation ID: not yet independently verified; retrieve it from the GitHub App installation details before configuring the backend.
 - Expected installation permissions: repository Metadata (read) and Pull requests (read/write).
 - Repository selection: only the canonical repository.
 - Installation state at preparation time: suspended by the owner.
