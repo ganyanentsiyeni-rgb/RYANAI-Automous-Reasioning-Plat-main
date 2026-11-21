@@ -292,6 +292,47 @@ export function backupReadbackMatches(original: Uint8Array, stored: Uint8Array):
   return originalDigest === storedDigest;
 }
 
+export interface BackupArtifactStorage {
+  baseUrl: string;
+  key: string;
+  bucket: string;
+}
+
+export async function persistBackupArtifact(
+  storage: BackupArtifactStorage,
+  prefix: string,
+  dump: Buffer,
+  manifest: Record<string, unknown>,
+  request: typeof storageRequest = storageRequest,
+): Promise<void> {
+  const objectPrefix = prefix.split('/').map(encodeURIComponent).join('/');
+  await request(storage.baseUrl, storage.key, '/storage/v1/object/' + encodeURIComponent(storage.bucket) + '/' + objectPrefix + '/database.dump', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      'x-upsert': 'true',
+      'x-client-info': 'ryanai-admin-resilience',
+    },
+    body: dump,
+  });
+
+  const verification = await request(
+    storage.baseUrl,
+    storage.key,
+    '/storage/v1/object/authenticated/' + encodeURIComponent(storage.bucket) + '/' + objectPrefix + '/database.dump',
+  );
+  const storedDump = Buffer.from(await verification.arrayBuffer());
+  if (!backupReadbackMatches(dump, storedDump)) {
+    throw new Error('Uploaded backup failed read-back size or SHA-256 integrity verification.');
+  }
+
+  await request(storage.baseUrl, storage.key, '/storage/v1/object/' + encodeURIComponent(storage.bucket) + '/' + objectPrefix + '/manifest.json', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-upsert': 'true' },
+    body: JSON.stringify(manifest, null, 2),
+  });
+}
+
 export async function createDatabaseBackup(): Promise<BackupResult> {
   const preflight = await backupPreflight();
   if (preflight.status !== 'ready') return { status: preflight.status === 'not_configured' ? 'not_configured' : 'failed', reason: preflight.reason };
@@ -307,22 +348,6 @@ export async function createDatabaseBackup(): Promise<BackupResult> {
     await pgDump(dumpPath);
     const dump = await readFile(dumpPath);
     const sha256 = createHash('sha256').update(dump).digest('hex');
-    const objectPath = '/' + encodeURIComponent(storage.bucket) + '/' + prefix.split('/').map(encodeURIComponent).join('/') + '/database.dump';
-
-    await storageRequest(storage.baseUrl, storage.key, '/storage/v1/object' + objectPath, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/octet-stream',
-        'x-upsert': 'true',
-        'x-client-info': 'ryanai-admin-resilience',
-      },
-      body: dump,
-    });
-
-    const verification = await storageRequest(storage.baseUrl, storage.key, '/storage/v1/object/authenticated/' + encodeURIComponent(storage.bucket) + '/' + prefix.split('/').map(encodeURIComponent).join('/') + '/database.dump');
-    const storedDump = Buffer.from(await verification.arrayBuffer());
-    if (!backupReadbackMatches(dump, storedDump)) throw new Error('Uploaded backup failed read-back size or SHA-256 integrity verification.');
-
     const manifest = {
       format: 'ryanai-admin-backup-v1',
       backupId,
@@ -332,11 +357,7 @@ export async function createDatabaseBackup(): Promise<BackupResult> {
       secretsIncluded: false,
       recoveryTargetRequired: true,
     };
-    await storageRequest(storage.baseUrl, storage.key, '/storage/v1/object/' + encodeURIComponent(storage.bucket) + '/' + prefix.split('/').map(encodeURIComponent).join('/') + '/manifest.json', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-upsert': 'true' },
-      body: JSON.stringify(manifest, null, 2),
-    });
+    await persistBackupArtifact(storage, prefix, dump, manifest);
 
     return { status: 'succeeded', backupId, prefix, databaseBytes: dump.length, databaseSha256: sha256 };
   } catch (error) {
