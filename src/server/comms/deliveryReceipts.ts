@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { createHash } from 'node:crypto';
 import { buildCommsProviderEventKey } from './outboundDispatch.js';
 
 export interface AppendCommsDeliveryReceiptInput {
@@ -44,7 +45,7 @@ export async function appendCommsDeliveryReceipt(
       providerStatus: input.providerStatus,
       deliveryState: input.deliveryState,
       providerEventKey,
-      providerReferenceHash: providerEventKey,
+      providerReferenceHash: createHash('sha256').update(input.providerMessageId).digest('hex'),
       ...(input.metadata ? { metadata: input.metadata } : {}),
       ...(input.occurredAt ? { occurredAt: input.occurredAt } : {}),
     },
