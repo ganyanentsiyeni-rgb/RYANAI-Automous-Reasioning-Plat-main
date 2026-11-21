@@ -1,7 +1,8 @@
 import { authenticatedFetch } from './authenticatedFetch';
 import { supabase } from './supabase';
 
-export type CommsChannel = 'whatsapp' | 'sms' | 'voice' | 'email';
+export type CommsChannel = 'in_app' | 'whatsapp' | 'sms' | 'voice' | 'email';
+export type ProviderCommsChannel = Exclude<CommsChannel, 'in_app'>;
 export interface CommsAttachment {
   id: string;
   name: string;
@@ -65,8 +66,32 @@ export async function getCommsConversations(userId: string, limit = 50): Promise
   return Array.isArray(body.conversations) ? body.conversations : [];
 }
 
+export interface InAppCommsReply {
+  messageId: string;
+  runId?: string;
+  status: 'processing' | 'replied';
+  reply?: { id: string; body: string; createdAt: string; status: string };
+}
+
+export async function sendInAppCommsMessage(input: {
+  message: string;
+  idempotencyKey: string;
+}, userId: string): Promise<InAppCommsReply> {
+  const response = await authenticatedFetch('/api/comms/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  }, userId);
+  return readJson<InAppCommsReply>(response);
+}
+
+export async function getInAppCommsReply(messageId: string, userId: string): Promise<InAppCommsReply> {
+  const response = await authenticatedFetch('/api/comms/chat/' + encodeURIComponent(messageId), undefined, userId);
+  return readJson<InAppCommsReply>(response);
+}
+
 export async function prepareCommsAttachments(input: {
-  channel: Exclude<CommsChannel, 'voice'>;
+  channel: Exclude<ProviderCommsChannel, 'voice'>;
   recipient?: string;
   message: string;
   subject?: string;
@@ -126,7 +151,7 @@ export async function assistCommsConversation(input: {
   const response = await authenticatedFetch('/api/comms/assist', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, idempotencyKey: crypto.randomUUID() }),
   }, userId);
   return readJson<CommsAssistResult>(response);
 }
@@ -139,7 +164,7 @@ export interface CommsApprovalRequest {
 }
 
 export async function requestCommsApproval(input: {
-  channel: CommsChannel;
+  channel: ProviderCommsChannel;
   recipient?: string;
   message: string;
   subject?: string;
@@ -166,7 +191,7 @@ export async function getCommsApprovalStatus(approvalId: string, userId: string)
 }
 
 export async function sendCommsMessage(input: {
-  channel: CommsChannel;
+  channel: ProviderCommsChannel;
   recipient?: string;
   message: string;
   subject?: string;

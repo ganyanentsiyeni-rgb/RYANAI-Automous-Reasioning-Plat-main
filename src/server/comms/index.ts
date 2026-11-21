@@ -96,6 +96,43 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
   await fastify.register(formbody);
   await fastify.register(rawBody, { field: 'rawBody', global: false, encoding: 'utf8', runFirst: true });
 
+  const finishInAppChatTurn = async (messageId: string, runId: string, ownerUserId: string, timeoutMs = 8_000) => {
+    const completed = await waitForInboundCommunicationRun(runId, ownerUserId, timeoutMs);
+    if (!completed.completed) return null;
+    const answer = addressOwnerResponse(completed.answer || 'I could not prepare a response.');
+    const inbound = await fastify.prisma.communicationMessage.findUnique({
+      where: { id: messageId },
+      select: { metadata: true },
+    });
+    if (!inbound) throw new Error('The persisted in-app message could not be found.');
+    const priorMetadata = inbound.metadata && typeof inbound.metadata === 'object' && !Array.isArray(inbound.metadata)
+      ? inbound.metadata as Record<string, unknown> : {};
+    await recordCommunication(fastify.prisma, {
+      channel: 'in_app',
+      externalAddress: 'owner:' + ownerUserId,
+      ownerUserId,
+      direction: 'outbound',
+      body: answer,
+      providerMessageId: 'inapp-reply:' + messageId,
+      status: 'response_generated',
+      metadata: { inReplyTo: messageId, agentRunId: runId },
+    });
+    const replyMessage = await fastify.prisma.communicationMessage.findUnique({
+      where: { providerMessageId: 'inapp-reply:' + messageId },
+      select: { id: true, body: true, status: true, createdAt: true },
+    });
+    await fastify.prisma.communicationMessage.update({
+      where: { id: messageId },
+      data: { status: 'replied', metadata: { ...priorMetadata, agentRunId: runId, replyMessageId: replyMessage?.id ?? null } },
+    });
+    return replyMessage ? {
+      id: replyMessage.id,
+      body: replyMessage.body,
+      status: replyMessage.status,
+      createdAt: replyMessage.createdAt.toISOString(),
+    } : null;
+  };
+
 
   fastify.post<{ Body: { channel?: Channel; recipient?: string; message?: string; subject?: string; idempotencyKey?: string; files?: Array<{ name: string; mimeType: string; size: number }> } }>('/api/comms/attachments/prepare', async (request, reply) => {
     if (!areCommunicationAttachmentsEnabled()) return reply.code(503).send({ error: 'Communication attachments are disabled.' });
@@ -222,6 +259,77 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       }
       request.log.warn({ err: error, operation }, 'Comms intelligence durable run failed');
       return reply.code(502).send({ error: 'Communications intelligence is temporarily unavailable.' });
+    }
+  });
+
+  fastify.post<{ Body: { message?: string; idempotencyKey?: string } }>('/api/comms/chat', async (request, reply) => {
+    if (!request.authUser?.isOwner) return reply.code(403).send({ error: 'Owner access is required.' });
+    const message = typeof request.body?.message === 'string' ? request.body.message.trim() : '';
+    const idempotencyKey = typeof request.body?.idempotencyKey === 'string' ? request.body.idempotencyKey.trim() : '';
+    if (!message || message.length > MAX_MESSAGE_LENGTH) return reply.code(400).send({ error: 'A message of 1–4,000 characters is required.' });
+    if (!/^[a-zA-Z0-9._:-]{16,128}$/.test(idempotencyKey)) return reply.code(400).send({ error: 'A valid 16–128 character idempotency key is required.' });
+    const ownerUserId = request.authUser.id;
+    const providerMessageId = 'inapp:' + ownerUserId + ':' + idempotencyKey;
+    try {
+      const claim = await claimInboundCommunication(fastify.prisma, {
+        channel: 'in_app',
+        externalAddress: 'owner:' + ownerUserId,
+        body: message,
+        providerMessageId,
+        status: 'processing',
+        ownerUserId,
+        metadata: { source: 'comms_in_app' },
+      });
+      if (!claim.claimed) {
+        if (claim.existing?.channel !== 'in_app' || claim.existing.ownerUserId !== ownerUserId || claim.existing.body !== message) {
+          return reply.code(409).send({ error: 'This idempotency key is already bound to a different owner or message.' });
+        }
+        if (claim.existing?.agentRunId) {
+          const response = await finishInAppChatTurn(claim.existing.messageId, claim.existing.agentRunId, ownerUserId);
+          if (response) return { messageId: claim.existing.messageId, runId: claim.existing.agentRunId, status: 'replied', reply: response, replayed: true };
+          return reply.code(202).send({ messageId: claim.existing.messageId, runId: claim.existing.agentRunId, status: 'processing', replayed: true });
+        }
+        return reply.code(202).send({ messageId: claim.existing?.messageId, status: 'processing', replayed: true });
+      }
+      if (!claim.messageId) throw new Error('The in-app message reservation did not return an ID.');
+      const queued = await enqueueInboundCommunicationRun({
+        messageId: claim.messageId,
+        ownerUserId,
+        providerMessageId,
+      });
+      const response = await finishInAppChatTurn(claim.messageId, queued.runId, ownerUserId);
+      if (!response) return reply.code(202).send({ messageId: claim.messageId, runId: queued.runId, status: 'processing', replayed: false });
+      return { messageId: claim.messageId, runId: queued.runId, status: 'replied', reply: response, replayed: false };
+    } catch (error) {
+      request.log.error({ err: error }, 'RyanAI in-app Comms turn failed');
+      return reply.code(503).send({ error: 'RyanAI could not complete this message yet. The message remains safely recorded; retry with the same idempotency key.' });
+    }
+  });
+
+  fastify.get<{ Params: { messageId: string } }>('/api/comms/chat/:messageId', async (request, reply) => {
+    if (!request.authUser?.isOwner) return reply.code(403).send({ error: 'Owner access is required.' });
+    if (!/^[0-9a-f-]{36}$/i.test(request.params.messageId)) return reply.code(400).send({ error: 'Invalid message ID.' });
+    const message = await fastify.prisma.communicationMessage.findUnique({
+      where: { id: request.params.messageId },
+      select: {
+        id: true,
+        direction: true,
+        agentRunId: true,
+        conversation: { select: { channel: true, ownerUserId: true } },
+      },
+    });
+    if (!message || message.direction !== 'inbound' || message.conversation.channel !== 'in_app'
+      || message.conversation.ownerUserId !== request.authUser.id) {
+      return reply.code(404).send({ error: 'In-app message not found.' });
+    }
+    if (!message.agentRunId) return reply.code(202).send({ messageId: message.id, status: 'processing' });
+    try {
+      const response = await finishInAppChatTurn(message.id, message.agentRunId, request.authUser.id, 1_000);
+      if (!response) return reply.code(202).send({ messageId: message.id, runId: message.agentRunId, status: 'processing' });
+      return { messageId: message.id, runId: message.agentRunId, status: 'replied', reply: response };
+    } catch (error) {
+      request.log.warn({ err: error, messageId: message.id }, 'Unable to finalize in-app Comms reply');
+      return reply.code(503).send({ error: 'RyanAI is still processing this message. Please check again shortly.' });
     }
   });
 
@@ -370,6 +478,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       status: 'history',
       conversations: conversations.map((conversation) => ({
         ...conversation,
+        externalAddress: conversation.channel === 'in_app' ? 'RyanAI private chat' : conversation.externalAddress,
         messages: [...conversation.messages].reverse().map(message => ({
           ...message,
           attachments: message.attachments.map(attachment => ({
