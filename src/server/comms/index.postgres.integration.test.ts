@@ -73,6 +73,20 @@ integration('Comms Twilio status callback with disposable PostgreSQL', () => {
       },
     });
 
+    // The signed callback correlates only through the durable outbound dispatch.
+    // Seed that row explicitly; a message provider ID alone is not a dispatch receipt.
+    await prisma.outboundCommsDispatch.create({
+      data: {
+        communicationMessageId: messageId,
+        channel: 'sms',
+        recipient: '+15555550123',
+        idempotencyKey: `integration-outbound-${providerMessageId}`,
+        provider: 'twilio',
+        providerMessageId,
+        state: 'accepted',
+      },
+    });
+
     app = Fastify();
     installAuthentication(app);
     app.decorate('prisma', prisma as never);
@@ -82,6 +96,7 @@ integration('Comms Twilio status callback with disposable PostgreSQL', () => {
 
   afterAll(async () => {
     if (app) await app.close();
+    await prisma.outboundCommsDispatch.deleteMany({ where: { communicationMessageId: messageId } });
     await prisma.communicationMessage.deleteMany({ where: { id: messageId } });
     await prisma.communicationConversation.deleteMany({ where: { id: conversationId } });
     if (createdApprovalFixture) {
