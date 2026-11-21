@@ -661,9 +661,6 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
           throw attachmentError;
         }
       }
-      const prompt = bodyText
-        ? bodyText + (inboundAttachments.length ? `\\n\\nThe email included ${inboundAttachments.length} securely stored file(s). Their contents have not been analyzed; do not claim to have inspected them.` : '')
-        : `The email included ${inboundAttachments.length} securely stored file(s). Their contents have not been analyzed. Tell Sir they were received without claiming to inspect them.`;
       const queued = await enqueueInboundCommunicationRun({
         messageId: claim.messageId ?? claim.existing!.messageId,
         ownerUserId,
