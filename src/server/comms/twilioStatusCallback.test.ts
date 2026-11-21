@@ -59,7 +59,7 @@ describe('Twilio delivery status callback', () => {
 
   it('rejects a missing authentication configuration', async () => {
     delete process.env.TWILIO_AUTH_TOKEN;
-    const response = await post({ MessageSid: sid, MessageStatus: 'delivered' }, { authToken: null });
+    const response = await post({ MessageSid: sid, MessageStatus: 'delivered' }, { authToken: null, configuredUrl: '' });
     expect(response.statusCode).toBe(503);
   });
 
