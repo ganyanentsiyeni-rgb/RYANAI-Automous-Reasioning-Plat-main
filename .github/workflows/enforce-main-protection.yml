@@ -82,7 +82,6 @@ jobs:
                     { "context": "Analyze (python)" },
                     { "context": "TruffleHog secret audit" },
                     { "context": "Validate application and MCP dependencies" },
-                    { "context":  },
                     { "context": "Audit GitHub workflows" }
                   ]
                 }
@@ -150,8 +149,7 @@ jobs:
               "Analyze (javascript-typescript)",
               "Analyze (python)",
               "TruffleHog secret audit",
-              "Validate Docker Compose configuration",
-              "MCPJungle Enterprise runtime authentication",
+              "Validate application and MCP dependencies",
               "Audit GitHub workflows",
           }
           missing = required - contexts
