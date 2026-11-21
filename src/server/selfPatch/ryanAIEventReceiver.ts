@@ -73,6 +73,12 @@ export const ryanAIEventReceiverPlugin: FastifyPluginAsync = async (fastify) => 
     const event = parseRyanAIEvent(request.body);
     if (!event) return reply.code(400).send({ accepted: false, state: 'invalid_event' });
 
+    // Do not acknowledge or mark an event as seen until the PA observer is attached.
+    // The API listener can start accepting requests before PA finishes booting.
+    if (ryanAIPaEventBridge.listenerCount('event') === 0) {
+      return reply.code(503).send({ accepted: false, state: 'observer_unavailable' });
+    }
+
     const now = Math.floor(Date.now() / 1000);
     pruneSeenEvents(now);
     if (seenEvents.has(event.eventId)) {

@@ -59,6 +59,7 @@ async function createApp(standaloneApprovals = false) {
       nested.post('/api/aerial/inference', async (request) => ({
         user: request.authUser,
       }));
+      nested.post('/api/internal/ryanai/events', async () => ({ accepted: true }));
       nested.get('/api/aerial/status', async () => ({ allowed: true }));
       nested.get('/api/metrics', async () => ({ allowed: true }));
       nested.post('/api/comms/send', async () => ({ allowed: true }));
@@ -291,6 +292,18 @@ describe('Supabase API authentication', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().user).toMatchObject({ id: user.id, role: 'user' });
     expect(getUser).toHaveBeenCalledExactlyOnceWith('synthetic-access-token');
+  });
+
+  it('allows the RyanAI signed-event route to reach its dedicated HMAC verifier without a Supabase session', async () => {
+    const app = await createApp();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/internal/ryanai/events',
+      payload: { synthetic: true },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ accepted: true });
+    expect(getUser).not.toHaveBeenCalled();
   });
 
   it('rejects unauthenticated Aerial inference before the route handler', async () => {
