@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compareMigrationState, assessMigrationLedger, assessSchema } from './audit-prisma-migration-readiness.mjs';
+import { compareMigrationState, assessMissingMigrationLedger, assessMigrationLedger, assessSchema } from './audit-prisma-migration-readiness.mjs';
 
 const memoryColumns = new Set(['session_id', 'role', 'content', 'timestamp']);
 const cacheColumns = new Set(['id', 'prompt', 'response', 'embedding', 'created_at']);
@@ -261,4 +261,20 @@ test('detects the exact six-column LangGraph checkpoint_writes primary key', () 
   assert.equal(tableWithoutKey.checkpointWrites.tablePresent, true);
   assert.equal(tableWithoutKey.checkpointWrites.primaryKeyPresent, false);
   assert.equal(tableWithoutKey.checkpointWrites.primaryKeyMatches, false);
+});
+
+
+test('reports a missing Prisma ledger as unknown without fabricating pending/applied history', () => {
+  const local = [
+    { name: '20261101000000_first', checksum: 'sha-first' },
+    { name: '20261102000000_second', checksum: 'sha-second' },
+  ];
+  const result = assessMissingMigrationLedger(local);
+  assert.equal(result.status, 'missing');
+  assert.equal(result.ledgerPresent, false);
+  assert.deepEqual(result.local, ['20261101000000_first', '20261102000000_second']);
+  assert.equal(result.applied, null);
+  assert.equal(result.pending, null);
+  assert.equal(result.databaseOnly, null);
+  assert.match(result.note, /history is unknown/);
 });
