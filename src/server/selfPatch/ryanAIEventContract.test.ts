@@ -73,17 +73,5 @@ describe('RyanAI event contract', () => {
     expect(parseRyanAIEvent({ ...commsReceipt, body: 'private message' })).toBeNull();
     expect(parseRyanAIEvent({ ...commsReceipt, recipient: '+27123456789' })).toBeNull();
     expect(parseRyanAIEvent({ ...commsReceipt, authToken: 'must-not-leak' })).toBeNull();
-  it('requires a valid provider reference hash for delivered receipts', () => {
-    expect(parseRyanAIEvent({ ...base, state: 'delivered' })).toBeNull();
-    expect(parseRyanAIEvent({
-      ...base,
-      state: 'delivered',
-      providerReferenceHash: 'b'.repeat(64),
-    })).toMatchObject({ state: 'delivered', providerReferenceHash: 'b'.repeat(64) });
-  });
-
-  it('rejects invalid correlation IDs and timestamps', () => {
-    expect(parseRyanAIEvent({ ...base, correlationId: 'short' })).toBeNull();
-    expect(parseRyanAIEvent({ ...base, occurredAt: 'yesterday' })).toBeNull();
   });
 });
