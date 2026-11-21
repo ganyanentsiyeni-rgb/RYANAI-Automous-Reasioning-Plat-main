@@ -5,10 +5,12 @@ import {
   getCommsAttachmentDownloadUrl, getCommsAttachmentStatuses, getCommsConversations,
   getCommsStatus, prepareCommsAttachments, requestCommsApproval, getCommsApprovalStatus,
   sendCommsMessage, assistCommsConversation, uploadCommsAttachment, publishPhoneLinkEvent,
+  sendInAppCommsMessage, getInAppCommsReply,
   type CommsAttachment, type CommsChannel, type CommsConversation, type CommsStatus,
 } from '@/lib/commsApi';
 
 const channels: { id: CommsChannel; label: string; icon: typeof MessageCircle }[] = [
+  { id: 'in_app', label: 'RyanAI chat', icon: MessageCircle },
   { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
   { id: 'sms', label: 'SMS', icon: MessageCircle },
   { id: 'voice', label: 'Voice call', icon: Phone },
@@ -156,6 +158,26 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
     setError('');
     setNotice('');
     try {
+      if (channel === 'in_app') {
+        if (selectedFiles.length || attachmentIds.length) throw new Error('File attachments are not enabled for private in-app chat yet.');
+        let outcome = await sendInAppCommsMessage({ message: message.trim(), idempotencyKey }, userId);
+        for (let attempt = 0; outcome.status === 'processing' && outcome.messageId && attempt < 20; attempt += 1) {
+          await new Promise(resolve => window.setTimeout(resolve, 1500));
+          outcome = await getInAppCommsReply(outcome.messageId, userId);
+        }
+        setNotice(outcome.status === 'replied'
+          ? 'RyanAI has replied. Your private conversation has been saved.'
+          : 'Your message is saved. RyanAI is still processing it; the conversation will show the reply when the AgentRun completes.');
+        setMessage('');
+        setSelectedFiles([]);
+        setAttachmentIds([]);
+        setAttachmentStatuses([]);
+        setApprovalId('');
+        setApprovalStatus('');
+        startNewDraft();
+        await refresh();
+        return;
+      }
       let currentIds = attachmentIds;
 
       if (
@@ -327,7 +349,7 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-cyan-300">Unified communications</p>
           <h1 id="comms-title" className="mt-2 text-2xl font-semibold text-white sm:text-3xl">RyanAI Comms</h1>
-          <p className="mt-2 max-w-2xl text-sm text-slate-400">WhatsApp, SMS, voice and email through one authenticated API and durable conversation history.</p>
+          <p className="mt-2 max-w-2xl text-sm text-slate-400">Private in-app chat with RyanAI, plus WhatsApp, SMS, voice and email through one authenticated API and durable conversation history.</p>
           <a href="#/phonelink" className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-cyan-300 hover:text-cyan-200"><Smartphone className="h-4 w-4" /> Manage PhoneLink destinations</a>
         </div>
         <button type="button" onClick={() => void refresh()} disabled={loading} className="inline-flex items-center gap-2 rounded-lg border border-cyan-400/30 px-3 py-2 text-sm text-cyan-200 hover:bg-cyan-400/10 disabled:opacity-50">
@@ -345,7 +367,7 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
       {status && !communicationsEnabled && (
         <div role="status" aria-live="polite" className="rounded-xl border border-amber-300/20 bg-amber-300/[0.04] p-4 text-sm text-amber-100">
           <p className="font-semibold">Outbound Comms is currently disabled by the server configuration.</p>
-          <p className="mt-1 text-xs text-amber-100/70">Conversation history and the Comms workspace remain available. Provider credentials and explicit outbound test authorization are separate gates and are not enabled by this UI.</p>
+          <p className="mt-1 text-xs text-amber-100/70">Private in-app chat remains available. External provider credentials and explicit outbound test authorization are separate gates and are not enabled by this UI.</p>
         </div>
       )}
 
@@ -434,7 +456,7 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
             {visibleConversations.map((conversation) => (
               <button key={conversation.id} type="button" onClick={() => setActiveId(conversation.id)} className={`block w-full border-b border-white/5 p-4 text-left hover:bg-white/5 ${activeId === conversation.id ? 'bg-cyan-400/10' : ''}`}>
                 <span className="flex items-center justify-between gap-2 text-xs uppercase tracking-wide text-cyan-200">
-                  {conversation.channel}<span className="truncate text-slate-500 normal-case">{conversation.externalAddress}</span>
+                  {conversation.channel === 'in_app' ? 'RyanAI chat' : conversation.channel}<span className="truncate text-slate-500 normal-case">{conversation.externalAddress}</span>
                 </span>
                 <span className="mt-2 block truncate text-sm text-slate-200">{conversation.messages.at(-1)?.body ?? 'No message content'}</span>
                 <span className="mt-1 block text-[11px] text-slate-500">{dateLabel(conversation.updatedAt)}</span>
@@ -446,7 +468,7 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
         <div className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-white/10 bg-slate-900/60">
           <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
             <div>
-              <h2 className="text-sm font-semibold text-white">{active ? active.channel.toUpperCase() : 'Conversation timeline'}</h2>
+              <h2 className="text-sm font-semibold text-white">{active ? (active.channel === 'in_app' ? 'RYANAI CHAT' : active.channel.toUpperCase()) : 'Conversation timeline'}</h2>
               <p className="text-xs text-slate-500">{active?.externalAddress ?? 'Select a conversation to inspect its history'}</p>
             </div>
             <span className="inline-flex items-center gap-1 text-[11px] text-slate-400"><ShieldCheck className="h-3.5 w-3.5 text-cyan-300" /> Owner-only history</span>
@@ -479,21 +501,21 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
                   {channels.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
                 </select>
               </label>
-              <label className="space-y-1 text-xs text-slate-400">Recipient (optional; defaults to owner)
+              {channel !== 'in_app' && <label className="space-y-1 text-xs text-slate-400">Recipient (optional; defaults to owner)
                 <input value={recipient} disabled={reviewing || sending} onChange={(event) => { setRecipient(event.target.value); startNewDraft(); }} placeholder={channel === 'email' ? 'name@example.com' : '+27…'} className="w-full rounded-lg border border-white/10 bg-slate-900 p-2 text-sm text-white" />
-              </label>
+              </label>}
             </div>
             {channel === 'email' && <label className="block space-y-1 text-xs text-slate-400">Subject
               <input value={subject} disabled={reviewing || sending} onChange={(event) => { setSubject(event.target.value); startNewDraft(); }} maxLength={180} placeholder="RyanAI update" className="w-full rounded-lg border border-white/10 bg-slate-900 p-2 text-sm text-white" />
             </label>}
             <label className="block space-y-1 text-xs text-slate-400">Message
-              <textarea value={message} disabled={reviewing || sending} onChange={(event) => { setMessage(event.target.value); startNewDraft(); }} required maxLength={4000} rows={3} placeholder="Write a message for RyanAI to send…" className="w-full resize-y rounded-lg border border-white/10 bg-slate-900 p-3 text-sm text-white placeholder:text-slate-600" />
+              <textarea value={message} disabled={reviewing || sending} onChange={(event) => { setMessage(event.target.value); startNewDraft(); }} required maxLength={4000} rows={3} placeholder={channel === 'in_app' ? 'Message RyanAI privately…' : 'Write a message for RyanAI to send…'} className="w-full resize-y rounded-lg border border-white/10 bg-slate-900 p-3 text-sm text-white placeholder:text-slate-600" />
             </label>
             <div className="space-y-2">
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5">
+              {channel !== 'in_app' && <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/5">
                 <Paperclip className="h-4 w-4 text-cyan-300" /> Attach files
                 <input type="file" multiple disabled={sending || reviewing || channel === 'voice'} accept="image/png,image/jpeg,image/gif,image/webp,video/mp4,video/webm,audio/mpeg,audio/wav,audio/ogg,audio/mp4,application/pdf,text/plain,text/markdown,text/csv,application/json,application/xml,application/zip,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation" className="sr-only" onChange={(event) => { setSelectedFiles(Array.from(event.target.files ?? [])); setAttachmentIds([]); setAttachmentStatuses([]); setIdempotencyKey(crypto.randomUUID()); }} />
-              </label>
+              </label>}
               {selectedFiles.length > 0 && <div className="space-y-1 rounded-lg border border-white/10 p-2">
                 {selectedFiles.map((file, index) => <p key={index} className="truncate text-xs text-slate-400">{file.name} · {Math.ceil(file.size / 1024)} KB</p>)}
               </div>}
@@ -513,9 +535,9 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
               </div>
             </div>}
             {reviewing && <div role="status" aria-label="Message review" className="rounded-lg border border-amber-300/20 bg-amber-300/[0.04] p-3 text-xs text-amber-100">
-              <p className="font-semibold">Review before dispatch</p>
-              <p className="mt-1 text-amber-100/75">Check the channel, recipient and exact message. This creates a pending request only. RyanAI waits for your separate, verified Comms reply before dispatch.</p>
-              <p className="mt-2 break-all text-slate-200">Channel: {channel} · Recipient: {recipient.trim() || 'Owner default'}</p>
+              <p className="font-semibold">{channel === 'in_app' ? 'Send private message to RyanAI' : 'Review before dispatch'}</p>
+              <p className="mt-1 text-amber-100/75">{channel === 'in_app' ? 'This message stays in your owner-only RyanAI conversation and is processed through a durable AgentRun. No external provider message is sent.' : 'Check the channel, recipient and exact message. This creates a pending request only. RyanAI waits for your separate, verified Comms reply before dispatch.'}</p>
+              {channel !== 'in_app' && <p className="mt-2 break-all text-slate-200">Channel: {channel} · Recipient: {recipient.trim() || 'Owner default'}</p>}
               {channel === 'email' && subject.trim() && <p className="mt-1 text-slate-300">Subject: {subject}</p>}
               <p className="mt-2 whitespace-pre-wrap break-words text-slate-100">{message}</p>
             </div>}
@@ -524,13 +546,13 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
               {reviewing ? (
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <button type="button" onClick={() => setReviewing(false)} disabled={sending} className="rounded-lg border border-white/15 px-3 py-2 text-xs text-slate-300 hover:bg-white/5 disabled:opacity-50">Back to edit</button>
-                  <button type="button" onClick={() => void dispatchReviewedMessage()} disabled={sending || !message.trim() || !communicationsEnabled} className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50">
-                    <ShieldCheck className="h-4 w-4" />{sending ? 'Working…' : communicationsEnabled ? 'Request owner approval' : 'Outbound disabled'}
+                  <button type="button" onClick={() => void dispatchReviewedMessage()} disabled={sending || !message.trim() || (channel !== 'in_app' && !communicationsEnabled)} className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50">
+                    <ShieldCheck className="h-4 w-4" />{sending ? 'Working…' : channel === 'in_app' ? 'Send to RyanAI' : communicationsEnabled ? 'Request owner approval' : 'Outbound disabled'}
                   </button>
                 </div>
               ) : (
-                <button type="submit" disabled={sending || !message.trim() || !communicationsEnabled} className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50">
-                  <Send className="h-4 w-4" />Review message
+                <button type="submit" disabled={sending || !message.trim() || (channel !== 'in_app' && !communicationsEnabled)} className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50">
+                  <Send className="h-4 w-4" />{channel === 'in_app' ? 'Chat with RyanAI' : 'Review message'}
                 </button>
               )}
             </div>
