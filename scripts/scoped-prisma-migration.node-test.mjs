@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import {
   PRODUCTION_MIGRATION_ALLOWLIST,
   PRODUCTION_MIGRATION_EXCLUSIONS,
+  assertAppliedMigrationChecksumsMatch,
   assertOnlyApprovedMigrationPending,
   stageApprovedPrismaMigration,
 } from '../src/db/scopedPrismaMigration.ts';
@@ -95,4 +96,35 @@ test('staging preserves historical migrations but omits excluded coding queue DD
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+
+test('production preflight verifies checksums for every successfully applied migration', () => {
+  assert.doesNotThrow(() => assertAppliedMigrationChecksumsMatch({
+    localMigrationChecksums: {
+      [WORKBENCH]: 'a'.repeat(64),
+      [CODING_QUEUE]: 'b'.repeat(64),
+    },
+    appliedMigrationRecords: [
+      { migration_name: WORKBENCH, checksum: 'a'.repeat(64) },
+    ],
+  }));
+});
+
+test('production preflight rejects an applied migration whose SQL checksum drifted', () => {
+  assert.throws(() => assertAppliedMigrationChecksumsMatch({
+    localMigrationChecksums: { [WORKBENCH]: 'a'.repeat(64) },
+    appliedMigrationRecords: [
+      { migration_name: WORKBENCH, checksum: 'b'.repeat(64) },
+    ],
+  }), /checksum differs from this checkout/);
+});
+
+test('production preflight rejects applied history absent from the local migration set', () => {
+  assert.throws(() => assertAppliedMigrationChecksumsMatch({
+    localMigrationChecksums: {},
+    appliedMigrationRecords: [
+      { migration_name: 'migration_not_in_checkout', checksum: 'a'.repeat(64) },
+    ],
+  }), /missing from this checkout/);
 });
