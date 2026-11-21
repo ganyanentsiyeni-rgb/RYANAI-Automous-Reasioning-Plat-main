@@ -15,7 +15,7 @@ class BreakingSchemaGuardTests(unittest.TestCase):
     def test_normalizes_only_identical_duplicate_baseline_models(self):
         dispatch = (
             "model OutboundCommsDispatch {\n"
-            "  communicationMessage CommunicationMessage @relation(fields: [communicationMessageId], references: [id], onDelete: Cascade)\n"
+            "  communicationMessage   CommunicationMessage     @relation(fields: [communicationMessageId], references: [id], onDelete: Cascade)\n"
             "}\n"
         )
         receipt = (
