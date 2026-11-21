@@ -19,8 +19,8 @@ WHERE status = 'running'
   AND lease_expires_at IS NULL;
 
 UPDATE public.coding_tasks
-SET heartbeat_at = COALESCE(heartbeat_at, locked_at)
-WHERE locked_at IS NOT NULL
+SET heartbeat_at = COALESCE(locked_at, NOW())
+WHERE status = 'running'
   AND heartbeat_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS agent_runs_status_next_attempt_lease_idx
