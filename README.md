@@ -6,13 +6,13 @@ RyanAI is an AI-assisted, human-governed engineering and operations platform. It
 
 This README describes the application and contracts present in this repository. It does not claim that every integration is connected, every workflow is passing, or every service is deployed. A source file, configured provider, queued job, green unit test, or healthy process is not by itself proof of end-to-end production readiness.
 
-**Documentation baseline (19 November 2026):** implementation notes and links below are reconciled against the official repository's current mainline through PR #283. The README is an index and summary; the relevant source, migration, runbook, workflow, and pull-request evidence remains authoritative. Current main SHA: `ff0e33b8792c6d851d039c1e01b224a3e4fd8903`.
+**Documentation baseline (21 November 2026):** implementation notes and links below are reconciled against the accessible canonical mainline through the latest verified repository commits. The README is an index and summary; the relevant source, migration, runbook, workflow, and pull-request evidence remains authoritative. Current main SHA: `eb7171b88ba47513b20c6a84577c61db62add6c1`.
 
 ## Contents
 
 - [Product overview](#product-overview)
-- [Implementation record — 18–19 November 2026](#implementation-record--1819-november-2026)
-- [Current readiness notes — 19 November 2026](#current-readiness-notes--19-november-2026)
+- [Implementation record — 18–21 November 2026](#implementation-record--1821-november-2026)
+- [Current readiness notes — 21 November 2026](#current-readiness-notes--21-november-2026)
 - [Architecture](#architecture)
 - [Mission-centric target architecture](#mission-centric-target-architecture)
 - [Core workspaces](#core-workspaces)
@@ -482,7 +482,7 @@ Verify the server-side endpoint, model identifier, key presence (never its value
 
 A registered integration or paired-device record is not proof of live delivery or device connectivity. Verify the provider callback, owner/destination, device identity, and explicit test authorization before live tests.
 
-## Implementation record — 18–19 November 2026
+## Implementation record — 18–21 November 2026
 
 This section records merged work in the repository history. A merged code change is not, by itself, evidence of a successful deployment, completed database operation, provider connection, or end-to-end production verification.
 
@@ -551,7 +551,35 @@ This section records merged work in the repository history. A merged code change
 
 Use the [repository pull-request history](https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main/pulls?q=is%3Apr+is%3Amerged+created%3A2026-11-18..2026-11-19) to inspect exact diffs, reviews, checks, and timestamps. This summary does not replace exact-head evidence.
 
-## Current readiness notes — 19 November 2026
+### 20–21 November 2026 — resilience, recovery, durable events, and realtime
+
+The latest mainline work materially extends the operational control plane and realtime architecture. These changes are implementation work, not proof of production deployment or end-to-end operational readiness.
+
+- **PR #517:** adds the Admin backup/recovery control plane, including owner-gated backup execution, read-only backup inventory and retention preview, isolated recovery-target validation, audit coverage, and an owner-only self-patch panel. Backup execution remains explicitly owner-gated.
+- **PR #520:** isolates Comms replay cursors per channel so one channel cannot advance another channel's replay position.
+- **PR #521–#525:** repairs and consolidates the Admin resilience/maintenance lifecycle, including owner-authorized audited maintenance requests, lifecycle state, route registration, and resilience-panel behavior.
+- **PR #524 and #526:** add the durable audience-scoped event store required for persist-before-publish and channel/audience-aware replay.
+- **PR #527:** bridges authenticated WebSocket replay to durable events, including replay ordering, bigint cursor precision, live-event buffering during replay, failure release, bounded backlog, and regression coverage.
+- **PR #528:** repairs the Admin Resilience TypeScript build by explicitly typing Prisma JSON resilience details and backup-manifest parsing.
+- **Current engineering direction:** backup inventory parsing/failure handling and recovery-target comparison receive focused service-level regression coverage before the next review request. Targeted tests and API typecheck must be evaluated against the exact resulting commit.
+
+These changes advance RyanAI's resilience, recovery, realtime, and administrative-control capabilities, but they do not by themselves establish that backups have been executed, a recovery has been performed, PostgreSQL has been restored, live WebSocket clients are healthy, or production services are ready.
+
+## Current readiness notes — 21 November 2026
+
+The current mainline contains substantial additional resilience, recovery, maintenance, and realtime implementation compared with the 19 November baseline. The following limitations remain important when interpreting repository state:
+
+- **Current main SHA:** `eb7171b88ba47513b20c6a84577c61db62add6c1` (`fix(admin): restore Admin Resilience TypeScript build (#528)`). This is the exact head used for this README update.
+- **CI evidence:** the GitHub combined-status endpoint currently returns no status entries for this exact head. Therefore the README does **not** claim that CI/security checks are green. Re-check the exact commit's workflow runs and individual job conclusions before merge or release. Unknown, queued, skipped, cancelled, missing, or provider-blocked evidence is not a pass.
+- **Frontend/backend stabilization:** the immediate engineering priority remains stabilizing the existing frontend and backend builds before jumping to unrelated product work. A successful source merge or isolated build is not proof of end-to-end runtime readiness.
+- **Database readiness:** PostgreSQL connectivity, migration ownership/order, LangGraph checkpoint readiness, and application database health must be verified independently. Redis connectivity alone does not establish database or checkpointer readiness.
+- **Resilience and recovery:** the Admin control plane now contains owner-gated backup/recovery capabilities and read-only inventory/recovery validation. These features must not be described as a completed disaster-recovery exercise until an authorized backup, isolated restore/validation, integrity verification, and evidence receipt have actually completed.
+- **Self-patching and maintenance:** self-patch proposals and maintenance lifecycle controls are owner-authorized and audited. They do not grant an agent autonomous authority to modify production infrastructure, secrets, databases, or deployments.
+- **Realtime:** durable audience-scoped events and authenticated replay are implemented in mainline. Production readiness still requires runtime verification of persistence, replay ordering, reconnect behavior, channel isolation, failure handling, and operational observability.
+- **Communications:** Comms can remain available with outbound dispatch disabled. Provider credentials, callback verification, owner/destination verification, explicit test authorization, approval, and delivery callbacks remain separate gates.
+- **Deployment:** Render and Railway configuration remain repository contracts. No README statement authorizes a deployment, Blueprint sync, production migration, infrastructure mutation, secret change, paid upgrade, or live external communication.
+- **Vercel:** Vercel is not part of the current RyanAI hosting architecture described by this README.
+- **Governance:** focused repair PRs may proceed only as scoped branches with required CI/security evidence and human review. Do not enable automatic merge or bypass required checks.
 
 The following limitations are important when interpreting repository state:
 
