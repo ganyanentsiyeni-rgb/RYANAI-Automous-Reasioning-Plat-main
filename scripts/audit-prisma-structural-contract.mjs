@@ -87,6 +87,8 @@ const INDEX_CONTRACTS = [
   ['agent_brain_health_brain_key', 'agent_brain_health', 'unique (brain)'],
 ];
 
+const PK_CONTRACTS = ['users', 'agent_runs', 'coding_tasks', 'agent_handoffs', 'agent_brain_health'];
+
 const FK_CONTRACTS = [
   ['agent_runs_user_id_fkey', 'agent_runs', 'foreign key (user_id) references users(id)', 'cascade', 'cascade'],
   ['coding_tasks_user_id_fkey', 'coding_tasks', 'foreign key (user_id) references users(id)', 'cascade', 'no action'],
@@ -171,6 +173,14 @@ export function assessStructuralContract(snapshot) {
     finding(findings, 'index public.' + table + '.' + name, definition, row?.indexdef ?? null, Boolean(row), matches);
   }
 
+  for (const table of PK_CONTRACTS) {
+    const name = table + '_pkey';
+    const row = constraintMap.get(name);
+    const actual = normalize(row?.definition);
+    const matches = Boolean(row) && row.table_name === table && row.contype === 'p' && actual === 'primary key (id)';
+    finding(findings, 'primary_key public.' + table + '.' + name, 'PRIMARY KEY (id)', row?.definition ?? null, Boolean(row), matches);
+  }
+
   for (const [name, table, definition, onDelete, onUpdate] of FK_CONTRACTS) {
     const row = constraintMap.get(name);
     const actual = normalize(row?.definition);
@@ -219,10 +229,16 @@ export function assessStructuralContract(snapshot) {
     const privileges = grants.filter((row) => row.table_name === 'users' && row.grantee === role).map((row) => row.privilege_type);
     finding(findings, 'grant public.users to ' + role, 'no table privileges', privileges, true, privileges.length === 0);
   }
-  const servicePrivileges = ['SELECT', 'INSERT', 'UPDATE', 'DELETE'];
+  const servicePrivileges = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'];
   finding(findings, 'grant public.users to service_role', 'service_role has SELECT, INSERT, UPDATE, DELETE',
     servicePrivileges.filter((privilege) => hasGrant('service_role', privilege)), true,
     servicePrivileges.every((privilege) => hasGrant('service_role', privilege)));
+
+  const functionGrants = snapshot.functionGrants ?? [];
+  for (const role of ['PUBLIC', 'anon', 'authenticated']) {
+    const privileges = functionGrants.filter((row) => row.grantee === role).map((row) => row.privilege_type);
+    finding(findings, 'execute public.sync_ryanai_auth_user for ' + role, 'EXECUTE revoked', privileges, true, privileges.length === 0);
+  }
 
   const counts = {
     matching: findings.filter((item) => item.status === 'matching').length,
@@ -298,7 +314,7 @@ async function main() {
   const client = await pool.connect();
   try {
     await client.query('BEGIN READ ONLY');
-    const [tables, columns, indexes, constraints, triggers, functions, grants] = await Promise.all([
+    const [tables, columns, indexes, constraints, triggers, functions, grants, functionGrants] = await Promise.all([
       client.query("SELECT c.relname AS table_name, c.relkind, c.relrowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname = ANY($1::text[])", [TABLES]),
       client.query("SELECT c.relname AS table_name, a.attname AS column_name, pg_catalog.format_type(a.atttypid,a.atttypmod) AS formatted_type, NOT a.attnotnull AS is_nullable, pg_catalog.pg_get_expr(d.adbin,d.adrelid) AS column_default FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE n.nspname='public' AND c.relname = ANY($1::text[]) AND a.attnum>0 AND NOT a.attisdropped", [TABLES]),
       client.query("SELECT tablename, indexname, indexdef FROM pg_catalog.pg_indexes WHERE schemaname='public' AND tablename = ANY($1::text[])", [TABLES]),
@@ -306,10 +322,11 @@ async function main() {
       client.query("SELECT tg.tgname, ns.nspname AS table_schema, cls.relname AS table_name, pg_catalog.pg_get_triggerdef(tg.oid,true) AS definition, tg.tgenabled FROM pg_catalog.pg_trigger tg JOIN pg_catalog.pg_class cls ON cls.oid=tg.tgrelid JOIN pg_catalog.pg_namespace ns ON ns.oid=cls.relnamespace WHERE NOT tg.tgisinternal AND ns.nspname='auth' AND cls.relname='users' AND tg.tgname = ANY($1::text[])", [TRIGGER_CONTRACTS.map(([name]) => name)]),
       client.query("SELECT p.proname, pg_catalog.pg_get_functiondef(p.oid) AS function_definition, p.proconfig FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname='sync_ryanai_auth_user'"),
       client.query("SELECT c.relname AS table_name, CASE WHEN acl.grantee=0 THEN 'PUBLIC' ELSE r.rolname END AS grantee, acl.privilege_type FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(c.relacl, pg_catalog.acldefault('r',c.relowner))) acl LEFT JOIN pg_catalog.pg_roles r ON r.oid=acl.grantee WHERE n.nspname='public' AND c.relname='users'"),
+      client.query("SELECT CASE WHEN acl.grantee=0 THEN 'PUBLIC' ELSE r.rolname END AS grantee, acl.privilege_type FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(p.proacl, pg_catalog.acldefault('f',p.proowner))) acl LEFT JOIN pg_catalog.pg_roles r ON r.oid=acl.grantee WHERE n.nspname='public' AND p.proname='sync_ryanai_auth_user'"),
     ]);
     const structural = assessStructuralContract({
       tables: tables.rows, columns: columns.rows, indexes: indexes.rows, constraints: constraints.rows,
-      triggers: triggers.rows, functions: functions.rows, grants: grants.rows,
+      triggers: triggers.rows, functions: functions.rows, grants: grants.rows, functionGrants: functionGrants.rows,
     });
     const migration = assessMigrationSourceContracts({ authBridge, codingQueue, queueCorrection, leaseHeartbeat });
     await client.query('COMMIT');
