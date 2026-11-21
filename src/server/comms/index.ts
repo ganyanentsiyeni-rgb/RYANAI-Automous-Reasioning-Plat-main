@@ -5,7 +5,7 @@ import formbody from '@fastify/formbody';
 import rawBody from 'fastify-raw-body';
 import { Resend } from 'resend';
 import { humanInTheLoopAgent } from '../../agent/approvalEngine.js';
-import { beginOutboundCommunication, claimInboundCommunication, completeOutboundCommunication, markOutboundCommunicationUnknown, OutboundIdempotencyConflictError, prepareOutboundCommunication, recordCommunication, updateCommunicationStatus } from './history.js';
+import { beginOutboundCommunication, claimInboundCommunication, completeOutboundCommunication, markOutboundCommunicationUnknown, OutboundIdempotencyConflictError, prepareOutboundCommunication, recordCommunication } from './history.js';
 import { addressOwnerMessage, getOwnerGreeting } from './personalization.js';
 import { createCommsUploadIntents, createCommsStorageAdmin, cleanCommsAttachmentUrls, downloadResendMedia, getCommsAttachmentScanStates, getCommsAttachmentStatuses, getOwnerInboundUserId, storeInboundCommsAttachment, storeTwilioMediaForCommunication } from './attachments.js';
 import { addressOwnerResponse, ownerCommunicationInstruction, RYANAI_LOCALE } from '../../shared/ryanIdentity.js';
@@ -514,21 +514,6 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       reply.type('text/xml');
       return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>RyanAI is temporarily unavailable. Please try again later.</Message></Response>`;
     }
-  });
-
-  fastify.post('/api/webhooks/twilio/status', { preHandler: webhookAuth('TWILIO_STATUS_WEBHOOK_URL') }, async (request) => {
-    const body = request.body as Record<string, string>;
-    const providerId = body.MessageSid || body.CallSid;
-    const status = body.MessageStatus || body.CallStatus;
-    if (providerId && status) {
-      await updateCommunicationStatus(fastify.prisma, providerId, status);
-      await fastify.prisma.$executeRawUnsafe(
-        `UPDATE public.comms_send_approvals SET provider_status = $2, updated_at = NOW()
-          WHERE provider_message_id = $1`,
-        providerId, status,
-      );
-    }
-    return { received: true };
   });
 
   fastify.post('/api/webhooks/resend/inbound', {
