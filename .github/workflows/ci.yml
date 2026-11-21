@@ -57,8 +57,8 @@ jobs:
           CLOUDFLARE_TUNNEL_TOKEN: ci-only-cloudflare-placeholder
         run: docker compose --file docker-compose.yml config --quiet
 
-      - name: Test read-only Prisma migration ledger audit
-        run: node --test scripts/audit-prisma-migration-readiness.node-test.mjs
+      - name: Test read-only Prisma migration and structural contract audits
+        run: node --test scripts/audit-prisma-migration-readiness.node-test.mjs scripts/audit-prisma-structural-contract.node-test.mjs
 
       - name: Install all standalone Node.js workspaces
         run: npm --prefix mcp-server ci --include=dev && npm --prefix workflows-ryanai ci --include=dev
