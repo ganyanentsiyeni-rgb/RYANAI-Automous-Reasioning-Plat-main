@@ -25,7 +25,7 @@ describe('RyanAI account control centre', () => {
   it('keeps the menu destinations connected to existing RyanAI routes and settings sections', () => {
     expect(ACCOUNT_CONTROL_LINKS.map(link => link.href)).toEqual([
       '#/settings',
-      '#/settings',
+      '#/settings?section=copilot-behavior-settings-title',
       '#/settings?section=account-security-title',
       '#/settings?section=github-settings-title',
       '#/survey',
