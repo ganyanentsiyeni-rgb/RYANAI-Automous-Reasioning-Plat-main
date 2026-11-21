@@ -8,7 +8,7 @@
 - Sensitive purposes require an already-established Supabase aal2 session. Supabase TOTP enrollment/challenge/verify remains the route to Supabase MFA assurance.
 
 ## Gate 1: purpose contract
-verificationPolicy.ts defines signup, login, account recovery, email change, phone change, new device, sensitive account change, and admin access. It enforces authenticated/pre-auth boundaries, actor-to-user ownership, admin role, and existing aal2 for sensitive purposes.
+verificationPolicy.ts defines signup, login, account recovery, email change, phone change, new device, sensitive account change, and admin access. It enforces authenticated/pre-auth boundaries, actor-to-user ownership, admin role, and existing aal2 for sensitive purposes. The existing Supabase middleware now calls getUser for the live identity and getClaims to cryptographically verify the JWT and attach only its aal1/aal2 claim to request.authUser; claim subject mismatch or unavailable claims fail closed.
 
 Pre-auth routes must generate an opaque server-side flow ID for subjectId; authenticated routes must set subjectId === userId from request.authUser.
 
