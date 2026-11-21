@@ -69,7 +69,7 @@ const adminHeaders = { 'x-test-user': 'admin-1', 'x-test-role': 'admin' };
 describe('Admin resilience routes', () => {
   it('registers one maintenance read route and one maintenance write route', async () => {
     const routes = app.printRoutes();
-    expect(routes).toContain('/api/admin/resilience/maintenance');
+    expect(routes).toMatch(/maintenance \(GET, HEAD, POST\)/);
   });
 
   it('exposes resilience status and keeps production restore disabled', async () => {
