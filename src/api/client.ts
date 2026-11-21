@@ -94,6 +94,9 @@ export class RyanAIClient {
     };
     this.offlineListener = () => {
       this.browserOnline = false;
+      // A retry scheduled before the browser went offline must not race the
+      // online event and create a duplicate socket when connectivity returns.
+      this.clearReconnectTimer();
       this.connectionState.value = 'offline';
     };
 

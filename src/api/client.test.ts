@@ -36,6 +36,8 @@ class MockWebSocket {
 describe('RyanAIClient transport continuity', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    // Reconnect delay includes jitter; keep timer assertions deterministic.
+    vi.spyOn(Math, 'random').mockReturnValue(0);
     MockWebSocket.instances = [];
     vi.stubGlobal('WebSocket', MockWebSocket);
     Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
@@ -103,10 +105,12 @@ describe('RyanAIClient transport continuity', () => {
     first.open();
     await connection;
 
+    // Closing while online schedules a retry. Going offline must cancel it.
+    first.close();
+    expect(client.connectionState.value).toBe('reconnecting');
     window.dispatchEvent(new Event('offline'));
     expect(client.connectionState.value).toBe('offline');
 
-    first.close();
     await vi.advanceTimersByTimeAsync(500);
     expect(MockWebSocket.instances).toHaveLength(1);
 
