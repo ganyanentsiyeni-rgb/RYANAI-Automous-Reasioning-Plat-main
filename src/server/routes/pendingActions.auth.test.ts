@@ -43,7 +43,7 @@ async function createApp() {
 beforeEach(() => {
   vi.stubEnv('SUPABASE_URL', 'https://synthetic-project.supabase.co');
   vi.stubEnv('SUPABASE_PUBLISHABLE_KEY', 'synthetic-publishable-key');
-  createContextClient.mockReturnValue({ auth: { getUser } });
+  createContextClient.mockReturnValue({ auth: { getUser, getClaims: vi.fn().mockResolvedValue({ data: { claims: { sub: 'verified-admin-id', aal: 'aal2' } }, error: null }) } });
   getUser.mockResolvedValue({ data: { user: identity('admin') }, error: null });
   listOpenActions.mockResolvedValue([]);
   decideAction.mockResolvedValue({ outcome: 'executed', result: 'synthetic-only' });
@@ -76,6 +76,8 @@ describe('real administrator guard for pending approval actions', () => {
       data: { user: identity('user') },
       error: null
     });
+    const context = createContextClient.mock.results.at(-1)?.value;
+    context.auth.getClaims.mockResolvedValue({ data: { claims: { sub: 'verified-user-id', aal: 'aal2' } }, error: null });
     const app = await createApp();
     const response = await app.inject({
       method: 'POST', url: `/api/actions/${actionId}/approve`, headers: bearer
