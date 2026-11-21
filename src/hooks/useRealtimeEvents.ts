@@ -33,7 +33,7 @@ function websocketUrl(baseUrl?: string): string {
   return url.toString();
 }
 
-function canonicalCursor(value: unknown): string | null {
+export function canonicalCursor(value: unknown): string | null {
   if (typeof value === 'number') {
     if (!Number.isSafeInteger(value) || value < 0) return null;
     return String(value);
@@ -42,7 +42,7 @@ function canonicalCursor(value: unknown): string | null {
   return value;
 }
 
-function cursorKey(channel: string): string {
+export function cursorKey(channel: string): string {
   return `ryanai:realtime-cursor:${channel}`;
 }
 
