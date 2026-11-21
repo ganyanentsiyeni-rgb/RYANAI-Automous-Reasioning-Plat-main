@@ -88,7 +88,16 @@ export class RyanAIClient {
     this.browserOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
     this.onlineListener = () => {
       this.browserOnline = true;
-      if (!this.manualDisconnect && !this.connected.value) {
+      // Connectivity restoration supersedes any backoff retry. Do not race a
+      // still-opening socket or create a second connection attempt.
+      this.clearReconnectTimer();
+      const socketState = this.ws?.readyState;
+      if (
+        !this.manualDisconnect
+        && !this.connected.value
+        && socketState !== WebSocket.CONNECTING
+        && socketState !== WebSocket.OPEN
+      ) {
         void this.connect();
       }
     };
@@ -161,6 +170,8 @@ export class RyanAIClient {
         };
 
         socket.onclose = () => {
+          // Ignore late lifecycle events from a socket superseded by a newer one.
+          if (this.ws !== socket) return;
           this.connected.value = false;
           this.authenticated.value = false;
 
