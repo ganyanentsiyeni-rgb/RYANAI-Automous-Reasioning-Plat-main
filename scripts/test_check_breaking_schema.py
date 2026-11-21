@@ -20,8 +20,8 @@ class BreakingSchemaGuardTests(unittest.TestCase):
         )
         receipt = (
             "model CommsDeliveryReceipt {\n"
-            "  dispatch OutboundCommsDispatch @relation(fields: [dispatchId], references: [id], onDelete: Cascade)\n"
-            "  communicationMessageId String @map(\"communication_message_id\")\n"
+            "  dispatch               OutboundCommsDispatch @relation(fields: [dispatchId], references: [id], onDelete: Cascade)\n"
+            "  communicationMessageId String                @map(\"communication_message_id\")\n"
             "  providerMessageId String\n"
             "}\n"
         )
