@@ -52,7 +52,7 @@
     "db:audiobook:status": "prisma migrate status --schema=prisma/audiobook/schema.prisma",
     "db:audiobook:migrate": "prisma migrate deploy --schema=prisma/audiobook/schema.prisma",
     "db:migration:audit": "node scripts/audit-prisma-migration-readiness.mjs",
-    "test:migration:audit": "node --test scripts/audit-prisma-migration-readiness.node-test.mjs scripts/langgraph-checkpoint-schema.node-test.mjs && npm run test:migration:scope",
+    "test:migration:audit": "node --test scripts/audit-prisma-migration-readiness.node-test.mjs scripts/audit-prisma-structural-contract.node-test.mjs scripts/langgraph-checkpoint-schema.node-test.mjs && npm run test:migration:scope",
     "test:migration:scope": "node --import tsx --test scripts/scoped-prisma-migration.node-test.mjs",
     "db:push": "prisma db push",
     "db:migrate": "node --import tsx/esm src/db/migrate.ts",
@@ -171,7 +171,8 @@
     "worker:studio": "tsx scripts/ryanai-studio-worker.ts",
     "dns:verify:eu-org": "node scripts/verify-eu-org-dns.mjs",
     "test:dns:verify:eu-org": "node --test scripts/verify-eu-org-dns.node-test.mjs",
-    "prestart": "npm run build:server"
+    "prestart": "npm run build:server",
+    "db:structural:audit": "node scripts/audit-prisma-structural-contract.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1169.0",
