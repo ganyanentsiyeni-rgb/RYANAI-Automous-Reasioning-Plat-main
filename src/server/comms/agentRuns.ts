@@ -3,6 +3,8 @@ import { appendRunEvidence } from '../../agent/engineeringEvidence.js';
 import { captureQueueTraceContextForStorage } from '../../telemetry/queueContext.js';
 import { publishAgentTaskNotification } from '../../agent/queueNotifications.js';
 import { waitForAutonomousTask } from '../../agent/operations.js';
+import { dispatchAutonomousTask } from '../../agent/operations.js';
+import { createHash } from 'node:crypto';
 
 export class CommunicationRunOwnershipError extends Error {
   constructor() {
@@ -172,4 +174,31 @@ export async function waitForInboundCommunicationRun(
     }
     throw error;
   }
+}
+
+/** Queue owner-authenticated Comms assist through the same durable AgentRun worker.
+ * The request key is hashed into a stable run ID; replays must match owner and objective.
+ */
+export async function enqueueCommsAssistRun(input: {
+  ownerUserId: string;
+  idempotencyKey: string;
+  objective: string;
+}): Promise<{ runId: string; status: string; replayed: boolean }> {
+  if (!input.ownerUserId || !input.idempotencyKey || !input.objective) {
+    throw new Error('A verified owner, request idempotency key, and objective are required.');
+  }
+  const digest = createHash('sha256')
+    .update(input.ownerUserId)
+    .update(':')
+    .update(input.idempotencyKey)
+    .digest('hex');
+  const runId = `comms_assist_${digest}`;
+  const run = await dispatchAutonomousTask(
+    input.ownerUserId,
+    input.objective,
+    { eventKnown: false, snapshotFresh: false },
+    null,
+    runId,
+  );
+  return { runId: run.id, status: run.status, replayed: run.createdAt.getTime() < Date.now() - 1000 };
 }
