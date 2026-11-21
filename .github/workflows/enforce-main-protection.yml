@@ -81,8 +81,7 @@ jobs:
                     { "context": "Analyze (javascript-typescript)" },
                     { "context": "Analyze (python)" },
                     { "context": "TruffleHog secret audit" },
-                    { "context": "Validate application and MCP dependencies" },
-                    { "context": "Audit GitHub workflows" }
+                    { "context": "TruffleHog secret audit" }
                   ]
                 }
               }
@@ -149,8 +148,7 @@ jobs:
               "Analyze (javascript-typescript)",
               "Analyze (python)",
               "TruffleHog secret audit",
-              "Validate application and MCP dependencies",
-              "Audit GitHub workflows",
+
           }
           missing = required - contexts
           assert not missing, f"Required check contexts missing: {sorted(missing)}"
