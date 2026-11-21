@@ -80,6 +80,17 @@ describe('RyanAI Twilio Verify adapter', () => {
       .rejects.toBeInstanceOf(VerifyServiceError);
     expect(provider.start).not.toHaveBeenCalled();
   });
+  it('counts invalid codes and locks the challenge after five attempts', async () => {
+    provider.check = vi.fn().mockResolvedValue({ status: 'pending' });
+    await service.start({ actor, purpose: 'signup', channel: 'sms', destination: '+27821234567' });
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await expect(service.check({ actor, purpose: 'signup', challengeId, code: '000000' }))
+        .rejects.toMatchObject({ code: attempt === 4 ? 'max_attempts' : 'invalid_code' });
+    }
+    await expect(service.check({ actor, purpose: 'signup', challengeId, code: '000000' }))
+      .rejects.toMatchObject({ code: 'challenge_used' });
+    expect(provider.check).toHaveBeenCalledTimes(5);
+  });
   it('maps provider rate limits without leaking provider error data', async () => {
     provider.start = vi.fn().mockRejectedValue({ status: 429, message: 'private provider payload' });
     await expect(service.start({ actor, purpose: 'signup', channel: 'sms', destination: '+27821234567' }))
