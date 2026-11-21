@@ -291,7 +291,7 @@ describe('private RyanAI in-app Comms chat', () => {
     await app.register(commsPlugin);
     prismaMock.communicationMessage.create.mockResolvedValueOnce({ id: 'in-app-message-1' });
     prismaMock.communicationMessage.findUnique
-      .mockResolvedValueOnce({ metadata: { source: 'comms_in_app' } })
+      .mockResolvedValueOnce({ metadata: { source: 'comms_in_app' }, conversationId: 'conversation-1' })
       .mockResolvedValueOnce({
         id: 'in-app-reply-1',
         body: 'Certainly, Sir G. Your Comms chat is working.',
