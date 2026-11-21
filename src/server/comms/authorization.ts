@@ -58,6 +58,46 @@ function genXDecision(ownerUserId: string, payloadHash: string, channel: CommsCh
   });
 }
 
+/**
+ * Resolve one pending outbound action only after an authenticated owner reply
+ * arrives through the signed Twilio webhook. The decision is bound to the
+ * stored payload digest, owner identity, expiry and current Gen-X policy.
+ */
+export async function decideCommsApprovalFromOwner(
+  prisma: {
+    $queryRawUnsafe<T = unknown>(query: string, ...values: unknown[]): Promise<T>;
+    $executeRawUnsafe(query: string, ...values: unknown[]): Promise<number>;
+  },
+  ownerUserId: string,
+  approvalId: string,
+  decision: 'approve' | 'reject',
+): Promise<{ approvalId: string; status: 'approved' | 'rejected' }> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(approvalId)) {
+    throw new Error('invalid_approval_id');
+  }
+  const rows = await prisma.$queryRawUnsafe<Array<{ channel: CommsChannel; payload_hash: string }>>(
+    `SELECT channel, payload_hash FROM public.comms_send_approvals
+      WHERE id = $1::uuid AND owner_user_id = $2 AND status = 'pending' AND expires_at > NOW()
+      LIMIT 1`,
+    approvalId, ownerUserId,
+  );
+  const action = rows[0];
+  if (!action) throw new Error('approval_not_found_or_expired');
+  const policy = genXDecision(ownerUserId, action.payload_hash, action.channel);
+  if (policy.decision === 'DENY') throw new Error('genx_denied');
+  const status = decision === 'approve' ? 'approved' : 'rejected';
+  const updated = await prisma.$executeRawUnsafe(
+    `UPDATE public.comms_send_approvals
+        SET status = $3, approved_at = CASE WHEN $3 = 'approved' THEN NOW() ELSE NULL END,
+            policy_rule_id = $4, updated_at = NOW()
+      WHERE id = $1::uuid AND owner_user_id = $2
+        AND status = 'pending' AND expires_at > NOW()`,
+    approvalId, ownerUserId, status, policy.ruleId,
+  );
+  if (updated !== 1) throw new Error('approval_already_decided_or_expired');
+  return { approvalId, status };
+}
+
 async function verifiedDestination(
   prisma: { $queryRawUnsafe<T = unknown>(query: string, ...values: unknown[]): Promise<T> },
   ownerUserId: string,
@@ -330,6 +370,22 @@ export const commsAuthorizationRoutes: FastifyPluginAsync = async (fastify) => {
       request.log.error({ err: error }, 'Communications approval request could not be stored');
       return reply.code(503).send({ error: 'The approval request could not be safely stored.' });
     }
+  });
+
+  fastify.get<{ Params: { id: string } }>('/api/comms/approvals/:id', async (request, reply) => {
+    const userId = ownerId(request);
+    if (!userId) return reply.code(403).send({ error: 'Owner access is required.' });
+    if (!/^[0-9a-f-]{36}$/i.test(request.params.id)) return reply.code(400).send({ error: 'Invalid approval ID.' });
+    const rows = await fastify.prisma.$queryRawUnsafe<Array<{ status: string; channel: string; recipient: string; expires_at: Date }>>(
+      `SELECT status, channel, recipient, expires_at
+         FROM public.comms_send_approvals
+        WHERE id = $1::uuid AND owner_user_id = $2
+        LIMIT 1`,
+      request.params.id, userId,
+    );
+    const item = rows[0];
+    if (!item) return reply.code(404).send({ error: 'Approval request not found.' });
+    return { approvalId: request.params.id, status: item.status, channel: item.channel, recipient: item.recipient, expiresAt: item.expires_at.toISOString() };
   });
 
   fastify.post<{ Params: { id: string } }>('/api/comms/approvals/:id/approve', async (request, reply) => {

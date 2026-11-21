@@ -6,6 +6,7 @@ import { claimInboundCommunication, recordCommunication } from '../comms/history
 import { getOwnerInboundUserId, storeTwilioMediaForCommunication } from '../comms/attachments.js';
 import { addressOwnerResponse, ownerCommunicationInstruction } from '../../shared/ryanIdentity.js';
 import { isCommunicationsEnabled, isCommunicationsTestAuthorized } from '../comms/featureFlags.js';
+import { decideCommsApprovalFromOwner } from '../comms/authorization.js';
 
 const extractContent = (content: unknown): string =>
   typeof content === 'string' ? content : JSON.stringify(content) ?? '';
@@ -84,6 +85,58 @@ export const twilioWebhookPlugin: FastifyPluginAsync = async (fastify) => {
         try { await storeTwilioMediaForCommunication(fastify.prisma, body.MessageSid, media); }
         catch (error) { mediaStorageFailed = true; throw error; }
       }
+      const approvalCommand = !media.length
+        ? incomingText.match(/^(APPROVE|REJECT)\s+([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i)
+        : null;
+      if (approvalCommand) {
+        if (!ownerUserId) {
+          await fastify.prisma.communicationMessage.update({
+            where: { providerMessageId: body.MessageSid },
+            data: { status: 'approval_blocked', metadata: { approvalDecision: 'blocked', reason: 'owner_identity_not_configured' } },
+          });
+          reply.type('text/xml');
+          return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
+        }
+        const requestedDecision = approvalCommand[1].toUpperCase() === 'APPROVE' ? 'approve' : 'reject';
+        try {
+          const decision = await decideCommsApprovalFromOwner(
+            fastify.prisma,
+            ownerUserId,
+            approvalCommand[2],
+            requestedDecision,
+          );
+          const confirmation = decision.status === 'approved'
+            ? 'RyanAI recorded your approval for this exact communications request. It is ready for dispatch from the Comms console.'
+            : 'RyanAI recorded your rejection. This communications request will not be dispatched.';
+          await fastify.prisma.communicationMessage.update({
+            where: { providerMessageId: body.MessageSid },
+            data: {
+              status: 'received',
+              metadata: {
+                approvalId: decision.approvalId,
+                approvalDecision: requestedDecision,
+                approvalStatus: decision.status,
+                replySuppressed: !isCommunicationsTestAuthorized(),
+              },
+            },
+          });
+          request.log.info({ approvalId: decision.approvalId, decision: decision.status }, 'Owner Comms approval decision recorded');
+          reply.type('text/xml');
+          if (!isCommunicationsTestAuthorized()) return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
+          return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(confirmation)}</Message></Response>`;
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : 'approval_decision_failed';
+          await fastify.prisma.communicationMessage.update({
+            where: { providerMessageId: body.MessageSid },
+            data: { status: 'approval_blocked', metadata: { approvalId: approvalCommand[2], approvalDecision: requestedDecision, reason } },
+          });
+          request.log.warn({ err: error, approvalId: approvalCommand[2] }, 'Inbound owner approval was not accepted');
+          reply.type('text/xml');
+          if (!isCommunicationsTestAuthorized()) return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
+          return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml('RyanAI could not accept that approval. Check the request ID and expiry in the Comms console.')}</Message></Response>`;
+        }
+      }
+
       if (!isCommunicationsTestAuthorized()) {
         await fastify.prisma.communicationMessage.update({
           where: { providerMessageId: body.MessageSid },
