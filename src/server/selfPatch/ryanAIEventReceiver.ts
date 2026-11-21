@@ -28,7 +28,7 @@ export function verifyRyanAIEventRequest(input: {
   nowSeconds?: number;
 }): boolean {
   const { timestamp, signature, body, secret } = input;
-  if (!secret || secret.length < 32 || !timestamp || !/^\\d{10}$/.test(timestamp)
+  if (!secret || secret.length < 32 || !timestamp || !/^\d{10}$/.test(timestamp)
     || !signature || !/^[a-f0-9]{64}$/i.test(signature)) return false;
   const issuedAt = Number(timestamp);
   const now = input.nowSeconds ?? Math.floor(Date.now() / 1000);
