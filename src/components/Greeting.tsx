@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getTimeGreeting } from '@/shared/ryanIdentity';
+import { getLocalDateTimeContext, getTimeGreeting } from '@/shared/ryanIdentity';
 import {
   DEFAULT_LANGUAGE,
   OWNER_DEFAULT_LANGUAGE,
@@ -36,6 +36,7 @@ function getStoredRyanPreference(key: string, legacyKey: string): string | null 
 
 export default function Greeting({ userId: accountId, displayName, isOwner = false, preferredLanguage, preferredVoiceEnabled }: GreetingProps) {
   const userId = accountId || displayName || 'guest';
+  const [now, setNow] = useState(() => new Date());
   const [languageSelection, setLanguageSelection] = useState<{ userId: string; preferredLanguage?: string; value: string } | null>(null);
   const language = languageSelection?.userId === userId && languageSelection.preferredLanguage === preferredLanguage
     ? languageSelection.value
@@ -59,11 +60,17 @@ export default function Greeting({ userId: accountId, displayName, isOwner = fal
   const spoken = useRef(false);
   const firstName = displayName?.trim().split(/\s+/)[0] || 'there';
   const address = title || firstName;
-  const greeting = `${getTimeGreeting()}, ${address}. I'm RyanAI. Your assistant is ready.`;
+  const localDateTime = getLocalDateTimeContext(now);
+  const greeting = `${getTimeGreeting(now)}, ${address}. Today is ${localDateTime}. I'm RyanAI. Your assistant is ready.`;
   const matchingVoices = useMemo(
     () => voices.filter((voice) => voice.lang.toLowerCase() === language.toLowerCase()),
     [language, voices],
   );
+
+  useEffect(() => {
+    const clock = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(clock);
+  }, []);
 
   const speak = useCallback(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
@@ -160,6 +167,7 @@ export default function Greeting({ userId: accountId, displayName, isOwner = fal
       <div className="min-w-[220px]">
         <h2 className="text-lg font-semibold text-cyan-200">{greeting}</h2>
         <p className="mt-1 text-xs text-slate-400">RyanAI · {isOwner ? 'Sir G — Ntsiyeni Ganyane' : displayName || 'Personal assistant'} · {getLanguageName(language)}</p>
+        <p className="mt-1 text-xs text-slate-400" role="status">Local time updates every minute · {localDateTime}</p>
         <p className="mt-1 text-xs text-slate-400" role="status">{voiceStatus}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -169,6 +177,7 @@ export default function Greeting({ userId: accountId, displayName, isOwner = fal
           <option value="Sir">Sir</option>
           <option value="Sir G">Sir G</option>
           {isOwner && <option value="Ntsiyeni Ganyane">Ntsiyeni Ganyane</option>}
+          {isOwner && <option value="Ntsiyeni Ganyane, Sir G">Ntsiyeni Ganyane, Sir G</option>}
         </select>
         <label className="sr-only" htmlFor="ryanai-language">RyanAI language and translation preference</label>
         <select id="ryanai-language" value={language} onChange={(event) => chooseLanguage(event.target.value)} className="max-w-56 rounded-lg border border-cyan-400/30 bg-slate-950 px-2 py-2 text-xs text-cyan-100">

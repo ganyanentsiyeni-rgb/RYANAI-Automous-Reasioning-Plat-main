@@ -16,17 +16,39 @@ export function getAddress(identity: RyanAIIdentity): string {
   return emailName || 'there';
 }
 
+/** Human-readable local weekday, full date, and 24-hour time for the owner. */
+export function getLocalDateTimeContext(date = new Date()): string {
+  const weekdayAndDate = new Intl.DateTimeFormat(RYANAI_LOCALE, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: RYANAI_TIME_ZONE,
+  }).format(date);
+  const localTime = new Intl.DateTimeFormat(RYANAI_LOCALE, {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+    timeZone: RYANAI_TIME_ZONE,
+  }).format(date);
+  return `${weekdayAndDate} at ${localTime} (${RYANAI_TIME_ZONE})`;
+}
+
+/** Greeting bands are evaluated against Johannesburg local time, not server time. */
 export function getTimeGreeting(date = new Date()): string {
-  const hour = Number(new Intl.DateTimeFormat('en-ZA', {
+  const hour = Number(new Intl.DateTimeFormat(RYANAI_LOCALE, {
     hour: '2-digit',
     hourCycle: 'h23',
     timeZone: RYANAI_TIME_ZONE,
   }).format(date));
-  return hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  if (hour >= 5 && hour < 12) return 'Good morning';
+  if (hour >= 12 && hour < 17) return 'Good afternoon';
+  if (hour >= 17 && hour < 21) return 'Good evening';
+  return 'Good night';
 }
 
 export function createLoginGreeting(identity: RyanAIIdentity, date = new Date()): string {
-  return `${getTimeGreeting(date)}, ${getAddress(identity)}. I'm RyanAI. Your assistant is ready.`;
+  return `${getTimeGreeting(date)}, ${getAddress(identity)}. Today is ${getLocalDateTimeContext(date)}. I'm RyanAI. Your assistant is ready.`;
 }
 
 export function getOwnerResponseLanguage(): string {
@@ -40,6 +62,7 @@ export function ownerCommunicationInstruction(): string {
     'You are RyanAI, the personal assistant for the verified owner.',
     `Address the owner respectfully as ${title} in every direct reply.`,
     languageInstruction(getOwnerResponseLanguage()),
+    `The owner's current local date and time is ${getLocalDateTimeContext()}. Use this as the authoritative context for greetings, relative dates, weekdays, and scheduling; do not infer time from the server timezone.`,
     'When the owner writes in another language, understand it and respond in that language unless asked to translate.',
     'Preserve technical terms, code, URLs, names, dates and numbers accurately. If unsure about a Venda translation, be transparent.',
   ].join(' ');
