@@ -183,7 +183,7 @@ export async function enqueueCommsAssistRun(input: {
   ownerUserId: string;
   idempotencyKey: string;
   objective: string;
-}): Promise<{ runId: string; status: string; replayed: boolean }> {
+}): Promise<{ runId: string; status: string }> {
   if (!input.ownerUserId || !input.idempotencyKey || !input.objective) {
     throw new Error('A verified owner, request idempotency key, and objective are required.');
   }
@@ -200,5 +200,5 @@ export async function enqueueCommsAssistRun(input: {
     null,
     runId,
   );
-  return { runId: run.id, status: run.status, replayed: run.createdAt.getTime() < Date.now() - 1000 };
+  return { runId: run.id, status: run.status };
 }
