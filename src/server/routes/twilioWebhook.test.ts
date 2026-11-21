@@ -135,7 +135,7 @@ describe('Twilio webhook provider authentication', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
-  it('does not invoke RyanAI again when Twilio retries an already-claimed message', async () => {
+  it('acknowledges an already-replied Twilio replay without emitting a duplicate outbound TwiML message', async () => {
     prismaMock.communicationMessage.create.mockRejectedValueOnce({ code: 'P2002' });
     prismaMock.communicationMessage.findUnique.mockResolvedValueOnce({
       status: 'replied',
@@ -146,8 +146,11 @@ describe('Twilio webhook provider authentication', () => {
     const response = await sendWebhook(signature);
 
     expect(response.statusCode).toBe(200);
-    expect(response.body).toContain('This was already handled.');
+    expect(response.headers['content-type']).toContain('text/xml');
+    expect(response.body).toBe('<?xml version="1.0" encoding="UTF-8"?><Response/>');
+    expect(response.body).not.toContain('<Message>');
     expect(invoke).not.toHaveBeenCalled();
+    expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
   });
 
   it('stores an authentic inbound WhatsApp message but suppresses the auto-reply until explicitly authorized', async () => {
