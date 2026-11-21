@@ -216,6 +216,7 @@ interface ClaimedAgentRun {
 /** Atomically claim one queued run; stale leases are recoverable after worker restarts. */
 export async function claimNextAgentRun(workerId: string, leaseMs = 30_000): Promise<ClaimedAgentRun | null> {
   const exhausted = await prisma.$queryRaw<Array<{ id: string; status: string }>>`
+  const exhausted = await prisma.$queryRaw<Array<{ id: string }>>`
     UPDATE "agent_runs"
     SET "status" = CASE WHEN "cancel_requested_at" IS NOT NULL THEN 'cancelled' ELSE 'failed' END,
         "error" = CASE WHEN "cancel_requested_at" IS NOT NULL THEN 'Cancellation finalized after the worker lease expired.' ELSE 'Worker lease expired after the maximum number of attempts.' END,
