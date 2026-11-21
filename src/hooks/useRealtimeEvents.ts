@@ -63,7 +63,7 @@ export function useRealtimeEvents(
   const [resyncRequired, setResyncRequired] = useState(false);
   const [cursor, setCursor] = useState('0');
   const socketRef = useRef<WebSocket | null>(null);
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>();
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const stoppedRef = useRef(false);
   const onEventRef = useRef(onEvent);
   const cursorRef = useRef('0');
