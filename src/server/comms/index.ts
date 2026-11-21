@@ -10,7 +10,7 @@ import { beginOutboundCommunication, claimInboundCommunication, completeOutbound
 import { addressOwnerMessage, getOwnerGreeting } from './personalization.js';
 import { waitForAutonomousTask } from '../../agent/operations.js';
 import { createCommsUploadIntents, createCommsStorageAdmin, cleanCommsAttachmentUrls, downloadResendMedia, getCommsAttachmentScanStates, getCommsAttachmentStatuses, getOwnerInboundUserId, storeInboundCommsAttachment, storeTwilioMediaForCommunication } from './attachments.js';
-import { addressOwnerResponse, ownerCommunicationInstruction, RYANAI_LOCALE } from '../../shared/ryanIdentity.js';
+import { addressOwnerResponse, RYANAI_LOCALE } from '../../shared/ryanIdentity.js';
 import { areCommunicationAttachmentsEnabled, isCommunicationsEnabled, isCommunicationsTestAuthorized } from './featureFlags.js';
 import { assertCommsActionAuthorized, buildCommsActionPayload, claimCommsAction, finishCommsAction } from './authorization.js';
 
