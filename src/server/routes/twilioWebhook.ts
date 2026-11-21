@@ -7,6 +7,7 @@ import { getOwnerInboundUserId, storeTwilioMediaForCommunication } from '../comm
 import { addressOwnerResponse, ownerCommunicationInstruction } from '../../shared/ryanIdentity.js';
 import { isCommunicationsEnabled, isCommunicationsTestAuthorized } from '../comms/featureFlags.js';
 import { decideCommsApprovalFromOwner } from '../comms/authorization.js';
+import { recordOwnerGitHubPrReviewDecision } from '../githubPrReviewApproval.js';
 
 const extractContent = (content: unknown): string =>
   typeof content === 'string' ? content : JSON.stringify(content) ?? '';
@@ -85,6 +86,70 @@ export const twilioWebhookPlugin: FastifyPluginAsync = async (fastify) => {
         try { await storeTwilioMediaForCommunication(fastify.prisma, body.MessageSid, media); }
         catch (error) { mediaStorageFailed = true; throw error; }
       }
+      const githubApprovalCommand = !media.length
+        ? incomingText.match(/^GITHUB\s+(APPROVE|REJECT)\s+([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\s+([a-f0-9]{40})$/i)
+        : null;
+      if (!media.length && /^GITHUB\b/i.test(incomingText) && !githubApprovalCommand) {
+        await fastify.prisma.communicationMessage.update({
+          where: { providerMessageId: body.MessageSid },
+          data: { status: 'approval_blocked', metadata: { approvalDecision: 'blocked', reason: 'invalid_github_approval_command' } },
+        });
+        reply.type('text/xml');
+        if (!isCommunicationsTestAuthorized()) return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
+        return \`<?xml version="1.0" encoding="UTF-8"?><Response><Message>\${escapeXml('Use: GITHUB APPROVE <approval-id> <40-character-commit-SHA>, or GITHUB REJECT <approval-id> <40-character-commit-SHA>. No GitHub review was submitted.')}</Message></Response>\`;
+      }
+      if (githubApprovalCommand) {
+        if (!ownerUserId) {
+          await fastify.prisma.communicationMessage.update({
+            where: { providerMessageId: body.MessageSid },
+            data: { status: 'approval_blocked', metadata: { approvalDecision: 'blocked', reason: 'owner_identity_not_configured' } },
+          });
+          reply.type('text/xml');
+          return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
+        }
+        const requestedDecision = githubApprovalCommand[1].toUpperCase() === 'APPROVE' ? 'approve' : 'reject';
+        try {
+          const decision = await recordOwnerGitHubPrReviewDecision(fastify.prisma, {
+            ownerUserId,
+            approvalId: githubApprovalCommand[2],
+            expectedHeadSha: githubApprovalCommand[3],
+            inboundMessageSid: body.MessageSid,
+            decision: requestedDecision,
+          });
+          const confirmation = decision.status === 'approved'
+            ? \`RyanAI recorded your owner approval for PR #\${decision.pull_request_number} at commit \${decision.expected_head_sha}. This records consent only; no GitHub review has been submitted.\`
+            : \`RyanAI recorded your rejection for PR #\${decision.pull_request_number} at commit \${decision.expected_head_sha}. No GitHub review was submitted.\`;
+          await fastify.prisma.communicationMessage.update({
+            where: { providerMessageId: body.MessageSid },
+            data: {
+              status: 'received',
+              metadata: {
+                approvalId: decision.id,
+                approvalDecision: requestedDecision,
+                approvalStatus: decision.status,
+                expectedHeadSha: decision.expected_head_sha,
+                githubReviewSubmitted: false,
+                replySuppressed: !isCommunicationsTestAuthorized(),
+              },
+            },
+          });
+          request.log.info({ approvalId: decision.id, decision: decision.status, pullRequestNumber: decision.pull_request_number, expectedHeadSha: decision.expected_head_sha }, 'Owner GitHub PR review decision recorded; no review submitted');
+          reply.type('text/xml');
+          if (!isCommunicationsTestAuthorized()) return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
+          return \`<?xml version="1.0" encoding="UTF-8"?><Response><Message>\${escapeXml(confirmation)}</Message></Response>\`;
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : 'github_pr_review_approval_failed';
+          await fastify.prisma.communicationMessage.update({
+            where: { providerMessageId: body.MessageSid },
+            data: { status: 'approval_blocked', metadata: { approvalId: githubApprovalCommand[2], approvalDecision: requestedDecision, expectedHeadSha: githubApprovalCommand[3], reason, githubReviewSubmitted: false } },
+          });
+          request.log.warn({ err: error, approvalId: githubApprovalCommand[2] }, 'Inbound owner GitHub PR approval was not accepted');
+          reply.type('text/xml');
+          if (!isCommunicationsTestAuthorized()) return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
+          return \`<?xml version="1.0" encoding="UTF-8"?><Response><Message>\${escapeXml('RyanAI could not accept that GitHub PR decision. Check the approval ID, exact SHA, owner destination verification and expiry. No GitHub review was submitted.')}</Message></Response>\`;
+        }
+      }
+
       const approvalCommand = !media.length
         ? incomingText.match(/^(APPROVE|REJECT)\s+([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i)
         : null;
