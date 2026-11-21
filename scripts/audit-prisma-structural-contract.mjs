@@ -255,6 +255,35 @@ export function assessMigrationSourceContracts(sources) {
   const correction = sources.queueCorrection;
   const lease = sources.leaseHeartbeat;
   const authBridge = sources.authBridge;
+  const agentOperations = sources.agentOperations;
+  add('migration Auth identity bridge trigger, function and privilege contract',
+    'empty search_path; NULLIF email fallback; name COALESCE; exact auth.users triggers; client revoke and service_role grant',
+    authBridge,
+    Boolean(authBridge && /SET search_path\s*=\s*''/i.test(authBridge)
+      && /NULLIF\(NEW\.email, ''\)/i.test(authBridge)
+      && /'auth-user-'\s*\|\|\s*NEW\.id::text\s*\|\|\s*'@no-email\.invalid'/i.test(authBridge)
+      && /COALESCE\(EXCLUDED\.name,\s*public\.users\.name\)/i.test(authBridge)
+      && /CREATE TRIGGER ryanai_auth_user_sync_insert[\s\S]*?AFTER INSERT ON auth\.users/i.test(authBridge)
+      && /CREATE TRIGGER ryanai_auth_user_sync_update[\s\S]*?AFTER UPDATE OF email, raw_user_meta_data ON auth\.users/i.test(authBridge)
+      && /CREATE TRIGGER ryanai_auth_user_sync_delete[\s\S]*?AFTER DELETE ON auth\.users/i.test(authBridge)
+      && /REVOKE ALL PRIVILEGES ON TABLE public\.users FROM PUBLIC, anon, authenticated/i.test(authBridge)
+      && /GRANT ALL PRIVILEGES ON TABLE public\.users TO service_role/i.test(authBridge)));
+  add('migration agent handoff and brain-health base contracts',
+    'agent_handoffs TEXT input, timestamp(3) started_at, cascade FK and run/start index; brain health status without default and unique brain',
+    agentOperations,
+    Boolean(agentOperations && /"input" TEXT NOT NULL/i.test(agentOperations)
+      && /"started_at" TIMESTAMP\(3\) NOT NULL DEFAULT CURRENT_TIMESTAMP/i.test(agentOperations)
+      && /agent_handoffs_run_id_started_at_idx/i.test(agentOperations)
+      && /agent_handoffs_run_id_fkey[\s\S]*?ON DELETE CASCADE ON UPDATE CASCADE/i.test(agentOperations)
+      && /"status" TEXT NOT NULL,/i.test(agentOperations)
+      && /agent_brain_health_brain_key/i.test(agentOperations)));
+  add('migration coding_tasks required columns, foreign keys and indexes',
+    'ten required columns; user/run ON DELETE CASCADE; four exact coding_tasks indexes',
+    coding,
+    Boolean(coding && ['id TEXT PRIMARY KEY','user_id TEXT NOT NULL','workbench_run_id TEXT NOT NULL','approval_id TEXT NOT NULL','plan_hash TEXT NOT NULL','base_commit_sha TEXT NOT NULL','proposed_diff_hash TEXT NOT NULL','agent TEXT NOT NULL','prompt TEXT NOT NULL','workspace_key TEXT NOT NULL'].every((fragment) => coding.toLowerCase().includes(fragment.toLowerCase()))
+      && /user_id TEXT NOT NULL REFERENCES public\.users\(id\) ON DELETE CASCADE/i.test(coding)
+      && /workbench_run_id TEXT NOT NULL REFERENCES public\.agent_runs\(id\) ON DELETE CASCADE/i.test(coding)
+      && ['coding_tasks_status_next_attempt_idx','coding_tasks_status_lease_expiry_idx','coding_tasks_user_created_idx','coding_tasks_workbench_run_idx'].every((name) => coding.includes(name))));
   add('migration coding queue legacy classification',
     "approval_status = 'pending' OR plan_snapshot IS NOT NULL OR proposed_diff_hash IS NOT NULL",
     coding,
@@ -297,8 +326,9 @@ async function main() {
     return;
   }
   const root = resolve(process.cwd());
-  const [authBridge, codingQueue, queueCorrection, leaseHeartbeat] = await Promise.all([
+  const [authBridge, agentOperations, codingQueue, queueCorrection, leaseHeartbeat] = await Promise.all([
     readFile(resolve(root, 'prisma/migrations/20261102123000_supabase_auth_identity_bridge/migration.sql'), 'utf8'),
+    readFile(resolve(root, 'prisma/migrations/20261030120000_agent_operations/migration.sql'), 'utf8'),
     readFile(resolve(root, 'prisma/migrations/20261104120000_isolated_coding_task_queue/migration.sql'), 'utf8'),
     readFile(resolve(root, 'prisma/migrations/20261108120000_correct_pending_reasoning_queue_classification/migration.sql'), 'utf8'),
     readFile(resolve(root, 'prisma/migrations/20261121120000_agent_run_lease_heartbeat/migration.sql'), 'utf8'),
@@ -328,7 +358,7 @@ async function main() {
       tables: tables.rows, columns: columns.rows, indexes: indexes.rows, constraints: constraints.rows,
       triggers: triggers.rows, functions: functions.rows, grants: grants.rows, functionGrants: functionGrants.rows,
     });
-    const migration = assessMigrationSourceContracts({ authBridge, codingQueue, queueCorrection, leaseHeartbeat });
+    const migration = assessMigrationSourceContracts({ authBridge, agentOperations, codingQueue, queueCorrection, leaseHeartbeat });
     await client.query('COMMIT');
     console.log(JSON.stringify({
       mode: 'read-only',
