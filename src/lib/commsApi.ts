@@ -154,11 +154,14 @@ export async function requestCommsApproval(input: {
   return readJson<CommsApprovalRequest>(response);
 }
 
-export async function approveCommsApproval(approvalId: string, userId: string): Promise<{ approvalId: string; status: 'approved' }> {
-  const response = await authenticatedFetch(`/api/comms/approvals/${encodeURIComponent(approvalId)}/approve`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-  }, userId);
+export async function getCommsApprovalStatus(approvalId: string, userId: string): Promise<{
+  approvalId: string;
+  status: 'pending' | 'approved' | 'rejected' | 'dispatching' | 'accepted' | 'unknown' | 'failed';
+  channel: CommsChannel;
+  recipient: string;
+  expiresAt: string;
+}> {
+  const response = await authenticatedFetch(`/api/comms/approvals/${encodeURIComponent(approvalId)}`, {}, userId);
   return readJson(response);
 }
 
