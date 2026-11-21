@@ -12,6 +12,24 @@ SPEC.loader.exec_module(guard)
 
 
 class BreakingSchemaGuardTests(unittest.TestCase):
+    def test_normalizes_only_identical_duplicate_baseline_models(self):
+        baseline = (
+            "model A {\\n  id String @id\\n}\\n"
+            "model A {\\n  id String @id\\n}\\n"
+            "model B {\\n  id String @id\\n}\\n"
+        )
+        normalized = guard.normalize_base_schema(baseline)
+        self.assertEqual(normalized.count("model A"), 1)
+        self.assertEqual(normalized.count("model B"), 1)
+
+    def test_rejects_conflicting_duplicate_baseline_models(self):
+        baseline = (
+            "model A {\\n  id String @id\\n}\\n"
+            "model A {\\n  id String @id\\n  name String\\n}\\n"
+        )
+        with self.assertRaises(RuntimeError):
+            guard.normalize_base_schema(baseline)
+
     def test_detects_drop_table_and_column(self):
         sql = "DROP TABLE public.legacy;\nALTER TABLE users DROP COLUMN old_name;"
         findings = guard.find_breaking_statements(sql)
