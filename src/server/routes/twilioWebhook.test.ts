@@ -162,8 +162,14 @@ describe('Twilio webhook provider authentication', () => {
     expect(response.body).not.toContain('<Message>');
     expect(prismaMock.communicationMessage.update).toHaveBeenCalledWith({
       where: { providerMessageId: 'SM123' },
-      data: { status: 'received', metadata: { mediaCount: 0, replySuppressed: true } },
+      data: { status: 'received', metadata: { mediaCount: 0, replySuppressed: true, agentRunId: 'run-1' } },
     });
+    expect(enqueueInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith({
+      messageId: 'message-1',
+      ownerUserId: '11111111-1111-4111-8111-111111111111',
+      providerMessageId: 'SM123',
+    });
+    expect(waitForInboundCommunicationRun).not.toHaveBeenCalled();
     expect(invoke).not.toHaveBeenCalled();
   });
 
@@ -283,6 +289,21 @@ describe('Twilio webhook provider authentication', () => {
     );
     expect(invoke).not.toHaveBeenCalled();
   });
+  it('returns retryable 503 when a newly queued AgentRun has not completed before the webhook deadline', async () => {
+    waitForInboundCommunicationRun.mockResolvedValueOnce({ completed: false });
+    const signature = twilio.getExpectedTwilioSignature(token, webhookUrl, body);
+
+    const response = await sendWebhook(signature);
+
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toContain('durable RyanAI run is still processing');
+    expect(enqueueInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith({
+      messageId: 'message-1',
+      ownerUserId: '11111111-1111-4111-8111-111111111111',
+      providerMessageId: 'SM123',
+    });
+  });
+
   it('returns a retryable non-2xx response when durable AgentRun enqueue fails', async () => {
     enqueueInboundCommunicationRun.mockRejectedValueOnce(new Error('database unavailable'));
     const signature = twilio.getExpectedTwilioSignature(token, webhookUrl, body);
