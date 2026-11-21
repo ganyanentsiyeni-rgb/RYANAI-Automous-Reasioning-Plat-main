@@ -2,14 +2,14 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import formbody from '@fastify/formbody';
 import twilio from 'twilio';
-import type { RyanAIEvent } from '../selfPatch/ryanAIEventContract.js';
+import type { CommsDeliveryState, RyanAIEvent } from '../selfPatch/ryanAIEventContract.js';
 import { ryanAIPaEventBridge } from '../selfPatch/ryanAIPaEventBridge.js';
 
 type TwilioStatusBody = Record<string, string | undefined>;
 
 const TERMINAL_FAILURES = new Set(['failed', 'undelivered', 'busy', 'no-answer', 'canceled']);
 
-export function mapTwilioDeliveryState(channel: string, providerStatus: string): RyanAIEvent extends infer _T ? 'queued' | 'accepted_by_provider' | 'delivered' | 'failed' | 'unknown' : never {
+export function mapTwilioDeliveryState(channel: string, providerStatus: string): CommsDeliveryState {
   const status = providerStatus.trim().toLowerCase();
   if (TERMINAL_FAILURES.has(status)) return 'failed';
   if (status === 'delivered' && (channel === 'sms' || channel === 'whatsapp')) return 'delivered';
