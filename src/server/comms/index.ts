@@ -1,13 +1,14 @@
 import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
+import { randomUUID } from 'node:crypto';
 import twilio from 'twilio';
 import nodemailer from 'nodemailer';
 import formbody from '@fastify/formbody';
 import rawBody from 'fastify-raw-body';
 import { Resend } from 'resend';
-import { humanInTheLoopAgent } from '../../agent/approvalEngine.js';
-import { enqueueInboundCommunicationRun, waitForInboundCommunicationRun } from './agentRuns.js';
+import { enqueueInboundCommunicationRun, waitForInboundCommunicationRun, enqueueCommsAssistRun } from './agentRuns.js';
 import { beginOutboundCommunication, claimInboundCommunication, completeOutboundCommunication, markOutboundCommunicationUnknown, OutboundIdempotencyConflictError, prepareOutboundCommunication, recordCommunication } from './history.js';
 import { addressOwnerMessage, getOwnerGreeting } from './personalization.js';
+import { waitForAutonomousTask } from '../../agent/operations.js';
 import { createCommsUploadIntents, createCommsStorageAdmin, cleanCommsAttachmentUrls, downloadResendMedia, getCommsAttachmentScanStates, getCommsAttachmentStatuses, getOwnerInboundUserId, storeInboundCommsAttachment, storeTwilioMediaForCommunication } from './attachments.js';
 import { addressOwnerResponse, ownerCommunicationInstruction, RYANAI_LOCALE } from '../../shared/ryanIdentity.js';
 import { areCommunicationAttachmentsEnabled, isCommunicationsEnabled, isCommunicationsTestAuthorized } from './featureFlags.js';
@@ -41,8 +42,9 @@ function webhookAuth(urlEnv: string) {
     const url = process.env[urlEnv]?.trim();
     const signature = request.headers['x-twilio-signature'];
     if (!token || !url) return reply.code(503).send({ error: 'Twilio webhook authentication is not configured.' });
+    const signedUrl = request.url.includes('?') ? new URL(request.url, url).toString() : url;
     if (typeof signature !== 'string' || !twilio.validateRequest(
-      token, signature, url, (request.body || {}) as Record<string, string>,
+      token, signature, signedUrl, (request.body || {}) as Record<string, string>,
     )) return reply.code(401).send({ error: 'Invalid Twilio request signature.' });
   };
 }
@@ -53,22 +55,9 @@ function twimlSay(message: string, gather = true): string {
   if (!action || !gather) {
     return `<?xml version="1.0" encoding="UTF-8"?><Response>${say(message)}<Hangup/></Response>`;
   }
-  return `<?xml version="1.0" encoding="UTF-8"?><Response>${say(message)}<Gather input="speech" language="${RYANAI_LOCALE}" action="${escapeXml(action)}" method="POST" speechTimeout="auto" timeout="5">${say('Please speak after the tone.')}</Gather>${say('I did not hear a response. Goodbye.')}<Hangup/></Response>`;
-}
-
-async function askRyanAI(text: string, threadId: string): Promise<string> {
-  const result = await humanInTheLoopAgent.invoke(
-    {
-      messages: [
-        { role: 'system', content: ownerCommunicationInstruction() },
-        { role: 'user', content: text },
-      ],
-    },
-    { configurable: { thread_id: threadId } },
-  );
-  const messages = (result as { messages?: Array<{ content?: unknown }> }).messages ?? [];
-  const content = messages.at(-1)?.content;
-  return typeof content === 'string' ? content : JSON.stringify(content) ?? 'I could not prepare a response.';
+  const actionWithTurn = new URL(action);
+  actionWithTurn.searchParams.set('turnId', randomUUID());
+  return `<?xml version="1.0" encoding="UTF-8"?><Response>${say(message)}<Gather input="speech" language="${RYANAI_LOCALE}" action="${escapeXml(actionWithTurn.toString())}" method="POST" speechTimeout="auto" timeout="5">${say('Please speak after the tone.')}</Gather>${say('I did not hear a response. Goodbye.')}<Hangup/></Response>`;
 }
 
 function parseTwilioMedia(body: Record<string, string | undefined>) {
@@ -166,7 +155,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  fastify.post<{ Body: { operation?: 'summarize' | 'draft' | 'translate' | 'extract_tasks'; conversationId?: string; language?: string; instruction?: string } }>('/api/comms/assist', async (request, reply) => {
+  fastify.post<{ Body: { operation?: 'summarize' | 'draft' | 'translate' | 'extract_tasks'; conversationId?: string; language?: string; instruction?: string; idempotencyKey?: string } }>('/api/comms/assist', async (request, reply) => {
     if (!request.authUser?.isOwner) return reply.code(403).send({ error: 'Owner access is required for communications intelligence.' });
     const operation = request.body?.operation;
     const conversationId = request.body?.conversationId?.trim();
@@ -180,6 +169,10 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
     }
     if (instruction && instruction.length > 1000) {
       return reply.code(400).send({ error: 'The additional instruction is too long.' });
+    }
+    const idempotencyKey = request.body?.idempotencyKey?.trim();
+    if (!idempotencyKey || idempotencyKey.length < 16 || idempotencyKey.length > 128 || !/^[a-zA-Z0-9._:-]+$/.test(idempotencyKey)) {
+      return reply.code(400).send({ error: 'A valid 16–128 character request idempotency key is required.' });
     }
 
     const conversation = await fastify.prisma.communicationConversation.findFirst({
@@ -212,14 +205,22 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
     ].filter(Boolean).join('\n');
 
     try {
-      const result = await askRyanAI(prompt, `comms-assist:${conversationId}:${operation}`);
-      return {
-        operation,
-        output: result,
-        sourceMessageCount: conversation.messages.length,
-      };
+      const queued = await enqueueCommsAssistRun({
+        ownerUserId: request.authUser.id,
+        idempotencyKey,
+        objective: prompt,
+      });
+      const completed = await waitForAutonomousTask(queued.runId, request.authUser.id, 8_000);
+      const output = typeof completed === 'string' ? completed
+        : typeof completed === 'object' && completed !== null && 'result' in completed
+          ? String((completed as { result: unknown }).result)
+          : JSON.stringify(completed);
+      return { operation, output, sourceMessageCount: conversation.messages.length, runId: queued.runId };
     } catch (error) {
-      request.log.warn({ err: error, operation }, 'Comms intelligence request failed');
+      if (error instanceof Error && error.message.includes('still queued or running')) {
+        return reply.code(202).send({ operation, processing: true, retryable: true });
+      }
+      request.log.warn({ err: error, operation }, 'Comms intelligence durable run failed');
       return reply.code(502).send({ error: 'Communications intelligence is temporarily unavailable.' });
     }
   });
@@ -430,20 +431,54 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
     if (!isCommunicationsTestAuthorized()) { reply.type('text/xml'); return '<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>'; }
     reply.type('text/xml');
     if (!speech) return twimlSay('I did not catch that. Please try again.', true);
-    const thread = `voice_${(body.CallSid || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '')}`;
+    const callSid = body.CallSid?.trim();
+    const turnId = typeof request.query === 'object' && request.query !== null && 'turnId' in request.query
+      ? String((request.query as { turnId?: unknown }).turnId || '') : '';
+    const ownerUserId = getOwnerInboundUserId();
+    if (!callSid || !/^[A-Za-z0-9_-]{1,80}$/.test(callSid) || !turnId || !/^[0-9a-f-]{36}$/i.test(turnId)) {
+      return reply.code(400).send({ error: 'A valid call ID and signed voice turn ID are required.' });
+    }
+    if (!ownerUserId) return reply.code(503).send({ error: 'Inbound voice processing requires the verified owner Supabase user ID.' });
+    const providerTurnId = `voice:${callSid}:${turnId}`;
     try {
-      await recordCommunication(fastify.prisma, {
+      const claim = await claimInboundCommunication(fastify.prisma, {
         channel: 'voice', externalAddress: sender, direction: 'inbound', body: speech,
-        status: 'received', metadata: { callSid: body.CallSid || '' }, ownerUserId: process.env.RYANAI_OWNER_AUTH_USER_ID,
+        providerMessageId: providerTurnId, status: 'processing', metadata: { callSid, turnId }, ownerUserId,
       });
-      const answer = addressOwnerResponse(await askRyanAI(speech, thread));
+      if (!claim.claimed && claim.existing) {
+        const metadata = claim.existing.metadata && typeof claim.existing.metadata === 'object' && !Array.isArray(claim.existing.metadata)
+          ? claim.existing.metadata as Record<string, unknown> : {};
+        if (typeof metadata.reply === 'string' && metadata.reply) return twimlSay(metadata.reply, true);
+        if (claim.existing.agentRunId) {
+          const resumed = await waitForInboundCommunicationRun(claim.existing.agentRunId, ownerUserId);
+          if (resumed.completed) {
+            const answer = addressOwnerResponse(resumed.answer);
+            await fastify.prisma.communicationMessage.update({
+              where: { id: claim.existing.messageId },
+              data: { status: 'replied', metadata: { ...metadata, reply: answer, agentRunId: claim.existing.agentRunId } },
+            });
+            return twimlSay(answer.slice(0, MAX_MESSAGE_LENGTH), true);
+          }
+        }
+        return twimlSay('I am still processing your previous request. Please hold for a moment.', true);
+      }
+      if (!claim.messageId) throw new Error('Voice message claim did not return a persisted message ID.');
+      const queued = await enqueueInboundCommunicationRun({ messageId: claim.messageId, ownerUserId, providerMessageId: providerTurnId });
+      const completed = await waitForInboundCommunicationRun(queued.runId, ownerUserId);
+      if (!completed.completed) return twimlSay('I am still processing that. Please give me a moment and try again.', true);
+      const answer = addressOwnerResponse(completed.answer);
+      await fastify.prisma.communicationMessage.update({
+        where: { id: claim.messageId },
+        data: { status: 'replied', metadata: { callSid, turnId, reply: answer, agentRunId: queued.runId } },
+      });
       await recordCommunication(fastify.prisma, {
         channel: 'voice', externalAddress: sender, direction: 'outbound',
-        body: answer, status: 'response_generated', metadata: { callSid: body.CallSid || '' }, ownerUserId: process.env.RYANAI_OWNER_AUTH_USER_ID,
+        body: answer, providerMessageId: `voice-reply:${callSid}:${turnId}`,
+        status: 'response_generated', metadata: { callSid, turnId, agentRunId: queued.runId }, ownerUserId,
       });
       return twimlSay(answer.slice(0, MAX_MESSAGE_LENGTH), true);
     } catch (error) {
-      request.log.error({ err: error }, 'RyanAI voice conversation failed');
+      request.log.error({ err: error }, 'RyanAI durable voice turn failed');
       return twimlSay('I am temporarily unable to process that request. Please try again later.', false);
     }
   });
