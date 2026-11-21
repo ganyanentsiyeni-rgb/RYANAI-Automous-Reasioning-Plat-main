@@ -44,16 +44,18 @@ describe('claimInboundCommunication', () => {
       status: 'replied',
       metadata: { reply: 'Certainly, Sir.' },
       agentRunId: 'run-existing',
+      body: 'Hello RyanAI',
+      conversation: { channel: 'whatsapp', ownerUserId: null },
     });
     const prisma = prismaMock(create, findUnique);
 
     await expect(claimInboundCommunication(prisma, input)).resolves.toEqual({
       claimed: false,
-      existing: { messageId: 'message-existing', status: 'replied', metadata: { reply: 'Certainly, Sir.' }, agentRunId: 'run-existing' },
+      existing: { messageId: 'message-existing', status: 'replied', metadata: { reply: 'Certainly, Sir.' }, agentRunId: 'run-existing', body: 'Hello RyanAI', channel: 'whatsapp', ownerUserId: null },
     });
     expect(findUnique).toHaveBeenCalledWith({
       where: { providerMessageId: 'SM-provider-event-1' },
-      select: { id: true, status: true, metadata: true, createdAt: true, agentRunId: true },
+      select: { id: true, status: true, metadata: true, createdAt: true, agentRunId: true, body: true, conversation: { select: { channel: true, ownerUserId: true } } },
     });
   });
 
@@ -80,6 +82,7 @@ describe('claimInboundCommunication', () => {
     const create = vi.fn().mockRejectedValue({ code: 'P2002' });
     const findUnique = vi.fn().mockResolvedValue({
       id: 'message-fresh', status: 'processing', metadata: null, createdAt: new Date(), agentRunId: null,
+      body: 'Hello RyanAI', conversation: { channel: 'whatsapp', ownerUserId: null },
     });
     const updateMany = vi.fn().mockResolvedValue({ count: 0 });
     const prisma = {
@@ -88,7 +91,7 @@ describe('claimInboundCommunication', () => {
     } as unknown as PrismaClient;
 
     await expect(claimInboundCommunication(prisma, input)).resolves.toEqual({
-      claimed: false, existing: { messageId: 'message-fresh', status: 'processing', metadata: null, agentRunId: null },
+      claimed: false, existing: { messageId: 'message-fresh', status: 'processing', metadata: null, agentRunId: null, body: 'Hello RyanAI', channel: 'whatsapp', ownerUserId: null },
     });
     expect(updateMany).not.toHaveBeenCalled();
   });
