@@ -55,9 +55,15 @@ describe('RyanAI event contract', () => {
     expect(parseRyanAIEvent({ ...base, authToken: 'must-not-leak' })).toBeNull();
   });
 
-  it('rejects delivered state unless explicitly represented by a validated receipt', () => {
+  it('requires a valid provider receipt hash before accepting delivered state', () => {
     expect(parseRyanAIEvent({ ...base, state: 'sent' })).toBeNull();
+    expect(parseRyanAIEvent({ ...base, state: 'delivered' })).toBeNull();
     expect(parseRyanAIEvent({ ...base, state: 'delivered', providerReferenceHash: 'bad' })).toBeNull();
+    expect(parseRyanAIEvent({
+      ...base,
+      state: 'delivered',
+      providerReferenceHash: 'b'.repeat(64),
+    })).toMatchObject({ state: 'delivered', providerReferenceHash: 'b'.repeat(64) });
   });
 
   it('rejects invalid correlation IDs and timestamps', () => {
