@@ -40,7 +40,11 @@ describe('RyanAI Twilio Verify adapter', () => {
     const state = [...redis.values.values()].find(value => value.includes(verificationSid));
     expect(state).toBeDefined();
     expect(state).not.toContain('+27821234567');
-    expect(state).not.toContain('123456');
+    const persisted = JSON.parse(state!);
+    expect(persisted).not.toHaveProperty('code');
+    expect(persisted).not.toHaveProperty('otp');
+    expect(persisted).not.toHaveProperty('destination');
+    expect(persisted).toMatchObject({ subjectId: actor.subjectId, purpose: 'signup', channel: 'sms', verificationSid, state: 'pending' });
   });
   it('checks the provider SID and makes an approved challenge single-use', async () => {
     await service.start({ actor, purpose: 'signup', channel: 'sms', destination: '+27821234567' });
