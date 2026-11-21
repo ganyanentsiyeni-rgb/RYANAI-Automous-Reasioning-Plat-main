@@ -141,16 +141,24 @@ jobs:
           contexts = {item.get("context") for item in checks}
           required = {
               "Single-owner release gate",
-              "Validate (typecheck, lint, test, build)",
+              "Test agent API contracts",
+              "Trivy filesystem scan",
+              "Dependency audit",
+              "Generate & Upload SBOMs",
+              "Upgrade legacy pgvector database safely (unquoted)",
+              "Upgrade legacy pgvector database safely (quoted)",
               "MCP server and workflow worker",
-              "Integration and end-to-end checks",
-              "PostgreSQL 19 compatibility",
+              "Validate (typecheck, lint, test, build)",
               "Issue 435 migrations and attachment security",
-              "Analyze (javascript-typescript)",
-              "Analyze (python)",
-              "TruffleHog secret audit",
-              "Validate application and MCP dependencies",
-              "Audit GitHub workflows",
+              "Scan api image",
+              "Scan standalone-api image",
+              "Scan migrate image",
+              "Scan web image",
+              "Scan mcp image",
+              "Ephemeral PostgreSQL integration dry-run",
+              "Verify Supabase and Prisma fresh-stack migrations",
+              "validate-database",
+              "Inspect release quality",
           }
           missing = required - contexts
           assert not missing, f"Required check contexts missing: {sorted(missing)}"
