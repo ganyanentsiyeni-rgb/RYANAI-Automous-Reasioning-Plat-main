@@ -637,7 +637,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       const completed = await waitForInboundCommunicationRun(queued.runId, ownerUserId);
       if (!completed.completed) {
         request.log.info({ runId: queued.runId, providerMessageId: email.id }, 'Inbound email agent run remains queued or running');
-        return reply.code(202).send({ received: true, processing: true, runId: queued.runId });
+        return reply.code(503).send({ received: true, processing: true, retryable: true, runId: queued.runId });
       }
       const answer = addressOwnerResponse(completed.answer || 'I could not prepare a response.');
       await fastify.prisma.communicationMessage.update({
