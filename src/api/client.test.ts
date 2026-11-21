@@ -51,9 +51,9 @@ describe('RyanAIClient transport continuity', () => {
   it('restores live subscriptions after a reconnect without replaying requests', async () => {
     const client = new RyanAIClient({
       url: 'ws://example.test/ws',
-      reconnectInterval: 100,
+      reconnectInterval: 250,
       maxReconnectAttempts: 2,
-      maxReconnectDelay: 100,
+      maxReconnectDelay: 250,
     });
 
     const handler = vi.fn();
@@ -79,7 +79,7 @@ describe('RyanAIClient transport continuity', () => {
     first.close();
     expect(client.connectionState.value).toBe('reconnecting');
 
-    await vi.advanceTimersByTimeAsync(100);
+    await vi.advanceTimersByTimeAsync(250);
     const second = MockWebSocket.instances[1];
     expect(second).toBeDefined();
     second.open();
@@ -96,7 +96,7 @@ describe('RyanAIClient transport continuity', () => {
   it('moves to offline state and waits for browser connectivity before reconnecting', async () => {
     const client = new RyanAIClient({
       url: 'ws://example.test/ws',
-      reconnectInterval: 100,
+      reconnectInterval: 250,
       maxReconnectAttempts: 2,
     });
 
@@ -124,7 +124,7 @@ describe('RyanAIClient transport continuity', () => {
   it('does not reconnect after an explicit disconnect', async () => {
     const client = new RyanAIClient({
       url: 'ws://example.test/ws',
-      reconnectInterval: 100,
+      reconnectInterval: 250,
       maxReconnectAttempts: 2,
     });
 
