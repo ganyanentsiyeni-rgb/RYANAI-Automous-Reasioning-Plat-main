@@ -326,7 +326,9 @@ export const commsAuthorizationRoutes: FastifyPluginAsync = async (fastify) => {
     if (!userId) return reply.code(403).send({ error: 'Owner access is required.' });
     const body = request.body ?? {};
     const channel = body.channel;
-    const recipient = typeof body.recipient === 'string' ? body.recipient.trim() : '';
+    const recipient = typeof body.recipient === 'string' && body.recipient.trim()
+      ? body.recipient.trim()
+      : process.env.RYANAI_OWNER_PHONE?.trim() || '';
     const message = typeof body.message === 'string' ? body.message.trim() : '';
     const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : '';
     if (body.attachmentIds !== undefined && !Array.isArray(body.attachmentIds)) return reply.code(400).send({ error: 'Attachment IDs must be a list.' });
