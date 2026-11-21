@@ -24,7 +24,7 @@ describe('claimInboundCommunication', () => {
     const create = vi.fn().mockResolvedValue({ id: 'message-1' });
     const prisma = prismaMock(create);
 
-    await expect(claimInboundCommunication(prisma, input)).resolves.toEqual({ claimed: true });
+    await expect(claimInboundCommunication(prisma, input)).resolves.toEqual({ claimed: true, messageId: 'message-1' });
     expect(create).toHaveBeenCalledWith({
       data: {
         conversationId: 'conversation-1',
@@ -33,24 +33,27 @@ describe('claimInboundCommunication', () => {
         providerMessageId: 'SM-provider-event-1',
         status: 'processing',
       },
+      select: { id: true },
     });
   });
 
   it('returns the existing event after a concurrent or retried provider delivery', async () => {
     const create = vi.fn().mockRejectedValue({ code: 'P2002' });
     const findUnique = vi.fn().mockResolvedValue({
+      id: 'message-existing',
       status: 'replied',
       metadata: { reply: 'Certainly, Sir.' },
+      agentRunId: 'run-existing',
     });
     const prisma = prismaMock(create, findUnique);
 
     await expect(claimInboundCommunication(prisma, input)).resolves.toEqual({
       claimed: false,
-      existing: { status: 'replied', metadata: { reply: 'Certainly, Sir.' } },
+      existing: { messageId: 'message-existing', status: 'replied', metadata: { reply: 'Certainly, Sir.' }, agentRunId: 'run-existing' },
     });
     expect(findUnique).toHaveBeenCalledWith({
       where: { providerMessageId: 'SM-provider-event-1' },
-      select: { id: true, status: true, metadata: true, createdAt: true },
+      select: { id: true, status: true, metadata: true, createdAt: true, agentRunId: true },
     });
   });
 
@@ -58,7 +61,7 @@ describe('claimInboundCommunication', () => {
     const stale = new Date(Date.now() - 6 * 60 * 1000);
     const create = vi.fn().mockRejectedValue({ code: 'P2002' });
     const findUnique = vi.fn().mockResolvedValue({
-      id: 'message-stale', status: 'processing', metadata: null, createdAt: stale,
+      id: 'message-stale', status: 'processing', metadata: null, createdAt: stale, agentRunId: null,
     });
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });
     const prisma = {
@@ -66,7 +69,7 @@ describe('claimInboundCommunication', () => {
       communicationMessage: { create, findUnique, updateMany },
     } as unknown as PrismaClient;
 
-    await expect(claimInboundCommunication(prisma, input)).resolves.toEqual({ claimed: true });
+    await expect(claimInboundCommunication(prisma, input)).resolves.toEqual({ claimed: true, messageId: 'message-stale' });
     expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ id: 'message-stale', status: 'processing' }),
       data: expect.objectContaining({ status: 'processing', body: input.body }),
@@ -76,7 +79,7 @@ describe('claimInboundCommunication', () => {
   it('does not reclaim a fresh processing claim while another worker may own it', async () => {
     const create = vi.fn().mockRejectedValue({ code: 'P2002' });
     const findUnique = vi.fn().mockResolvedValue({
-      id: 'message-fresh', status: 'processing', metadata: null, createdAt: new Date(),
+      id: 'message-fresh', status: 'processing', metadata: null, createdAt: new Date(), agentRunId: null,
     });
     const updateMany = vi.fn().mockResolvedValue({ count: 0 });
     const prisma = {
@@ -85,7 +88,7 @@ describe('claimInboundCommunication', () => {
     } as unknown as PrismaClient;
 
     await expect(claimInboundCommunication(prisma, input)).resolves.toEqual({
-      claimed: false, existing: { status: 'processing', metadata: null },
+      claimed: false, existing: { messageId: 'message-fresh', status: 'processing', metadata: null, agentRunId: null },
     });
     expect(updateMany).not.toHaveBeenCalled();
   });
