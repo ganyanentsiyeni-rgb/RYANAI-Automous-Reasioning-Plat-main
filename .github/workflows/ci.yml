@@ -324,7 +324,7 @@ jobs:
           api_pid=$!
           # The MCP health check is part of startup verification, so start the
           # standalone HTTP manager explicitly in CI before running that check.
-          MCP_HOST=127.0.0.1 MCP_PORT=8765 npm --prefix mcp-server run start:http > mcp.log 2>&1 &
+          RYANAI_API_BASE_URL=http://127.0.0.1:3000 MCP_HOST=127.0.0.1 MCP_PORT=8765 npm --prefix mcp-server run start:http > mcp.log 2>&1 &
           mcp_pid=$!
           # Vite's preview proxy reads this setting at runtime. Point it at the
           # API started above (port 3000), not the local-development default (3001).
