@@ -3,7 +3,7 @@
   "schemaVersion": "ryanai.stack/v1",
   "name": "ryanai",
   "version": "0.1.0",
-  "repository": "RyanAI-Automated/RYANAI-Automous-Reasioning-Plat",
+  "repository": "ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main",
   "description": "RyanAI autonomous reasoning stack: API, web client, MCP manager, PostgreSQL/pgvector, and Redis.",
   "services": [
     {

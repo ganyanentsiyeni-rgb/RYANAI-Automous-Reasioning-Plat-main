@@ -61,6 +61,9 @@ if (manifest !== undefined) {
   } else {
     if (manifest.schemaVersion !== 'ryanai.stack/v1') fail('Unexpected stack schemaVersion');
     if (manifest.name !== 'ryanai') fail('Stack name must be ryanai');
+    if (manifest.repository !== 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main') {
+      fail('Stack repository must match the authorised RyanAI source-of-truth repository');
+    }
     if (typeof manifest.version !== 'string' || !manifest.version) fail('Stack version is required');
     if (!Array.isArray(manifest.services)) fail('Stack services must be an array');
 
@@ -69,6 +72,18 @@ if (manifest !== undefined) {
     if (validServices.length !== services.length) fail('Each stack service must be an object');
     const names = validServices.map((service) => service.name);
     if (new Set(names).size !== names.length) fail('Stack service names must be unique');
+    const knownServices = new Set(names);
+    for (const service of validServices) {
+      if (Array.isArray(service.dependsOn)) {
+        for (const dependency of service.dependsOn) {
+          if (!knownServices.has(dependency)) {
+            fail(`Unknown dependency ${String(dependency)} declared by stack service ${String(service.name)}`);
+          }
+        }
+      } else if (service.dependsOn !== undefined) {
+        fail('Service dependencies must be an array for ' + String(service.name));
+      }
+    }
 
     for (const name of ['api', 'web', 'mcp-server', 'postgres', 'redis']) {
       if (!names.includes(name)) fail('Missing required stack service: ' + name);
