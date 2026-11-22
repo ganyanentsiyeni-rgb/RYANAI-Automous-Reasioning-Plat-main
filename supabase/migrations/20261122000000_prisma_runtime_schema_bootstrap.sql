@@ -2303,3 +2303,415 @@ ALTER TABLE public.intelligence_event_attempts
 
 -- END PRISMA MIGRATION 20261118183000_intelligence_event_attempts_fk_update_cascade
 INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'2cadc590b758399818e962dd83a7eb7f3bad0af34a7f20aae55e6cf7772a67e7',now(),'20261118183000_intelligence_event_attempts_fk_update_cascade',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261119160000_align_supabase_shared_schema
+-- Reconcile Prisma-owned models with the canonical Supabase shared-table baseline.
+-- Existing timestamp-without-time-zone values are interpreted as UTC during
+-- conversion. Already-timestamptz values are preserved without reinterpretation.
+
+DO $shared_timestamp_types$
+DECLARE
+  item RECORD;
+  current_type TEXT;
+  current_precision INTEGER;
+BEGIN
+  FOR item IN
+    SELECT *
+    FROM (VALUES
+      ('profiles', 'created_at'),
+      ('profiles', 'updated_at'),
+      ('conversations', 'created_at'),
+      ('conversations', 'updated_at'),
+      ('messages', 'created_at'),
+      ('memory_entries', 'created_at')
+    ) AS columns_to_align(table_name, column_name)
+  LOOP
+    SELECT data_type, datetime_precision
+      INTO current_type, current_precision
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = item.table_name
+      AND column_name = item.column_name;
+
+    IF current_type IS NULL THEN
+      RAISE EXCEPTION 'Required shared column public.%.% is missing', item.table_name, item.column_name;
+    ELSIF current_type = 'timestamp without time zone' THEN
+      EXECUTE format(
+        'ALTER TABLE public.%I ALTER COLUMN %I TYPE TIMESTAMPTZ(6) USING %I AT TIME ZONE %L',
+        item.table_name, item.column_name, item.column_name, 'UTC'
+      );
+    ELSIF current_type = 'timestamp with time zone' AND current_precision < 6 THEN
+      EXECUTE format(
+        'ALTER TABLE public.%I ALTER COLUMN %I TYPE TIMESTAMPTZ(6) USING %I',
+        item.table_name, item.column_name, item.column_name
+      );
+    ELSIF current_type <> 'timestamp with time zone' THEN
+      RAISE EXCEPTION
+        'Unsupported type % for public.%.%; expected timestamp with or without time zone',
+        current_type, item.table_name, item.column_name;
+    END IF;
+  END LOOP;
+END;
+$shared_timestamp_types$;
+
+ALTER TABLE public.profiles
+  ALTER COLUMN created_at SET DEFAULT now(),
+  ALTER COLUMN updated_at SET DEFAULT now();
+
+ALTER TABLE public.conversations
+  ALTER COLUMN user_id SET DEFAULT auth.uid(),
+  ALTER COLUMN created_at SET DEFAULT now(),
+  ALTER COLUMN updated_at SET DEFAULT now();
+
+ALTER TABLE public.messages
+  ALTER COLUMN created_at SET DEFAULT now();
+
+ALTER TABLE public.memory_entries
+  ALTER COLUMN user_id SET DEFAULT auth.uid(),
+  ALTER COLUMN created_at SET DEFAULT now();
+
+-- The Supabase-owned messages FK uses ON DELETE CASCADE and the PostgreSQL
+-- default ON UPDATE NO ACTION. Keep the Prisma-only and combined stacks equal.
+ALTER TABLE public.messages
+  DROP CONSTRAINT IF EXISTS messages_conversation_id_fkey;
+
+ALTER TABLE public.messages
+  ADD CONSTRAINT messages_conversation_id_fkey
+  FOREIGN KEY (conversation_id)
+  REFERENCES public.conversations(id)
+  ON DELETE CASCADE
+  ON UPDATE NO ACTION;
+
+-- Preserve the compound unique declaration from Prisma while aligning its
+-- physical index name with the Supabase-owned uniqueness migration.
+DO $memory_entries_unique$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM public.memory_entries
+    GROUP BY user_id, key
+    HAVING count(*) > 1
+  ) THEN
+    RAISE EXCEPTION
+      'Duplicate (user_id, key) pairs found in public.memory_entries; resolve duplicates before aligning the Prisma migration history';
+  END IF;
+
+  IF to_regclass('public.memory_entries_user_key_idx') IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_index i
+      JOIN pg_class idx ON idx.oid = i.indexrelid
+      JOIN pg_namespace ns ON ns.oid = idx.relnamespace
+      WHERE ns.nspname = 'public'
+        AND idx.relname = 'memory_entries_user_key_idx'
+        AND i.indisunique
+        AND i.indisvalid
+        AND i.indpred IS NULL
+        AND i.indnkeyatts = 2
+        AND i.indnatts = 2
+        AND ARRAY(
+          SELECT a.attname::text
+          FROM unnest(i.indkey) WITH ORDINALITY AS key(attnum, position)
+          JOIN pg_attribute a
+            ON a.attrelid = i.indrelid
+           AND a.attnum = key.attnum
+          WHERE key.position <= i.indnkeyatts
+          ORDER BY key.position
+        ) = ARRAY['user_id', 'key']::text[]
+    ) THEN
+      RAISE EXCEPTION
+        'public.memory_entries_user_key_idx exists but does not match the expected unique (user_id, key) definition';
+    END IF;
+
+    ALTER TABLE public.memory_entries
+      DROP CONSTRAINT IF EXISTS memory_entries_user_id_key_key;
+  ELSIF EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'public.memory_entries'::regclass
+      AND conname = 'memory_entries_user_id_key_key'
+      AND contype = 'u'
+  ) THEN
+    ALTER TABLE public.memory_entries
+      RENAME CONSTRAINT memory_entries_user_id_key_key TO memory_entries_user_key_idx;
+  ELSE
+    CREATE UNIQUE INDEX memory_entries_user_key_idx
+      ON public.memory_entries (user_id, key);
+  END IF;
+END;
+$memory_entries_unique$;
+
+CREATE INDEX IF NOT EXISTS checkpoints_thread_id_idx
+  ON public.checkpoints (thread_id);
+
+CREATE INDEX IF NOT EXISTS checkpoint_blobs_thread_id_idx
+  ON public.checkpoint_blobs (thread_id);
+
+CREATE INDEX IF NOT EXISTS checkpoint_writes_thread_id_idx
+  ON public.checkpoint_writes (thread_id);
+
+-- END PRISMA MIGRATION 20261119160000_align_supabase_shared_schema
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'39e2404041c53066d97eb01bada38ec62fdd3de187c814bcb0420adf7c6c252c',now(),'20261119160000_align_supabase_shared_schema',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261119171000_align_checkpoint_writes_primary_key
+-- Mirror the Supabase-owned checkpoint_writes primary-key repair in
+-- Prisma-only installs. Supabase fresh stacks may already have the six-key
+-- primary key; in that case this migration is an idempotent assertion.
+-- Historical migrations remain unchanged.
+
+DO $checkpoint_writes_primary_key$
+DECLARE
+  current_pk_name TEXT;
+  current_pk_columns TEXT[];
+  expected_legacy_columns TEXT[] := ARRAY[
+    'thread_id', 'checkpoint_ns', 'checkpoint_id', 'task_id', 'idx'
+  ];
+  expected_columns TEXT[] := ARRAY[
+    'thread_id', 'checkpoint_ns', 'checkpoint_id', 'task_id', 'idx', 'channel'
+  ];
+  has_duplicates BOOLEAN;
+BEGIN
+  IF to_regclass('public.checkpoint_writes') IS NULL THEN
+    RAISE EXCEPTION
+      'Expected public.checkpoint_writes before the Prisma checkpoint primary-key repair';
+  END IF;
+
+  SELECT c.conname,
+         array_agg(a.attname::text ORDER BY key_column.ordinality)
+    INTO current_pk_name, current_pk_columns
+    FROM pg_constraint c
+    CROSS JOIN LATERAL unnest(c.conkey) WITH ORDINALITY
+      AS key_column(attnum, ordinality)
+    JOIN pg_attribute a
+      ON a.attrelid = c.conrelid
+     AND a.attnum = key_column.attnum
+   WHERE c.conrelid = 'public.checkpoint_writes'::regclass
+     AND c.contype = 'p'
+   GROUP BY c.oid, c.conname;
+
+  IF current_pk_name IS NULL THEN
+    RAISE EXCEPTION
+      'Refusing checkpoint_writes repair: primary key is missing';
+  END IF;
+
+  IF current_pk_columns = expected_columns THEN
+    RAISE NOTICE
+      'checkpoint_writes already has the expected six-column primary key';
+    RETURN;
+  END IF;
+
+  IF current_pk_columns IS DISTINCT FROM expected_legacy_columns THEN
+    RAISE EXCEPTION
+      'Refusing checkpoint_writes repair: unexpected primary key columns %',
+      current_pk_columns;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'checkpoint_writes'
+      AND column_name = 'channel'
+      AND is_nullable = 'NO'
+  ) THEN
+    RAISE EXCEPTION
+      'Refusing checkpoint_writes repair: required non-null channel column is missing';
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.checkpoint_writes
+    GROUP BY thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel
+    HAVING count(*) > 1
+  ) INTO has_duplicates;
+
+  IF has_duplicates THEN
+    RAISE EXCEPTION
+      'Refusing checkpoint_writes repair: duplicate rows exist for the intended six-column key';
+  END IF;
+
+  EXECUTE format(
+    'ALTER TABLE public.checkpoint_writes DROP CONSTRAINT %I',
+    current_pk_name
+  );
+
+  ALTER TABLE public.checkpoint_writes
+    ADD CONSTRAINT checkpoint_writes_pkey
+    PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel);
+END
+$checkpoint_writes_primary_key$;
+
+-- END PRISMA MIGRATION 20261119171000_align_checkpoint_writes_primary_key
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'2614fb8f719893f9148767660cff76de60a2a3acb4e32780247e40fa70278017',now(),'20261119171000_align_checkpoint_writes_primary_key',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261119200000_studio_worker_lease_fencing
+ALTER TABLE "public"."studio_tasks"
+  ADD COLUMN "lease_token" UUID;
+
+-- Running leases created before fencing cannot be safely resumed: invalidate
+-- them so the next worker obtains a fresh token and attempt generation.
+UPDATE "public"."studio_tasks"
+SET "status" = CASE WHEN "attempts" >= "max_attempts" THEN 'failed' ELSE 'queued' END,
+    "lease_owner" = NULL,
+    "lease_token" = NULL,
+    "lease_expires_at" = NULL,
+    "heartbeat_at" = NULL,
+    "completed_at" = CASE WHEN "attempts" >= "max_attempts" THEN NOW() ELSE NULL END,
+    "available_at" = CASE WHEN "attempts" >= "max_attempts" THEN NOW() ELSE "available_at" END
+WHERE "status" = 'running';
+
+-- END PRISMA MIGRATION 20261119200000_studio_worker_lease_fencing
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'e18e4f4526693e28bf3a2d53eb02447aa42bb506db23c4250b6d62f3794016f4',now(),'20261119200000_studio_worker_lease_fencing',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261121090000_durable_realtime_event_store
+CREATE TABLE "public"."realtime_channel_sequences" (
+  "audience_type" VARCHAR(24) NOT NULL,
+  "audience_id" VARCHAR(160) NOT NULL,
+  "channel" VARCHAR(120) NOT NULL,
+  "next_sequence" BIGINT NOT NULL DEFAULT 0,
+  "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "realtime_channel_sequences_pkey" PRIMARY KEY ("audience_type", "audience_id", "channel")
+);
+
+CREATE TABLE "public"."realtime_events" (
+  "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+  "audience_type" VARCHAR(24) NOT NULL,
+  "audience_id" VARCHAR(160) NOT NULL,
+  "channel" VARCHAR(120) NOT NULL,
+  "sequence" BIGINT NOT NULL,
+  "event_type" VARCHAR(160) NOT NULL,
+  "payload" JSONB NOT NULL,
+  "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "expires_at" TIMESTAMPTZ(6) NOT NULL,
+  CONSTRAINT "realtime_events_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "realtime_events_audience_channel_sequence_key" UNIQUE ("audience_type", "audience_id", "channel", "sequence")
+);
+
+CREATE INDEX "realtime_events_replay_idx"
+  ON "public"."realtime_events" ("audience_type", "audience_id", "channel", "expires_at", "sequence");
+CREATE INDEX "realtime_events_retention_idx"
+  ON "public"."realtime_events" ("expires_at");
+
+-- END PRISMA MIGRATION 20261121090000_durable_realtime_event_store
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'c12b21c2d3e4d6601a9102a46917e1c6fc42703dffa87725eed7e4834487db3b',now(),'20261121090000_durable_realtime_event_store',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261121100000_align_realtime_event_store_defaults
+-- Preserve the original durable event-store migration checksum.
+-- Prisma owns @updatedAt and @default(uuid()) at the client layer, so these
+-- columns must not retain database defaults that create schema drift.
+ALTER TABLE "public"."realtime_channel_sequences"
+  ALTER COLUMN "updated_at" DROP DEFAULT;
+
+ALTER TABLE "public"."realtime_events"
+  ALTER COLUMN "id" DROP DEFAULT;
+
+-- END PRISMA MIGRATION 20261121100000_align_realtime_event_store_defaults
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'3338fadf45f41caf90b2801509f02aaf1d54ae02c67ba4bfb0beabaf71bb3877',now(),'20261121100000_align_realtime_event_store_defaults',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261121120000_agent_run_lease_heartbeat
+-- Add explicit lease deadlines and liveness timestamps to both durable worker queues.
+-- This migration assumes the existing agent_runs and coding_tasks base migrations
+-- have been applied. It intentionally fails if either base table is absent: reconcile
+-- prisma/migrations and _prisma_migrations instead of silently manufacturing schema drift.
+
+ALTER TABLE public.agent_runs
+  ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMP(3),
+  ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMP(3);
+
+ALTER TABLE public.coding_tasks
+  ADD COLUMN IF NOT EXISTS heartbeat_at TIMESTAMPTZ(6);
+
+-- Preserve currently running work by translating the legacy three-minute locked_at
+-- timeout into an explicit expiry. Keep locked_at as the original claim timestamp.
+UPDATE public.agent_runs
+SET lease_expires_at = COALESCE(locked_at + INTERVAL '3 minutes', NOW()),
+    heartbeat_at = COALESCE(heartbeat_at, locked_at, NOW())
+WHERE status = 'running'
+  AND lease_expires_at IS NULL;
+
+UPDATE public.coding_tasks
+SET heartbeat_at = COALESCE(locked_at, NOW())
+WHERE status = 'running'
+  AND heartbeat_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS agent_runs_status_next_attempt_lease_idx
+  ON public.agent_runs (status, next_attempt_at, lease_expires_at);
+
+CREATE INDEX IF NOT EXISTS agent_runs_worker_lease_idx
+  ON public.agent_runs (worker_id, lease_expires_at);
+
+CREATE INDEX IF NOT EXISTS coding_tasks_status_lease_expiry_idx
+  ON public.coding_tasks (status, lease_expires_at);
+
+-- END PRISMA MIGRATION 20261121120000_agent_run_lease_heartbeat
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'d0f9dc41149d5a43af5b48776ef6df966bdd1bf7cd0ce5cfaad33f2701a86a25',now(),'20261121120000_agent_run_lease_heartbeat',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261121150000_github_pr_whatsapp_review_approvals
+-- Durable one-time owner approval for a GitHub PR review.
+-- This migration is additive and is not applied by this PR.
+CREATE TABLE public.github_pr_review_approvals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id UUID NOT NULL,
+  repository_full_name VARCHAR(255) NOT NULL
+    CHECK (repository_full_name = 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main'),
+  pull_request_number INTEGER NOT NULL CHECK (pull_request_number > 0),
+  expected_head_sha CHAR(40) NOT NULL
+    CHECK (expected_head_sha ~ '^[0-9a-f]{40}$'),
+  status VARCHAR(16) NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'approved', 'rejected', 'submitting', 'submitted', 'expired', 'blocked')),
+  expires_at TIMESTAMPTZ(6) NOT NULL,
+  approved_at TIMESTAMPTZ(6),
+  inbound_message_sid VARCHAR(128) UNIQUE,
+  consumed_at TIMESTAMPTZ(6),
+  github_review_id BIGINT,
+  created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT github_pr_review_approvals_approval_state_check CHECK (
+    (status IN ('pending', 'rejected', 'expired', 'blocked') AND consumed_at IS NULL)
+    OR (status IN ('approved', 'submitting', 'submitted') AND approved_at IS NOT NULL)
+  ),
+  CONSTRAINT github_pr_review_approvals_submission_state_check CHECK (
+    status <> 'submitted' OR (consumed_at IS NOT NULL AND github_review_id IS NOT NULL)
+  )
+);
+
+CREATE INDEX github_pr_review_approvals_owner_status_expiry_idx
+  ON public.github_pr_review_approvals (owner_user_id, status, expires_at);
+CREATE INDEX github_pr_review_approvals_target_idx
+  ON public.github_pr_review_approvals (repository_full_name, pull_request_number, expected_head_sha);
+
+ALTER TABLE public.github_pr_review_approvals ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.github_pr_review_approvals FROM PUBLIC;
+DO $github_review_approval_roles$
+DECLARE role_name TEXT;
+BEGIN
+  FOREACH role_name IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = role_name) THEN
+      EXECUTE format('REVOKE ALL ON TABLE public.github_pr_review_approvals FROM %I', role_name);
+    END IF;
+  END LOOP;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+    GRANT ALL ON TABLE public.github_pr_review_approvals TO service_role;
+  END IF;
+END;
+$github_review_approval_roles$;
+
+-- END PRISMA MIGRATION 20261121150000_github_pr_whatsapp_review_approvals
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'d59ea81e20df59a7de56657cedfa01505c5f6caf7bd1f6cd691af38ec05bc54c',now(),'20261121150000_github_pr_whatsapp_review_approvals',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261121160000_comms_agent_run_link
+-- Link each inbound communication event to at most one durable agent run.
+-- Nullable and SET NULL preserve communication history if a run is later removed.
+ALTER TABLE "public"."communication_messages"
+  ADD COLUMN "agent_run_id" TEXT;
+
+CREATE UNIQUE INDEX "communication_messages_agent_run_id_key"
+  ON "public"."communication_messages"("agent_run_id");
+
+ALTER TABLE "public"."communication_messages"
+  ADD CONSTRAINT "communication_messages_agent_run_id_fkey"
+  FOREIGN KEY ("agent_run_id") REFERENCES "public"."agent_runs"("id")
+  ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- END PRISMA MIGRATION 20261121160000_comms_agent_run_link
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'1fea087c10b174c95dbb84eb77e5060e477e19214d2af1c0f2dcfc591ebb8147',now(),'20261121160000_comms_agent_run_link',now(),1);
