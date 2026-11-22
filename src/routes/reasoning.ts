@@ -32,7 +32,7 @@ export async function reasoningRoutes(fastify: FastifyInstance) {
         prompt,
         model: request.body?.model,
         language: request.body?.language,
-        responsePreferences: request.body?.responsePreferences,
+        responsePreferences: request.authUser?.responsePreferences ?? request.body?.responsePreferences,
         user: request.authUser,
         onProgress: (event) => {
           if (reply.raw.destroyed || reply.raw.writableEnded) return;
