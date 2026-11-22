@@ -85,6 +85,20 @@ export function validateProviderVerification(workflow, repositoryRoot = process.
     );
   }
   require(
+    Object.prototype.hasOwnProperty.call(env, 'TOGETHER_API_ENDPOINT'),
+    'TOGETHER_API_ENDPOINT must be passed through to the canonical Qwen endpoint resolver',
+  );
+  for (const selector of [
+    'PRIMARY_REASONING_PROVIDER', 'SECONDARY_REASONING_PROVIDER', 'LOGIC_REASONING_PROVIDER',
+    'NVIDIA_PROVIDER', 'QWEN_PROVIDER', 'LOGIC_PROVIDER',
+    'GROK_API_ENDPOINT', 'GROK_MODEL', 'OLLAMA_BASE_URL', 'OLLAMA_URL', 'OLLAMA_MODEL',
+  ]) {
+    require(
+      Object.prototype.hasOwnProperty.call(env, selector),
+      selector + ' must be passed through so the probe uses the runtime provider selection',
+    );
+  }
+  require(
     typeof env.RYANAI_PROBE_BRAIN === 'string' && /matrix\.provider/.test(env.RYANAI_PROBE_BRAIN),
     'probe brain must be selected by the provider matrix',
   );
