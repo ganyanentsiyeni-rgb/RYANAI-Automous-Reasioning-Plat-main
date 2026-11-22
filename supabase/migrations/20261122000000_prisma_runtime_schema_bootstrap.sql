@@ -1326,3 +1326,586 @@ ALTER TABLE "pa_execution_receipts" ADD CONSTRAINT "pa_execution_receipts_delega
 
 -- END PRISMA MIGRATION 20261105210000_pa_delegation
 INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'32a476a2d08ab5d8b2237801878b8c78ff0a872954dd0e87e752420f2ef4a329',now(),'20261105210000_pa_delegation',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261105210000_quant_paper_order_proposals
+CREATE TABLE "quant_paper_order_proposals" (
+  "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+  "user_id" TEXT NOT NULL,
+  "signal_id" TEXT NOT NULL,
+  "market_data_import_id" TEXT NOT NULL,
+  "symbol" VARCHAR(15) NOT NULL,
+  "side" VARCHAR(4) NOT NULL,
+  "quantity" NUMERIC(24,8) NOT NULL,
+  "reference_price" NUMERIC(24,8) NOT NULL,
+  "notional" NUMERIC(24,8) NOT NULL,
+  "client_order_id" VARCHAR(64) NOT NULL,
+  "status" VARCHAR(16) NOT NULL DEFAULT 'pending',
+  "expires_at" TIMESTAMPTZ(6) NOT NULL,
+  "order_id" TEXT,
+  "reason" TEXT,
+  "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "decided_at" TIMESTAMPTZ(6),
+  CONSTRAINT "quant_paper_order_proposals_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "quant_paper_order_proposals_user_id_fkey"
+    FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "quant_paper_order_proposals_signal_id_fkey"
+    FOREIGN KEY ("signal_id") REFERENCES "quant_strategy_signals"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "quant_paper_order_proposals_market_data_import_id_fkey"
+    FOREIGN KEY ("market_data_import_id") REFERENCES "quant_market_data_imports"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "quant_paper_order_proposals_order_id_fkey"
+    FOREIGN KEY ("order_id") REFERENCES "quant_paper_orders"("id") ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT "quant_paper_order_proposals_side_check"
+    CHECK ("side" IN ('buy', 'sell')),
+  CONSTRAINT "quant_paper_order_proposals_status_check"
+    CHECK ("status" IN ('pending', 'confirmed', 'rejected', 'expired')),
+  CONSTRAINT "quant_paper_order_proposals_values_check"
+    CHECK ("quantity" > 0 AND "reference_price" > 0 AND "notional" > 0),
+  CONSTRAINT "quant_paper_order_proposals_idempotency_key"
+    UNIQUE ("user_id", "client_order_id")
+);
+
+CREATE INDEX "quant_paper_order_proposals_user_status_created_idx"
+  ON "quant_paper_order_proposals"("user_id", "status", "created_at" DESC);
+CREATE INDEX "quant_paper_order_proposals_status_expiry_idx"
+  ON "quant_paper_order_proposals"("status", "expires_at");
+
+-- Proposals are visible only through authenticated API endpoints.
+DO $quant_proposal_isolation$
+DECLARE
+  browser_role TEXT;
+BEGIN
+  ALTER TABLE public.quant_paper_order_proposals ENABLE ROW LEVEL SECURITY;
+  REVOKE ALL ON TABLE public.quant_paper_order_proposals FROM PUBLIC;
+
+  FOREACH browser_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = browser_role) THEN
+      EXECUTE format('REVOKE ALL ON TABLE public.%I FROM %I', 'quant_paper_order_proposals', browser_role);
+    END IF;
+  END LOOP;
+
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+    GRANT ALL ON TABLE public.quant_paper_order_proposals TO service_role;
+  END IF;
+END;
+$quant_proposal_isolation$;
+
+-- END PRISMA MIGRATION 20261105210000_quant_paper_order_proposals
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'d1a5598829a74fcb9f5a9b6eeec9826bb719c614af9aaef8322f9eed2664c299',now(),'20261105210000_quant_paper_order_proposals',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261105211000_quant_paper_proposal_confirmation_state
+ALTER TABLE "quant_paper_order_proposals"
+  DROP CONSTRAINT "quant_paper_order_proposals_status_check";
+
+ALTER TABLE "quant_paper_order_proposals"
+  ADD CONSTRAINT "quant_paper_order_proposals_status_check"
+    CHECK ("status" IN ('pending', 'confirming', 'confirmed', 'rejected', 'expired'));
+
+-- END PRISMA MIGRATION 20261105211000_quant_paper_proposal_confirmation_state
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'da890b2184037eaf01bb2087640f1a82db0cdc58b7a12fced7e9145cff7fbadd',now(),'20261105211000_quant_paper_proposal_confirmation_state',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261105223000_quant_market_data_events
+CREATE TABLE "quant_market_data_events" (
+  "id" BIGSERIAL NOT NULL,
+  "user_id" TEXT NOT NULL,
+  "symbol" VARCHAR(15) NOT NULL,
+  "provider" VARCHAR(32) NOT NULL,
+  "feed" VARCHAR(16) NOT NULL,
+  "timeframe" VARCHAR(16) NOT NULL,
+  "event_timestamp" TIMESTAMPTZ(6) NOT NULL,
+  "received_at" TIMESTAMPTZ(6) NOT NULL,
+  "payload_hash" CHAR(64) NOT NULL,
+  "source" VARCHAR(16) NOT NULL DEFAULT 'stream',
+  "bar" JSONB NOT NULL,
+  "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT NOW(),
+  CONSTRAINT "quant_market_data_events_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "quant_market_data_events_user_id_fkey"
+    FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "quant_market_data_events_source_check"
+    CHECK ("source" IN ('stream', 'historical'))
+);
+
+CREATE UNIQUE INDEX "quant_market_data_events_dedupe_key"
+  ON "quant_market_data_events"(
+    "user_id", "provider", "feed", "timeframe", "symbol", "event_timestamp", "payload_hash"
+  );
+CREATE INDEX "quant_market_data_events_user_symbol_cursor_idx"
+  ON "quant_market_data_events"("user_id", "symbol", "id" ASC);
+CREATE INDEX "quant_market_data_events_user_symbol_time_idx"
+  ON "quant_market_data_events"("user_id", "symbol", "event_timestamp" DESC);
+
+-- END PRISMA MIGRATION 20261105223000_quant_market_data_events
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'7dd86ef0b676e71ff1914cc17f044aee490abf2a83092abec71aee0671d9f612',now(),'20261105223000_quant_market_data_events',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261105224500_quant_market_data_events_rls
+-- Keep market-event data behind the authenticated API. No browser role receives direct table access.
+DO $quant_market_data_events_isolation$
+DECLARE
+  browser_role TEXT;
+BEGIN
+  ALTER TABLE public.quant_market_data_events ENABLE ROW LEVEL SECURITY;
+  REVOKE ALL ON TABLE public.quant_market_data_events FROM PUBLIC;
+  REVOKE ALL ON SEQUENCE public.quant_market_data_events_id_seq FROM PUBLIC;
+
+  FOREACH browser_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = browser_role) THEN
+      EXECUTE format('REVOKE ALL ON TABLE public.%I FROM %I', 'quant_market_data_events', browser_role);
+      EXECUTE format('REVOKE ALL ON SEQUENCE public.%I FROM %I', 'quant_market_data_events_id_seq', browser_role);
+    END IF;
+  END LOOP;
+
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+    GRANT ALL ON TABLE public.quant_market_data_events TO service_role;
+    GRANT USAGE, SELECT ON SEQUENCE public.quant_market_data_events_id_seq TO service_role;
+  END IF;
+END;
+$quant_market_data_events_isolation$;
+
+-- END PRISMA MIGRATION 20261105224500_quant_market_data_events_rls
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'448aa8686da5bcc6249e0b21b2b63213421389c5a3b4595b526a074435f5de1a',now(),'20261105224500_quant_market_data_events_rls',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261105233000_quant_paper_fill_reconciliation
+ALTER TABLE "quant_paper_orders"
+  ADD COLUMN "filled_quantity" NUMERIC(24, 8) NOT NULL DEFAULT 0,
+  ADD COLUMN "remaining_quantity" NUMERIC(24, 8) NOT NULL DEFAULT 0,
+  ADD COLUMN "average_fill_price" NUMERIC(24, 8),
+  ADD COLUMN "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+-- Existing paper orders were created as fully filled and have one matching trade row.
+UPDATE "quant_paper_orders"
+SET "filled_quantity" = "quantity",
+    "remaining_quantity" = 0,
+    "average_fill_price" = "fill_price",
+    "updated_at" = "created_at";
+
+ALTER TABLE "quant_paper_orders"
+  ADD CONSTRAINT "quant_paper_orders_fill_quantities_check"
+    CHECK (
+      "filled_quantity" >= 0 AND
+      "remaining_quantity" >= 0 AND
+      ABS(("filled_quantity" + "remaining_quantity") - "quantity") <= 0.00000001
+    ),
+  ADD CONSTRAINT "quant_paper_orders_average_fill_check"
+    CHECK (
+      ("filled_quantity" = 0 AND "average_fill_price" IS NULL) OR
+      ("filled_quantity" > 0 AND "average_fill_price" IS NOT NULL AND "average_fill_price" > 0)
+    );
+
+-- Preserve compatibility with the existing atomic paper-fill route. The
+-- current route writes a fully-filled order and a single fill row in one tx.
+CREATE OR REPLACE FUNCTION public.quant_paper_order_fill_defaults()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $function$
+BEGIN
+  IF NEW.status = 'filled' AND NEW.filled_quantity = 0 AND NEW.remaining_quantity = 0 THEN
+    NEW.filled_quantity := NEW.quantity;
+    NEW.remaining_quantity := 0;
+    NEW.average_fill_price := NEW.fill_price;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+CREATE TRIGGER quant_paper_order_fill_defaults_trigger
+BEFORE INSERT ON public.quant_paper_orders
+FOR EACH ROW EXECUTE FUNCTION public.quant_paper_order_fill_defaults();
+
+ALTER TABLE "quant_paper_trades"
+  ADD COLUMN "client_fill_id" VARCHAR(96);
+
+UPDATE "quant_paper_trades"
+SET "client_fill_id" = 'legacy:' || "id";
+
+CREATE OR REPLACE FUNCTION public.quant_paper_trade_fill_id()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $function$
+DECLARE
+  order_client_id TEXT;
+BEGIN
+  -- Validate order ownership for every fill, including rows that provide an
+  -- explicit idempotency key. Never let client_fill_id bypass account isolation.
+  SELECT client_order_id INTO order_client_id
+  FROM public.quant_paper_orders WHERE id = NEW.order_id AND user_id = NEW.user_id;
+  IF order_client_id IS NULL THEN
+    RAISE EXCEPTION 'paper fill references an unknown order';
+  END IF;
+
+  IF NEW.client_fill_id IS NULL OR NEW.client_fill_id = '' THEN
+    NEW.client_fill_id := 'paper:' || order_client_id || ':' || NEW.id::text;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+CREATE TRIGGER quant_paper_trade_fill_id_trigger
+BEFORE INSERT ON public.quant_paper_trades
+FOR EACH ROW EXECUTE FUNCTION public.quant_paper_trade_fill_id();
+
+ALTER TABLE "quant_paper_trades"
+  ALTER COLUMN "client_fill_id" SET NOT NULL;
+
+CREATE UNIQUE INDEX "quant_paper_trades_user_client_fill_id_key"
+  ON "quant_paper_trades"("user_id", "client_fill_id");
+
+CREATE INDEX "quant_paper_trades_user_order_idx"
+  ON "quant_paper_trades"("user_id", "order_id");
+
+-- Reserve explicit lifecycle values for future simulated partial/cancelled fills.
+ALTER TABLE "quant_paper_orders"
+  DROP CONSTRAINT "quant_paper_orders_status_check",
+  ADD CONSTRAINT "quant_paper_orders_status_check"
+    CHECK ("status" IN ('accepted', 'partially_filled', 'filled', 'cancelled', 'rejected'));
+
+-- END PRISMA MIGRATION 20261105233000_quant_paper_fill_reconciliation
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'9b58cd1f0758554a90e3576de72e82d8b157f9308c0eff62ed928e5f74a0d39a',now(),'20261105233000_quant_paper_fill_reconciliation',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261106000000_security_centre_core
+-- RyanAI Security Centre: evidence-backed scans and findings.
+-- Production targets are deliberately excluded from this first iteration.
+-- Existing JarvisAuditEvent and AgentRunEvidence remain the general audit/evidence ledgers.
+
+CREATE TABLE IF NOT EXISTS public.security_approvals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  scope TEXT NOT NULL CHECK (scope IN ('kali_lab_scan', 'remediation_review')),
+  environment TEXT NOT NULL CHECK (environment IN ('isolated_kali_lab', 'staging')),
+  target_ref TEXT NOT NULL,
+  commit_sha TEXT,
+  request_hash TEXT NOT NULL CHECK (request_hash ~ '^[0-9a-f]{64}$'),
+  requested_by TEXT NOT NULL,
+  decided_by TEXT,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'approved', 'rejected', 'expired', 'revoked')),
+  reason TEXT,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS security_approvals_status_expiry_idx
+  ON public.security_approvals (status, expires_at);
+CREATE INDEX IF NOT EXISTS security_approvals_target_commit_idx
+  ON public.security_approvals (target_ref, commit_sha);
+
+CREATE TABLE IF NOT EXISTS public.security_scans (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id UUID,
+  initiated_by TEXT NOT NULL,
+  source TEXT NOT NULL CHECK (source IN ('github_actions', 'kali_lab', 'manual_import')),
+  environment TEXT NOT NULL
+    CHECK (environment IN ('isolated_ci', 'isolated_kali_lab', 'staging')),
+  target_ref TEXT,
+  branch TEXT,
+  commit_sha TEXT,
+  workflow_run_id TEXT,
+  status TEXT NOT NULL DEFAULT 'queued'
+    CHECK (status IN ('queued', 'running', 'completed', 'failed', 'cancelled')),
+  toolchain JSONB NOT NULL DEFAULT '{}'::jsonb,
+  summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+  approval_id UUID REFERENCES public.security_approvals(id) ON DELETE RESTRICT,
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT security_scans_kali_requires_approval
+    CHECK (source <> 'kali_lab' OR approval_id IS NOT NULL)
+);
+
+CREATE INDEX IF NOT EXISTS security_scans_created_idx
+  ON public.security_scans (created_at DESC);
+CREATE INDEX IF NOT EXISTS security_scans_commit_created_idx
+  ON public.security_scans (commit_sha, created_at DESC);
+CREATE INDEX IF NOT EXISTS security_scans_environment_status_idx
+  ON public.security_scans (environment, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS security_scans_owner_created_idx
+  ON public.security_scans (owner_user_id, created_at DESC);
+
+-- A Kali run consumes a single-use approval bound to the exact environment,
+-- target and commit. There is intentionally no production environment value.
+CREATE OR REPLACE FUNCTION public.consume_security_scan_approval()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  approval_record public.security_approvals%ROWTYPE;
+BEGIN
+  IF NEW.source <> 'kali_lab' THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT * INTO approval_record
+    FROM public.security_approvals
+    WHERE id = NEW.approval_id
+    FOR UPDATE;
+
+  IF NOT FOUND
+    OR approval_record.scope <> 'kali_lab_scan'
+    OR approval_record.status <> 'approved'
+    OR approval_record.expires_at <= NOW()
+    OR approval_record.used_at IS NOT NULL
+    OR approval_record.environment <> NEW.environment
+    OR approval_record.target_ref IS DISTINCT FROM NEW.target_ref
+    OR approval_record.commit_sha IS DISTINCT FROM NEW.commit_sha
+  THEN
+    RAISE EXCEPTION 'Kali scan requires a valid, unused, scope-bound human approval';
+  END IF;
+
+  UPDATE public.security_approvals SET used_at = NOW() WHERE id = approval_record.id;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS security_scans_consume_approval ON public.security_scans;
+CREATE TRIGGER security_scans_consume_approval
+  BEFORE INSERT ON public.security_scans
+  FOR EACH ROW EXECUTE FUNCTION public.consume_security_scan_approval();
+
+CREATE TABLE IF NOT EXISTS public.security_findings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  scan_id UUID NOT NULL REFERENCES public.security_scans(id) ON DELETE CASCADE,
+  fingerprint TEXT NOT NULL,
+  source_tool TEXT NOT NULL,
+  rule_id TEXT,
+  severity TEXT NOT NULL
+    CHECK (severity IN ('critical', 'high', 'medium', 'low', 'informational')),
+  confidence TEXT NOT NULL DEFAULT 'unknown'
+    CHECK (confidence IN ('unknown', 'low', 'medium', 'high')),
+  title TEXT NOT NULL,
+  description TEXT,
+  affected_component TEXT,
+  file_path TEXT,
+  start_line INTEGER CHECK (start_line IS NULL OR start_line > 0),
+  end_line INTEGER CHECK (end_line IS NULL OR end_line > 0),
+  cve TEXT,
+  cwe TEXT,
+  cvss NUMERIC(4,2) CHECK (cvss IS NULL OR (cvss >= 0 AND cvss <= 10)),
+  status TEXT NOT NULL DEFAULT 'open'
+    CHECK (status IN ('open', 'acknowledged', 'false_positive', 'remediated', 'accepted_risk')),
+  first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (scan_id, fingerprint)
+);
+
+CREATE INDEX IF NOT EXISTS security_findings_severity_status_seen_idx
+  ON public.security_findings (severity, status, last_seen_at DESC);
+CREATE INDEX IF NOT EXISTS security_findings_fingerprint_seen_idx
+  ON public.security_findings (fingerprint, last_seen_at DESC);
+CREATE INDEX IF NOT EXISTS security_findings_component_status_idx
+  ON public.security_findings (affected_component, status);
+
+CREATE TABLE IF NOT EXISTS public.security_evidence (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  scan_id UUID NOT NULL REFERENCES public.security_scans(id) ON DELETE CASCADE,
+  finding_id UUID REFERENCES public.security_findings(id) ON DELETE CASCADE,
+  evidence_type TEXT NOT NULL,
+  artifact_ref TEXT,
+  sha256 TEXT CHECK (sha256 IS NULL OR sha256 ~ '^[0-9a-f]{64}$'),
+  media_type TEXT,
+  redacted_excerpt TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS security_evidence_scan_captured_idx
+  ON public.security_evidence (scan_id, captured_at DESC);
+CREATE INDEX IF NOT EXISTS security_evidence_finding_captured_idx
+  ON public.security_evidence (finding_id, captured_at DESC);
+
+-- Evidence is immutable; corrections are represented by new evidence rows.
+-- Cascaded parent deletion remains possible for authorised data erasure.
+CREATE OR REPLACE FUNCTION public.reject_security_evidence_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' OR pg_trigger_depth() = 1 THEN
+    RAISE EXCEPTION 'security_evidence is append-only; insert a correction record';
+  END IF;
+  RETURN OLD;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS security_evidence_immutable ON public.security_evidence;
+CREATE TRIGGER security_evidence_immutable
+  BEFORE UPDATE OR DELETE ON public.security_evidence
+  FOR EACH ROW EXECUTE FUNCTION public.reject_security_evidence_mutation();
+
+CREATE TABLE IF NOT EXISTS public.security_remediations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  finding_id UUID NOT NULL REFERENCES public.security_findings(id) ON DELETE CASCADE,
+  recommendation TEXT NOT NULL,
+  rationale TEXT,
+  status TEXT NOT NULL DEFAULT 'proposed'
+    CHECK (status IN ('proposed', 'approved', 'rejected', 'verified')),
+  proposed_by TEXT NOT NULL,
+  reviewed_by TEXT,
+  reviewed_at TIMESTAMPTZ,
+  verification_scan_id UUID REFERENCES public.security_scans(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (status <> 'verified' OR verification_scan_id IS NOT NULL)
+);
+
+CREATE INDEX IF NOT EXISTS security_remediations_finding_status_idx
+  ON public.security_remediations (finding_id, status, created_at DESC);
+
+-- Security approvals are scoped to isolated Kali or staging only.
+-- No approval record can authorise a production target in this release.
+
+-- These records are server-side security evidence, not browser-facing tables.
+-- Match the repository's least-privilege pattern and keep local Postgres portable.
+DO $security_table_isolation$
+DECLARE
+  table_name TEXT;
+  browser_role TEXT;
+BEGIN
+  FOREACH table_name IN ARRAY ARRAY[
+    'security_scans',
+    'security_findings',
+    'security_evidence',
+    'security_remediations',
+    'security_approvals'
+  ] LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', table_name);
+    EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC', table_name);
+
+    FOREACH browser_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = browser_role) THEN
+        EXECUTE format('REVOKE ALL ON TABLE public.%I FROM %I', table_name, browser_role);
+      END IF;
+    END LOOP;
+
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+      EXECUTE format('GRANT ALL ON TABLE public.%I TO service_role', table_name);
+    END IF;
+  END LOOP;
+END;
+$security_table_isolation$;
+
+-- END PRISMA MIGRATION 20261106000000_security_centre_core
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'a35a24fbd2e5dc6eabd7f16743a22ffc16901503cae7aedf099d890f1c181ee3',now(),'20261106000000_security_centre_core',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261107100000_plugin_provider_authorization
+-- Plugin provider authorization state is server-only.
+-- No browser role may read tokens, PKCE verifier material, or connection records.
+CREATE TABLE public.plugin_provider_connections (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id TEXT NOT NULL,
+  provider_id VARCHAR(64) NOT NULL CHECK (provider_id ~ '^[a-z][a-z0-9-]{1,63}$'),
+  external_account_id TEXT,
+  display_label VARCHAR(255),
+  status VARCHAR(32) NOT NULL DEFAULT 'connected'
+    CHECK (status IN ('connected', 'reauthorization_required', 'revocation_pending', 'revoked', 'error')),
+  encrypted_access_token TEXT,
+  encrypted_refresh_token TEXT,
+  access_token_expires_at TIMESTAMPTZ(6),
+  refresh_token_expires_at TIMESTAMPTZ(6),
+  granted_scopes TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  connection_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  connected_at TIMESTAMPTZ(6),
+  revoked_at TIMESTAMPTZ(6),
+  created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT plugin_connection_revoked_timestamp_check
+    CHECK ((status <> 'revoked') OR revoked_at IS NOT NULL),
+  CONSTRAINT plugin_connection_connected_token_check
+    CHECK ((status <> 'connected') OR encrypted_access_token IS NOT NULL),
+  CONSTRAINT plugin_connection_metadata_no_credentials_check
+    CHECK (NOT (connection_metadata ?| ARRAY[
+      'access_token', 'refresh_token', 'accessToken', 'refreshToken',
+      'client_secret', 'clientSecret', 'password', 'credential', 'credentials'
+    ]))
+);
+CREATE UNIQUE INDEX plugin_provider_connections_owner_provider_key
+  ON public.plugin_provider_connections (owner_user_id, provider_id);
+CREATE INDEX plugin_provider_connections_owner_status_idx
+  ON public.plugin_provider_connections (owner_user_id, status, updated_at DESC);
+CREATE INDEX plugin_provider_connections_provider_status_idx
+  ON public.plugin_provider_connections (provider_id, status, updated_at DESC);
+
+CREATE TABLE public.plugin_oauth_states (
+  state_hash VARCHAR(64) PRIMARY KEY CHECK (state_hash ~ '^[0-9a-f]{64}$'),
+  owner_user_id TEXT NOT NULL,
+  provider_id VARCHAR(64) NOT NULL CHECK (provider_id ~ '^[a-z][a-z0-9-]{1,63}$'),
+  encrypted_code_verifier TEXT NOT NULL,
+  requested_scopes TEXT[] NOT NULL,
+  redirect_uri TEXT NOT NULL,
+  expires_at TIMESTAMPTZ(6) NOT NULL,
+  created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX plugin_oauth_states_expires_idx ON public.plugin_oauth_states (expires_at);
+CREATE INDEX plugin_oauth_states_owner_provider_idx
+  ON public.plugin_oauth_states (owner_user_id, provider_id);
+
+CREATE TABLE public.plugin_authorization_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id TEXT NOT NULL,
+  provider_id VARCHAR(64) NOT NULL,
+  connection_id UUID REFERENCES public.plugin_provider_connections(id) ON DELETE SET NULL,
+  event_type VARCHAR(64) NOT NULL
+    CHECK (event_type IN (
+      'authorization_started',
+      'authorization_completed',
+      'authorization_failed',
+      'scopes_rejected',
+      'token_refreshed',
+      'revocation_requested',
+      'revocation_confirmed',
+      'revocation_pending',
+      'connection_reauthorized'
+    )),
+  actor_user_id TEXT NOT NULL,
+  request_id VARCHAR(128),
+  details JSONB NOT NULL DEFAULT '{}'::jsonb
+    CHECK (NOT (details ?| ARRAY[
+      'access_token', 'refresh_token', 'accessToken', 'refreshToken',
+      'client_secret', 'clientSecret', 'password', 'credential', 'credentials'
+    ])),
+  created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX plugin_authorization_events_owner_created_idx
+  ON public.plugin_authorization_events (owner_user_id, created_at DESC);
+CREATE INDEX plugin_authorization_events_connection_created_idx
+  ON public.plugin_authorization_events (connection_id, created_at DESC);
+
+-- The OAuth state is single-use and removed atomically by callback handlers.
+-- Provider authorization audit is append-only.
+CREATE OR REPLACE FUNCTION public.reject_plugin_authorization_event_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'plugin_authorization_events is append-only';
+END;
+$$;
+CREATE TRIGGER plugin_authorization_events_immutable
+  BEFORE UPDATE OR DELETE ON public.plugin_authorization_events
+  FOR EACH ROW EXECUTE FUNCTION public.reject_plugin_authorization_event_mutation();
+
+DO $plugin_authorization_privileges$
+DECLARE
+  table_name TEXT;
+  browser_role TEXT;
+BEGIN
+  FOREACH table_name IN ARRAY ARRAY[
+    'plugin_provider_connections',
+    'plugin_oauth_states',
+    'plugin_authorization_events'
+  ] LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', table_name);
+    EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC', table_name);
+    FOREACH browser_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = browser_role) THEN
+        EXECUTE format('REVOKE ALL ON TABLE public.%I FROM %I', table_name, browser_role);
+      END IF;
+    END LOOP;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+      EXECUTE format('GRANT ALL ON TABLE public.%I TO service_role', table_name);
+    END IF;
+  END LOOP;
+END;
+$plugin_authorization_privileges$;
+
+-- END PRISMA MIGRATION 20261107100000_plugin_provider_authorization
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'2c0f36a949bd187a5392c59485bbce5dee70af6fceaf8974ad3807d6ca6863ea',now(),'20261107100000_plugin_provider_authorization',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261107160000_agent_requested_model
+ALTER TABLE "agent_runs" ADD COLUMN IF NOT EXISTS "requested_model" TEXT;
+
+-- END PRISMA MIGRATION 20261107160000_agent_requested_model
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'cd01e42b50ff67140c2a9fe239e6576f338a1acd1fd463b1ea277a620f56c4d2',now(),'20261107160000_agent_requested_model',now(),1);
