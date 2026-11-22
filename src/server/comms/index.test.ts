@@ -41,7 +41,7 @@ async function send(path: string, url: string, payload: Record<string, string>, 
   apps.push(app);
   installAuthentication(app);
   app.addHook('onRequest', async (request) => {
-    request.authUser = { id: '11111111-1111-4111-8111-111111111111', role: 'user', isOwner: true };
+    request.authUser = { id: '11111111-1111-4111-8111-111111111111', role: 'user', isOwner: true, pluginPreferences: {} };
   });
   app.decorate('prisma', prismaMock as never);
   await app.register(commsPlugin);
@@ -214,7 +214,7 @@ describe('Twilio conversational voice webhooks', () => {
     expect(response.body).toContain('This is RyanAI. How may I assist you?');
     expect(response.body).toContain('language="en-ZA"');
     expect(response.body).toContain('<Gather input="speech" language="en-ZA"');
-    expect(response.body).toMatch(/Good (morning|afternoon|evening), Sir G\. Today is .+\. This is RyanAI\. How may I assist you\?/);
+    expect(response.body).toMatch(/Good (morning|afternoon|evening|night), Sir G\. Today is .+\. This is RyanAI\. How may I assist you\?/);
     expect(response.body).toContain('Please speak after the tone.');
     expect(response.body).toContain('language="en-ZA" voice="Polly.Ayanda-Neural"');
     expect(response.body).toContain('<Gather input="speech"');
