@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { installAuthentication } from '../src/server/routes/auth.js';
 import { checkWebSocket } from '../scripts/check-websocket.js';
-import { createTokenAuthClient } from './helpers/authFixture';
+import { createTokenAuthClient } from './helpers/authFixture.js';
 
 const { createContextClient } = vi.hoisted(() => ({
   createContextClient: vi.fn(),
