@@ -115,6 +115,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
   const [directoryProfiles, setDirectoryProfiles] = useState<DirectoryProfile[]>([]);
   const [authInventory, setAuthInventory] = useState<AuthInventory | null>(null);
   const [authPage, setAuthPage] = useState(1);
+  const [directorySearch, setDirectorySearch] = useState('');
   const [lifecycleRequests, setLifecycleRequests] = useState<LifecycleRequest[]>([]);
   const [lifecycleAction, setLifecycleAction] = useState<LifecycleRequest['action']>('role_change');
   const [lifecycleTarget, setLifecycleTarget] = useState('');
@@ -136,7 +137,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
     const results = await Promise.allSettled([
       readJson<AdminIdentity>('/api/auth/verify', userId),
       readJson<{ events: AuditEvent[] }>('/api/admin/audit-events?limit=30', userId),
-      readJson<{ profiles: DirectoryProfile[]; authInventory?: AuthInventory }>('/api/admin/users?limit=50&page=' + authPage, userId),
+      readJson<{ profiles: DirectoryProfile[]; authInventory?: AuthInventory }>('/api/admin/users?limit=50&page=' + authPage + '&search=' + encodeURIComponent(directorySearch.trim()), userId),
       readJson<RuntimeMetrics>('/api/admin/metrics', userId),
       readJson<{ actions: PendingAction[] }>('/api/actions', userId),
       readJson<{ jobs: EngineeringJob[] }>('/api/engineering/jobs', userId),
@@ -180,7 +181,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
       setResourceErrors(nextResourceErrors);
       setLoading(false);
     }
-  }, [userId, authPage]);
+  }, [userId, authPage, directorySearch]);
 
   useEffect(() => {
     let active = true;
@@ -456,8 +457,14 @@ export default function AdminConsole({ userId }: { userId: string }) {
 
       <section id="admin-user-directory" className="scroll-mt-6 rounded-2xl border border-cyan-300/15 bg-slate-900/70 p-5 sm:p-6" aria-labelledby="admin-user-directory-title">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><h2 id="admin-user-directory-title" className="text-lg font-semibold text-white">User directory</h2><p className="mt-1 text-sm text-slate-400">Read-only view of profile records currently stored in public.profiles.</p></div>
+          <div><h2 id="admin-user-directory-title" className="text-lg font-semibold text-white">User directory</h2><p className="mt-1 text-sm text-slate-400">Read-only view of profile records currently stored in public.profiles. Search is server-side and does not expose credentials.</p></div>
           <span className="rounded-full border border-white/15 px-3 py-1 text-xs text-slate-300">{resourceErrors.directory ? 'Profile directory unavailable' : directoryProfiles.length + ' profiles returned · max 50'}</span>
+        </div>
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
+          <label className="min-w-0 flex-1 text-xs text-slate-400">Search profiles
+            <input aria-label="Search profiles" value={directorySearch} onChange={(event) => { setAuthPage(1); setDirectorySearch(event.target.value); }} maxLength={100} placeholder="Search by name or email" className="mt-1 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2.5 text-sm text-white" />
+          </label>
+          <button type="button" onClick={() => { setAuthPage(1); setDirectorySearch(''); }} disabled={!directorySearch} className="rounded-lg border border-white/15 px-3 py-2.5 text-xs text-slate-300 disabled:opacity-40">Clear search</button>
         </div>
         {resourceErrors.directory
           ? <UnavailableState label="Profile directory unavailable" detail={resourceErrors.directory} />
