@@ -45,7 +45,7 @@ export function redactEnvironment(values) {
 export function classifyGovernanceResponse(status) {
   if (status === 200) return 'available';
   if (status === 403) return 'permission_blocked';
-  if (status === 404) return 'not_configured';
+  if (status === 404) return 'not_found_or_hidden';
   if (status === 401) return 'unauthorized';
   return 'error';
 }
@@ -99,7 +99,7 @@ async function auditRepositoryGovernance(repository, adminToken) {
         })),
       })) : [],
     },
-    note: '403 means the token lacks the required read permission; 404 means the resource was not found. No governance settings are changed.',
+    note: '403 means the token lacks the required read permission; 404 means the resource may be absent or hidden by GitHub permission filtering. No governance settings are changed.',
   };
 }
 export async function runAudit({ repository, sha, token, adminToken, env = process.env }) {
