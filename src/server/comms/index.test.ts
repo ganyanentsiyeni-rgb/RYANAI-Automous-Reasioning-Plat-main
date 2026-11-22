@@ -228,7 +228,7 @@ describe('Twilio conversational voice webhooks', () => {
     const payload = { CallSid: 'CA-DISABLED', From: '+15555550123', SpeechResult: 'Please do not reply' };
     const signedActionUrl = actionUrl + '?turnId=' + turnId;
     const response = await send('/api/webhooks/twilio/voice/respond?turnId=' + turnId, signedActionUrl, payload);
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode, response.body).toBe(200);
     expect(response.body).toBe('<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>');
     expect(prismaMock.communicationConversation.upsert).not.toHaveBeenCalled();
     expect(prismaMock.communicationMessage.create).not.toHaveBeenCalled();
