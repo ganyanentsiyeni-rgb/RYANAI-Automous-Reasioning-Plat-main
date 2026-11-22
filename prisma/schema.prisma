@@ -296,6 +296,7 @@ model ScheduledTask {
 model PendingAction {
   id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String    @map("user_id") @db.Uuid
+  threadId  String    @map("thread_id")
   tool      String
   args      Json
   summary   String    @db.Text
@@ -308,6 +309,7 @@ model PendingAction {
 
   @@index([status, expiresAt])
   @@index([userId])
+  @@index([userId, threadId, status, createdAt(sort: Desc)], map: "pending_actions_thread_lookup_idx")
   @@map("pending_actions")
   @@schema("public")
 }
