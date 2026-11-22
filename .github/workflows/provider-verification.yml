@@ -51,6 +51,18 @@ jobs:
       NODE_ENV: test
       DATABASE_URL: postgresql://ryanai_probe:disposable_ci_password@127.0.0.1:5432/ryanai_probe
       RYANAI_PROBE_BRAIN: ${{ matrix.provider }}
+      # Match the runtime resolver's canonical credential names. Each matrix
+      # job receives only credentials for its selected brain; no generic alias
+      # is injected because the runtime never reads PROVIDER_API_KEY.
+      NVIDIA_API_KEY: ${{ matrix.provider == 'primary' && secrets.NVIDIA_API_KEY || '' }}
+      QWEN_API_KEY: ${{ matrix.provider == 'secondary' && secrets.QWEN_API_KEY || '' }}
+      TOGETHER_API_KEY: ${{ matrix.provider == 'secondary' && secrets.TOGETHER_API_KEY || '' }}
+      OPENROUTER_API_KEY: ${{ matrix.provider == 'secondary' && secrets.OPENROUTER_API_KEY || '' }}
+      DASHSCOPE_API_KEY: ${{ matrix.provider == 'secondary' && secrets.DASHSCOPE_API_KEY || '' }}
+      SILICONFLOW_API_KEY: ${{ matrix.provider == 'secondary' && secrets.SILICONFLOW_API_KEY || '' }}
+      LOGIC_API_KEY: ${{ matrix.provider == 'logic' && secrets.LOGIC_API_KEY || '' }}
+      OPENAI_API_KEY: ${{ matrix.provider == 'logic' && secrets.OPENAI_API_KEY || '' }}
+      GROK_API_KEY: ${{ matrix.provider == 'logic' && secrets.GROK_API_KEY || '' }}
       # Match the production resolver exactly. Do not use a generic
       # PROVIDER_API_KEY: resolveProviderProbeConfig never reads that name.
       NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
@@ -60,6 +72,18 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       NVIDIA_API_ENDPOINT: ${{ vars.NVIDIA_API_ENDPOINT }}
       QWEN_API_ENDPOINT: ${{ vars.QWEN_API_ENDPOINT }}
+      TOGETHER_API_ENDPOINT: ${{ vars.TOGETHER_API_ENDPOINT }}
+      PRIMARY_REASONING_PROVIDER: ${{ vars.PRIMARY_REASONING_PROVIDER }}
+      SECONDARY_REASONING_PROVIDER: ${{ vars.SECONDARY_REASONING_PROVIDER }}
+      LOGIC_REASONING_PROVIDER: ${{ vars.LOGIC_REASONING_PROVIDER }}
+      NVIDIA_PROVIDER: ${{ vars.NVIDIA_PROVIDER }}
+      QWEN_PROVIDER: ${{ vars.QWEN_PROVIDER }}
+      LOGIC_PROVIDER: ${{ vars.LOGIC_PROVIDER }}
+      GROK_API_ENDPOINT: ${{ vars.GROK_API_ENDPOINT }}
+      GROK_MODEL: ${{ vars.GROK_MODEL }}
+      OLLAMA_BASE_URL: ${{ vars.OLLAMA_BASE_URL }}
+      OLLAMA_URL: ${{ vars.OLLAMA_URL }}
+      OLLAMA_MODEL: ${{ vars.OLLAMA_MODEL }}
       LOGIC_API_ENDPOINT: ${{ vars.LOGIC_API_ENDPOINT }}
       PRIMARY_REASONING_MODEL: ${{ vars.PRIMARY_REASONING_MODEL }}
       SECONDARY_REASONING_MODEL: ${{ vars.SECONDARY_REASONING_MODEL }}
