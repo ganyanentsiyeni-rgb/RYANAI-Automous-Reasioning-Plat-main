@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { createMutableAuthMock } from '../../../test/helpers/authFixture.js';
+import { createMutableAuthMock } from '../../../test/helpers/authFixture';
 
 const {
   createContextClient, listOpenActions, decideAction
@@ -72,10 +72,21 @@ describe('real administrator guard for pending approval actions', () => {
     expect(decideAction).not.toHaveBeenCalled();
   });
 
-  it('rejects a verified user when Supabase claims verification fails', async () => {
+  it('rejects a valid identity when Supabase claims verification fails', async () => {
     authMock.setIdentity({ role: 'admin', claimsErrorStatus: 401, claimsErrorMessage: 'Invalid fixture claims' });
     const app = await createApp();
     const response = await app.inject({ method: 'POST', url: `/api/actions/${actionId}/approve`, headers: bearer });
+    expect(response.statusCode).toBe(401);
+    expect(listOpenActions).not.toHaveBeenCalled();
+    expect(decideAction).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid or expired token before reaching pending-action handlers', async () => {
+    authMock.setIdentity({ role: null, invalidStatus: 401, invalidMessage: 'JWT expired' });
+    const app = await createApp();
+    const response = await app.inject({
+      method: 'POST', url: `/api/actions/${actionId}/approve`, headers: bearer
+    });
     expect(response.statusCode).toBe(401);
     expect(listOpenActions).not.toHaveBeenCalled();
     expect(decideAction).not.toHaveBeenCalled();
