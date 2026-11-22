@@ -222,12 +222,18 @@ describe('Twilio conversational voice webhooks', () => {
     expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
   });
 
-  it('does not generate a voice response without explicit communications test authorization', async () => {
+  it('hangs up before persistence or AgentRun work without explicit communications test authorization', async () => {
     vi.stubEnv('RYANAI_COMMS_TEST_AUTHORIZED', 'false');
-    const response = await send('/api/webhooks/twilio/voice/respond', actionUrl, { CallSid: 'CA-DISABLED', From: '+15555550123', SpeechResult: 'Please do not reply' });
-    expect(response.statusCode).toBe(200);
-    expect(response.body).toContain('<Response><Hangup/></Response>');
+    const turnId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const payload = { CallSid: 'CA-DISABLED', From: '+15555550123', SpeechResult: 'Please do not reply' };
+    const signedActionUrl = actionUrl + '?turnId=' + turnId;
+    const response = await send('/api/webhooks/twilio/voice/respond?turnId=' + turnId, signedActionUrl, payload);
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.body).toBe('<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>');
+    expect(prismaMock.communicationConversation.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.communicationMessage.create).not.toHaveBeenCalled();
     expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
+    expect(waitForInboundCommunicationRun).not.toHaveBeenCalled();
   });
 
   it('routes each signed speech turn through one durable AgentRun', async () => {
