@@ -178,6 +178,30 @@ services:
     restart: unless-stopped
     stop_grace_period: 1m
 
+  # Opt-in durable Studio worker. Start only after the local migration profile has completed.
+  # This worker is intentionally separate from the API process and is not enabled by default.
+  studio-worker:
+    profiles: [workers]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: studio-worker
+    container_name: ryanai-studio-worker
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://ryanai:${DB_PASSWORD:?Set DB_PASSWORD in .env}@postgres:5432/ryanai_db
+      RYANAI_STUDIO_WORKER_PROFILE_ID: ${RYANAI_STUDIO_WORKER_PROFILE_ID:-coordinator}
+      RYANAI_STUDIO_WORKER_ID: ${RYANAI_STUDIO_WORKER_ID:-}
+    networks: [ryanai-net]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 1m
+
   mcp-server:
     build:
       context: .
