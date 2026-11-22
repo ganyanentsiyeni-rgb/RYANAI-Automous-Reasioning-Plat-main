@@ -561,7 +561,7 @@ function registerCoreRoutes() {
     }
 
     try {
-      return await runReasoning(prompt, request.body?.model, request.authUser, request.body?.language, request.authUser.responsePreferences ?? request.body?.responsePreferences);
+      return await runReasoning(prompt, request.body?.model, request.authUser, request.body?.language, request.body?.responsePreferences ?? request.authUser.responsePreferences);
     } catch (err) {
       fastify.log.error({ err }, 'Reasoning request failed');
       return reply.code(502).send({
@@ -638,7 +638,7 @@ function registerCoreRoutes() {
         request.body?.model,
         request.authUser,
         request.body?.language,
-        request.authUser.responsePreferences ?? request.body?.responsePreferences,
+        request.body?.responsePreferences ?? request.authUser.responsePreferences,
         (progress) => sendEvent({
           status: 'processing',
           message: 'Persisted brain handoff state changed.',
