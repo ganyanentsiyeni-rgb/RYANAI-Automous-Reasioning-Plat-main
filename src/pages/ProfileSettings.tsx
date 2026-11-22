@@ -101,6 +101,13 @@ export default function ProfileSettings({
       }});
       if (updateError) throw updateError;
       if (!data.user || data.user.id !== userId) throw new Error('The identity provider did not confirm this Settings update.');
+      const { error: profileSyncError } = await supabase
+        .from('profiles')
+        .update({ full_name: name || null, updated_at: new Date().toISOString() })
+        .eq('id', userId);
+      if (profileSyncError) {
+        throw new Error(`Account Settings were saved, but the profile directory could not be synchronized: ${profileSyncError.message}`);
+      }
       try {
         window.localStorage.setItem(`ryanai:language:${userId}`, language);
         window.localStorage.setItem(`ryanai:voice-enabled:${userId}`, String(voiceEnabled));

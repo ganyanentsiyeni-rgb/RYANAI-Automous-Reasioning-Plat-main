@@ -95,7 +95,7 @@ npx prisma migrate deploy --schema=prisma/schema.prisma
 
 log "Verifying Prisma-owned agent runtime tables after migrations"
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-DO $
+DO $assert$
 BEGIN
   IF to_regclass('public.users') IS NULL THEN RAISE EXCEPTION 'Prisma public.users missing'; END IF;
   IF to_regclass('public.agent_runs') IS NULL THEN RAISE EXCEPTION 'Prisma public.agent_runs missing'; END IF;
@@ -103,7 +103,7 @@ BEGIN
   IF to_regclass('public.agent_brain_health') IS NULL THEN RAISE EXCEPTION 'Prisma public.agent_brain_health missing'; END IF;
   IF to_regclass('public.agent_run_evidence') IS NULL THEN RAISE EXCEPTION 'Prisma public.agent_run_evidence missing'; END IF;
   IF to_regclass('public.communication_messages') IS NULL THEN RAISE EXCEPTION 'Prisma Comms message table missing'; END IF;
-END $;
+END $assert$;
 SQL
 
 log "Checking the resulting Prisma schema contract"

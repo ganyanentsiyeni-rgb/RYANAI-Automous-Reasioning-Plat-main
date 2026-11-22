@@ -250,6 +250,26 @@ describe('provider authorization HTTP lifecycle', () => {
     await app.close();
   });
 
+  it('purges local credentials even when provider configuration is unavailable', async () => {
+    vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
+    const { app, prisma, connectionRows, events } = await createApp();
+    connectionRows.set(`${owner.id}:google-calendar`, {
+      id: 'connection-3', ownerUserId: owner.id, providerId: 'google-calendar',
+      status: 'connected', encryptedAccessToken: 'ciphertext', encryptedRefreshToken: 'ciphertext',
+    });
+    const response = await app.inject({ method: 'POST', url: '/api/plugins/google-calendar/disconnect' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      disconnected: true, localCredentialsPurged: true, remoteRevocation: 'pending',
+    });
+    expect(prisma.pluginProviderConnection.update).toHaveBeenCalledOnce();
+    const updateArgs = (prisma.pluginProviderConnection.update as ReturnType<typeof vi.fn>).mock.calls[0][0] as { data: Record<string, unknown> };
+    expect(updateArgs.data.encryptedAccessToken).toBeNull();
+    expect(updateArgs.data.encryptedRefreshToken).toBeNull();
+    expect(events.some((event) => event.eventType === 'revocation_pending')).toBe(true);
+    await app.close();
+  });
+
   it('does not expose credentials through the owner connection listing', async () => {
     vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
     const { app, connectionRows } = await createApp();
