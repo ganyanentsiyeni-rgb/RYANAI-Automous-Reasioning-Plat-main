@@ -10,6 +10,11 @@ export interface FixtureIdentity {
   user_metadata?: { role?: FixtureRole };
 }
 
+export interface FixtureClaims {
+  sub: string;
+  aal: 'aal1' | 'aal2';
+}
+
 export interface AuthFixtureOptions {
   role?: FixtureRole | null;
   userId?: string;
