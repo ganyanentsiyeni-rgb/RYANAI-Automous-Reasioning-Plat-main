@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
+import { requireAdmin } from './auth.js';
 import { dispatchAutonomousTask, getAgentTaskWorkerStatus, listAgentRuns, listBrainHealth, probeAllBrains } from '../../agent/operations.js';
 import { getAgentPAStatus } from '../../skills/agentPAScript.js';
 import { buildUserAwarenessSnapshot } from '../../agent/awareness/operationalAwarenessService.js';
@@ -35,6 +36,102 @@ function evaluatePADelegationCapabilities(principal: string, capabilities: PADel
   });
 }
 export const agentOperationsRoutes: FastifyPluginAsync = async (fastify) => {
+  // General autonomous AgentRuns are fail-closed until an authenticated administrator
+  // explicitly approves them. PA delegations use their dedicated owner-scoped approval
+  // path above; this route covers ordinary /api/agent/ops/tasks submissions.
+  fastify.post<{ Params: { id: string } }>('/api/agent/ops/tasks/:id/approve', {
+    preHandler: requireAdmin,
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    schema: { body: { type: 'object', additionalProperties: false, properties: {} } },
+  }, async (request, reply) => {
+    const adminId = request.authUser?.id;
+    if (!adminId) return reply.code(401).send({ error: 'Administrator authentication is required.' });
+
+    const result = await fastify.prisma.$transaction(async (tx) => {
+      const run = await tx.agentRun.findUnique({
+        where: { id: request.params.id },
+        select: {
+          id: true, status: true, approvalStatus: true, planSnapshot: true,
+          planHash: true, baseCommitSha: true, proposedDiffHash: true,
+        },
+      });
+      if (!run) return { outcome: 'not_found' as const };
+
+      if (run.approvalStatus === 'approved') {
+        return { outcome: 'already_approved' as const, run };
+      }
+      if (run.approvalStatus !== 'pending' || run.status !== 'queued') {
+        return { outcome: 'blocked' as const, status: run.status, approvalStatus: run.approvalStatus };
+      }
+
+      // If a plan has already been persisted, approval must bind to all three
+      // immutable plan references. We never invent hashes at approval time.
+      if (run.planSnapshot !== null && (
+        !run.planHash || !run.baseCommitSha || !run.proposedDiffHash
+      )) {
+        return { outcome: 'blocked_plan' as const };
+      }
+
+      const updated = await tx.agentRun.updateMany({
+        where: { id: run.id, approvalStatus: 'pending', status: 'queued' },
+        data: {
+          approvalStatus: 'approved',
+          approvedBy: adminId,
+          approvedAt: new Date(),
+        },
+      });
+      if (updated.count !== 1) return { outcome: 'race_lost' as const };
+
+      await tx.agentRunEvidence.create({
+        data: {
+          runId: run.id,
+          eventType: 'approval.approved',
+          actorId: adminId,
+          payload: {
+            approvedBy: adminId,
+            approvalStatus: 'approved',
+            planBound: run.planSnapshot !== null,
+            planHash: run.planHash,
+            baseCommitSha: run.baseCommitSha,
+            proposedDiffHash: run.proposedDiffHash,
+          },
+        },
+      });
+
+      return { outcome: 'approved' as const, runId: run.id };
+    });
+
+    if (result.outcome === 'not_found') return reply.code(404).send({ status: 'NOT_FOUND' });
+    if (result.outcome === 'blocked_plan') {
+      return reply.code(409).send({
+        status: 'BLOCKED',
+        error: 'A persisted execution plan exists but its immutable approval bindings are incomplete.',
+      });
+    }
+    if (result.outcome === 'blocked') {
+      return reply.code(409).send({
+        status: 'BLOCKED',
+        error: 'AgentRun is no longer pending approval.',
+        approvalStatus: result.approvalStatus,
+        runStatus: result.status,
+      });
+    }
+    if (result.outcome === 'race_lost') {
+      return reply.code(409).send({ status: 'BLOCKED', error: 'Approval changed concurrently; reload the AgentRun.' });
+    }
+
+    const notified = await publishAgentTaskNotification(result.runId, async (id) => {
+      await fastify.prisma.$queryRaw`SELECT pg_notify('agent_task_queue', ${id})`;
+    });
+
+    return reply.code(202).send({
+      success: true,
+      status: 'APPROVED',
+      runId: result.runId,
+      notification: notified ? 'sent' : 'recovery_sweep',
+    });
+  });
+
   fastify.get('/api/agent/ops/pa/delegations', async (request, reply) => {
     if (!request.authUser?.id) return reply.code(401).send({ error: 'Sign in to continue.' });
     return { delegations: await listPADelegations(request.authUser.id) };
