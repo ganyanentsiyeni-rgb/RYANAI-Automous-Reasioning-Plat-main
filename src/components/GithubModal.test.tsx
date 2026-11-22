@@ -67,6 +67,28 @@ describe('GitHub App integration modal', () => {
     expect(api).toHaveBeenCalledExactlyOnceWith('/api/github/status');
   });
 
+  it('keeps local disconnect available when GitHub App configuration is unavailable', async () => {
+    api.mockResolvedValueOnce(response({
+      status: 'configuration_unavailable',
+      connected: false,
+      persistedConnection: true,
+      account: { login: 'synthetic-owner' },
+      repository: { fullName: 'RyanAI-Automated/RYANAI-Automous-Reasioning-Plat' },
+    }));
+    api.mockResolvedValueOnce(response({ disconnected: true, remoteRevocation: 'unconfirmed' }));
+    api.mockResolvedValueOnce(response({ status: 'not_configured', connected: false }));
+
+    await mount();
+    await vi.waitFor(() => expect(container.textContent).toContain('Configuration unavailable'));
+    expect(container.textContent).toContain('saved local connection still exists');
+    const disconnect = Array.from(container.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Disconnect GitHub'));
+    expect(disconnect).not.toBeNull();
+    await click(disconnect ?? null);
+    await vi.waitFor(() => expect(container.textContent).toContain('Remote revocation could not be confirmed'));
+    expect(api).toHaveBeenCalledWith('/api/github/disconnect', { method: 'POST' });
+  });
+
   it('shows only server-verified account and official repository status', async () => {
     api.mockResolvedValueOnce(response({
       status: 'connected',
