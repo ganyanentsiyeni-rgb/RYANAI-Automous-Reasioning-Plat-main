@@ -517,7 +517,7 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="space-y-1 text-xs text-slate-400">Channel
                 <select value={channel} disabled={reviewing || sending} onChange={(event) => { setChannel(event.target.value as CommsChannel); setSelectedFiles([]); startNewDraft(); }} className="w-full rounded-lg border border-white/10 bg-slate-900 p-2 text-sm text-white">
-                  {channels.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                  {channels.map((item) => <option key={item.id} value={item.id} disabled={item.id !== 'in_app' && status?.channels?.[item.id] === false}>{item.label}{item.id !== 'in_app' && status?.channels?.[item.id] === false ? ' (unavailable)' : ''}</option>)}
                 </select>
               </label>
               {channel !== 'in_app' && <label className="space-y-1 text-xs text-slate-400">Recipient (optional; defaults to owner)
