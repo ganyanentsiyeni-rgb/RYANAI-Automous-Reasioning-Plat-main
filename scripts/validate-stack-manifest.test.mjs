@@ -72,6 +72,27 @@ test('accepts the repository stack manifest and schema', (t) => {
   assert.match(result.stdout, /PASS RyanAI stack manifest, schema, path, and credential policy validated/);
 });
 
+
+test('rejects a stale repository source-of-truth reference', (t) => {
+  const f = fixture(t);
+  f.manifest.repository = 'RyanAI-Automated/RYANAI-Automous-Reasioning-Plat';
+  f.saveManifest(f.manifest);
+
+  const result = validate(f.dir);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Stack repository must match the authorised RyanAI source-of-truth repository/);
+});
+
+test('rejects dependencies that do not resolve to declared stack services', (t) => {
+  const f = fixture(t);
+  f.manifest.services[0].dependsOn.push('missing-worker');
+  f.saveManifest(f.manifest);
+
+  const result = validate(f.dir);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Unknown dependency missing-worker declared by stack service api/);
+});
+
 test('rejects a service path that traverses outside the repository', (t) => {
   const f = fixture(t);
   f.manifest.services[0].dockerfile = '../outside.Dockerfile';
