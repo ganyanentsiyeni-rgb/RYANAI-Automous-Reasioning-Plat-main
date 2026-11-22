@@ -1031,3 +1031,298 @@ CREATE INDEX "quant_paper_strategies_user_enabled_idx"
 
 -- END PRISMA MIGRATION 20261105160000_quant_paper_strategies
 INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'9abedd1f73840f4ca7a9b016267f93b010d11428c093232dbadefc30b796e774',now(),'20261105160000_quant_paper_strategies',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261105170000_quant_market_data_imports
+CREATE TABLE "quant_market_data_imports" (
+  "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+  "user_id" TEXT NOT NULL,
+  "symbol" VARCHAR(15) NOT NULL,
+  "provider" VARCHAR(32) NOT NULL,
+  "feed" VARCHAR(16) NOT NULL,
+  "timeframe" VARCHAR(16) NOT NULL,
+  "adjustment" VARCHAR(16) NOT NULL,
+  "bar_count" INTEGER NOT NULL,
+  "first_bar_at" TIMESTAMPTZ(6) NOT NULL,
+  "last_bar_at" TIMESTAMPTZ(6) NOT NULL,
+  "fetched_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "is_stale" BOOLEAN NOT NULL DEFAULT FALSE,
+  "bars" JSONB NOT NULL,
+  "provenance" JSONB NOT NULL,
+  CONSTRAINT "quant_market_data_imports_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "quant_market_data_imports_user_id_fkey"
+    FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "quant_market_data_imports_bar_count_check" CHECK ("bar_count" BETWEEN 30 AND 1000),
+  CONSTRAINT "quant_market_data_imports_symbol_check" CHECK ("symbol" ~ '^[A-Z0-9.-]{1,15}$')
+);
+
+CREATE INDEX "quant_market_data_imports_user_symbol_fetched_idx"
+  ON "quant_market_data_imports"("user_id", "symbol", "fetched_at" DESC);
+
+-- END PRISMA MIGRATION 20261105170000_quant_market_data_imports
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'58b4c8e74b0a3ba6b863437262213898eed917107028792c4990170f7db35909',now(),'20261105170000_quant_market_data_imports',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261105180000_quant_strategy_signals
+CREATE TABLE "quant_strategy_signals" (
+  "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+  "user_id" TEXT NOT NULL,
+  "market_data_import_id" TEXT NOT NULL,
+  "strategy" VARCHAR(40) NOT NULL,
+  "fast_window" SMALLINT NOT NULL,
+  "slow_window" SMALLINT NOT NULL,
+  "action" VARCHAR(8) NOT NULL,
+  "reference_price" DECIMAL(18,8) NOT NULL,
+  "previous_fast_sma" DECIMAL(18,8) NOT NULL,
+  "previous_slow_sma" DECIMAL(18,8) NOT NULL,
+  "fast_sma" DECIMAL(18,8) NOT NULL,
+  "slow_sma" DECIMAL(18,8) NOT NULL,
+  "generated_at" TIMESTAMPTZ(6) NOT NULL,
+  "metadata" JSONB NOT NULL,
+  "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "quant_strategy_signals_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "quant_strategy_signals_user_id_fkey"
+    FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "quant_strategy_signals_import_id_fkey"
+    FOREIGN KEY ("market_data_import_id") REFERENCES "quant_market_data_imports"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "quant_strategy_signals_windows_check"
+    CHECK ("fast_window" >= 2 AND "slow_window" > "fast_window" AND "slow_window" <= 200),
+  CONSTRAINT "quant_strategy_signals_action_check"
+    CHECK ("action" IN ('buy', 'sell', 'hold'))
+);
+
+CREATE UNIQUE INDEX "quant_strategy_signals_user_import_strategy_windows_key"
+  ON "quant_strategy_signals"("user_id", "market_data_import_id", "strategy", "fast_window", "slow_window");
+CREATE INDEX "quant_strategy_signals_user_generated_idx"
+  ON "quant_strategy_signals"("user_id", "generated_at" DESC);
+
+-- END PRISMA MIGRATION 20261105180000_quant_strategy_signals
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'186bcdf206c462de52470a79a88ae35fdf2c5f1a4cf1516849b705ad8734ff85',now(),'20261105180000_quant_strategy_signals',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261105182000_quant_private_table_isolation
+-- Quant tables contain account-owned research and simulated trading data.
+-- Access is through the authenticated RyanAI API; browser/PostgREST roles must not
+-- read or mutate these tables directly. Request-level ownership remains enforced
+-- by parameterized server queries. Keep this migration portable to local Postgres
+-- where the Supabase-specific roles may not exist.
+DO $quant_isolation$
+DECLARE
+  table_name TEXT;
+  browser_role TEXT;
+BEGIN
+  FOREACH table_name IN ARRAY ARRAY[
+    'quant_experiments',
+    'quant_paper_accounts',
+    'quant_paper_positions',
+    'quant_paper_orders',
+    'quant_paper_trades',
+    'quant_paper_risk_policies',
+    'quant_paper_strategies',
+    'quant_market_data_imports',
+    'quant_strategy_signals'
+  ] LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', table_name);
+    EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC', table_name);
+
+    FOREACH browser_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = browser_role) THEN
+        EXECUTE format('REVOKE ALL ON TABLE public.%I FROM %I', table_name, browser_role);
+      END IF;
+    END LOOP;
+
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+      EXECUTE format('GRANT ALL ON TABLE public.%I TO service_role', table_name);
+    END IF;
+  END LOOP;
+END;
+$quant_isolation$;
+
+-- END PRISMA MIGRATION 20261105182000_quant_private_table_isolation
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'a12cb23a2799b4f044090151b66eba8e52c8582a5dfa2dd94a656f2fe61f76ce',now(),'20261105182000_quant_private_table_isolation',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261105190000_quant_paper_daily_risk_controls
+ALTER TABLE "quant_paper_risk_policies"
+  ADD COLUMN "max_daily_loss" NUMERIC(18,2) NOT NULL DEFAULT 5000,
+  ADD COLUMN "max_drawdown_pct" NUMERIC(6,2) NOT NULL DEFAULT 10,
+  ADD COLUMN "emergency_stop" BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN "emergency_stop_reason" TEXT,
+  ADD COLUMN "emergency_stopped_at" TIMESTAMPTZ(6);
+
+ALTER TABLE "quant_paper_risk_policies"
+  ADD CONSTRAINT "quant_paper_risk_policies_daily_loss_cap"
+    CHECK ("max_daily_loss" >= 100 AND "max_daily_loss" <= 50000),
+  ADD CONSTRAINT "quant_paper_risk_policies_drawdown_cap"
+    CHECK ("max_drawdown_pct" >= 1 AND "max_drawdown_pct" <= 50);
+
+CREATE TABLE "quant_paper_daily_risk_state" (
+  "user_id" TEXT NOT NULL,
+  "risk_date" DATE NOT NULL,
+  "starting_equity" NUMERIC(24,8) NOT NULL,
+  "current_equity" NUMERIC(24,8) NOT NULL,
+  "daily_loss" NUMERIC(24,8) NOT NULL DEFAULT 0,
+  "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "quant_paper_daily_risk_state_pkey" PRIMARY KEY ("user_id", "risk_date"),
+  CONSTRAINT "quant_paper_daily_risk_state_user_id_fkey"
+    FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "quant_paper_daily_risk_state_values_check"
+    CHECK ("starting_equity" >= 0 AND "current_equity" >= 0 AND "daily_loss" >= 0)
+);
+
+CREATE TABLE "quant_paper_portfolio_risk_state" (
+  "user_id" TEXT NOT NULL,
+  "peak_equity" NUMERIC(24,8) NOT NULL,
+  "current_equity" NUMERIC(24,8) NOT NULL,
+  "max_drawdown_pct" NUMERIC(8,4) NOT NULL DEFAULT 0,
+  "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "quant_paper_portfolio_risk_state_pkey" PRIMARY KEY ("user_id"),
+  CONSTRAINT "quant_paper_portfolio_risk_state_user_id_fkey"
+    FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "quant_paper_portfolio_risk_state_values_check"
+    CHECK ("peak_equity" >= 0 AND "current_equity" >= 0 AND "max_drawdown_pct" >= 0 AND "max_drawdown_pct" <= 100)
+);
+
+CREATE INDEX "quant_paper_daily_risk_state_date_idx"
+  ON "quant_paper_daily_risk_state"("risk_date" DESC);
+
+-- END PRISMA MIGRATION 20261105190000_quant_paper_daily_risk_controls
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'2348aede6d1eb5bf14c2dfff5ee427b0eda8517a766c2968ba432df12f821168',now(),'20261105190000_quant_paper_daily_risk_controls',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261105200000_github_app_oauth
+-- GitHub App user authorization is server-only. Browser roles must not
+-- read credentials or one-time PKCE state. Server API uses the privileged
+-- PostgreSQL connection and enforces the authenticated RyanAI user ID.
+CREATE TABLE public.github_app_connections (
+  user_id TEXT PRIMARY KEY,
+  github_user_id TEXT NOT NULL,
+  github_login VARCHAR(120) NOT NULL,
+  repository_id TEXT NOT NULL,
+  repository_full_name VARCHAR(255) NOT NULL,
+  repository_permissions JSONB NOT NULL DEFAULT '{}'::jsonb,
+  encrypted_access_token TEXT NOT NULL,
+  encrypted_refresh_token TEXT,
+  access_token_expires_at TIMESTAMPTZ(6),
+  refresh_token_expires_at TIMESTAMPTZ(6),
+  connected_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE public.github_oauth_states (
+  state_hash VARCHAR(64) PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  encrypted_code_verifier TEXT NOT NULL,
+  expires_at TIMESTAMPTZ(6) NOT NULL,
+  created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX github_oauth_states_expires_idx ON public.github_oauth_states(expires_at);
+CREATE INDEX github_oauth_states_user_idx ON public.github_oauth_states(user_id);
+
+ALTER TABLE public.github_app_connections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.github_oauth_states ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.github_app_connections FROM PUBLIC;
+REVOKE ALL ON TABLE public.github_oauth_states FROM PUBLIC;
+DO $github_roles$
+DECLARE role_name TEXT;
+BEGIN
+  FOREACH role_name IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = role_name) THEN
+      EXECUTE format('REVOKE ALL ON TABLE public.github_app_connections FROM %I', role_name);
+      EXECUTE format('REVOKE ALL ON TABLE public.github_oauth_states FROM %I', role_name);
+    END IF;
+  END LOOP;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+    GRANT ALL ON TABLE public.github_app_connections TO service_role;
+    GRANT ALL ON TABLE public.github_oauth_states TO service_role;
+  END IF;
+END;
+$github_roles$;
+
+-- END PRISMA MIGRATION 20261105200000_github_app_oauth
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'f4bc85ae1e52bef7c42740bef486db0ccf3c577c04bedf637544130db99ae086',now(),'20261105200000_github_app_oauth',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261105200000_quant_risk_state_private_access
+-- Daily and lifetime portfolio risk state is account-owned trading data.
+-- Keep direct browser/PostgREST access disabled; the authenticated API accesses
+-- these tables through the server's database connection.
+DO $quant_risk_isolation$
+DECLARE
+  table_name TEXT;
+  browser_role TEXT;
+BEGIN
+  FOREACH table_name IN ARRAY ARRAY[
+    'quant_paper_daily_risk_state',
+    'quant_paper_portfolio_risk_state'
+  ] LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', table_name);
+    EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC', table_name);
+
+    FOREACH browser_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = browser_role) THEN
+        EXECUTE format('REVOKE ALL ON TABLE public.%I FROM %I', table_name, browser_role);
+      END IF;
+    END LOOP;
+
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+      EXECUTE format('GRANT ALL ON TABLE public.%I TO service_role', table_name);
+    END IF;
+  END LOOP;
+END;
+$quant_risk_isolation$;
+
+-- END PRISMA MIGRATION 20261105200000_quant_risk_state_private_access
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'3f38084cd9cb3e30ad042c5e793e2f7dfbd26d7a741097ada0f7916c872d13a3',now(),'20261105200000_quant_risk_state_private_access',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261105210000_agent_run_trace_context
+ALTER TABLE "agent_runs"
+ADD COLUMN IF NOT EXISTS "trace_context" JSONB;
+
+-- END PRISMA MIGRATION 20261105210000_agent_run_trace_context
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'184352dd7d7d539d755d53f5cb554ee933114755b85fa1bc1a9c79d2b1fa979f',now(),'20261105210000_agent_run_trace_context',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261105210000_pa_delegation
+CREATE TABLE "pa_identity_nonces" (
+  "id" UUID NOT NULL,
+  "nonce" TEXT NOT NULL,
+  "expires_at" TIMESTAMPTZ(3) NOT NULL,
+  "consumed_at" TIMESTAMPTZ(3),
+  "created_at" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "pa_identity_nonces_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "pa_identity_nonces_nonce_key" ON "pa_identity_nonces"("nonce");
+CREATE INDEX "pa_identity_nonces_expires_at_idx" ON "pa_identity_nonces"("expires_at");
+
+-- agent_runs.id is TEXT in the authoritative schema; keep this optional FK text-compatible.
+CREATE TABLE "pa_delegations" (
+  "id" UUID NOT NULL,
+  "owner_user_id" TEXT NOT NULL,
+  "objective" TEXT NOT NULL,
+  "requested_capabilities" JSONB NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'queued',
+  "trace_id" TEXT NOT NULL,
+  "agent_run_id" TEXT,
+  "created_at" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updated_at" TIMESTAMPTZ(3) NOT NULL,
+  CONSTRAINT "pa_delegations_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "pa_delegations_agent_run_id_key" ON "pa_delegations"("agent_run_id");
+CREATE INDEX "pa_delegations_owner_user_id_created_at_idx" ON "pa_delegations"("owner_user_id","created_at");
+CREATE INDEX "pa_delegations_status_created_at_idx" ON "pa_delegations"("status","created_at");
+ALTER TABLE "pa_delegations" ADD CONSTRAINT "pa_delegations_agent_run_id_fkey"
+  FOREIGN KEY ("agent_run_id") REFERENCES "agent_runs"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+CREATE TABLE "pa_execution_receipts" (
+  "id" UUID NOT NULL,
+  "delegation_id" UUID NOT NULL,
+  "agent_run_id" TEXT NOT NULL,
+  "status" TEXT NOT NULL,
+  "trace_id" TEXT NOT NULL,
+  "attempt" INTEGER NOT NULL,
+  "result" JSONB,
+  "error" TEXT,
+  "created_at" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "pa_execution_receipts_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "pa_execution_receipts_delegation_id_key" ON "pa_execution_receipts"("delegation_id");
+CREATE INDEX "pa_execution_receipts_agent_run_id_created_at_idx" ON "pa_execution_receipts"("agent_run_id","created_at");
+CREATE INDEX "pa_execution_receipts_trace_id_created_at_idx" ON "pa_execution_receipts"("trace_id","created_at");
+ALTER TABLE "pa_execution_receipts" ADD CONSTRAINT "pa_execution_receipts_delegation_id_fkey"
+  FOREIGN KEY ("delegation_id") REFERENCES "pa_delegations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- END PRISMA MIGRATION 20261105210000_pa_delegation
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'32a476a2d08ab5d8b2237801878b8c78ff0a872954dd0e87e752420f2ef4a329',now(),'20261105210000_pa_delegation',now(),1);
