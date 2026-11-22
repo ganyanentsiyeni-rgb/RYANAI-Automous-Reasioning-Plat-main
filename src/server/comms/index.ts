@@ -704,7 +704,12 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
         }
         if (claim.existing?.agentRunId) {
           const resumed = await waitForInboundCommunicationRun(claim.existing.agentRunId, ownerUserId);
-          if (resumed.completed && outboundReplyAllowed) {
+          if (!resumed.completed) {
+            request.log.info({ runId: claim.existing.agentRunId, providerMessageId: body.MessageSid }, 'SMS replay is waiting for its existing durable AgentRun; provider retry remains safe');
+            reply.type('application/json');
+            return reply.code(503).send({ error: 'The existing inbound SMS run is still processing; the provider may retry this webhook.', retryable: true });
+          }
+          if (outboundReplyAllowed) {
             const answer = addressOwnerResponse(resumed.answer || 'I could not prepare a response.');
             await fastify.prisma.communicationMessage.update({
               where: { id: claim.existing.messageId },
@@ -716,6 +721,11 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
             });
             return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(answer.slice(0, 1600))}</Message></Response>`;
           }
+        }
+        if (claim.existing?.status === 'processing') {
+          request.log.info({ providerMessageId: body.MessageSid }, 'SMS replay has no linked AgentRun yet; provider retry remains safe');
+          reply.type('application/json');
+          return reply.code(503).send({ error: 'The inbound SMS is still being prepared; the provider may retry this webhook.', retryable: true });
         }
         return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
       }
@@ -730,9 +740,8 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       });
       const completed = await waitForInboundCommunicationRun(queued.runId, ownerUserId);
       if (!completed.completed) {
-        request.log.info({ runId: queued.runId, providerMessageId: body.MessageSid }, 'SMS agent run remains queued or running; webhook will not fabricate a reply');
-        reply.type('text/xml');
-        return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
+        request.log.info({ runId: queued.runId, providerMessageId: body.MessageSid }, 'SMS agent run remains queued or running; requesting a safe provider retry');
+        return reply.code(503).send({ error: 'The inbound SMS is still processing; the provider may retry this webhook.', retryable: true });
       }
       if (!outboundReplyAllowed) {
         await fastify.prisma.communicationMessage.update({
@@ -764,8 +773,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
         return reply.code(503).send({ error: 'Inbound media is temporarily unavailable; the provider may retry this webhook.' });
       }
       request.log.error({ err: error }, 'RyanAI SMS conversation failed');
-      reply.type('text/xml');
-      return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>RyanAI is temporarily unavailable. Please try again later.</Message></Response>`;
+      return reply.code(503).send({ error: 'Inbound SMS processing is temporarily unavailable; the provider may retry this webhook.', retryable: true });
     }
   });
 
