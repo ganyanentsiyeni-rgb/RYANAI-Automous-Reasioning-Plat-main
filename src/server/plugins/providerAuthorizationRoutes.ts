@@ -259,7 +259,7 @@ export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) =
         data: {
           stateHash: transaction.stateHash,
           ownerUserId,
-          providerId: config?.id ?? providerId,
+          providerId: config.id,
           encryptedCodeVerifier: transaction.encryptedCodeVerifier,
           requestedScopes: [...config.requestedScopes],
           redirectUri: config.policy.redirectUri,
@@ -478,7 +478,7 @@ export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) =
       await fastify.prisma.pluginAuthorizationEvent.create({
         data: {
           ownerUserId,
-          providerId: config.id,
+          providerId: config?.id ?? providerId,
           connectionId: connection.id,
           eventType: remoteRevoked ? 'revocation_confirmed' : 'revocation_pending',
           actorUserId: ownerUserId,
