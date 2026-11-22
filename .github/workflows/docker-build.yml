@@ -139,9 +139,10 @@ jobs:
             docker logs ryanai-mcpjungle-db 2>&1 || true
             exit 1
           fi
-          if ! docker logs ryanai-mcpjungle-db 2>&1 | grep -qi 'superuser password is not specified'; then
+          container_logs="$(docker logs ryanai-mcpjungle-db 2>&1 || true)"
+          if ! grep -Eqi 'superuser password is not specified' <<< "$container_logs"; then
             echo "MCPJungle Postgres did not report the expected missing-password error"
-            docker logs ryanai-mcpjungle-db 2>&1 || true
+            printf '%s\\n' "$container_logs"
             exit 1
           fi
           echo "PASS: gateway database refuses to initialize without a password"
@@ -169,6 +170,13 @@ jobs:
           EOF
           export RYANAI_MCP_DELEGATION_SECRET=ci_only_mcp_delegation_secret_1234567890_abcdefgh
           export RYANAI_MCP_SERVICE_TOKEN=ci_only_mcp_service_token_1234567890_abcdefgh
+          # The local Compose bootstrap creates the Supabase Auth compatibility schema/table.
+          # Record the repository's documented no-op Supabase baseline before Prisma deploys
+          # application migrations; this applies only to this disposable CI database.
+          docker compose --profile migrations run --rm migrate node node_modules/prisma/build/index.js migrate resolve --applied 20261014000000_supabase_platform_baseline
+          # Apply the committed Prisma migrations to this disposable Compose Postgres only.
+          # The API intentionally refuses startup when required Comms tables are absent.
+          docker compose --profile migrations run --rm migrate
           # Start the API, MCP server, and gateway database before minting the short-lived test identity.
           if ! docker compose --profile mcp-gateway up --build -d --wait api mcp-server mcpjungle-db; then
             echo "::group::Compose service state after startup failure"
