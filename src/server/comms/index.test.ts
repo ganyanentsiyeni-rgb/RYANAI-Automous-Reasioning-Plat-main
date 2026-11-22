@@ -41,7 +41,7 @@ async function send(path: string, url: string, payload: Record<string, string>, 
   apps.push(app);
   installAuthentication(app);
   app.addHook('onRequest', async (request) => {
-    request.authUser = { id: '11111111-1111-4111-8111-111111111111', role: 'user', isOwner: true };
+    request.authUser = { id: '11111111-1111-4111-8111-111111111111', role: 'user', isOwner: true, pluginPreferences: {} };
   });
   app.decorate('prisma', prismaMock as never);
   await app.register(commsPlugin);
