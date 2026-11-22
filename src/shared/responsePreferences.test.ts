@@ -34,6 +34,6 @@ describe('non-authoritative reasoning response preferences', () => {
     expect(instruction).toContain('suggest, and prepare drafts only');
     expect(instruction).toContain('Never execute an action');
     expect(instruction).toContain('explicit approval');
-    expect(instruction).not.toContain('grant capabilities');
+    expect(instruction).toContain('do not grant capabilities');
   });
 });
