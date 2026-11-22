@@ -440,18 +440,21 @@ export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) =
     async (request, reply) => {
       const ownerUserId = request.authUser?.id;
       if (!ownerUserId) return reply.code(401).send({ error: 'Sign in before disconnecting a provider.' });
-      const config = providerConfig(request.params.provider);
-      if (!config) return reply.code(404).send({ error: 'Provider not found.' });
-      const unique = { ownerUserId_providerId: { ownerUserId, providerId: config.id } };
+      const providerId = request.params.provider as ProviderId;
+      if (!['google-calendar', 'microsoft-365-calendar', 'gmail'].includes(providerId)) {
+        return reply.code(404).send({ error: 'Provider not found.' });
+      }
+      const config = providerConfig(providerId);
+      const unique = { ownerUserId_providerId: { ownerUserId, providerId } };
       const connection = await fastify.prisma.pluginProviderConnection.findUnique({ where: unique });
       if (!connection) return { disconnected: true, remoteRevocation: 'not_required' };
 
       let remoteRevoked = false;
-      if (connection.encryptedAccessToken) {
+      if (config && connection.encryptedAccessToken) {
         try {
           const token = decryptProviderCredential(
             connection.encryptedAccessToken, encryptionKey(),
-            connectionEncryptionContext(config.id, ownerUserId),
+            connectionEncryptionContext(providerId, ownerUserId),
           );
           remoteRevoked = await revokeRemoteGrant(config, token);
         } catch {
@@ -479,7 +482,7 @@ export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) =
           connectionId: connection.id,
           eventType: remoteRevoked ? 'revocation_confirmed' : 'revocation_pending',
           actorUserId: ownerUserId,
-          details: { remoteRevocation: remoteRevoked ? 'confirmed' : 'not_supported_or_unconfirmed' },
+          details: { remoteRevocation: remoteRevoked ? 'confirmed' : config ? 'not_supported_or_unconfirmed' : 'provider_configuration_unavailable' },
         },
       });
       return {
