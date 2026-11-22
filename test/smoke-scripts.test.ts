@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { installAuthentication } from '../src/server/routes/auth.js';
 import { checkWebSocket } from '../scripts/check-websocket.js';
+import { createTokenAuthClient } from './helpers/authFixture.js';
 
 const { createContextClient } = vi.hoisted(() => ({
   createContextClient: vi.fn(),
@@ -22,24 +23,7 @@ beforeEach(() => {
   vi.stubEnv('SUPABASE_URL', 'https://fixture.supabase.co');
   vi.stubEnv('SUPABASE_PUBLISHABLE_KEY', 'fixture-public-key');
   createContextClient.mockImplementation(
-    ({ auth }: { auth: { token: string } }) => ({
-      auth: {
-        getUser: async () => ({
-          data: {
-            user: ['fixture-user', 'fixture-admin'].includes(auth.token)
-              ? {
-                  id: 'fixture-id',
-                  is_anonymous: false,
-                  app_metadata: {
-                    role: auth.token === 'fixture-admin' ? 'admin' : 'user',
-                  },
-                }
-              : null,
-          },
-          error: null,
-        }),
-      },
-    }),
+    ({ auth }: { auth: { token: string } }) => createTokenAuthClient(auth.token),
   );
 });
 
