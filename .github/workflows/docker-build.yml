@@ -147,12 +147,12 @@ jobs:
           logs="$(docker logs ryanai-mcpjungle-db 2>&1 || true)"
           if [ "$state" != "exited" ] && [ "$state" != "restarting" ]; then
             echo "Expected MCPJungle Postgres to fail closed when its password is unset; state=$state"
-            printf '%s\\n' "$logs"
+            printf '%s\n' "$logs"
             exit 1
           fi
           if ! printf '%s' "$logs" | grep -qi 'superuser password is not specified'; then
             echo "MCPJungle Postgres did not report the expected missing-password error after waiting for container logs"
-            printf '%s\\n' "$logs"
+            printf '%s\n' "$logs"
             exit 1
           fi
           echo "PASS: gateway database refuses to initialize without a password"
