@@ -66,7 +66,9 @@ beforeEach(() => {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
-  it('wires profile search to the server-side directory endpoint and resets pagination', async () => {
+});
+
+it('wires profile search to the server-side directory endpoint and resets pagination', async () => {
     apiFetch.mockImplementation(async (input) => {
       const path = String(input);
       if (path === '/api/auth/verify') return response({ authenticated: true, user: { id: 'admin-account-a', email: 'admin@example.test', role: 'admin', isOwner: true } });
@@ -85,8 +87,6 @@ beforeEach(() => {
     await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/api/admin/users?limit=50&page=1&search=alice', expect.any(Object), 'admin-account-a'));
     expect(container.textContent).toContain('Alice');
   });
-
-});
 
 afterEach(async () => {
   await act(async () => root.unmount());
