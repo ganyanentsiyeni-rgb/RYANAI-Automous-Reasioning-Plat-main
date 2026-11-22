@@ -75,7 +75,7 @@ export default function ProfileSettings({
   const canManage = (id: DashboardUiId) => {
     const item = DASHBOARD_UI_OPTIONS.find(option => option.id === id);
     if (!item || !('access' in item)) return true;
-    return item.access === 'admin' ? isAdmin : isOwner;
+    return item.access === 'admin' ? (isAdmin || isOwner) : isOwner;
   };
   const changeModule = (id: DashboardUiId, enabled: boolean) => setDashboardUi(current => ({ ...current, [id]: enabled }));
 

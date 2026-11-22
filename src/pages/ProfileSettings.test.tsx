@@ -121,6 +121,12 @@ describe('RyanAI Settings', () => {
     expect((container.querySelector('[data-testid="ui-toggle-comms"]') as HTMLInputElement).disabled).toBe(true);
   });
 
+  it('allows the verified owner to access administrator workspace preferences', async () => {
+    await mount({ isOwner: true });
+    expect((container.querySelector('[data-testid="ui-toggle-admin"]') as HTMLInputElement).disabled).toBe(false);
+    expect((container.querySelector('[data-testid="ui-toggle-comms"]') as HTMLInputElement).disabled).toBe(false);
+  });
+
   it('persists profile and module preferences only after verifying the account', async () => {
     await mount();
     await changeValue(container.querySelector('input[autocomplete="name"]') as HTMLInputElement, 'Ntsiyeni Ganyane');
