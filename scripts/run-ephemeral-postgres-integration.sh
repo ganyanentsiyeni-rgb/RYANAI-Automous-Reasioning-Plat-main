@@ -162,6 +162,45 @@ END
 $drop_external_auth_fks$;
 SQL
 
+log "Asserting and excluding Supabase-owned public tables from the Prisma-only drift comparison"
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+DO $assert_supabase_owned_tables$
+DECLARE
+  table_name TEXT;
+BEGIN
+  FOREACH table_name IN ARRAY ARRAY[
+    'community_beta_interest',
+    'community_feedback_submissions',
+    'phonelink_device_exchanges',
+    'phonelink_devices',
+    'phonelink_events',
+    'phonelink_pairings',
+    'ryanai_attachment_scans',
+    'ryanai_attachment_upload_events'
+  ] LOOP
+    IF to_regclass(format('public.%I', table_name)) IS NULL THEN
+      RAISE EXCEPTION 'Expected Supabase-owned public table public.% is missing before Prisma-only drift comparison', table_name;
+    END IF;
+  END LOOP;
+END
+$assert_supabase_owned_tables$;
+
+-- These tables are owned by the Supabase migration chain and are intentionally
+-- not represented as Prisma models. Remove them only from this disposable local
+-- stack after proving the migrations created them. The hosted database and all
+-- committed migration definitions remain untouched.
+DROP TABLE
+  public.community_beta_interest,
+  public.community_feedback_submissions,
+  public.phonelink_device_exchanges,
+  public.phonelink_events,
+  public.phonelink_pairings,
+  public.phonelink_devices,
+  public.ryanai_attachment_scans,
+  public.ryanai_attachment_upload_events
+CASCADE;
+SQL
+
 log "Checking the resulting Prisma schema contract"
 npx prisma migrate diff \
   --from-url "$DATABASE_URL" \
