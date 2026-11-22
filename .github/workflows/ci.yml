@@ -234,7 +234,7 @@ jobs:
           echo "RYANAI_DISPOSABLE_DB=1" >> "$GITHUB_ENV"
           echo "RYANAI_DISPOSABLE_SUPABASE=1" >> "$GITHUB_ENV"
           psql "$DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
-          DO $
+          DO $assert$
           BEGIN
             IF to_regclass('auth.users') IS NULL OR to_regprocedure('auth.uid()') IS NULL THEN
               RAISE EXCEPTION 'Supabase Auth baseline is incomplete';
@@ -248,7 +248,7 @@ jobs:
             IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='profiles' AND policyname='select_own_profile') THEN
               RAISE EXCEPTION 'Supabase profiles RLS policy is missing';
             END IF;
-          END $;
+          END $assert$;
           SQL
 
       - name: Prepare database
