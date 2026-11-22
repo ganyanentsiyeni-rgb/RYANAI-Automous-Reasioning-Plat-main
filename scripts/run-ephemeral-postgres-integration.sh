@@ -165,6 +165,12 @@ SQL
 log "Asserting and excluding Supabase-owned public tables from the Prisma-only drift comparison"
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
 DO $assert_supabase_owned_tables$
+# Supabase SQL migrations own these public tables. Keep their rows, RLS,
+# indexes and constraints intact, but temporarily move them out of public so
+# Prisma's public-schema diff checks only Prisma-owned application models.
+# This relocation is confined to the disposable local Supabase database.
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+DO $assert_supabase_tables$
 DECLARE
   table_name TEXT;
 BEGIN
@@ -202,10 +208,42 @@ CASCADE;
 SQL
 
 log "Checking the resulting Prisma schema contract"
+      RAISE EXCEPTION 'Expected Supabase-managed table public.% is missing', table_name;
+    END IF;
+  END LOOP;
+END
+$assert_supabase_tables$;
+
+CREATE SCHEMA IF NOT EXISTS ryanai_supabase_managed;
+ALTER TABLE public.community_beta_interest SET SCHEMA ryanai_supabase_managed;
+ALTER TABLE public.community_feedback_submissions SET SCHEMA ryanai_supabase_managed;
+ALTER TABLE public.phonelink_device_exchanges SET SCHEMA ryanai_supabase_managed;
+ALTER TABLE public.phonelink_devices SET SCHEMA ryanai_supabase_managed;
+ALTER TABLE public.phonelink_events SET SCHEMA ryanai_supabase_managed;
+ALTER TABLE public.phonelink_pairings SET SCHEMA ryanai_supabase_managed;
+ALTER TABLE public.ryanai_attachment_scans SET SCHEMA ryanai_supabase_managed;
+ALTER TABLE public.ryanai_attachment_upload_events SET SCHEMA ryanai_supabase_managed;
+SQL
+
+log "Checking the resulting Prisma-owned public schema contract"
 npx prisma migrate diff \
   --from-url "$DATABASE_URL" \
   --to-schema-datamodel prisma/schema.prisma \
   --exit-code
+
+# Restore Supabase-owned tables before the remaining disposable integration
+# tests. Moving tables back preserves their OIDs, data, RLS and dependencies.
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+ALTER TABLE ryanai_supabase_managed.phonelink_devices SET SCHEMA public;
+ALTER TABLE ryanai_supabase_managed.community_beta_interest SET SCHEMA public;
+ALTER TABLE ryanai_supabase_managed.community_feedback_submissions SET SCHEMA public;
+ALTER TABLE ryanai_supabase_managed.phonelink_device_exchanges SET SCHEMA public;
+ALTER TABLE ryanai_supabase_managed.phonelink_events SET SCHEMA public;
+ALTER TABLE ryanai_supabase_managed.phonelink_pairings SET SCHEMA public;
+ALTER TABLE ryanai_supabase_managed.ryanai_attachment_scans SET SCHEMA public;
+ALTER TABLE ryanai_supabase_managed.ryanai_attachment_upload_events SET SCHEMA public;
+DROP SCHEMA ryanai_supabase_managed;
+SQL
 
 log "Verifying lease migration inverse DDL and transactional rollback"
 node scripts/test-agent-run-lease-migration-rollback.mjs

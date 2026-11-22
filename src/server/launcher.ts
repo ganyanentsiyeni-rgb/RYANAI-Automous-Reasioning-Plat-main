@@ -494,9 +494,10 @@ function registerCoreRoutes() {
     model?: string,
     user?: FastifyRequest['authUser'],
     language?: string,
+    responsePreferences?: unknown,
     onProgress?: (event: AgentRunProgressEvent) => void,
   ) {
-    const result = await invokeReasoningAgent({ prompt, model, user, language, onProgress });
+    const result = await invokeReasoningAgent({ prompt, model, user, language, responsePreferences, onProgress });
     const reasoningTrace = result.messages.map(
       (message: { content: unknown }) => contentToText(message.content),
     );
@@ -525,12 +526,22 @@ function registerCoreRoutes() {
         model: { type: 'string', maxLength: 100 },
         sessionId: { type: 'string', maxLength: 200 },
         language: { type: 'string', maxLength: 16 },
+        responsePreferences: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            personality: { type: 'string', maxLength: 24 },
+            responseStyle: { type: 'string', maxLength: 24 },
+            initiative: { type: 'string', maxLength: 24 },
+            collaboration: { type: 'string', maxLength: 24 },
+          },
+        },
       },
     },
   };
 
   const handleReasoningRequest = async (
-    request: FastifyRequest<{ Body: { prompt?: string; model?: string; language?: string } }>,
+    request: FastifyRequest<{ Body: { prompt?: string; model?: string; language?: string; responsePreferences?: unknown } }>,
     reply: FastifyReply,
   ) => {
     if (!request.authUser?.id) {
@@ -550,7 +561,7 @@ function registerCoreRoutes() {
     }
 
     try {
-      return await runReasoning(prompt, request.body?.model, request.authUser, request.body?.language);
+      return await runReasoning(prompt, request.body?.model, request.authUser, request.body?.language, request.body?.responsePreferences ?? request.authUser.responsePreferences);
     } catch (err) {
       fastify.log.error({ err }, 'Reasoning request failed');
       return reply.code(502).send({
@@ -561,13 +572,13 @@ function registerCoreRoutes() {
   };
 
   // Collision-free reasoning endpoint registrations
-  fastify.post<{ Body: { prompt?: string; model?: string; language?: string } }>(
+  fastify.post<{ Body: { prompt?: string; model?: string; language?: string; responsePreferences?: unknown } }>(
     API_ROUTES.reasonPath,
     { schema: reasoningBodySchema },
     handleReasoningRequest,
   );
   if (API_ROUTES.reasonPath !== '/api/reason') {
-    fastify.post<{ Body: { prompt?: string; model?: string; language?: string } }>(
+    fastify.post<{ Body: { prompt?: string; model?: string; language?: string; responsePreferences?: unknown } }>(
       '/api/reason',
       { schema: reasoningBodySchema },
       handleReasoningRequest,
@@ -576,7 +587,7 @@ function registerCoreRoutes() {
 
   // Reasoning stream endpoint
   fastify.post<{
-    Body: { prompt?: string; sessionId?: string; model?: string; language?: string };
+    Body: { prompt?: string; sessionId?: string; model?: string; language?: string; responsePreferences?: unknown };
   }>(API_ROUTES.streamPath, { schema: reasoningBodySchema }, async (request, reply) => {
     if (!request.authUser?.id) {
       return reply.code(401).send({
@@ -627,6 +638,7 @@ function registerCoreRoutes() {
         request.body?.model,
         request.authUser,
         request.body?.language,
+        request.body?.responsePreferences ?? request.authUser.responsePreferences,
         (progress) => sendEvent({
           status: 'processing',
           message: 'Persisted brain handoff state changed.',
