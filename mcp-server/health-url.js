@@ -32,3 +32,14 @@ function parseHealthUrl(value, label) {
   }
   return parsed;
 }
+
+/** True only for the API's documented degraded-readiness response. */
+export function isDegradedHealthResponse(status, body) {
+  if (status !== 503) return false;
+  try {
+    const payload = JSON.parse(body);
+    return payload !== null && typeof payload === 'object' && payload.status === 'degraded';
+  } catch {
+    return false;
+  }
+}

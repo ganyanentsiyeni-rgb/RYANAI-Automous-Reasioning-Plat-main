@@ -45,3 +45,12 @@ test('rejects path changes and URL credentials, query strings, and fragments', (
 test('rejects an invalid configured health endpoint', () => {
   assert.throws(() => resolveHealthUrl(undefined, 'file:///etc/passwd'), /HTTP\(S\) URL/);
 });
+
+
+test('accepts only a structured HTTP 503 degraded-readiness snapshot', async () => {
+  const { isDegradedHealthResponse } = await import('./health-url.js');
+  assert.equal(isDegradedHealthResponse(503, JSON.stringify({ status: 'degraded', services: { database: false } })), true);
+  assert.equal(isDegradedHealthResponse(200, JSON.stringify({ status: 'degraded' })), false);
+  assert.equal(isDegradedHealthResponse(503, JSON.stringify({ status: 'online' })), false);
+  assert.equal(isDegradedHealthResponse(503, 'database unavailable'), false);
+});
