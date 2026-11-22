@@ -83,7 +83,12 @@ it('wires profile search to the server-side directory endpoint and resets pagina
     await mount('admin-account-a');
     await vi.waitFor(() => expect(container.querySelector('input[aria-label="Search profiles"]')).toBeTruthy());
     const input = container.querySelector('input[aria-label="Search profiles"]') as HTMLInputElement;
-    await act(async () => { input.value = 'alice'; input.dispatchEvent(new Event('input', { bubbles: true })); });
+    await act(async () => {
+      const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      setInputValue?.call(input, 'alice');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
     await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/api/admin/users?limit=50&page=1&search=alice', expect.any(Object), 'admin-account-a'));
     expect(container.textContent).toContain('Alice');
   });
