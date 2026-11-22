@@ -193,7 +193,7 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://ryanai:${DB_PASSWORD:?Set DB_PASSWORD in .env}@postgres:5432/ryanai_db
-      RYANAI_STUDIO_WORKER_PROFILE_ID: ${RYANAI_STUDIO_WORKER_PROFILE_ID:-coordinator}
+      STUDIO_WORKER_ENABLED: "true"
       RYANAI_STUDIO_WORKER_ID: ${RYANAI_STUDIO_WORKER_ID:-}
     networks: [ryanai-net]
     depends_on:
