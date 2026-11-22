@@ -59,7 +59,7 @@ beforeEach(() => {
   prismaMock.communicationMessage.findUnique.mockResolvedValue(null);
   prismaMock.communicationMessage.upsert.mockResolvedValue({});
   prismaMock.communicationMessage.update.mockResolvedValue({});
-  prismaMock.communicationMessage.create.mockResolvedValue({});
+  prismaMock.communicationMessage.create.mockResolvedValue({ id: 'message-1' });
   vi.stubEnv('TWILIO_AUTH_TOKEN', token);
   vi.stubEnv('TWILIO_WHATSAPP_WEBHOOK_URL', webhookUrl);
   vi.stubEnv('RYANAI_OWNER_PHONE', '+15555550123');
