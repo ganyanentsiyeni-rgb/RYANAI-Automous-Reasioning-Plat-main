@@ -227,7 +227,7 @@ describe('Admin Console request ownership', () => {
   });
 
   it('wires profile search to the server-side directory endpoint and resets pagination', async () => {
-    apiFetch.mockImplementation(async (input) => {
+    apiFetch.mockImplementation(async (input, init) => {
       const path = String(input);
       if (path === '/api/auth/verify') return response({ authenticated: true, user: { id: 'admin-account-a', email: 'admin@example.test', role: 'admin', isOwner: true } });
       if (path === '/api/admin/audit-events?limit=30') return response({ events: [] });
