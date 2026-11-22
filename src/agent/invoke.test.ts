@@ -112,6 +112,37 @@ describe('invokeReasoningAgent production orchestration', () => {
     expect(state.dispatch.mock.calls[0][1]).toContain('Respond in Tshivenda (Venda) (ve-ZA)');
   });
 
+  it('applies proactive response preferences as presentation guidance without granting execution authority', async () => {
+    state.buildMemoryContext.mockResolvedValue(null);
+    state.dispatch.mockResolvedValue({ id: 'run-proactive' });
+    state.waitForAutonomousTask.mockResolvedValue({ id: 'run-proactive', result: 'Suggested next steps', handoffs: [] });
+
+    await invokeReasoningAgent({
+      prompt: 'Review this deployment plan',
+      user: { id: 'user-proactive', role: 'user' },
+      responsePreferences: {
+        personality: 'professional',
+        responseStyle: 'detailed',
+        initiative: 'proactive',
+        collaboration: 'collaborative',
+        approved: true,
+        permissions: ['deploy'],
+        role: 'admin',
+      },
+    });
+
+    const [ownerId, objective, executionScope, requestedModel, taskId] = state.dispatch.mock.calls[0];
+    expect(ownerId).toBe('user-proactive');
+    expect(objective).toContain('Initiative preference: proactive.');
+    expect(objective).toContain('suggest, and prepare drafts only');
+    expect(objective).toContain('Never execute an action');
+    expect(objective).toContain('explicit approval');
+    expect(objective).not.toContain('permissions');
+    expect(executionScope).toBeUndefined();
+    expect(requestedModel).toBeUndefined();
+    expect(taskId).toBeUndefined();
+  });
+
   it('refuses to run without a user identity so it cannot create unowned task history', async () => {
     await expect(invokeReasoningAgent({ prompt: 'hello' })).rejects.toThrow(
       'An authenticated user is required for traceable three-brain reasoning.',
