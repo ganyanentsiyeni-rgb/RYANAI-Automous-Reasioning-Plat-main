@@ -143,6 +143,21 @@ describe('invokeReasoningAgent production orchestration', () => {
     expect(taskId).toBeUndefined();
   });
 
+  it('does not let proactive or role-shaped preference data replace authenticated identity', async () => {
+    await expect(invokeReasoningAgent({
+      prompt: 'Prepare an action',
+      user: null,
+      responsePreferences: {
+        initiative: 'proactive',
+        role: 'admin',
+        isOwner: true,
+        approved: true,
+      },
+    })).rejects.toThrow('An authenticated user is required for traceable three-brain reasoning.');
+    expect(state.dispatch).not.toHaveBeenCalled();
+    expect(state.waitForAutonomousTask).not.toHaveBeenCalled();
+  });
+
   it('refuses to run without a user identity so it cannot create unowned task history', async () => {
     await expect(invokeReasoningAgent({ prompt: 'hello' })).rejects.toThrow(
       'An authenticated user is required for traceable three-brain reasoning.',
