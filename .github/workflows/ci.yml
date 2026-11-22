@@ -259,6 +259,45 @@ jobs:
           npx prisma migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
           npm run db:setup
 
+      - name: Verify complete Supabase and Prisma migration contract
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $assert$
+          BEGIN
+            IF to_regclass('public.users') IS NULL
+              OR to_regclass('public.agent_runs') IS NULL
+              OR to_regclass('public.agent_handoffs') IS NULL
+              OR to_regclass('public.agent_brain_health') IS NULL
+              OR to_regclass('public.agent_run_evidence') IS NULL THEN
+              RAISE EXCEPTION 'Required Prisma agent runtime schema is incomplete';
+            END IF;
+            IF to_regclass('auth.users') IS NULL
+              OR to_regclass('storage.buckets') IS NULL
+              OR to_regclass('storage.objects') IS NULL THEN
+              RAISE EXCEPTION 'Required Supabase platform schema is incomplete';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='on_auth_user_created' AND NOT tgisinternal) THEN
+              RAISE EXCEPTION 'Supabase Auth-to-profile identity trigger is missing';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='profiles' AND policyname='select_own_profile') THEN
+              RAISE EXCEPTION 'Supabase profiles RLS policy is missing';
+            END IF;
+          END $assert$;
+          SQL
+
+      - name: Verify agent lease migration rollback on disposable Supabase
+        env:
+          RYANAI_DISPOSABLE_DB: '1'
+          RYANAI_DISPOSABLE_SUPABASE: '1'
+        run: node scripts/test-agent-run-lease-migration-rollback.mjs
+
+      - name: Verify agent runtime migration replay on disposable Supabase
+        env:
+          RYANAI_DISPOSABLE_DB: '1'
+          RYANAI_DISPOSABLE_SUPABASE: '1'
+        run: node scripts/test-agent-runs-runtime-migration-upgrade.mjs
+
       # Vite's build uses emptyOutDir=true and clears dist/. Build the frontend
       # first, then compile the API so the server output survives for startup.
       - name: Build frontend and API
