@@ -334,6 +334,15 @@ jobs:
       - name: Install locked dependencies
         run: npm ci --legacy-peer-deps
 
+      - name: Prepare public-only Prisma schema for drift comparisons
+        shell: bash
+        run: |
+          set -euo pipefail
+          temp_schema="$RUNNER_TEMP/prisma-public-schema.prisma"
+          sed 's/schemas  = \["public", "auth"\]/schemas  = ["public"]/' \
+            prisma/schema.prisma > "$temp_schema"
+          echo "PRISMA_PUBLIC_SCHEMA_FILE=$temp_schema" >> "$GITHUB_ENV"
+
       - name: Set up Supabase CLI
         uses: supabase/setup-cli@v3
         with:
