@@ -1,9 +1,8 @@
 name: Deploy Platforms via CI
 
 on:
-  workflow_run:
-    workflows: ["CI - Build, Test, and Integrate"]
-    types: [completed]
+  # Production deployment is deliberately manual; workflow_run must never
+  # start production jobs automatically after a main-branch CI completion.
   workflow_dispatch:
     inputs:
       commit_sha:
@@ -22,10 +21,7 @@ concurrency:
 jobs:
   gate:
     name: Verify CI gate
-    if: >-
-      ${{ github.event_name == 'workflow_dispatch' ||
-          (github.event.workflow_run.conclusion == 'success' &&
-           github.event.workflow_run.head_branch == 'main') }}
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.sha.outputs.sha }}
@@ -33,11 +29,10 @@ jobs:
       - name: Resolve exact deployment SHA
         id: sha
         env:
-          WORKFLOW_SHA: ${{ github.event.workflow_run.head_sha }}
           INPUT_SHA: ${{ inputs.commit_sha }}
         run: |
           set -euo pipefail
-          sha="${WORKFLOW_SHA:-$INPUT_SHA}"
+          sha="$INPUT_SHA"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Invalid deployment SHA"; exit 1; }
           printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
 
@@ -121,7 +116,7 @@ jobs:
               --url "https://api.render.com/v1/services/${service_id}/deploys" \
               --header "Authorization: Bearer ${RENDER_API_KEY}" \
               --header "Content-Type: application/json" \
-              --data "{"commitId":"${DEPLOY_SHA}","deployMode":"build_and_deploy"}"
+              --data "$(jq -n --arg commitId "$DEPLOY_SHA" --arg deployMode "build_and_deploy" '{commitId:$commitId,deployMode:$deployMode}')" 
           done
 
   vercel:
