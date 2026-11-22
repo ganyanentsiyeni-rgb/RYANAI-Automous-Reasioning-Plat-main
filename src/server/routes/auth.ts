@@ -6,6 +6,7 @@ import type {
 } from 'fastify';
 import { createContextClient } from '@supabase/server/core';
 import type { PrismaClient } from '@prisma/client';
+import { normalizePluginPreferences, type PluginPreferences } from '../plugins/pluginPreference.js';
 
 // --- Interfaces & Types ---
 
@@ -15,6 +16,8 @@ export interface AuthenticatedUser {
   role: 'user' | 'admin';
   displayName?: string;
   isOwner: boolean;
+  /** User-owned plugin intent; never substitutes for provider authorization or execution approval. */
+  pluginPreferences?: PluginPreferences;
   /** AAL is taken only from Supabase-verified JWT claims. */
   sessionAssurance: 'aal1' | 'aal2';
 }
@@ -101,6 +104,7 @@ export async function requireUser(
       role: data.user.app_metadata?.role === 'admin' ? 'admin' : 'user',
       displayName: typeof data.user.user_metadata?.full_name === 'string' ? data.user.user_metadata.full_name : undefined,
       isOwner: data.user.app_metadata?.owner === true || Boolean(data.user.email && process.env.RYANAI_OWNER_EMAIL?.trim() && data.user.email.toLowerCase() === process.env.RYANAI_OWNER_EMAIL.trim().toLowerCase()),
+      pluginPreferences: normalizePluginPreferences(data.user.user_metadata?.ryanai_plugin_preferences),
     };
   } catch {
     return reply
