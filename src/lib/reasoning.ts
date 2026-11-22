@@ -6,6 +6,7 @@ import { authenticatedFetch } from '@/lib/authenticatedFetch';
 import type { ModelId, ReasoningCallbacks } from './types.js';
 import { API_BASE_URL } from './apiBaseUrl';
 import { API_ROUTES } from '@/config/core';
+import { normalizeResponsePreferences } from '@/shared/responsePreferences';
 
 /**
  * Deliver reasoning progress and completed results through callbacks until the stream ends.
@@ -19,6 +20,7 @@ export async function streamReasoning(
   callbacks: ReasoningCallbacks,
   preferredLanguage?: string,
   expectedUserId?: string,
+  responsePreferences?: unknown,
 ): Promise<void> {
   try {
     const language = preferredLanguage && isRyanLanguage(preferredLanguage) ? preferredLanguage : DEFAULT_LANGUAGE;
@@ -33,6 +35,7 @@ export async function streamReasoning(
           prompt,
           model,
           language,
+          ...(responsePreferences !== undefined ? { responsePreferences: normalizeResponsePreferences(responsePreferences) } : {}),
         }),
       },
       expectedUserId,
@@ -123,6 +126,7 @@ export async function quickReason(
   model: ModelId,
   preferredLanguage?: string,
   expectedUserId?: string,
+  responsePreferences?: unknown,
 ): Promise<string> {
   const language = preferredLanguage && isRyanLanguage(preferredLanguage) ? preferredLanguage : DEFAULT_LANGUAGE;
   const response = await authenticatedFetch(
@@ -130,7 +134,7 @@ export async function quickReason(
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, model, language }),
+      body: JSON.stringify({ prompt, model, language, ...(responsePreferences !== undefined ? { responsePreferences: normalizeResponsePreferences(responsePreferences) } : {}) }),
     },
     expectedUserId,
   );
