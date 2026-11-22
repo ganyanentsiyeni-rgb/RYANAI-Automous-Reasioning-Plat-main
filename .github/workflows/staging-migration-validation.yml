@@ -205,10 +205,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # auth.users is owned by Supabase, not by Prisma's public data model.
-          # Remove it only from this disposable CI database after all Auth-dependent
-          # migration and readiness assertions have completed. CASCADE removes only
-          # its external FK dependants in this throwaway database.
-          psql_url="$(node -e 'const url = new URL(process.env.DATABASE_URL); url.searchParams.delete("schema"); process.stdout.write(url.toString())')"
-          psql "$psql_url" -v ON_ERROR_STOP=1 -c "DROP TABLE IF EXISTS auth.users CASCADE;"
-          npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+          # Prisma's production datasource includes auth only so migration deploy can
+          # resolve Supabase-owned FK targets. The application data model owns public.
+          # Use a temporary public-only schema for drift comparison; do not drop or
+          # mutate any Supabase Auth objects, even in this disposable fixture.
+          temp_schema="$(mktemp)"
+          trap 'rm -f "$temp_schema"' EXIT
+          sed 's/schemas  = \["public", "auth"\]/schemas  = ["public"]/' \
+            prisma/schema.prisma > "$temp_schema"
+          npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel "$temp_schema" --exit-code
