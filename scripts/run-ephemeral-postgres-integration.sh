@@ -3,6 +3,7 @@ set -euo pipefail
 
 SUPABASE_CLI=(npx --yes supabase@3.0.0)
 DB_URL=""
+PUBLIC_SCHEMA_FILE=""
 SUPABASE_STARTED=0
 
 log() {
@@ -11,6 +12,9 @@ log() {
 
 cleanup() {
   local exit_code=$?
+  if [ -n "$PUBLIC_SCHEMA_FILE" ]; then
+    rm -f "$PUBLIC_SCHEMA_FILE"
+  fi
   if [ "$SUPABASE_STARTED" = "1" ]; then
     printf '\n[ephemeral-supabase] Stopping isolated Supabase stack...\n'
     "${SUPABASE_CLI[@]}" stop --no-backup >/dev/null 2>&1 || true
@@ -162,10 +166,13 @@ END
 $drop_external_auth_fks$;
 SQL
 
-log "Checking the resulting Prisma schema contract"
+log "Checking the resulting Prisma-owned public schema contract"
+PUBLIC_SCHEMA_FILE="$(mktemp)"
+sed 's/schemas  = \["public", "auth"\]/schemas  = ["public"]/' \
+  prisma/schema.prisma > "$PUBLIC_SCHEMA_FILE"
 npx prisma migrate diff \
   --from-url "$DATABASE_URL" \
-  --to-schema-datamodel prisma/schema.prisma \
+  --to-schema-datamodel "$PUBLIC_SCHEMA_FILE" \
   --exit-code
 
 log "Verifying lease migration inverse DDL and transactional rollback"
