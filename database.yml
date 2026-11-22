@@ -66,6 +66,7 @@ agent_runs:
       - pending
       - approved
       - rejected
+    default_approval_status: pending
     lease:
       worker_id_column: worker_id
       locked_at_column: locked_at
