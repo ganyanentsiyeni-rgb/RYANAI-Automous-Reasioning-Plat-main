@@ -55,13 +55,13 @@ class BreakingSchemaGuardTests(unittest.TestCase):
             "model CommsDeliveryReceipt {\n"
             '  dispatch               OutboundCommsDispatch @relation(fields: [dispatchId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "comms_delivery_receipts_dispatch_id_fkey")\n'
             '  communicationMessageId String                @map("communication_message_id")\n'
-            (
+            + (
                 '  communicationMessage   CommunicationMessage '
                 '@relation(fields: [communicationMessageId], references: [id], '
                 'onDelete: Restrict, onUpdate: Cascade, '
                 'map: "comms_delivery_receipts_communication_message_id_fkey")\n'
             )
-            "  providerMessageId String\n"
+            + "  providerMessageId String\n"
             "}\n"
         )
         migration_sql = (
