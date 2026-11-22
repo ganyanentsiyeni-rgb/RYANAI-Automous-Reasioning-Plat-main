@@ -249,7 +249,7 @@ describe('launcher reasoning routes', () => {
       url: '/api/reasoning/stream',
       payload: {
         prompt: 'Prepare an action',
-        responsePreferences: { initiative: 'proactive', approved: true, role: 'admin' },
+        responsePreferences: { initiative: 'proactive' },
       },
     });
     expect(response.statusCode).toBe(401);
@@ -266,7 +266,7 @@ describe('launcher reasoning routes', () => {
         headers: { authorization: 'Bearer test-token' },
         payload: {
           prompt: 'Prepare an external action',
-          responsePreferences: { initiative: 'proactive', approved: true, role: 'admin' },
+          responsePreferences: { initiative: 'proactive' },
         },
       });
       expect(response.statusCode).toBe(403);
