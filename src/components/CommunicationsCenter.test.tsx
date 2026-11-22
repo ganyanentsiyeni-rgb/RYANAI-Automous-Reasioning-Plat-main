@@ -8,6 +8,7 @@ const comms = vi.hoisted(() => ({
   getCommsStatus: vi.fn(),
   getCommsConversations: vi.fn(),
   sendCommsMessage: vi.fn(),
+  requestCommsApproval: vi.fn(),
   assistCommsConversation: vi.fn(),
   prepareCommsAttachments: vi.fn(),
   uploadCommsAttachment: vi.fn(),
@@ -19,6 +20,7 @@ vi.mock('@/lib/commsApi', () => ({
   getCommsStatus: comms.getCommsStatus,
   getCommsConversations: comms.getCommsConversations,
   sendCommsMessage: comms.sendCommsMessage,
+  requestCommsApproval: comms.requestCommsApproval,
   assistCommsConversation: comms.assistCommsConversation,
   prepareCommsAttachments: comms.prepareCommsAttachments,
   uploadCommsAttachment: comms.uploadCommsAttachment,
@@ -78,6 +80,7 @@ beforeEach(() => {
   comms.getCommsAttachmentStatuses.mockResolvedValue([]);
   comms.getCommsAttachmentDownloadUrl.mockResolvedValue('https://storage.example.test/download');
   comms.assistCommsConversation.mockResolvedValue({ operation: 'summarize', output: 'Summary: delivery window remains open.', sourceMessageCount: 1 });
+  comms.requestCommsApproval.mockResolvedValue({ approvalId: 'approval-1', status: 'pending' });
   comms.sendCommsMessage.mockResolvedValue({
     success: true,
     channel: 'whatsapp',
@@ -176,7 +179,12 @@ describe('RyanAI Comms inbox controls', () => {
     const approve = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Request owner approval'));
     expect(approve).toBeTruthy();
     await act(async () => approve?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
-    expect(comms.sendCommsMessage).toHaveBeenCalledTimes(1);
+    expect(comms.requestCommsApproval).toHaveBeenCalledWith(expect.objectContaining({
+      channel: 'whatsapp',
+      message: 'Please confirm the delivery window.',
+    }), 'synthetic-user-a');
+    expect(container.textContent).toContain('Owner approval requested.');
+    expect(comms.sendCommsMessage).not.toHaveBeenCalled();
   });
 
   it('runs owner-scoped conversation intelligence without dispatching a message', async () => {
