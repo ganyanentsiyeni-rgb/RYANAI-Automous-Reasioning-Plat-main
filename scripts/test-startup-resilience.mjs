@@ -170,6 +170,7 @@ async function expectHealthyRecovery() {
 try {
   const unreachableDatabase = new URL(databaseUrl);
   unreachableDatabase.port = '1';
+  unreachableDatabase.searchParams.set('connect_timeout', '3');
   await expectStartupFailure(
     'PostgreSQL unavailable',
     { DATABASE_URL: unreachableDatabase.toString(), REDIS_URL: redisUrl },
@@ -182,6 +183,7 @@ try {
 
   const unreachableRedis = new URL(redisUrl);
   unreachableRedis.port = '1';
+  unreachableRedis.searchParams.set('connectTimeout', '3000');
   await expectStartupFailure(
     'Redis unavailable',
     { DATABASE_URL: databaseUrl, REDIS_URL: unreachableRedis.toString() },
@@ -192,6 +194,7 @@ try {
   // stable diagnostic order, including the dependent checkpointer check.
   const combinedUnavailableDatabase = new URL(databaseUrl);
   combinedUnavailableDatabase.port = '1';
+  combinedUnavailableDatabase.searchParams.set('connect_timeout', '3');
   await expectStartupFailure(
     'PostgreSQL and Redis unavailable together',
     {
