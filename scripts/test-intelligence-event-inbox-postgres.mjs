@@ -8,9 +8,10 @@ if (process.env.RYANAI_DISPOSABLE_DB !== '1' || !process.env.DATABASE_URL) {
 }
 const databaseUrl = new URL(process.env.DATABASE_URL);
 const databaseName = decodeURIComponent(databaseUrl.pathname.slice(1));
+const localSupabase = process.env.RYANAI_DISPOSABLE_SUPABASE === '1' && databaseName === 'postgres';
 if (!['127.0.0.1', 'localhost', '::1'].includes(databaseUrl.hostname)
-  || !databaseName.includes('disposable')) {
-  throw new Error('Refusing to run: DATABASE_URL must target a loopback host and a database name containing "disposable".');
+  || (!databaseName.includes('disposable') && !localSupabase)) {
+  throw new Error('Refusing to run: DATABASE_URL must target loopback and a named disposable database or explicitly marked local Supabase database.');
 }
 
 const db = new PrismaClient();
