@@ -4,7 +4,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { providerAuthorizationRoutes } from './providerAuthorizationRoutes.js';
 import { encryptProviderCredential } from './providerAuthorization.js';
 
-const owner = { id: 'owner-user-1', role: 'user' as const, isOwner: true };
+const owner = {
+  id: 'owner-user-1',
+  role: 'user' as const,
+  isOwner: true,
+  pluginPreferences: {
+    'google-calendar': { enabled: true, scopes: [] },
+    'microsoft-365-calendar': { enabled: true, scopes: [] },
+    gmail: { enabled: true, scopes: [] },
+  },
+};
 const key = '5a'.repeat(32);
 
 function createPrismaFixture() {
