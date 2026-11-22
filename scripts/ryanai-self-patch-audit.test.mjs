@@ -43,7 +43,7 @@ test('environment inventory exposes presence only, never values', () => {
 test('classifies governance API responses without treating denied access as success', () => {
   assert.equal(classifyGovernanceResponse(200), 'available');
   assert.equal(classifyGovernanceResponse(403), 'permission_blocked');
-  assert.equal(classifyGovernanceResponse(404), 'not_configured');
+  assert.equal(classifyGovernanceResponse(404), 'not_found_or_hidden');
   assert.equal(classifyGovernanceResponse(401), 'unauthorized');
   assert.equal(classifyGovernanceResponse(500), 'error');
 });
