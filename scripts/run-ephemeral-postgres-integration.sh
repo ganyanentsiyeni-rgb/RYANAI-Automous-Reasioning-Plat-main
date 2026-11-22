@@ -166,6 +166,20 @@ END
 $drop_external_auth_fks$;
 SQL
 
+log "Excluding separately-owned Supabase tables from the Prisma-only drift comparison"
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+DROP TABLE
+  public.phonelink_device_exchanges,
+  public.phonelink_events,
+  public.phonelink_pairings,
+  public.phonelink_devices,
+  public.community_feedback_submissions,
+  public.community_beta_interest,
+  public.ryanai_attachment_scans,
+  public.ryanai_attachment_upload_events
+CASCADE;
+SQL
+
 log "Checking the resulting Prisma-owned public schema contract"
 PUBLIC_SCHEMA_FILE="$(mktemp)"
 sed 's/schemas  = \["public", "auth"\]/schemas  = ["public"]/' \
