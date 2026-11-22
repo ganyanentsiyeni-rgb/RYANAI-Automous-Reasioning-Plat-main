@@ -36,7 +36,7 @@ export default function ChatInterface({ initialModel = DEFAULT_MODEL, copilotSet
           setLastRun(new Date().toLocaleTimeString());
         },
         onError: (message) => setError(message),
-      });
+      }, undefined, undefined, copilotSettings);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'The inference request failed.');
     } finally {
