@@ -259,7 +259,7 @@ export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) =
         data: {
           stateHash: transaction.stateHash,
           ownerUserId,
-          providerId: config.id,
+          providerId,
           encryptedCodeVerifier: transaction.encryptedCodeVerifier,
           requestedScopes: [...config.requestedScopes],
           redirectUri: config.policy.redirectUri,
