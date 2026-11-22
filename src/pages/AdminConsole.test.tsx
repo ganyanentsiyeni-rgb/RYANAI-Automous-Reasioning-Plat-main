@@ -66,6 +66,18 @@ beforeEach(() => {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
+
+
+});
+
+afterEach(async () => {
+  await act(async () => root.unmount());
+  container.remove();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+describe('Admin Console request ownership', () => {
   it('wires profile search to the server-side directory endpoint and resets pagination', async () => {
     apiFetch.mockImplementation(async (input) => {
       const path = String(input);
@@ -86,16 +98,6 @@ beforeEach(() => {
     expect(container.textContent).toContain('Alice');
   });
 
-});
-
-afterEach(async () => {
-  await act(async () => root.unmount());
-  container.remove();
-  vi.restoreAllMocks();
-  vi.unstubAllGlobals();
-});
-
-describe('Admin Console request ownership', () => {
   it('scopes every dashboard read to the authenticated administrator account', async () => {
     await mount('admin-account-a');
     await vi.waitFor(() => expect(container.textContent).toContain('Send approved test message'));
