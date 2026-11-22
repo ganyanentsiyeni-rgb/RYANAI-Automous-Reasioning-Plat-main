@@ -24,6 +24,66 @@ env:
   NODE_OPTIONS: --max-old-space-size=6144
 
 jobs:
+  actions-config-wiring:
+    name: Verify Actions secrets and variables are wired
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify configured Actions secrets and variables without exposing values
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          DD_API_KEY: ${{ secrets.DD_API_KEY }}
+          DD_APP_KEY: ${{ secrets.DD_APP_KEY }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
+          LOGIC_API_KEY: ${{ secrets.LOGIC_API_KEY }}
+          LM_STUDIO_API_KEY: ${{ secrets.LM_STUDIO_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+          AWS_ECS_DEPLOY_ENABLED: ${{ vars.AWS_ECS_DEPLOY_ENABLED }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+          ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+          ECS_TASK_DEFINITION: ${{ vars.ECS_TASK_DEFINITION }}
+          ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME }}
+          AZURE_AKS_DEPLOY_ENABLED: ${{ vars.AZURE_AKS_DEPLOY_ENABLED }}
+          AZURE_CONTAINER_REGISTRY: ${{ vars.AZURE_CONTAINER_REGISTRY }}
+          AZURE_CONTAINER_NAME: ${{ vars.AZURE_CONTAINER_NAME }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_CLUSTER_NAME: ${{ vars.AZURE_CLUSTER_NAME }}
+          AZURE_KUSTOMIZE_PATH: ${{ vars.AZURE_KUSTOMIZE_PATH }}
+          DATADOG_SYNTHETICS_ENABLED: ${{ vars.DATADOG_SYNTHETICS_ENABLED }}
+          RENDER_DEPLOY_ENABLED: ${{ vars.RENDER_DEPLOY_ENABLED }}
+          RENDER_API_SERVICE_ID: ${{ vars.RENDER_API_SERVICE_ID }}
+          LM_STUDIO_URL: ${{ vars.LM_STUDIO_URL }}
+          OLLAMA_URL: ${{ vars.OLLAMA_URL }}
+          NVIDIA_API_ENDPOINT: ${{ vars.NVIDIA_API_ENDPOINT }}
+          QWEN_API_ENDPOINT: ${{ vars.QWEN_API_ENDPOINT }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
+          RENDER_SERVICE_IDS: ${{ vars.RENDER_SERVICE_IDS }}
+        run: |
+          set -euo pipefail
+          required_secrets=(AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID DD_API_KEY DD_APP_KEY RENDER_API_KEY NVIDIA_API_KEY QWEN_API_KEY LOGIC_API_KEY LM_STUDIO_API_KEY OPENAI_API_KEY RAILWAY_TOKEN SNYK_TOKEN)
+          required_vars=(AWS_ECS_DEPLOY_ENABLED AWS_REGION ECR_REPOSITORY ECS_SERVICE ECS_CLUSTER ECS_TASK_DEFINITION ECS_CONTAINER_NAME AZURE_AKS_DEPLOY_ENABLED AZURE_CONTAINER_REGISTRY AZURE_CONTAINER_NAME AZURE_RESOURCE_GROUP AZURE_CLUSTER_NAME AZURE_KUSTOMIZE_PATH DATADOG_SYNTHETICS_ENABLED RENDER_DEPLOY_ENABLED RENDER_API_SERVICE_ID LM_STUDIO_URL OLLAMA_URL NVIDIA_API_ENDPOINT QWEN_API_ENDPOINT RAILWAY_PROJECT_ID RAILWAY_ENVIRONMENT_ID RAILWAY_SERVICE_ID RENDER_SERVICE_IDS)
+          missing=0
+          for name in "${required_secrets[@]}"; do
+            [[ -n "${!name:-}" ]] || { echo "::error::Missing Actions secret: $name"; missing=1; }
+          done
+          for name in "${required_vars[@]}"; do
+            [[ -n "${!name:-}" ]] || { echo "::error::Missing Actions variable: $name"; missing=1; }
+          done
+          [[ "$missing" -eq 0 ]] || exit 1
+          echo "All declared deployment/security Actions secrets and variables are wired; values were not printed."
+
   validate:
     name: Validate (typecheck, lint, test, build)
     runs-on: ubuntu-latest
