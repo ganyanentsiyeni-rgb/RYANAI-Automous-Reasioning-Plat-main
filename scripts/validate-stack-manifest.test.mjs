@@ -186,6 +186,7 @@ test('Compose exposes the compiled Studio worker only through an explicit opt-in
   assert.equal(worker.getIn(['build', 'dockerfile']), 'Dockerfile');
   assert.equal(worker.getIn(['environment', 'DATABASE_URL'])?.value, 'postgresql://ryanai:${DB_PASSWORD:?Set DB_PASSWORD in .env}@postgres:5432/ryanai_db');
   assert.equal(worker.getIn(['environment', 'STUDIO_WORKER_ENABLED'])?.value, 'true');
+  assert.equal(worker.getIn(['environment', 'RYANAI_STUDIO_WORKER_PROFILE_ID'])?.value, '${RYANAI_STUDIO_WORKER_PROFILE_ID:-coordinator}');
   assert.equal(worker.getIn(['depends_on', 'postgres', 'condition']), 'service_healthy');
   const dockerfile = readFileSync(path.join(repoRoot, 'Dockerfile'), 'utf8');
   assert.ok(dockerfile.includes('FROM api AS studio-worker'));
