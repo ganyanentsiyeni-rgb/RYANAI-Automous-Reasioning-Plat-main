@@ -55,14 +55,33 @@ export function validateProviderVerification(workflow, repositoryRoot = process.
       /ryanai_probe/.test(env.DATABASE_URL),
     'DATABASE_URL must target only the disposable local probe database',
   );
+  const providerSecretBindings = {
+    NVIDIA_API_KEY: 'NVIDIA_API_KEY',
+    QWEN_API_KEY: 'QWEN_API_KEY',
+    TOGETHER_API_KEY: 'TOGETHER_API_KEY',
+    OPENROUTER_API_KEY: 'OPENROUTER_API_KEY',
+    DASHSCOPE_API_KEY: 'DASHSCOPE_API_KEY',
+    SILICONFLOW_API_KEY: 'SILICONFLOW_API_KEY',
+    LOGIC_API_KEY: 'LOGIC_API_KEY',
+    OPENAI_API_KEY: 'OPENAI_API_KEY',
+    GROK_API_KEY: 'GROK_API_KEY',
+  };
   require(
-    typeof env.PROVIDER_API_KEY === 'string' && /secrets\./.test(env.PROVIDER_API_KEY),
-    'provider credentials must come from GitHub environment secrets',
+    !Object.prototype.hasOwnProperty.call(env, 'PROVIDER_API_KEY'),
+    'generic PROVIDER_API_KEY is prohibited because the runtime resolver does not read it',
   );
-  for (const secret of ['NVIDIA_API_KEY', 'QWEN_API_KEY', 'LOGIC_API_KEY', 'OPENAI_API_KEY']) {
+  for (const [runtimeKey, secret] of Object.entries(providerSecretBindings)) {
+    const binding = String(env[runtimeKey] ?? '');
     require(
-      String(env.PROVIDER_API_KEY ?? '').includes('secrets.' + secret),
-      'provider credential binding is missing the approved ' + secret + ' source',
+      binding.includes('secrets.' + secret),
+      'runtime credential ' + runtimeKey + ' must be bound to the matching GitHub environment secret',
+    );
+    const expectedBrain = runtimeKey === 'NVIDIA_API_KEY' ? 'primary'
+      : ['QWEN_API_KEY', 'TOGETHER_API_KEY', 'OPENROUTER_API_KEY', 'DASHSCOPE_API_KEY', 'SILICONFLOW_API_KEY'].includes(runtimeKey) ? 'secondary'
+        : 'logic';
+    require(
+      binding.includes("matrix.provider == '" + expectedBrain + "'"),
+      runtimeKey + ' must only be exposed to its matching provider matrix job',
     );
   }
   require(
