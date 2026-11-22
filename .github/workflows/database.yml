@@ -60,6 +60,15 @@ jobs:
       - name: Install locked dependencies
         run: npm ci --legacy-peer-deps
 
+      - name: Prepare public-only Prisma schema for drift comparisons
+        shell: bash
+        run: |
+          set -euo pipefail
+          temp_schema="$RUNNER_TEMP/prisma-public-schema.prisma"
+          sed 's/schemas  = \["public", "auth"\]/schemas  = ["public"]/' \
+            prisma/schema.prisma > "$temp_schema"
+          echo "PRISMA_PUBLIC_SCHEMA_FILE=$temp_schema" >> "$GITHUB_ENV"
+
       - name: Validate Prisma schemas
         run: npm run db:validate
 
@@ -225,7 +234,7 @@ jobs:
           # database before comparing Prisma-owned public models.
           psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -c \
             "ALTER TABLE public.memory_entries DROP CONSTRAINT IF EXISTS memory_entries_user_id_fkey"
-          npx prisma migrate diff --from-url "$MIGRATION_DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+          npx prisma migrate diff --from-url "$MIGRATION_DATABASE_URL" --to-schema-datamodel "$PRISMA_PUBLIC_SCHEMA_FILE" --exit-code
 
       - name: Create a disposable upgrade-path database
         env:
@@ -300,7 +309,7 @@ jobs:
               -c "SELECT 1 / COUNT(*)::int FROM public.agent_memory WHERE session_id='legacy-session' AND content='preserve me'"
 
       - name: Verify migrations match the Prisma data model
-        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel "$PRISMA_PUBLIC_SCHEMA_FILE" --exit-code
 
       - name: Build server and verify live agent notification delivery
         run: |
@@ -621,7 +630,7 @@ jobs:
       - name: Compare the migrated Supabase and Prisma database with the Prisma data model
         # Supabase-owned Auth relationships are asserted separately above; this
         # comparison is intentionally limited to the Prisma-owned public schema.
-        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel "$PRISMA_PUBLIC_SCHEMA_FILE" --exit-code
       - name: Create isolated Prisma shadow database and export its URL
         env:
           PGPASSWORD: postgres
@@ -643,7 +652,7 @@ jobs:
               -v ON_ERROR_STOP=1 -f /tmp/supabase-auth-ci-bootstrap.sql
 
       - name: Compare Prisma migration history with the Prisma data model
-        run: npx prisma migrate diff --from-migrations prisma/migrations --shadow-database-url "$SHADOW_DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+        run: npx prisma migrate diff --from-migrations prisma/migrations --shadow-database-url "$SHADOW_DATABASE_URL" --to-schema-datamodel "$PRISMA_PUBLIC_SCHEMA_FILE" --exit-code
 
       - name: Audit the completed Prisma schema without modifying it
         run: node scripts/audit-prisma-migration-readiness.mjs
