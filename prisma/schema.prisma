@@ -1582,3 +1582,122 @@ model RealtimeEvent {
   @@map("realtime_events")
   @@schema("public")
 }
+
+
+// Supabase SQL migrations own these public tables. They are represented here so
+// Prisma's disposable schema-drift comparison preserves them rather than
+// proposing destructive drops; runtime authorization remains enforced by RLS.
+model CommunityFeedbackSubmission {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  answers   Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt(sort: Desc)], map: "community_feedback_submissions_created_at_idx")
+  @@map("community_feedback_submissions")
+  @@schema("public")
+}
+
+model CommunityBetaInterest {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String?
+  email     String
+  consent   Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt(sort: Desc)], map: "community_beta_interest_created_at_idx")
+  @@map("community_beta_interest")
+  @@schema("public")
+}
+
+model PhoneLinkPairing {
+  id          String    @id @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  codeHash    String    @unique @map("code_hash")
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(6)
+  consumedAt  DateTime? @map("consumed_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId, expiresAt], map: "phonelink_pairings_user_expiry_idx")
+  @@map("phonelink_pairings")
+  @@schema("public")
+}
+
+model PhoneLinkDevice {
+  id              String                     @id @db.Uuid
+  userId          String                     @map("user_id") @db.Uuid
+  deviceName      String                     @map("device_name")
+  platform        String                     @default("android")
+  capabilities    Json                       @default("[]")
+  status          String                     @default("paired")
+  lastSeenAt      DateTime?                  @map("last_seen_at") @db.Timestamptz(6)
+  revokedAt       DateTime?                  @map("revoked_at") @db.Timestamptz(6)
+  createdAt       DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                   @default(now()) @map("updated_at") @db.Timestamptz(6)
+  deviceTokenHash String?                    @map("device_token_hash")
+  events          PhoneLinkEvent[]
+  exchanges       PhoneLinkDeviceExchange[]
+
+  @@index([userId, status], map: "phonelink_devices_user_status_idx")
+  @@map("phonelink_devices")
+  @@schema("public")
+}
+
+model PhoneLinkEvent {
+  id             String          @id @db.Uuid
+  userId         String          @map("user_id") @db.Uuid
+  deviceId       String          @map("device_id") @db.Uuid
+  eventType      String          @map("event_type")
+  title          String
+  body           String          @default("")
+  metadata       Json            @default("{}")
+  status         String          @default("queued")
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt      DateTime        @map("expires_at") @db.Timestamptz(6)
+  acknowledgedAt DateTime?       @map("acknowledged_at") @db.Timestamptz(6)
+  device         PhoneLinkDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, status, createdAt], map: "phonelink_events_device_status_idx")
+  @@map("phonelink_events")
+  @@schema("public")
+}
+
+model PhoneLinkDeviceExchange {
+  id          String          @id @db.Uuid
+  deviceId    String          @map("device_id") @db.Uuid
+  exchangeHash String         @unique @map("exchange_hash")
+  expiresAt   DateTime        @map("expires_at") @db.Timestamptz(6)
+  consumedAt  DateTime?       @map("consumed_at") @db.Timestamptz(6)
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  device      PhoneLinkDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt], map: "phonelink_device_exchanges_expiry_idx")
+  @@map("phonelink_device_exchanges")
+  @@schema("public")
+}
+
+model RyanaiAttachmentUploadEvent {
+  id        BigInt   @id @default(autoincrement())
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt(sort: Desc)], map: "ryanai_attachment_upload_events_user_created_idx")
+  @@map("ryanai_attachment_upload_events")
+  @@schema("public")
+}
+
+model RyanaiAttachmentScan {
+  id        BigInt    @id @default(autoincrement())
+  bucketId  String    @default("ryanai-attachments") @map("bucket_id")
+  objectName String   @map("object_name")
+  userId    String    @map("user_id") @db.Uuid
+  status    String    @default("pending")
+  attempts  Int       @default(0)
+  lastError String?   @map("last_error")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  scannedAt DateTime? @map("scanned_at") @db.Timestamptz(6)
+
+  @@unique([bucketId, objectName], map: "ryanai_attachment_scans_bucket_id_object_name_key")
+  @@map("ryanai_attachment_scans")
+  @@schema("public")
+}
