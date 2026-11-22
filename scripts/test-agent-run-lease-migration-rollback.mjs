@@ -31,7 +31,9 @@ async function contract(client) {
 }
 try {
   const db = await pool.query('SELECT current_database() AS name');
-  assert.match(db.rows[0].name, /^ryanai_disposable_/i, 'database name must identify a disposable database');
+  const localSupabase = process.env.RYANAI_DISPOSABLE_SUPABASE === '1' && db.rows[0].name === 'postgres';
+  assert.ok(/^ryanai_disposable_/i.test(db.rows[0].name) || localSupabase,
+    'database must be explicitly disposable or the local Supabase postgres database');
   const before = await contract(pool);
   for (const name of ['agent_runs.lease_expires_at','agent_runs.heartbeat_at','coding_tasks.heartbeat_at']) assert.ok(before.columns.has(name), name+' must exist');
   for (const name of ['agent_runs_status_next_attempt_lease_idx','agent_runs_worker_lease_idx','coding_tasks_status_lease_expiry_idx']) assert.ok(before.indexes.has(name), name+' must exist');

@@ -22,9 +22,10 @@ if (!['localhost', '127.0.0.1', '::1'].includes(databaseUrl.hostname)) {
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
 const database = await pool.query('SELECT current_database() AS name');
-if (!/^ryanai_disposable_/i.test(database.rows[0]?.name ?? '')) {
+if (!/^ryanai_disposable_/i.test(database.rows[0]?.name ?? '')
+  && !(process.env.RYANAI_DISPOSABLE_SUPABASE === '1' && database.rows[0]?.name === 'postgres')) {
   await pool.end();
-  throw new Error('Refusing destructive test: database name must begin with ryanai_disposable_.');
+  throw new Error('Refusing destructive test: require a named disposable database or the explicit local Supabase harness marker.');
 }
 
 const migration = await readFile(
