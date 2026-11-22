@@ -170,6 +170,9 @@ jobs:
           EOF
           export RYANAI_MCP_DELEGATION_SECRET=ci_only_mcp_delegation_secret_1234567890_abcdefgh
           export RYANAI_MCP_SERVICE_TOKEN=ci_only_mcp_service_token_1234567890_abcdefgh
+          # Apply the committed Prisma migrations to this disposable Compose Postgres only.
+          # The API intentionally refuses startup when required Comms tables are absent.
+          docker compose --profile migrations run --rm migrate
           # Start the API, MCP server, and gateway database before minting the short-lived test identity.
           if ! docker compose --profile mcp-gateway up --build -d --wait api mcp-server mcpjungle-db; then
             echo "::group::Compose service state after startup failure"
