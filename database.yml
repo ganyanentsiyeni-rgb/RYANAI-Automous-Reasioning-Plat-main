@@ -1,0 +1,125 @@
+# RyanAI database contract.
+# Runtime secrets are never stored here; only environment-variable names are declared.
+# This repository uses Node.js + Prisma for the primary application database.
+# Alembic/SQLAlchemy is not part of the primary runtime and is intentionally not configured here.
+
+version: 1
+
+environments:
+  staging:
+    primary:
+      adapter: postgresql
+      url_env: DATABASE_URL
+      direct_url_env: DIRECT_URL
+      schema: public
+      required_tables:
+        - users
+        - agent_runs
+        - agent_handoffs
+        - agent_brain_health
+        - agent_run_evidence
+      required_runtime_tables:
+        - coding_tasks
+    cache:
+      adapter: redis
+      url_env: REDIS_URL
+      required: true
+    audiobook:
+      adapter: postgresql
+      url_env: AUDIOBOOK_DATABASE_URL
+      required: false
+
+  production:
+    primary:
+      adapter: postgresql
+      url_env: DATABASE_URL
+      direct_url_env: DIRECT_URL
+      schema: public
+      required_tables:
+        - users
+        - agent_runs
+        - agent_handoffs
+        - agent_brain_health
+        - agent_run_evidence
+      required_runtime_tables:
+        - coding_tasks
+    cache:
+      adapter: redis
+      url_env: REDIS_URL
+      required: true
+    audiobook:
+      adapter: postgresql
+      url_env: AUDIOBOOK_DATABASE_URL
+      required: false
+
+agent_runs:
+  table: agent_runs
+  schema: public
+  lifecycle:
+    statuses:
+      - queued
+      - running
+      - completed
+      - failed
+      - cancelled
+    approval_statuses:
+      - pending
+      - approved
+      - rejected
+    lease:
+      worker_id_column: worker_id
+      locked_at_column: locked_at
+      lease_expires_at_column: lease_expires_at
+      heartbeat_at_column: heartbeat_at
+  required_columns:
+    - id
+    - user_id
+    - objective
+    - status
+    - result
+    - error
+    - attempts
+    - max_attempts
+    - worker_id
+    - locked_at
+    - lease_expires_at
+    - heartbeat_at
+    - next_attempt_at
+    - approval_status
+    - queue_type
+    - created_at
+    - updated_at
+    - completed_at
+
+runtime:
+  database:
+    client: prisma
+    schema_file: prisma/schema.prisma
+    migration_directory: prisma/migrations
+    migration_command: npm run db:migrate
+    startup_must_not_run_ddl: true
+  connection:
+    resolve_supabase_session_pooler: true
+    require_verified_tls: true
+    allow_tls_disable: false
+  cache:
+    client: redis
+  optional_stores:
+    audiobook:
+      schema_file: prisma/audiobook/schema.prisma
+
+governance:
+  human_approval:
+    required_by_default: true
+    comms_degraded_behavior: fail_closed
+    production_override_allowed: false
+  production_database_migrations:
+    require_explicit_approval: true
+    require_migration_allowlist: true
+    startup_auto_migrate: false
+
+fleet_contract:
+  expected_agents: 12
+  expected_workers: 10
+  source_of_truth: application_runtime
+  note: "Counts are an operational contract; individual agent/worker identities must be derived from code and runtime registration, not invented by this YAML."
