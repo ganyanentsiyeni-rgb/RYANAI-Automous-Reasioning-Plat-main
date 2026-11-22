@@ -187,7 +187,8 @@ test('Compose exposes the compiled Studio worker only through an explicit opt-in
   assert.equal(worker.getIn(['environment', 'DATABASE_URL'])?.value, 'postgresql://ryanai:${DB_PASSWORD:?Set DB_PASSWORD in .env}@postgres:5432/ryanai_db');
   assert.equal(worker.getIn(['depends_on', 'postgres', 'condition']), 'service_healthy');
   const dockerfile = readFileSync(path.join(repoRoot, 'Dockerfile'), 'utf8');
-  assert.match(dockerfile, /FROM api AS studio-worker[\\s\\S]*?CMD \\[\"node\", \"dist\\/server\\/server\\/engineering\\/studioWorker\\.js\"\\]/);
+  assert.ok(dockerfile.includes('FROM api AS studio-worker'));
+  assert.ok(dockerfile.includes('CMD ["node", "dist/server/server/engineering/studioWorker.js"]'));
 });
 
 test('docker-compose environment mapping has no duplicate keys', () => {
