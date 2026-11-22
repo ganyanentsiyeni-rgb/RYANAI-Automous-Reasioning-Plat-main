@@ -706,6 +706,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
           const resumed = await waitForInboundCommunicationRun(claim.existing.agentRunId, ownerUserId);
           if (!resumed.completed) {
             request.log.info({ runId: claim.existing.agentRunId, providerMessageId: body.MessageSid }, 'SMS replay is waiting for its existing durable AgentRun; provider retry remains safe');
+            reply.type('application/json');
             return reply.code(503).send({ error: 'The existing inbound SMS run is still processing; the provider may retry this webhook.', retryable: true });
           }
           if (outboundReplyAllowed) {
@@ -723,6 +724,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
         }
         if (claim.existing?.status === 'processing') {
           request.log.info({ providerMessageId: body.MessageSid }, 'SMS replay has no linked AgentRun yet; provider retry remains safe');
+          reply.type('application/json');
           return reply.code(503).send({ error: 'The inbound SMS is still being prepared; the provider may retry this webhook.', retryable: true });
         }
         return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
