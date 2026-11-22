@@ -441,3 +441,341 @@ CREATE INDEX IF NOT EXISTS "pending_actions_user_id_idx"
 
 -- END PRISMA MIGRATION 20261101111500_complete_supabase_models
 INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'0f0d5fb52266b0cef8b932cd48fff2caabaa6dbcfcd2ded2dae4059aca109e24',now(),'20261101111500_complete_supabase_models',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261102123000_supabase_auth_identity_bridge
+-- Bridge Supabase Auth identities to the legacy Prisma user relation.
+-- Supabase Auth remains the credential authority; never copy auth.users password hashes.
+ALTER TABLE public.users
+  ALTER COLUMN password_hash DROP NOT NULL;
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+REVOKE ALL PRIVILEGES ON TABLE public.users FROM PUBLIC, anon, authenticated;
+GRANT ALL PRIVILEGES ON TABLE public.users TO service_role;
+
+CREATE OR REPLACE FUNCTION public.sync_ryanai_auth_user()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    DELETE FROM public.users WHERE id = OLD.id::text;
+    RETURN OLD;
+  END IF;
+
+  INSERT INTO public.users (
+    id, email, password_hash, name, created_at, updated_at
+  )
+  VALUES (
+    NEW.id::text,
+    COALESCE(NULLIF(NEW.email, ''), 'auth-user-' || NEW.id::text || '@no-email.invalid'),
+    NULL,
+    COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name'),
+    COALESCE(NEW.created_at, pg_catalog.now())::timestamp(3),
+    COALESCE(NEW.updated_at, NEW.created_at, pg_catalog.now())::timestamp(3)
+  )
+  ON CONFLICT (id) DO UPDATE
+  SET email = EXCLUDED.email,
+      name = COALESCE(EXCLUDED.name, public.users.name),
+      updated_at = pg_catalog.now();
+
+  RETURN NEW;
+END;
+$function$;
+
+REVOKE ALL PRIVILEGES ON FUNCTION public.sync_ryanai_auth_user()
+  FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS ryanai_auth_user_sync_insert ON auth.users;
+CREATE TRIGGER ryanai_auth_user_sync_insert
+AFTER INSERT ON auth.users
+FOR EACH ROW EXECUTE FUNCTION public.sync_ryanai_auth_user();
+
+DROP TRIGGER IF EXISTS ryanai_auth_user_sync_update ON auth.users;
+CREATE TRIGGER ryanai_auth_user_sync_update
+AFTER UPDATE OF email, raw_user_meta_data ON auth.users
+FOR EACH ROW EXECUTE FUNCTION public.sync_ryanai_auth_user();
+
+DROP TRIGGER IF EXISTS ryanai_auth_user_sync_delete ON auth.users;
+CREATE TRIGGER ryanai_auth_user_sync_delete
+AFTER DELETE ON auth.users
+FOR EACH ROW EXECUTE FUNCTION public.sync_ryanai_auth_user();
+
+-- Backfill identity metadata only. Never copy passwords, tokens, or sessions.
+INSERT INTO public.users (
+  id, email, password_hash, name, created_at, updated_at
+)
+SELECT
+  au.id::text,
+  COALESCE(NULLIF(au.email, ''), 'auth-user-' || au.id::text || '@no-email.invalid'),
+  NULL,
+  COALESCE(au.raw_user_meta_data->>'full_name', au.raw_user_meta_data->>'name'),
+  COALESCE(au.created_at, pg_catalog.now())::timestamp(3),
+  COALESCE(au.updated_at, au.created_at, pg_catalog.now())::timestamp(3)
+FROM auth.users au
+ON CONFLICT (id) DO UPDATE
+SET email = EXCLUDED.email,
+    name = COALESCE(EXCLUDED.name, public.users.name),
+    updated_at = pg_catalog.now();
+
+COMMENT ON TABLE public.users IS
+  'Server-only identity shadow of Supabase Auth users; password_hash is NULL for Supabase-managed identities.';
+COMMENT ON FUNCTION public.sync_ryanai_auth_user() IS
+  'Synchronizes only user identity metadata to the legacy Prisma relation; credentials remain managed by Supabase Auth.';
+
+-- END PRISMA MIGRATION 20261102123000_supabase_auth_identity_bridge
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'fd48bfd21aa806f8839dc5f624f5ed4f38bf215d8b9ee09e58d7397bd3d7e6a6',now(),'20261102123000_supabase_auth_identity_bridge',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261102150000_agent_run_execution_scope
+-- Persist the server-derived execution scope with the durable task.
+-- The empty default intentionally causes legacy/unclassified tasks to run full reconciliation.
+ALTER TABLE public.agent_runs
+  ADD COLUMN IF NOT EXISTS execution_scope JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+-- END PRISMA MIGRATION 20261102150000_agent_run_execution_scope
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'874cae5ef0e7a8c3d6695f0294d6448437d400acefcbf5cf6adf27419ed665d3',now(),'20261102150000_agent_run_execution_scope',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261102210000_internal_jarvis_audit
+CREATE TABLE IF NOT EXISTS "jarvis_audit_events" (
+  "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "actor_id" TEXT NOT NULL,
+  "event_type" TEXT NOT NULL,
+  "resource_id" TEXT,
+  "details" JSONB NOT NULL DEFAULT '{}'::jsonb,
+  "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS "jarvis_audit_events_created_at_idx" ON "jarvis_audit_events" ("created_at" DESC);
+CREATE INDEX IF NOT EXISTS "jarvis_audit_events_actor_created_idx" ON "jarvis_audit_events" ("actor_id", "created_at" DESC);
+
+-- END PRISMA MIGRATION 20261102210000_internal_jarvis_audit
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'de8788068c484624f801064fc2c0313091254d6cce332c4895d303327e7f61b1',now(),'20261102210000_internal_jarvis_audit',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261102235000_engineering_evidence_workbench
+ALTER TABLE public.agent_runs
+  ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'approved',
+  ADD COLUMN IF NOT EXISTS plan_snapshot JSONB,
+  ADD COLUMN IF NOT EXISTS plan_hash TEXT,
+  ADD COLUMN IF NOT EXISTS base_commit_sha TEXT,
+  ADD COLUMN IF NOT EXISTS proposed_diff_hash TEXT,
+  ADD COLUMN IF NOT EXISTS approved_plan_hash TEXT,
+  ADD COLUMN IF NOT EXISTS approved_commit_sha TEXT,
+  ADD COLUMN IF NOT EXISTS approved_diff_hash TEXT,
+  ADD COLUMN IF NOT EXISTS approved_by TEXT,
+  ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP(3),
+  ADD COLUMN IF NOT EXISTS steering_notes TEXT,
+  ADD COLUMN IF NOT EXISTS cancel_requested_at TIMESTAMP(3);
+
+CREATE INDEX IF NOT EXISTS agent_runs_approval_status_created_idx
+  ON public.agent_runs (approval_status, created_at);
+
+CREATE TABLE IF NOT EXISTS public.agent_run_evidence (
+  id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  sequence INTEGER NOT NULL,
+  event_type TEXT NOT NULL,
+  actor_id TEXT,
+  payload JSONB NOT NULL,
+  previous_hash TEXT,
+  hash TEXT NOT NULL,
+  created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT agent_run_evidence_pkey PRIMARY KEY (id),
+  CONSTRAINT agent_run_evidence_run_id_fkey
+    FOREIGN KEY (run_id) REFERENCES public.agent_runs(id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS agent_run_evidence_run_sequence_key
+  ON public.agent_run_evidence (run_id, sequence);
+CREATE UNIQUE INDEX IF NOT EXISTS agent_run_evidence_hash_key
+  ON public.agent_run_evidence (hash);
+CREATE INDEX IF NOT EXISTS agent_run_evidence_run_sequence_idx
+  ON public.agent_run_evidence (run_id, sequence);
+
+-- Evidence is append-only. Corrections are new events that reference the prior event.
+CREATE OR REPLACE FUNCTION public.reject_agent_run_evidence_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  -- Direct mutation is rejected. Parent-job deletion may cascade for data erasure.
+  IF TG_OP = 'UPDATE' OR pg_trigger_depth() = 1 THEN
+    RAISE EXCEPTION 'agent_run_evidence is append-only; append a correction event instead';
+  END IF;
+  RETURN OLD;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS agent_run_evidence_immutable ON public.agent_run_evidence;
+CREATE TRIGGER agent_run_evidence_immutable
+  BEFORE UPDATE OR DELETE ON public.agent_run_evidence
+  FOR EACH ROW EXECUTE FUNCTION public.reject_agent_run_evidence_mutation();
+
+-- END PRISMA MIGRATION 20261102235000_engineering_evidence_workbench
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'946aa86092192336185f591bfe4a0d09fa906c6abe58a42141f753eadd7e2cec',now(),'20261102235000_engineering_evidence_workbench',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261104100000_vector_memory
+-- Bring the legacy Docker Compose pgvector bootstrap under ordered Prisma migration control.
+-- Every object is created idempotently so databases initialized by the former
+-- Docker Compose bootstrap can upgrade without duplicate-object errors.
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS public.reasoning_cache (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  prompt TEXT NOT NULL,
+  response TEXT NOT NULL,
+  embedding VECTOR(1536),
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS public.agent_memory (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sessionid VARCHAR(255) NOT NULL,
+  role VARCHAR(50) NOT NULL,
+  content TEXT NOT NULL,
+  timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Existing databases may contain either the unquoted legacy identifier
+-- sessionId (stored by PostgreSQL as sessionid) or a quoted "sessionId".
+-- The current Supabase schema snapshot uses the quoted form. Create the
+-- supporting index against the column that actually exists; the following
+-- compatibility migration then renames that column to session_id.
+DO $$
+DECLARE
+  session_column TEXT;
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'agent_memory' AND column_name = 'sessionid'
+  ) THEN
+    session_column := 'sessionid';
+  ELSIF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'agent_memory' AND column_name = 'sessionId'
+  ) THEN
+    session_column := '"sessionId"';
+  ELSIF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'agent_memory' AND column_name = 'session_id'
+  ) THEN
+    session_column := 'session_id';
+  ELSE
+    RAISE EXCEPTION 'agent_memory has no recognized session identifier column';
+  END IF;
+
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS idx_agent_session ON public.agent_memory (%s, timestamp)',
+    session_column
+  );
+END
+$$;
+
+CREATE INDEX IF NOT EXISTS idx_reasoning_embedding
+  ON public.reasoning_cache USING hnsw (embedding vector_cosine_ops);
+
+-- END PRISMA MIGRATION 20261104100000_vector_memory
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'48b30e3bf06521200b7e08d528fb3ce7491402a9db9130c0f97625d8f15560e1',now(),'20261104100000_vector_memory',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261104120000_agent_memory_session_id
+-- Align the legacy vector-memory session column with the runtime SQL contract.
+-- The original bootstrap created unquoted sessionId, which PostgreSQL stores as
+-- sessionid. Rename in place so existing memory rows and the index are retained.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'agent_memory' AND column_name = 'sessionid'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'agent_memory' AND column_name = 'session_id'
+  ) THEN
+    ALTER TABLE public.agent_memory RENAME COLUMN sessionid TO session_id;
+  ELSIF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'agent_memory' AND column_name = 'sessionId'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'agent_memory' AND column_name = 'session_id'
+  ) THEN
+    ALTER TABLE public.agent_memory RENAME COLUMN "sessionId" TO session_id;
+  ELSIF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'agent_memory' AND column_name = 'session_id'
+  ) THEN
+    RAISE EXCEPTION 'agent_memory has no recognized session identifier column; refusing destructive reconciliation';
+  END IF;
+END
+$$;
+
+-- END PRISMA MIGRATION 20261104120000_agent_memory_session_id
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'d8287856440d2c26fe41678eb9f5df68ac232578787dddb769da53255e37764d',now(),'20261104120000_agent_memory_session_id',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261104120000_isolated_coding_task_queue
+ALTER TABLE public.agent_runs
+  ADD COLUMN IF NOT EXISTS queue_type TEXT NOT NULL DEFAULT 'reasoning';
+
+-- Existing workbench records are not eligible for the three-brain reasoning worker.
+UPDATE public.agent_runs
+SET queue_type = 'coding'
+WHERE approval_status = 'pending'
+   OR plan_snapshot IS NOT NULL
+   OR proposed_diff_hash IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS agent_runs_queue_type_status_created_idx
+  ON public.agent_runs (queue_type, status, created_at);
+
+CREATE TABLE IF NOT EXISTS public.coding_tasks (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  workbench_run_id TEXT NOT NULL REFERENCES public.agent_runs(id) ON DELETE CASCADE,
+  approval_id TEXT NOT NULL,
+  plan_hash TEXT NOT NULL,
+  base_commit_sha TEXT NOT NULL,
+  proposed_diff_hash TEXT NOT NULL,
+  agent TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  workspace_key TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'queued',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 3,
+  worker_id TEXT,
+  locked_at TIMESTAMPTZ(6),
+  lease_expires_at TIMESTAMPTZ(6),
+  next_attempt_at TIMESTAMPTZ(6) NOT NULL DEFAULT NOW(),
+  cancel_requested_at TIMESTAMPTZ(6),
+  result JSONB,
+  error TEXT,
+  created_at TIMESTAMPTZ(6) NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ(6) NOT NULL DEFAULT NOW(),
+  completed_at TIMESTAMPTZ(6)
+);
+
+CREATE INDEX IF NOT EXISTS coding_tasks_status_next_attempt_idx
+  ON public.coding_tasks (status, next_attempt_at, created_at);
+CREATE INDEX IF NOT EXISTS coding_tasks_status_lease_expiry_idx
+  ON public.coding_tasks (status, lease_expires_at);
+CREATE INDEX IF NOT EXISTS coding_tasks_user_created_idx
+  ON public.coding_tasks (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS coding_tasks_workbench_run_idx
+  ON public.coding_tasks (workbench_run_id, created_at DESC);
+
+-- END PRISMA MIGRATION 20261104120000_isolated_coding_task_queue
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'72733a3934735acba833b471817a6cd982ad8330e119478e5cd2a8bd3734f151',now(),'20261104120000_isolated_coding_task_queue',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261104190000_quant_experiments
+CREATE TABLE "quant_experiments" (
+  "id" TEXT NOT NULL,
+  "user_id" TEXT NOT NULL,
+  "strategy" TEXT NOT NULL,
+  "status" TEXT NOT NULL,
+  "input" JSONB NOT NULL,
+  "result" JSONB,
+  "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "quant_experiments_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "quant_experiments_user_id_fkey"
+    FOREIGN KEY ("user_id") REFERENCES "users"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE INDEX "quant_experiments_user_created_idx"
+  ON "quant_experiments"("user_id", "created_at" DESC);
+
+-- END PRISMA MIGRATION 20261104190000_quant_experiments
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'6bc74f2acf33869c6283ab68ba89c4e894684e051fe86b12cddcc26c0fd7c573',now(),'20261104190000_quant_experiments',now(),1);
