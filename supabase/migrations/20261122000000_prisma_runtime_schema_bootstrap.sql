@@ -779,3 +779,255 @@ CREATE INDEX "quant_experiments_user_created_idx"
 
 -- END PRISMA MIGRATION 20261104190000_quant_experiments
 INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'6bc74f2acf33869c6283ab68ba89c4e894684e051fe86b12cddcc26c0fd7c573',now(),'20261104190000_quant_experiments',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261104200000_audiobook_persistence_jobs
+CREATE TABLE "audiobook_projects" (
+  "id" TEXT NOT NULL,
+  "user_id" TEXT NOT NULL,
+  "title" VARCHAR(120) NOT NULL,
+  "language" VARCHAR(16) NOT NULL DEFAULT 'en-ZA',
+  "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "audiobook_projects_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "audiobook_projects_user_id_fkey"
+    FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE "audiobook_chapters" (
+  "id" TEXT NOT NULL,
+  "project_id" TEXT NOT NULL,
+  "title" VARCHAR(120) NOT NULL,
+  "content" TEXT NOT NULL DEFAULT '',
+  "position" INTEGER NOT NULL,
+  "narration_settings" JSONB NOT NULL DEFAULT '{}',
+  "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "audiobook_chapters_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "audiobook_chapters_project_id_fkey"
+    FOREIGN KEY ("project_id") REFERENCES "audiobook_projects"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE "audiobook_render_jobs" (
+  "id" TEXT NOT NULL,
+  "user_id" TEXT NOT NULL,
+  "project_id" TEXT NOT NULL,
+  "status" VARCHAR(24) NOT NULL DEFAULT 'queued',
+  "progress" JSONB NOT NULL DEFAULT '{}',
+  "result" JSONB,
+  "error" TEXT,
+  "attempts" INTEGER NOT NULL DEFAULT 0,
+  "max_attempts" INTEGER NOT NULL DEFAULT 3,
+  "worker_id" VARCHAR(120),
+  "locked_at" TIMESTAMPTZ(6),
+  "lease_expires_at" TIMESTAMPTZ(6),
+  "next_attempt_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "cancel_requested_at" TIMESTAMPTZ(6),
+  "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "completed_at" TIMESTAMPTZ(6),
+  CONSTRAINT "audiobook_render_jobs_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "audiobook_render_jobs_user_id_fkey"
+    FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "audiobook_render_jobs_project_id_fkey"
+    FOREIGN KEY ("project_id") REFERENCES "audiobook_projects"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "audiobook_render_jobs_attempts_check" CHECK ("attempts" >= 0 AND "max_attempts" BETWEEN 1 AND 5),
+  CONSTRAINT "audiobook_render_jobs_status_check" CHECK ("status" IN ('queued','running','completed','failed','cancel_requested','cancelled'))
+);
+
+CREATE INDEX "audiobook_projects_user_updated_idx" ON "audiobook_projects"("user_id", "updated_at" DESC);
+CREATE UNIQUE INDEX "audiobook_chapters_project_position_key" ON "audiobook_chapters"("project_id", "position");
+CREATE INDEX "audiobook_chapters_project_position_idx" ON "audiobook_chapters"("project_id", "position");
+CREATE INDEX "audiobook_render_jobs_status_next_attempt_idx" ON "audiobook_render_jobs"("status", "next_attempt_at", "created_at");
+CREATE INDEX "audiobook_render_jobs_status_lease_idx" ON "audiobook_render_jobs"("status", "lease_expires_at");
+CREATE INDEX "audiobook_render_jobs_user_created_idx" ON "audiobook_render_jobs"("user_id", "created_at" DESC);
+CREATE INDEX "audiobook_render_jobs_project_created_idx" ON "audiobook_render_jobs"("project_id", "created_at" DESC);
+
+-- END PRISMA MIGRATION 20261104200000_audiobook_persistence_jobs
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'0cc4ce93b2404910637595add0c8144c380cc4f330fe1af4241e01ec85fdab30',now(),'20261104200000_audiobook_persistence_jobs',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261104203000_audiobook_render_request_snapshot
+ALTER TABLE "audiobook_render_jobs"
+  ADD COLUMN "idempotency_key" VARCHAR(120),
+  ADD COLUMN "request" JSONB;
+
+-- Existing jobs, if any, receive a deterministic unique migration placeholder.
+UPDATE "audiobook_render_jobs"
+SET "idempotency_key" = 'legacy-' || "id",
+    "request" = '{}'::jsonb
+WHERE "idempotency_key" IS NULL OR "request" IS NULL;
+
+ALTER TABLE "audiobook_render_jobs"
+  ALTER COLUMN "idempotency_key" SET NOT NULL,
+  ALTER COLUMN "request" SET NOT NULL;
+
+CREATE UNIQUE INDEX "audiobook_render_jobs_user_idempotency_key"
+  ON "audiobook_render_jobs"("user_id", "idempotency_key");
+
+-- END PRISMA MIGRATION 20261104203000_audiobook_render_request_snapshot
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'99917734040cdcea38fe8f9de39795107126f0037ff67a7ccbc7c9552eb6db3c',now(),'20261104203000_audiobook_render_request_snapshot',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261104210000_audiobook_active_render_guard
+-- Enforce at most one active render per audiobook project even under concurrent API requests.
+CREATE UNIQUE INDEX "audiobook_render_jobs_one_active_per_project"
+  ON "audiobook_render_jobs"("project_id")
+  WHERE "status" IN ('queued', 'running', 'cancel_requested');
+
+-- END PRISMA MIGRATION 20261104210000_audiobook_active_render_guard
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'b49ba0a2d61ce5fd765aee943256cbf8e05d8aaf49bf373ef8e38d5ad5a64eac',now(),'20261104210000_audiobook_active_render_guard',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261105120000_comms_outbound_idempotency
+-- Prevent duplicate external dispatch when browser/network retries repeat a send request.
+-- Nullable for backwards compatibility with existing communication history.
+ALTER TABLE "communication_messages" ADD COLUMN IF NOT EXISTS "idempotency_key" TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS "communication_messages_idempotency_key_key" ON "communication_messages" ("idempotency_key");
+
+-- END PRISMA MIGRATION 20261105120000_comms_outbound_idempotency
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'05247de3b4910ed3fa287a90fb934002e702ec579162cdbd5dfbc5acfb96a887',now(),'20261105120000_comms_outbound_idempotency',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261105130000_comms_secure_attachments
+ALTER TABLE "communication_conversations" ADD COLUMN IF NOT EXISTS "owner_user_id" UUID;
+CREATE INDEX IF NOT EXISTS "communication_conversations_owner_updated_idx" ON "communication_conversations" ("owner_user_id","updated_at");
+CREATE TABLE IF NOT EXISTS "communication_attachments" (
+ "id" TEXT PRIMARY KEY,"communication_message_id" TEXT NOT NULL,"owner_user_id" UUID NOT NULL,
+ "bucket_id" TEXT NOT NULL DEFAULT 'ryanai-comms-attachments',"object_name" TEXT NOT NULL UNIQUE,
+ "file_name" TEXT NOT NULL,"mime_type" TEXT NOT NULL,"size" BIGINT NOT NULL CHECK ("size">0),
+ "source" TEXT NOT NULL,"provider_media_id" TEXT,"created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ CONSTRAINT "communication_attachments_message_fkey" FOREIGN KEY ("communication_message_id") REFERENCES "communication_messages"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+CREATE INDEX IF NOT EXISTS "communication_attachments_owner_created_idx" ON "communication_attachments" ("owner_user_id","created_at");
+CREATE INDEX IF NOT EXISTS "communication_attachments_message_created_idx" ON "communication_attachments" ("communication_message_id","created_at");
+ALTER TABLE "communication_attachments" ENABLE ROW LEVEL SECURITY;
+CREATE TABLE IF NOT EXISTS "communication_attachment_audit" (
+ "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ "communication_attachment_id" TEXT NOT NULL,
+ "owner_user_id" UUID NOT NULL,
+ "event" TEXT NOT NULL,
+ "metadata" JSONB,
+ "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS "communication_attachment_audit_attachment_created_idx" ON "communication_attachment_audit" ("communication_attachment_id","created_at");
+CREATE INDEX IF NOT EXISTS "communication_attachment_audit_owner_created_idx" ON "communication_attachment_audit" ("owner_user_id","created_at");
+ALTER TABLE "communication_attachment_audit" ENABLE ROW LEVEL SECURITY;
+
+-- END PRISMA MIGRATION 20261105130000_comms_secure_attachments
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'9aeaf8f62d61f3639f470c0f661efd337fc62060b5a790de6ac5eca13565829a',now(),'20261105130000_comms_secure_attachments',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261105143000_quant_paper_trading
+CREATE TABLE "quant_paper_accounts" (
+  "user_id" TEXT NOT NULL,
+  "cash_balance" NUMERIC(24, 8) NOT NULL DEFAULT 100000,
+  "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "quant_paper_accounts_pkey" PRIMARY KEY ("user_id"),
+  CONSTRAINT "quant_paper_accounts_user_id_fkey" FOREIGN KEY ("user_id")
+    REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "quant_paper_accounts_cash_nonnegative" CHECK ("cash_balance" >= 0)
+);
+
+CREATE TABLE "quant_paper_positions" (
+  "user_id" TEXT NOT NULL,
+  "symbol" VARCHAR(15) NOT NULL,
+  "quantity" NUMERIC(24, 8) NOT NULL,
+  "average_entry_price" NUMERIC(24, 8) NOT NULL,
+  "last_price" NUMERIC(24, 8) NOT NULL,
+  "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "quant_paper_positions_pkey" PRIMARY KEY ("user_id", "symbol"),
+  CONSTRAINT "quant_paper_positions_user_id_fkey" FOREIGN KEY ("user_id")
+    REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "quant_paper_positions_quantity_positive" CHECK ("quantity" > 0),
+  CONSTRAINT "quant_paper_positions_prices_positive" CHECK ("average_entry_price" > 0 AND "last_price" > 0)
+);
+
+CREATE TABLE "quant_paper_orders" (
+  "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+  "user_id" TEXT NOT NULL,
+  "client_order_id" VARCHAR(64) NOT NULL,
+  "symbol" VARCHAR(15) NOT NULL,
+  "side" VARCHAR(4) NOT NULL,
+  "quantity" NUMERIC(24, 8) NOT NULL,
+  "reference_price" NUMERIC(24, 8) NOT NULL,
+  "fill_price" NUMERIC(24, 8) NOT NULL,
+  "fee" NUMERIC(24, 8) NOT NULL,
+  "status" VARCHAR(16) NOT NULL DEFAULT 'filled',
+  "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "quant_paper_orders_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "quant_paper_orders_user_id_fkey" FOREIGN KEY ("user_id")
+    REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "quant_paper_orders_side_check" CHECK ("side" IN ('buy', 'sell')),
+  CONSTRAINT "quant_paper_orders_status_check" CHECK ("status" IN ('filled')),
+  CONSTRAINT "quant_paper_orders_values_check" CHECK ("quantity" > 0 AND "reference_price" > 0 AND "fill_price" > 0 AND "fee" >= 0),
+  CONSTRAINT "quant_paper_orders_idempotency_key" UNIQUE ("user_id", "client_order_id")
+);
+
+CREATE INDEX "quant_paper_orders_user_created_idx"
+  ON "quant_paper_orders"("user_id", "created_at" DESC);
+
+CREATE TABLE "quant_paper_trades" (
+  "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+  "order_id" TEXT NOT NULL,
+  "user_id" TEXT NOT NULL,
+  "symbol" VARCHAR(15) NOT NULL,
+  "side" VARCHAR(4) NOT NULL,
+  "quantity" NUMERIC(24, 8) NOT NULL,
+  "price" NUMERIC(24, 8) NOT NULL,
+  "fee" NUMERIC(24, 8) NOT NULL,
+  "realized_pnl" NUMERIC(24, 8),
+  "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "quant_paper_trades_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "quant_paper_trades_order_id_fkey" FOREIGN KEY ("order_id")
+    REFERENCES "quant_paper_orders"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "quant_paper_trades_user_id_fkey" FOREIGN KEY ("user_id")
+    REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE INDEX "quant_paper_trades_user_created_idx"
+  ON "quant_paper_trades"("user_id", "created_at" DESC);
+
+-- END PRISMA MIGRATION 20261105143000_quant_paper_trading
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'5f2cfb7f750a5c4ec8b6918b1899838b129bc89977ba5f176d6976d647397b5c',now(),'20261105143000_quant_paper_trading',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261105150000_quant_paper_risk_policies
+CREATE TABLE "quant_paper_risk_policies" (
+  "user_id" TEXT NOT NULL,
+  "max_order_notional" NUMERIC(18, 2) NOT NULL DEFAULT 10000,
+  "max_position_notional" NUMERIC(18, 2) NOT NULL DEFAULT 25000,
+  "max_gross_exposure" NUMERIC(18, 2) NOT NULL DEFAULT 75000,
+  "trading_enabled" BOOLEAN NOT NULL DEFAULT TRUE,
+  "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "quant_paper_risk_policies_pkey" PRIMARY KEY ("user_id"),
+  CONSTRAINT "quant_paper_risk_policies_user_id_fkey" FOREIGN KEY ("user_id")
+    REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "quant_paper_risk_policies_order_cap" CHECK ("max_order_notional" >= 100 AND "max_order_notional" <= 10000),
+  CONSTRAINT "quant_paper_risk_policies_position_cap" CHECK ("max_position_notional" >= 100 AND "max_position_notional" <= 50000),
+  CONSTRAINT "quant_paper_risk_policies_gross_cap" CHECK ("max_gross_exposure" >= 100 AND "max_gross_exposure" <= 100000),
+  CONSTRAINT "quant_paper_risk_policies_order_le_position" CHECK ("max_order_notional" <= "max_position_notional"),
+  CONSTRAINT "quant_paper_risk_policies_position_le_gross" CHECK ("max_position_notional" <= "max_gross_exposure")
+);
+
+-- END PRISMA MIGRATION 20261105150000_quant_paper_risk_policies
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'8aaf1e597cf4a29105ef866090c0210e481c2e9b55cf688fb1d15330b01bcb10',now(),'20261105150000_quant_paper_risk_policies',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261105160000_quant_paper_strategies
+CREATE TABLE "quant_paper_strategies" (
+  "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+  "user_id" TEXT NOT NULL,
+  "experiment_id" TEXT NOT NULL,
+  "allocation_pct" NUMERIC(5, 2) NOT NULL DEFAULT 10.00,
+  "enabled" BOOLEAN NOT NULL DEFAULT TRUE,
+  "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "quant_paper_strategies_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "quant_paper_strategies_user_id_fkey" FOREIGN KEY ("user_id")
+    REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "quant_paper_strategies_experiment_id_fkey" FOREIGN KEY ("experiment_id")
+    REFERENCES "quant_experiments"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "quant_paper_strategies_allocation_check" CHECK ("allocation_pct" >= 1 AND "allocation_pct" <= 100),
+  CONSTRAINT "quant_paper_strategies_user_experiment_key" UNIQUE ("user_id", "experiment_id")
+);
+
+CREATE INDEX "quant_paper_strategies_user_enabled_idx"
+  ON "quant_paper_strategies"("user_id", "enabled", "created_at" DESC);
+
+-- END PRISMA MIGRATION 20261105160000_quant_paper_strategies
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'9abedd1f73840f4ca7a9b016267f93b010d11428c093232dbadefc30b796e774',now(),'20261105160000_quant_paper_strategies',now(),1);
