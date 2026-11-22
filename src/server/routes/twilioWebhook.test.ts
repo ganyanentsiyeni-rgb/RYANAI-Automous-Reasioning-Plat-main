@@ -34,10 +34,20 @@ const token = 'synthetic-twilio-auth-token';
 const webhookUrl = 'https://app.example.test/api/webhooks/twilio/whatsapp';
 const body = { From: 'whatsapp:+15555550123', Body: 'Please help', MessageSid: 'SM123' };
 
-async function sendWebhook(signature?: string, payload = body, host?: string, path = '/api/webhooks/twilio/whatsapp') {
+async function sendWebhook(signature?: string, payload = body, host?: string, path = '/api/webhooks/twilio/whatsapp', authenticated = false) {
   const app = Fastify();
   applications.push(app);
   installAuthentication(app);
+  if (authenticated) {
+    app.addHook('onRequest', async (request) => {
+      request.authUser = {
+        id: '11111111-1111-4111-8111-111111111111',
+        role: 'admin',
+        isOwner: true,
+        sessionAssurance: 'aal2',
+      };
+    });
+  }
   app.decorate('prisma', prismaMock as never);
   await app.register(twilioWebhookPlugin);
   return app.inject({
@@ -376,8 +386,8 @@ describe('Twilio webhook provider authentication', () => {
     );
   });
 
-  it('does not register the legacy webhook path', async () => {
-    const response = await sendWebhook(undefined, body, undefined, '/webhooks/twilio/whatsapp');
+  it('does not register the legacy webhook path after authenticating the route probe', async () => {
+    const response = await sendWebhook(undefined, body, undefined, '/webhooks/twilio/whatsapp', true);
     expect(response.statusCode).toBe(404);
   });
 });
