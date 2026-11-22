@@ -578,7 +578,7 @@ function registerCoreRoutes() {
     handleReasoningRequest,
   );
   if (API_ROUTES.reasonPath !== '/api/reason') {
-    fastify.post<{ Body: { prompt?: string; model?: string; language?: string } }>(
+    fastify.post<{ Body: { prompt?: string; model?: string; language?: string; responsePreferences?: unknown } }>(
       '/api/reason',
       { schema: reasoningBodySchema },
       handleReasoningRequest,
