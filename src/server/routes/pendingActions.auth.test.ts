@@ -1,11 +1,11 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
+import { createMutableAuthMock } from '../../../test/helpers/authFixture.js';
 
 const {
-  createContextClient, getUser, listOpenActions, decideAction
+  createContextClient, listOpenActions, decideAction
 } = vi.hoisted(() => ({
   createContextClient: vi.fn(),
-  getUser: vi.fn(),
   listOpenActions: vi.fn(),
   decideAction: vi.fn()
 }));
@@ -17,19 +17,10 @@ vi.mock('../../approvals/service.js', () => ({ decideAction }));
 import { installAuthentication } from './auth.js';
 import { pendingActionsRoutes } from './pendingActions.js';
 
+const authMock = createMutableAuthMock({ role: 'admin' });
 const actionId = '7b0f1c1e-3c0a-4d3e-9a52-0b5f3b6a1c11';
 const bearer = { authorization: 'Bearer synthetic-approval-access-token' };
 const apps: FastifyInstance[] = [];
-
-function identity(role: 'user' | 'admin' = 'user') {
-  return {
-    id: 'verified-' + role + '-id',
-    email: role + '@example.test',
-    app_metadata: role === 'admin' ? { role: 'admin' } : {},
-    user_metadata: { role: 'admin' },
-    is_anonymous: false
-  };
-}
 
 async function createApp() {
   const app = Fastify();
@@ -44,8 +35,8 @@ beforeEach(() => {
   vi.stubEnv('SUPABASE_URL', 'https://synthetic-project.supabase.co');
   vi.stubEnv('SUPABASE_PUBLISHABLE_KEY', 'synthetic-publishable-key');
   vi.clearAllMocks();
-  createContextClient.mockReturnValue({ auth: { getUser, getClaims: vi.fn().mockResolvedValue({ data: { claims: { sub: 'verified-admin-id', aal: 'aal2' } }, error: null }) } });
-  getUser.mockResolvedValue({ data: { user: identity('admin') }, error: null });
+  authMock.setIdentity({ role: 'admin' });
+  createContextClient.mockReturnValue({ auth: authMock.auth });
   listOpenActions.mockResolvedValue([]);
   decideAction.mockResolvedValue({ outcome: 'executed', result: 'synthetic-only' });
 });
@@ -67,15 +58,12 @@ describe('real administrator guard for pending approval actions', () => {
     });
     expect(noToken.statusCode).toBe(401);
     expect(malformed.statusCode).toBe(401);
-    expect(getUser).not.toHaveBeenCalled();
+    expect(authMock.getUser).not.toHaveBeenCalled();
     expect(decideAction).not.toHaveBeenCalled();
   });
 
   it('rejects a verified member even when editable user metadata claims admin', async () => {
-    getUser.mockResolvedValue({
-      data: { user: identity('user') },
-      error: null
-    });
+    authMock.setIdentity({ role: 'user', userMetadataRole: 'admin' });
     const app = await createApp();
     const response = await app.inject({
       method: 'POST', url: `/api/actions/${actionId}/approve`, headers: bearer
@@ -84,13 +72,22 @@ describe('real administrator guard for pending approval actions', () => {
     expect(decideAction).not.toHaveBeenCalled();
   });
 
+  it('rejects a verified user when Supabase claims verification fails', async () => {
+    authMock.setIdentity({ role: 'admin', claimsErrorStatus: 401, claimsErrorMessage: 'Invalid fixture claims' });
+    const app = await createApp();
+    const response = await app.inject({ method: 'POST', url: `/api/actions/${actionId}/approve`, headers: bearer });
+    expect(response.statusCode).toBe(401);
+    expect(listOpenActions).not.toHaveBeenCalled();
+    expect(decideAction).not.toHaveBeenCalled();
+  });
+
   it.each(['unavailable', 'throws'] as const)(
     'fails closed when the authenticated identity provider %s',
     async failure => {
       if (failure === 'throws') {
-        getUser.mockRejectedValue(new Error('synthetic auth provider outage'));
+        authMock.getUser.mockRejectedValue(new Error('synthetic auth provider outage'));
       } else {
-        getUser.mockResolvedValue({
+        authMock.getUser.mockResolvedValue({
           data: { user: null },
           error: { status: 503, message: 'synthetic auth provider unavailable' }
         });
