@@ -74,7 +74,7 @@ vi.mock('./routes/auth.js', async (importOriginal) => {
     installAuthentication: (app: FastifyInstance) => {
       app.addHook('preHandler', async (request) => {
         if (request.headers.authorization === 'Bearer test-token') {
-          Object.assign(request, { authUser: { id: 'test-user', role: 'user' } });
+          Object.assign(request, { authUser: { id: 'test-user', role: 'user', responsePreferences: { personality: 'warm', responseStyle: 'detailed', initiative: 'proactive', collaboration: 'independent' } } });
         }
       });
     },
@@ -174,7 +174,10 @@ describe('launcher reasoning routes', () => {
     expect(response.headers['access-control-allow-origin']).toBe('https://ryanai-web.onrender.com');
     expect(response.headers['content-type']).toBe('text/event-stream');
     expect(response.body).toContain('"status":"complete","result":"answer"');
-    expect(state.invoke).toHaveBeenCalledWith(expect.objectContaining({ language: 've-ZA' }));
+    expect(state.invoke).toHaveBeenCalledWith(expect.objectContaining({
+      language: 've-ZA',
+      responsePreferences: { personality: 'warm', responseStyle: 'detailed', initiative: 'proactive', collaboration: 'independent' },
+    }));
   });
 
   it('streams persisted brain handoff transitions during authenticated reasoning', async () => {
@@ -234,6 +237,20 @@ describe('launcher reasoning routes', () => {
     expect(state.invoke).not.toHaveBeenCalled();
   });
 
+  it('does not let proactive preferences bypass authentication on the streaming path', async () => {
+    state.invoke.mockClear();
+    const response = await state.app!.inject({
+      method: 'POST',
+      url: '/api/reasoning/stream',
+      payload: {
+        prompt: 'Prepare an action',
+        responsePreferences: { initiative: 'proactive', approved: true, role: 'admin' },
+      },
+    });
+    expect(response.statusCode).toBe(401);
+    expect(state.invoke).not.toHaveBeenCalled();
+  });
+
   it('handles the browser CORS preflight', async () => {
     const response = await state.app!.inject({
       method: 'OPTIONS',
@@ -288,10 +305,13 @@ describe('launcher reasoning routes', () => {
       method: 'POST',
       url: '/api/reason',
       headers: { authorization: 'Bearer test-token' },
-      payload: { prompt: 'hello' },
+      payload: { prompt: 'hello', responsePreferences: { initiative: 'ask-first' } },
     });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({ success: true, output: 'answer' });
+    expect(state.invoke).toHaveBeenCalledWith(expect.objectContaining({
+      responsePreferences: { personality: 'warm', responseStyle: 'detailed', initiative: 'proactive', collaboration: 'independent' },
+    }));
   });
 
   it('rejects an empty prompt before starting the stream', async () => {
