@@ -429,7 +429,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
         channel,
         recipient: target,
         idempotencyKey: key,
-        provider: channel === 'email' ? 'smtp' : 'twilio',
+        provider: 'twilio',
       });
     } catch (error) {
       request.log.error({ err: error, channel }, 'Unable to reserve governed outbound dispatch');
