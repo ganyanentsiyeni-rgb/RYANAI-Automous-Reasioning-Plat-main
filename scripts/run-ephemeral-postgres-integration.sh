@@ -124,6 +124,9 @@ NODE_ENV=test node --import tsx scripts/test-agent-queue.mjs
 log "Running PostgreSQL intelligence-event inbox audit atomicity tests"
 node --import tsx scripts/test-intelligence-event-inbox-postgres.mjs
 
+log "Running Comms Twilio callback integration and disposable teardown tests"
+RUN_COMMS_POSTGRES_INTEGRATION=true npx vitest run src/server/comms/index.postgres.integration.test.ts
+
 log "Running guarded agent_runs migration replay/idempotency test"
 node scripts/test-agent-runs-runtime-migration-upgrade.mjs
 
