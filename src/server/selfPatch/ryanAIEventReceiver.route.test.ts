@@ -48,7 +48,8 @@ afterEach(async () => {
 
 describe('RyanAI authenticated event receiver route', () => {
   it('fails closed when the HMAC secret is not configured', async () => {
-    const response = await postEvent(event('123e4567-e89b-42d3-a456-426614174101'), null);
+    // Pass an explicit empty value; undefined/null would trigger the helper's default secret.
+    const response = await postEvent(event('123e4567-e89b-42d3-a456-426614174101'), '');
     expect(response.statusCode).toBe(503);
     expect(response.json()).toMatchObject({ accepted: false, state: 'not_configured' });
   });
