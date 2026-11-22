@@ -292,12 +292,6 @@ jobs:
           RYANAI_DISPOSABLE_SUPABASE: '1'
         run: node scripts/test-agent-run-lease-migration-rollback.mjs
 
-      - name: Verify agent runtime migration replay on disposable Supabase
-        env:
-          RYANAI_DISPOSABLE_DB: '1'
-          RYANAI_DISPOSABLE_SUPABASE: '1'
-        run: node scripts/test-agent-runs-runtime-migration-upgrade.mjs
-
       # Vite's build uses emptyOutDir=true and clears dist/. Build the frontend
       # first, then compile the API so the server output survives for startup.
       - name: Build frontend and API
@@ -366,6 +360,14 @@ jobs:
           npm run test:integration
           npm run test:e2e
 
+      # Destructive: drops and recreates public.agent_runs in the shared disposable DB.
+      # Keep this after every other test in this job that reads agent_runs.
+      - name: Verify agent runtime migration replay on disposable Supabase
+        env:
+          RYANAI_DISPOSABLE_DB: '1'
+          RYANAI_DISPOSABLE_SUPABASE: '1'
+        run: node scripts/test-agent-runs-runtime-migration-upgrade.mjs
+
       - name: Print service logs on failure
         if: failure()
         shell: bash
@@ -395,7 +397,7 @@ jobs:
 
       - name: Stop isolated Supabase stack
         if: always() && steps.setup_supabase_cli.outcome == 'success'
-        run: supabase stop --no-backup
+        run: supabase stop
 
   postgres19-compatibility:
     name: PostgreSQL 19 compatibility
