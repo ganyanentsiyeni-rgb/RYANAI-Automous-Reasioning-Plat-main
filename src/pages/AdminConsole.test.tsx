@@ -241,7 +241,8 @@ describe('Admin Console request ownership', () => {
     await mount('admin-account-a');
     await vi.waitFor(() => expect(container.querySelector('input[aria-label="Search profiles"]')).toBeTruthy());
     const input = container.querySelector('input[aria-label="Search profiles"]') as HTMLInputElement;
-    await act(async () => { input.value = 'alice'; input.dispatchEvent(new Event('input', { bubbles: true })); });
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    await act(async () => { valueSetter?.call(input, 'alice'); input.dispatchEvent(new Event('input', { bubbles: true })); });
     await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/api/admin/users?limit=50&page=1&search=alice', expect.any(Object), 'admin-account-a'));
     expect(container.textContent).toContain('Alice');
   });
