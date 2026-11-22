@@ -10,7 +10,11 @@ const auth = vi.hoisted(() => ({
   signOut: vi.fn(),
   signInWithPassword: vi.fn(),
 }));
-vi.mock('@/lib/supabase', () => ({ supabase: { auth } }));
+const supabaseMock = vi.hoisted(() => ({
+  auth,
+  from: vi.fn(),
+}));
+vi.mock('@/lib/supabase', () => ({ supabase: supabaseMock }));
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 let container: HTMLDivElement;
@@ -56,6 +60,11 @@ beforeEach(() => {
   auth.updateUser.mockResolvedValue({ data: { user: { id: 'user-a' } }, error: null });
   auth.signInWithPassword.mockResolvedValue({ data: { user: { id: 'user-a' } }, error: null });
   auth.signOut.mockResolvedValue({ error: null });
+  supabaseMock.from.mockReturnValue({
+    update: vi.fn().mockReturnValue({
+      eq: vi.fn().mockResolvedValue({ error: null }),
+    }),
+  });
   window.localStorage.clear();
   container = document.createElement('div');
   document.body.appendChild(container);
