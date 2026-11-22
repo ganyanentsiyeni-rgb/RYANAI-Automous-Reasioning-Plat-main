@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
 
 const read = (path) => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
@@ -66,8 +66,6 @@ const apiDockerfile = read('Dockerfile.api');
 const poolerAdapter = read('src/server/supabasePooler.ts');
 const generatedClientCopy = read('scripts/copy-server-assets.mjs');
 const packageJson = JSON.parse(read('package.json'));
-const packageLock = JSON.parse(read('package-lock.json'));
-const workflowDirectory = new URL('../.github/workflows/', import.meta.url);
 const vercelConfig = JSON.parse(read('vercel.json'));
 const platformDeployWorkflow = read('.github/workflows/deploy-platforms.yml');
 const envExample = read('.env.example');
