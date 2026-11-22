@@ -615,10 +615,13 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
     const callSid = body.CallSid?.trim();
     const turnId = typeof request.query === 'object' && request.query !== null && 'turnId' in request.query
       ? String((request.query as { turnId?: unknown }).turnId || '') : '';
-    const ownerUserId = getOwnerInboundUserId();
     if (!callSid || !/^[A-Za-z0-9_-]{1,80}$/.test(callSid) || !turnId || !/^[0-9a-f-]{36}$/i.test(turnId)) {
       return reply.code(400).send({ error: 'A valid call ID and signed voice turn ID are required.' });
     }
+    // A signed webhook may be acknowledged safely, but no durable work may be
+    // claimed or queued unless the owner explicitly authorizes communications tests.
+    if (!outboundReplyAllowed) return '<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>';
+    const ownerUserId = getOwnerInboundUserId();
     if (!ownerUserId) return reply.code(503).send({ error: 'Inbound voice processing requires the verified owner Supabase user ID.' });
     const providerTurnId = `voice:${callSid}:${turnId}`;
     try {
