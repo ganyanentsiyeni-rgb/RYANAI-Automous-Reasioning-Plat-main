@@ -175,6 +175,21 @@ test('enforces schema constraints on service ports', (t) => {
 });
 
 
+test('Compose exposes the compiled Studio worker only through an explicit opt-in profile', () => {
+  const composePath = path.join(repoRoot, 'docker-compose.yml');
+  const document = parseDocument(readFileSync(composePath, 'utf8'), { uniqueKeys: true });
+  assert.deepEqual(document.errors, [], document.errors.map((error) => error.message).join('\\n'));
+  const worker = document.getIn(['services', 'studio-worker']);
+  assert.ok(worker, 'studio-worker service must be declared');
+  assert.deepEqual(worker.get('profiles')?.toJSON(), ['workers']);
+  assert.equal(worker.getIn(['build', 'target']), 'studio-worker');
+  assert.equal(worker.getIn(['build', 'dockerfile']), 'Dockerfile');
+  assert.equal(worker.getIn(['environment', 'DATABASE_URL'])?.value, 'postgresql://ryanai:${DB_PASSWORD:?Set DB_PASSWORD in .env}@postgres:5432/ryanai_db');
+  assert.equal(worker.getIn(['depends_on', 'postgres', 'condition']), 'service_healthy');
+  const dockerfile = readFileSync(path.join(repoRoot, 'Dockerfile'), 'utf8');
+  assert.match(dockerfile, /FROM api AS studio-worker[\\s\\S]*?CMD \\[\"node\", \"dist\\/server\\/server\\/engineering\\/studioWorker\\.js\"\\]/);
+});
+
 test('docker-compose environment mapping has no duplicate keys', () => {
   const composePath = path.join(repoRoot, 'docker-compose.yml');
   const document = parseDocument(readFileSync(composePath, 'utf8'), { uniqueKeys: true });
