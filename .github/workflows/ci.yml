@@ -315,6 +315,7 @@ jobs:
       - name: Verify intelligence-event inbox concurrency and audit atomicity against disposable PostgreSQL
         env:
           RYANAI_DISPOSABLE_DB: '1'
+          RYANAI_DISPOSABLE_SUPABASE: '1'
         run: node --import tsx/esm scripts/test-intelligence-event-inbox-postgres.mjs
 
 
