@@ -4,9 +4,10 @@ import { GithubLogo as Github } from '@phosphor-icons/react';
 import { authenticatedFetch } from '@/lib/authenticatedFetch';
 
 interface GitHubStatus {
-  status: 'not_configured' | 'not_connected' | 'connected' | 'reauthorization_required' | 'repository_access_missing' | 'unverified';
+  status: 'not_configured' | 'not_connected' | 'connected' | 'reauthorization_required' | 'repository_access_missing' | 'unverified' | 'configuration_unavailable';
   connected?: boolean;
   configured?: boolean;
+  persistedConnection?: boolean;
   account?: { login: string; avatarUrl?: string };
   repository?: { fullName: string; permissions?: Record<string, boolean> };
   accessTokenExpiresAt?: string | null;
@@ -46,6 +47,7 @@ function statusLabel(status: GitHubStatus['status'] | null, checking: boolean): 
     case 'reauthorization_required': return 'Reconnect required';
     case 'repository_access_missing': return 'Repository access missing';
     case 'unverified': return 'Verification unavailable';
+    case 'configuration_unavailable': return 'Configuration unavailable';
     default: return 'Not configured';
   }
 }
@@ -158,6 +160,7 @@ export default function GithubModal({ open, onClose }: GitHubModalProps) {
   }
 
   const connected = integration?.status === 'connected';
+  const persistedConnection = integration?.persistedConnection === true;
   const notConfigured = !integration || integration.status === 'not_configured';
 
   return (
@@ -246,6 +249,11 @@ export default function GithubModal({ open, onClose }: GitHubModalProps) {
             The GitHub account is identifiable, but access to the official RyanAI repository could not be verified. Check the GitHub App installation and its repository selection.
           </p>
         )}
+        {integration?.status === 'configuration_unavailable' && (
+          <p className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-3 text-xs text-amber-200">
+            The GitHub App configuration is temporarily unavailable, but a saved local connection still exists. You can remove the local credentials now; remote revocation will be reported as unconfirmed if the provider cannot be contacted.
+          </p>
+        )}
         {integration?.status === 'unverified' && (
           <p className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-3 text-xs text-amber-200">
             GitHub could not verify the saved connection. RyanAI will not treat it as connected until verification succeeds.
@@ -272,7 +280,7 @@ export default function GithubModal({ open, onClose }: GitHubModalProps) {
         {notice && <p role="status" className="rounded-lg border border-cyan-400/20 bg-cyan-400/5 p-3 text-xs text-cyan-100">{notice}</p>}
 
         <div className="flex flex-wrap gap-2">
-          {!connected ? (
+          {!connected && !persistedConnection ? (
             <button type="button" onClick={() => void connectGitHub()}
               disabled={busy || checking || notConfigured}
               className="flex-1 rounded-lg bg-cyan-400 px-3 py-2 text-sm font-semibold text-ink-950 disabled:cursor-not-allowed disabled:opacity-40">

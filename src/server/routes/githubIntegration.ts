@@ -553,9 +553,18 @@ export const githubIntegrationRoutes: FastifyPluginAsync = async (fastify) => {
     const userId = request.authUser?.id;
     if (!userId) return reply.code(401).send({ status: 'not_connected' });
     const config = readGitHubAppConfig();
-    if (!config) return { status: 'not_configured', connected: false };
-
     const connection = await fastify.prisma.gitHubAppConnection.findUnique({ where: { userId } });
+    if (!config) {
+      if (!connection) return { status: 'not_configured', connected: false };
+      return {
+        status: 'configuration_unavailable',
+        connected: false,
+        persistedConnection: true,
+        account: { login: connection.githubLogin },
+        repository: { fullName: connection.repositoryFullName },
+        message: 'GitHub App configuration is unavailable. The saved local connection can still be removed.',
+      };
+    }
     if (!connection) return { status: 'not_connected', connected: false, configured: true };
 
     const accessToken = await getUsableAccessToken(fastify, config, connection as StoredConnection);

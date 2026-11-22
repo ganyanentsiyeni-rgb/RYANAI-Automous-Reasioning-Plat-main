@@ -350,6 +350,37 @@ describe('GitHub App in-app authorization lifecycle', () => {
     expect(response.body).not.toContain(rawRefreshToken);
   });
 
+  it('exposes a persisted connection for local disconnect when App configuration is unavailable', async () => {
+    store.connection.findUnique.mockResolvedValue(storedConnection());
+    vi.stubEnv('GITHUB_APP_CLIENT_ID', '');
+    vi.stubEnv('GITHUB_APP_CLIENT_SECRET', '');
+    vi.stubEnv('GITHUB_APP_CALLBACK_URL', '');
+    vi.stubEnv('GITHUB_APP_RETURN_URL', '');
+    vi.stubEnv('GITHUB_TOKEN_ENCRYPTION_KEY', '');
+
+    const app = await createApp();
+    const status = await app.inject({
+      method: 'GET', url: '/api/github/status',
+      headers: { authorization: 'Bearer test-user' },
+    });
+    expect(status.statusCode).toBe(200);
+    expect(status.json()).toMatchObject({
+      status: 'configuration_unavailable',
+      connected: false,
+      persistedConnection: true,
+      account: { login: 'synthetic-owner' },
+      repository: { fullName: GITHUB_APP_REPOSITORY },
+    });
+
+    const disconnect = await app.inject({
+      method: 'POST', url: '/api/github/disconnect',
+      headers: { authorization: 'Bearer test-user' },
+    });
+    expect(disconnect.statusCode).toBe(200);
+    expect(disconnect.json()).toEqual({ disconnected: true, remoteRevocation: 'unconfirmed' });
+    expect(store.connection.deleteMany).toHaveBeenCalledWith({ where: { userId } });
+  });
+
   it('rotates an expiring access and refresh token before reporting status', async () => {
     store.connection.findUnique.mockResolvedValue(storedConnection({
       accessTokenExpiresAt: new Date(Date.now() - 60_000),
