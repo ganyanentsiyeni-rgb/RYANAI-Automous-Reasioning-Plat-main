@@ -572,7 +572,7 @@ function registerCoreRoutes() {
   };
 
   // Collision-free reasoning endpoint registrations
-  fastify.post<{ Body: { prompt?: string; model?: string; language?: string } }>(
+  fastify.post<{ Body: { prompt?: string; model?: string; language?: string; responsePreferences?: unknown } }>(
     API_ROUTES.reasonPath,
     { schema: reasoningBodySchema },
     handleReasoningRequest,
