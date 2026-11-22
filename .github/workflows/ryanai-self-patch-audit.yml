@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   audit:
-    name: Audit RyanAI GitHub workflows and CI
+    name: Audit RyanAI workflows, CI and repository governance
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -39,10 +39,11 @@ jobs:
           node-version: 24
       - name: Test audit classification and redaction
         run: node --test scripts/ryanai-self-patch-audit.test.mjs
-      - name: Audit workflows and exact-head CI
+      - name: Audit workflows, exact-head CI and repository governance
         id: audit
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          GH_ADMIN_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_SHA: ${{ github.sha }}
         run: node scripts/ryanai-self-patch-audit.mjs > ryanai-self-patch-report.json
