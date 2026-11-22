@@ -41,7 +41,7 @@ async function send(path: string, url: string, payload: Record<string, string>, 
   apps.push(app);
   installAuthentication(app);
   app.addHook('onRequest', async (request) => {
-    request.authUser = { id: 'owner-test', role: 'user', isOwner: true };
+    request.authUser = { id: '11111111-1111-4111-8111-111111111111', role: 'user', isOwner: true };
   });
   app.decorate('prisma', prismaMock as never);
   await app.register(commsPlugin);
@@ -79,7 +79,7 @@ beforeEach(() => {
   vi.stubEnv('TWILIO_SMS_WEBHOOK_URL', smsUrl);
   vi.stubEnv('TWILIO_STATUS_WEBHOOK_URL', statusUrl);
   vi.stubEnv('RYANAI_OWNER_PHONE', '+15555550123');
-  vi.stubEnv('RYANAI_OWNER_AUTH_USER_ID', 'owner-test');
+  vi.stubEnv('RYANAI_OWNER_AUTH_USER_ID', '11111111-1111-4111-8111-111111111111');
   vi.stubEnv('RYANAI_OWNER_TITLE', 'Sir G');
   vi.stubEnv('RYANAI_OWNER_LANGUAGE', 've-ZA');
   prismaMock.communicationMessage.create.mockResolvedValue({ id: 'voice-message-1' });
@@ -96,12 +96,15 @@ afterEach(async () => {
 });
 
 describe('Twilio inbound SMS retry handling', () => {
-  it('does not generate an automatic SMS reply without explicit communications test authorization', async () => {
+  it('persists inbound SMS but suppresses the automatic reply without explicit communications test authorization', async () => {
     vi.stubEnv('RYANAI_COMMS_TEST_AUTHORIZED', 'false');
     const response = await send('/api/webhooks/twilio/sms', smsUrl, { MessageSid: 'SM-DISABLED', From: '+15555550123', Body: 'Do not auto-reply' });
     expect(response.statusCode).toBe(200);
     expect(response.body).toContain('<Response/>');
-    expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
+    expect(response.body).not.toContain('<Message>');
+    expect(enqueueInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith({
+      messageId: 'voice-message-1', ownerUserId: '11111111-1111-4111-8111-111111111111', providerMessageId: 'SM-DISABLED',
+    });
     expect(prismaMock.communicationMessage.create).not.toHaveBeenCalled();
   });
 
@@ -129,7 +132,7 @@ describe('Twilio inbound SMS retry handling', () => {
     expect(response.statusCode).toBe(503);
     expect(response.json()).toMatchObject({ retryable: true });
     expect(enqueueInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith({
-      messageId: 'voice-message-1', ownerUserId: 'owner-test', providerMessageId: 'SM-pending-new-run',
+      messageId: 'voice-message-1', ownerUserId: '11111111-1111-4111-8111-111111111111', providerMessageId: 'SM-pending-new-run',
     });
   });
 
@@ -141,7 +144,7 @@ describe('Twilio inbound SMS retry handling', () => {
       metadata: null,
       agentRunId: null,
       body: 'Please check my system',
-      conversation: { channel: 'sms', ownerUserId: 'owner-test' },
+      conversation: { channel: 'sms', ownerUserId: '11111111-1111-4111-8111-111111111111' },
     });
 
     const response = await send('/api/webhooks/twilio/sms', smsUrl, {
@@ -162,7 +165,7 @@ describe('Twilio inbound SMS retry handling', () => {
       metadata: null,
       agentRunId: 'sms-run-existing',
       body: 'Please check my system',
-      conversation: { channel: 'sms', ownerUserId: 'owner-test' },
+      conversation: { channel: 'sms', ownerUserId: '11111111-1111-4111-8111-111111111111' },
     });
     waitForInboundCommunicationRun.mockResolvedValueOnce({ completed: false });
 
@@ -172,7 +175,7 @@ describe('Twilio inbound SMS retry handling', () => {
 
     expect(response.statusCode).toBe(503);
     expect(response.json()).toMatchObject({ retryable: true });
-    expect(waitForInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith('sms-run-existing', 'owner-test');
+    expect(waitForInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith('sms-run-existing', '11111111-1111-4111-8111-111111111111');
     expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
   });
 
@@ -234,9 +237,9 @@ describe('Twilio conversational voice webhooks', () => {
     expect(response.statusCode).toBe(200);
     expect(response.body).toContain('Certainly, Sir G. RyanAI says hello &amp; welcome');
     expect(enqueueInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith({
-      messageId: 'voice-message-1', ownerUserId: 'owner-test', providerMessageId: 'voice:CA123:' + turnId,
+      messageId: 'voice-message-1', ownerUserId: '11111111-1111-4111-8111-111111111111', providerMessageId: 'voice:CA123:' + turnId,
     });
-    expect(waitForInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith('voice-run-1', 'owner-test');
+    expect(waitForInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith('voice-run-1', '11111111-1111-4111-8111-111111111111');
   });
 
   it('replays the persisted answer for a duplicate signed voice turn without enqueueing another run', async () => {
@@ -283,7 +286,7 @@ describe('Comms conversation ownership', () => {
     apps.push(app);
     app.decorateRequest('authUser', null);
     app.addHook('preHandler', async (request) => {
-      request.authUser = { id: 'owner-test', role: 'user', isOwner: true };
+      request.authUser = { id: '11111111-1111-4111-8111-111111111111', role: 'user', isOwner: true };
     });
     app.decorate('prisma', prismaMock as never);
     await app.register(commsPlugin);
@@ -292,7 +295,7 @@ describe('Comms conversation ownership', () => {
 
     expect(response.statusCode).toBe(200);
     expect(prismaMock.communicationConversation.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { ownerUserId: 'owner-test' },
+      where: { ownerUserId: '11111111-1111-4111-8111-111111111111' },
     }));
     expect(prismaMock.communicationConversation.updateMany).not.toHaveBeenCalled();
   });
@@ -304,7 +307,7 @@ describe('Comms conversation intelligence', () => {
     apps.push(app);
     app.decorateRequest('authUser', null);
     app.addHook('preHandler', async (request) => {
-      request.authUser = { id: 'owner-test', role: 'user', isOwner: true };
+      request.authUser = { id: '11111111-1111-4111-8111-111111111111', role: 'user', isOwner: true };
     });
     app.decorate('prisma', prismaMock as never);
     await app.register(commsPlugin);
@@ -323,7 +326,7 @@ describe('Comms conversation intelligence', () => {
     apps.push(app);
     app.decorateRequest('authUser', null);
     app.addHook('preHandler', async (request) => {
-      request.authUser = { id: 'owner-test', role: 'user', isOwner: true };
+      request.authUser = { id: '11111111-1111-4111-8111-111111111111', role: 'user', isOwner: true };
     });
     app.decorate('prisma', prismaMock as never);
     await app.register(commsPlugin);
@@ -339,9 +342,9 @@ describe('Comms conversation intelligence', () => {
       operation: 'summarize', output: 'RyanAI says hello & welcome', sourceMessageCount: 1, runId: 'assist-run-1',
     });
     expect(enqueueCommsAssistRun).toHaveBeenCalledWith(expect.objectContaining({
-      ownerUserId: 'owner-test', idempotencyKey: 'assist-request-key-0001',
+      ownerUserId: '11111111-1111-4111-8111-111111111111', idempotencyKey: 'assist-request-key-0001',
     }));
-    expect(waitForAutonomousTask).toHaveBeenCalledExactlyOnceWith('assist-run-1', 'owner-test', 8_000);
+    expect(waitForAutonomousTask).toHaveBeenCalledExactlyOnceWith('assist-run-1', '11111111-1111-4111-8111-111111111111', 8_000);
     expect(prismaMock.communicationMessage.create).not.toHaveBeenCalled();
   });
 });
@@ -353,7 +356,7 @@ describe('private RyanAI in-app Comms chat', () => {
     apps.push(app);
     app.decorateRequest('authUser', null);
     app.addHook('preHandler', async (request) => {
-      request.authUser = { id: 'owner-test', role: 'user', isOwner: true };
+      request.authUser = { id: '11111111-1111-4111-8111-111111111111', role: 'user', isOwner: true };
     });
     app.decorate('prisma', prismaMock as never);
     await app.register(commsPlugin);
@@ -388,10 +391,10 @@ describe('private RyanAI in-app Comms chat', () => {
     });
     expect(enqueueInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith({
       messageId: 'in-app-message-1',
-      ownerUserId: 'owner-test',
-      providerMessageId: 'inapp:owner-test:in-app-chat-request-0001',
+      ownerUserId: '11111111-1111-4111-8111-111111111111',
+      providerMessageId: 'inapp:11111111-1111-4111-8111-111111111111:in-app-chat-request-0001',
     });
-    expect(waitForInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith('in-app-run-1', 'owner-test', 8_000);
+    expect(waitForInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith('in-app-run-1', '11111111-1111-4111-8111-111111111111', 8_000);
     expect(prismaMock.communicationMessage.upsert).toHaveBeenCalledWith(expect.objectContaining({
       where: { providerMessageId: 'inapp-reply:in-app-message-1' },
     }));
@@ -422,7 +425,7 @@ describe('private RyanAI in-app Comms chat', () => {
     apps.push(app);
     app.decorateRequest('authUser', null);
     app.addHook('preHandler', async (request) => {
-      request.authUser = { id: 'owner-test', role: 'user', isOwner: true };
+      request.authUser = { id: '11111111-1111-4111-8111-111111111111', role: 'user', isOwner: true };
     });
     app.decorate('prisma', prismaMock as never);
     await app.register(commsPlugin);
@@ -474,7 +477,7 @@ describe('outbound Comms request validation', () => {
     apps.push(app);
     app.decorateRequest('authUser', null);
     app.addHook('preHandler', async (request) => {
-      request.authUser = { id: 'owner-test', role: 'user', isOwner: true };
+      request.authUser = { id: '11111111-1111-4111-8111-111111111111', role: 'user', isOwner: true };
     });
     app.decorate('prisma', prismaMock as never);
     await app.register(commsPlugin);
@@ -497,7 +500,7 @@ describe('Comms feature gates', () => {
     apps.push(app);
     app.decorateRequest('authUser', null);
     app.addHook('preHandler', async (request) => {
-      request.authUser = { id: 'owner-test', role: 'user', isOwner: true };
+      request.authUser = { id: '11111111-1111-4111-8111-111111111111', role: 'user', isOwner: true };
     });
     app.decorate('prisma', prismaMock as never);
     await app.register(commsPlugin);
