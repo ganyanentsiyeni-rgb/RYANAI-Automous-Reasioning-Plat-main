@@ -141,7 +141,7 @@ describe('authenticated reasoning requests', () => {
   });
 
   it('forwards normalized non-authoritative preferences on the streaming reasoning path', async () => {
-    const bytes = new TextEncoder().encode('data: {"status":"complete","result":"Answer"}\\n\\n');
+    const bytes = new TextEncoder().encode('data: {"status":"complete","result":"Answer"}\n\n');
     authenticatedFetch.mockResolvedValue(new Response(new ReadableStream({
       start(controller) { controller.enqueue(bytes); controller.close(); },
     })));
