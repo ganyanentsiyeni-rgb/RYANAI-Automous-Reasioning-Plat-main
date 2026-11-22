@@ -1,8 +1,8 @@
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  // Supabase Auth owns the auth schema; Prisma models and drift checks own public only.
-  schemas  = ["public"]
+  // Models remain explicitly mapped to public; include auth so Prisma can introspect Supabase-owned FK targets.
+  schemas  = ["public", "auth"]
 }
 
 generator client {
@@ -296,6 +296,7 @@ model ScheduledTask {
 model PendingAction {
   id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String    @map("user_id") @db.Uuid
+  threadId  String    @map("thread_id")
   tool      String
   args      Json
   summary   String    @db.Text
@@ -308,6 +309,7 @@ model PendingAction {
 
   @@index([status, expiresAt])
   @@index([userId])
+  @@index([userId, threadId, status, createdAt(sort: Desc)], map: "pending_actions_thread_lookup_idx")
   @@map("pending_actions")
   @@schema("public")
 }

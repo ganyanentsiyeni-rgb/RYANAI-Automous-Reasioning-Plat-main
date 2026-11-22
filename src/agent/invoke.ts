@@ -3,6 +3,7 @@ import { buildMemoryContext } from './memoryContext.js';
 import { dispatchAutonomousTask, waitForAutonomousTask, type AgentRunProgressEvent } from './operations.js';
 import { withTelemetrySpan } from '../telemetry/core.js';
 import { resolveSelectedReasoningModel } from './modelSelection.js';
+import { responsePreferenceInstruction } from '../shared/responsePreferences.js';
 
 export interface AgentUser {
   id: string;
@@ -26,12 +27,14 @@ export async function invokeReasoningAgent({
   model,
   user,
   language,
+  responsePreferences,
   onProgress,
 }: {
   prompt: string;
   model?: string;
   user?: AgentUser | null;
   language?: string;
+  responsePreferences?: unknown;
   onProgress?: (event: AgentRunProgressEvent) => void;
 }) {
   return withTelemetrySpan('agent.run', { 'agent.operation': 'reasoning' }, async () => {
@@ -45,7 +48,8 @@ export async function invokeReasoningAgent({
   const memory = await buildMemoryContext(user.id);
   const responseLanguage = language && isRyanLanguage(language) ? language : DEFAULT_LANGUAGE;
   const languagePolicy = '[RYANAI LANGUAGE POLICY] ' + languageInstruction(responseLanguage);
-  const objective = [languagePolicy, memory, 'User request:\n' + prompt].filter(Boolean).join('\n\n');
+  const responsePolicy = responsePreferenceInstruction(responsePreferences);
+  const objective = [languagePolicy, responsePolicy, memory, 'User request:\n' + prompt].filter(Boolean).join('\n\n');
   const queued = selectedModel
     ? await dispatchAutonomousTask(user.id, objective, undefined, selectedModel.model)
     : await dispatchAutonomousTask(user.id, objective);

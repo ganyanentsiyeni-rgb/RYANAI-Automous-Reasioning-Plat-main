@@ -21,3 +21,15 @@ CREATE TABLE IF NOT EXISTS auth.users (
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
+
+-- Match the Supabase Auth helper used by application defaults and RLS policies.
+-- The local Compose stack has no Supabase Auth service, so derive the request
+-- identity from the same JWT claim setting without introducing credentials.
+CREATE OR REPLACE FUNCTION auth.uid()
+RETURNS uuid
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid;
+$$;
+

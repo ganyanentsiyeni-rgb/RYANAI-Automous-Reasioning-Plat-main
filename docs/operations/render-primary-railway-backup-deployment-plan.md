@@ -14,7 +14,7 @@
 | PostgreSQL / persistent state | Existing authoritative database service and schema | Shared authoritative database endpoint only where network/security policy permits; no independent writable fork | No production migration without separate explicit approval |
 | Redis / queue transport | Render-connected Redis resource after reconciliation | Railway-side transport only if its role and state semantics are proven | Do not assume Redis replication or cross-host queue consistency |
 
-Render remains the primary source of application hosting. Railway is a backup platform, not an automatic replacement or failover target. Vercel is not part of this architecture.
+Render remains the primary application host and frontend delivery service. Railway is the primary release gate and persistent-workload backup, not an automatic traffic failover target. Vercel is retained as an independent web build and deployment target for the canonical repository; it does not replace Render's live frontend/API roles or receive traffic automatically. Vercel deployments use the root web-only build (`npm run build:web`, output `dist`) and the exact reviewed commit SHA. Production deployment is manually dispatched, requires an explicit `DEPLOY` confirmation, and remains subject to the protected GitHub production environment. Vercel project IDs and credentials must be supplied through the existing protected GitHub variables/secrets; this plan does not create or alter them.
 
 ## 2. Read-only Render inventory observed on 2026-11-05
 
