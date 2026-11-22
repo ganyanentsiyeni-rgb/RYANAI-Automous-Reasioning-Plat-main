@@ -331,6 +331,7 @@ export const commsAuthorizationRoutes: FastifyPluginAsync = async (fastify) => {
     const body = request.body ?? {};
     const channel = body.channel;
     if (!validChannel(channel)) return reply.code(400).send({ error: 'Unsupported communication channel.' });
+    if (channel === 'email') return reply.code(503).send({ error: 'Outbound email approvals are unavailable because no outbound email provider is wired. No approval was created.' });
     const recipient = typeof body.recipient === 'string' && body.recipient.trim()
       ? body.recipient.trim()
       : (channel === 'email' ? process.env.RYANAI_OWNER_EMAIL?.trim() : process.env.RYANAI_OWNER_PHONE?.trim()) || '';
