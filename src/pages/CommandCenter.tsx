@@ -10,7 +10,7 @@ import type {
 } from '@/lib/types';
 import { DEFAULT_MODEL, modelMeta, MODELS } from '@/lib/models';
 import { DEFAULT_LANGUAGE, isRyanLanguage } from '@/shared/languages';
-import type { RyanVoiceSettings } from '@/lib/settingsPreferences';
+import type { CopilotSettings, RyanVoiceSettings } from '@/lib/settingsPreferences';
 import {
   createConversation,
   createMessage,
@@ -49,6 +49,7 @@ interface CommandCenterProps {
   showInferenceConsole?: boolean;
   defaultInferenceModel?: ModelId;
   voiceSettings?: RyanVoiceSettings;
+  copilotSettings?: CopilotSettings;
   preferredLanguage?: string;
 }
 
@@ -64,6 +65,7 @@ export default function CommandCenter({
   userFullName,
   showInferenceConsole = true,
   defaultInferenceModel = DEFAULT_MODEL,
+  copilotSettings,
   preferredLanguage,
 }: CommandCenterProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -84,6 +86,7 @@ export default function CommandCenter({
   const [liveModel, setLiveModel] = useState<ModelId>(DEFAULT_MODEL);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
+  const accountMemoryEnabled = copilotSettings?.useAccountMemory !== false;
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [githubOpen, setGithubOpen] = useState(false);
   const [leftOpen, setLeftOpen] = useState(false);
@@ -720,7 +723,7 @@ export default function CommandCenter({
       onNew={newConversation}
       onDelete={deleteConversation}
       onAbout={() => setAboutOpen(true)}
-      onMemory={() => setMemoryOpen(true)}
+      onMemory={() => { if (accountMemoryEnabled) setMemoryOpen(true); }}
       onConsole={() => setConsoleOpen(true)}
       onGithub={() => setGithubOpen(true)}
       showInferenceConsole={showInferenceConsole}
@@ -923,11 +926,11 @@ export default function CommandCenter({
 
       {/* Modals */}
       <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
-      <MemoryVault
+      {accountMemoryEnabled && <MemoryVault
         userId={userId}
         open={memoryOpen}
         onClose={() => setMemoryOpen(false)}
-      />
+      />}
       <Modal
         open={consoleOpen}
         onClose={() => setConsoleOpen(false)}

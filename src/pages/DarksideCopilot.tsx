@@ -163,6 +163,7 @@ export default function DarksideCopilot(props: DarksideCopilotProps) {
           showInferenceConsole={props.showInferenceConsole}
           defaultInferenceModel={props.defaultInferenceModel}
           voiceSettings={props.voiceSettings}
+          copilotSettings={props.copilotSettings}
         />
         {props.copilotSettings.showDelegationPanel && <div className="mt-5"><PADelegationPanel mode="copilot" /></div>}
       </div>
