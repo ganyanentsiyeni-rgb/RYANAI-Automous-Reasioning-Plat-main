@@ -571,6 +571,8 @@ export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) =
     async (request, reply) => {
       const ownerUserId = request.authUser?.id;
       if (!ownerUserId) return reply.code(401).send({ error: 'Sign in to read calendar events.' });
+      const providerPreference = request.authUser?.pluginPreferences?.[request.params.provider];
+      if (providerPreference?.enabled !== true) return reply.code(403).send({ error: 'Enable this integration in Plugin & integrations settings before reading calendar events.' });
       const config = providerConfig(request.params.provider);
       if (!config || !['google-calendar', 'microsoft-365-calendar'].includes(config.id)) {
         return reply.code(404).send({ error: 'Read-only calendar access is not supported for this provider.' });
@@ -673,6 +675,8 @@ export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) =
     async (request, reply) => {
       const ownerUserId = request.authUser?.id;
       if (!ownerUserId) return reply.code(401).send({ error: 'Sign in to read mailbox messages.' });
+      const providerPreference = request.authUser?.pluginPreferences?.[request.params.provider];
+      if (providerPreference?.enabled !== true) return reply.code(403).send({ error: 'Enable this integration in Plugin & integrations settings before reading mailbox messages.' });
       const config = providerConfig(request.params.provider);
       if (!config || config.id !== 'gmail') {
         return reply.code(404).send({ error: 'Read-only mailbox access is not supported for this provider.' });
