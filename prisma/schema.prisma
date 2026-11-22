@@ -1,8 +1,8 @@
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  // Supabase Auth owns the auth schema; Prisma models and drift checks own public only.
-  schemas  = ["public"]
+  // Models remain explicitly mapped to public; include auth so Prisma can introspect Supabase-owned FK targets.
+  schemas  = ["public", "auth"]
 }
 
 generator client {

@@ -2,11 +2,12 @@ import { useState, type FormEvent } from 'react';
 import { AlertCircle, LoaderCircle, Send, Terminal } from 'lucide-react';
 import { getAvailableModels, DEFAULT_MODEL } from '@/lib/models';
 import type { ModelId } from '@/lib/types';
+import type { CopilotSettings } from '@/lib/settingsPreferences';
 import { streamReasoning } from '@/lib/reasoning';
 
 /** Authenticated interactive console backed by the same reasoning API as chat. */
-interface ChatInterfaceProps { initialModel?: ModelId; }
-export default function ChatInterface({ initialModel = DEFAULT_MODEL }: ChatInterfaceProps) {
+interface ChatInterfaceProps { initialModel?: ModelId; copilotSettings?: CopilotSettings; }
+export default function ChatInterface({ initialModel = DEFAULT_MODEL, copilotSettings }: ChatInterfaceProps) {
   const [model, setModel] = useState<ModelId>(() => (
     getAvailableModels().some((item) => item.id === initialModel) ? initialModel : DEFAULT_MODEL
   ));
@@ -35,7 +36,7 @@ export default function ChatInterface({ initialModel = DEFAULT_MODEL }: ChatInte
           setLastRun(new Date().toLocaleTimeString());
         },
         onError: (message) => setError(message),
-      });
+      }, undefined, undefined, copilotSettings);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'The inference request failed.');
     } finally {

@@ -176,6 +176,7 @@
     "test:database-config": "node --import tsx --test scripts/database-config.node-test.mjs",
     "test:agent-run-approval": "node --test scripts/agent-run-approval-contract.node-test.mjs",
     "test:durable-approval": "node --test scripts/durable-approval-contract.node-test.mjs"
+    "test:agent-run-approval": "node --test scripts/agent-run-approval-contract.node-test.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1169.0",
