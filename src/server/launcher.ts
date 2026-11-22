@@ -21,6 +21,7 @@ import { startupSummary } from './startupDiagnostics.js';
 import { evaluateStudioWorkerHeartbeats, inspectReadiness, isAgentWorkerReady } from './readiness.js';
 
 import { API_ROUTES } from '../config/core.js';
+import { normalizeResponsePreferences } from '../shared/responsePreferences.js';
 import { evaluateGenXSecurityEvent } from '../security/genxPolicy.js';
 
 import { invokeReasoningAgent } from '../agent/invoke.js';
@@ -561,7 +562,7 @@ function registerCoreRoutes() {
     }
 
     try {
-      return await runReasoning(prompt, request.body?.model, request.authUser, request.body?.language, request.body?.responsePreferences ?? request.authUser.responsePreferences);
+      return await runReasoning(prompt, request.body?.model, request.authUser, request.body?.language, normalizeResponsePreferences(request.body?.responsePreferences ?? request.authUser.responsePreferences));
     } catch (err) {
       fastify.log.error({ err }, 'Reasoning request failed');
       return reply.code(502).send({
@@ -638,7 +639,7 @@ function registerCoreRoutes() {
         request.body?.model,
         request.authUser,
         request.body?.language,
-        request.body?.responsePreferences ?? request.authUser.responsePreferences,
+        normalizeResponsePreferences(request.body?.responsePreferences ?? request.authUser.responsePreferences),
         (progress) => sendEvent({
           status: 'processing',
           message: 'Persisted brain handoff state changed.',
