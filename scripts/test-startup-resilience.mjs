@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Exercise production startup against disposable CI PostgreSQL/Redis services.
- * Each failure case runs in a child process and must exit before opening its
- * HTTP listener. Missing checkpoint schema is simulated only in disposable
+ * Each failure case runs in a child process and must keep liveness available
+ * while readiness fails closed. Missing checkpoint schema is simulated only in disposable
  * PostgreSQL; a final clean restart proves recovery after transient faults.
  */
 import { spawn } from 'node:child_process';
@@ -99,6 +99,8 @@ async function expectDegradedStartup(label, env, expectedServices) {
 
       const readyResponse = await fetch('http://127.0.0.1:' + port + '/readyz', {
         signal: AbortSignal.timeout(1000),
+        // inspectReadiness allows up to 1500ms for dependency probes; leave time for the 503 response.
+        signal: AbortSignal.timeout(2500),
       });
       const readyBody = await readyResponse.json();
       if (readyResponse.status === 503 && readyBody.status === 'degraded') {

@@ -172,7 +172,11 @@
     "dns:verify:eu-org": "node scripts/verify-eu-org-dns.mjs",
     "test:dns:verify:eu-org": "node --test scripts/verify-eu-org-dns.node-test.mjs",
     "prestart": "npm run build:server",
-    "test:db:structural-contract": "node --test scripts/audit-prisma-structural-contract.node-test.mjs"
+    "test:db:structural-contract": "node --test scripts/audit-prisma-structural-contract.node-test.mjs",
+    "test:database-config": "node --import tsx --test scripts/database-config.node-test.mjs",
+    "test:agent-run-approval": "node --test scripts/agent-run-approval-contract.node-test.mjs",
+    "test:durable-approval": "node --test scripts/durable-approval-contract.node-test.mjs"
+    "test:agent-run-approval": "node --test scripts/agent-run-approval-contract.node-test.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1169.0",

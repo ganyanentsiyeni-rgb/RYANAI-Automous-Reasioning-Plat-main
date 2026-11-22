@@ -159,10 +159,11 @@ describe('Render liveness endpoint', () => {
 });
 
 describe('launcher startup dependency order', () => {
-  it('binds the HTTP listener before probing PostgreSQL', () => {
+  it('probes PostgreSQL before binding the HTTP listener in fail-closed startup', () => {
     expect(state.events.indexOf('redis')).toBeGreaterThanOrEqual(0);
     expect(state.events.indexOf('listen')).toBeGreaterThan(state.events.indexOf('redis'));
-    expect(state.events.indexOf('database')).toBeGreaterThan(state.events.indexOf('listen'));
+    expect(state.events.indexOf('database')).toBeGreaterThanOrEqual(0);
+    expect(state.events.indexOf('database')).toBeLessThan(state.events.indexOf('listen'));
   });
 });
 
@@ -337,6 +338,12 @@ describe('launcher reasoning routes', () => {
     expect(response.json()).toMatchObject({ success: true, output: 'answer' });
     expect(state.invoke).toHaveBeenCalledWith(expect.objectContaining({
       responsePreferences: { personality: 'balanced', responseStyle: 'balanced', initiative: 'ask-first', collaboration: 'collaborative' },
+      responsePreferences: { initiative: 'ask-first' },
+      user: expect.objectContaining({
+        responsePreferences: {
+          personality: 'warm', responseStyle: 'detailed', initiative: 'proactive', collaboration: 'independent',
+        },
+      }),
     }));
   });
 
