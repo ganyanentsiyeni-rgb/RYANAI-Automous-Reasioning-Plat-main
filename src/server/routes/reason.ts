@@ -6,7 +6,7 @@ import { invokeReasoningAgent } from '../../agent/invoke.js';
  * Blank prompts return HTTP 400; model selection and invocation errors become 500 results.
  */
 export const reasonPlugin: FastifyPluginAsync = async (fastify) => {
-  fastify.post<{ Body: { prompt?: string; model?: string; language?: string; responsePreferences?: unknown } }>('/api/reason', async (request, reply) => {
+  fastify.post<{ Body: { prompt?: string; model?: string } }>('/api/reason', async (request, reply) => {
     const prompt = request.body?.prompt?.trim();
     if (!prompt) {
       return reply.code(400).send({ success: false, error: 'A non-empty prompt is required' });
@@ -17,8 +17,6 @@ export const reasonPlugin: FastifyPluginAsync = async (fastify) => {
         prompt,
         model: request.body?.model,
         user: request.authUser,
-        language: request.body?.language,
-        responsePreferences: request.authUser?.responsePreferences ?? request.body?.responsePreferences,
       });
 
       const lastMessage = result.messages[result.messages.length - 1];
