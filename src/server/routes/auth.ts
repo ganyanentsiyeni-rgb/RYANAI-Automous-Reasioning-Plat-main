@@ -7,6 +7,7 @@ import type {
 import { createContextClient } from '@supabase/server/core';
 import type { PrismaClient } from '@prisma/client';
 import { normalizePluginPreferences, type PluginPreferences } from '../plugins/pluginPreference.js';
+import { normalizeResponsePreferences, type ResponsePreferences } from '../../shared/responsePreferences.js';
 
 // --- Interfaces & Types ---
 
@@ -18,6 +19,8 @@ export interface AuthenticatedUser {
   isOwner: boolean;
   /** User-owned plugin intent; never substitutes for provider authorization or execution approval. */
   pluginPreferences?: PluginPreferences;
+  /** User-owned response style only; never an authorization or approval signal. */
+  responsePreferences?: ResponsePreferences;
   /** AAL is taken only from Supabase-verified JWT claims. */
   sessionAssurance: 'aal1' | 'aal2';
 }
@@ -105,6 +108,7 @@ export async function requireUser(
       displayName: typeof data.user.user_metadata?.full_name === 'string' ? data.user.user_metadata.full_name : undefined,
       isOwner: data.user.app_metadata?.owner === true || Boolean(data.user.email && process.env.RYANAI_OWNER_EMAIL?.trim() && data.user.email.toLowerCase() === process.env.RYANAI_OWNER_EMAIL.trim().toLowerCase()),
       pluginPreferences: normalizePluginPreferences(data.user.user_metadata?.ryanai_plugin_preferences),
+      responsePreferences: normalizeResponsePreferences(data.user.user_metadata?.ryanai_copilot_settings),
     };
   } catch {
     return reply

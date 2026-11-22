@@ -246,4 +246,28 @@ describe('Admin Console request ownership', () => {
     ));
     expect(window.confirm).toHaveBeenCalled();
   });
+
+  it('wires profile search to the server-side directory endpoint and resets pagination', async () => {
+    apiFetch.mockImplementation(async (input, init) => {
+      const path = String(input);
+      if (path === '/api/auth/verify') return response({ authenticated: true, user: { id: 'admin-account-a', email: 'admin@example.test', role: 'admin', isOwner: true } });
+      if (path === '/api/admin/audit-events?limit=30') return response({ events: [] });
+      if (path === '/api/admin/users?limit=50&page=1&search=') return response(userDirectoryResponse);
+      if (path === '/api/admin/users?limit=50&page=1&search=alice') return response({ ...userDirectoryResponse, profiles: [{ id: 'profile-a', email: 'alice@example.test', fullName: 'Alice', createdAt: null, updatedAt: null }], search: 'alice' });
+      if (path === '/api/admin/metrics') return response({ status: 'ok', uptime: 60, timestamp: '2026-11-08T12:00:00.000Z', database: { status: 'unknown', driver: 'postgresql' }, system: { nodeVersion: 'v24.0.0', rssMemoryMB: 128, heapUsedMB: 64 } });
+      if (path === '/api/actions' && !init?.method) return response({ actions: [] });
+      if (path === '/api/engineering/jobs') return response({ jobs: [] });
+      throw new Error('Unexpected Admin Console request: ' + path);
+    });
+    await mount('admin-account-a');
+    await vi.waitFor(() => expect(container.querySelector('input[aria-label="Search profiles"]')).toBeTruthy());
+    const input = container.querySelector('input[aria-label="Search profiles"]') as HTMLInputElement;
+    const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    await act(async () => {
+      setInputValue?.call(input, 'alice');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/api/admin/users?limit=50&page=1&search=alice', expect.any(Object), 'admin-account-a'));
+    expect(container.textContent).toContain('Alice');
+  });
 });
