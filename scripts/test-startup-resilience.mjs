@@ -78,23 +78,61 @@ function runChild(label, env) {
   };
 }
 
-async function expectStartupFailure(label, env, expectedText) {
+async function expectDegradedStartup(label, env, expectedServices) {
   const port = await reservePort();
   const process = runChild(label, { ...env, PORT: String(port) });
-  const exit = await process.exited();
-  if (exit.code === 0) throw new Error(label + ' unexpectedly exited successfully.');
-  if (!process.output.includes(expectedText)) {
-    throw new Error(label + ' failed for an unexpected reason. Expected diagnostic: ' + expectedText + '. Output: ' + process.output);
+  const deadline = Date.now() + timeoutMs;
+  let live = false;
+  let readiness;
+
+  while (Date.now() < deadline) {
+    if (process.child.exitCode !== null) {
+      throw new Error(label + ' exited before exposing liveness. Output: ' + process.output);
+    }
+
+    try {
+      const liveResponse = await fetch('http://127.0.0.1:' + port + '/livez', {
+        signal: AbortSignal.timeout(1000),
+      });
+      const liveBody = await liveResponse.json();
+      live = liveResponse.ok && liveBody.status === 'alive';
+
+      const readyResponse = await fetch('http://127.0.0.1:' + port + '/readyz', {
+        signal: AbortSignal.timeout(1000),
+      });
+      const readyBody = await readyResponse.json();
+      if (readyResponse.status === 503 && readyBody.status === 'degraded') {
+        readiness = readyBody;
+        break;
+      }
+    } catch {
+      // Continue waiting for the liveness listener and degraded readiness response.
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  let listening = false;
-  try {
-    const response = await fetch('http://127.0.0.1:' + port + '/health', { signal: AbortSignal.timeout(1000) });
-    listening = response.ok || response.status === 503;
-  } catch {
-    // Connection refusal is the expected fail-closed result.
+
+  if (!live || !readiness) {
+    process.child.kill('SIGKILL');
+    throw new Error(
+      label + ' did not expose live-but-not-ready state within ' + timeoutMs
+      + 'ms. Output: ' + process.output,
+    );
   }
-  if (listening) throw new Error(label + ' opened an HTTP listener despite failed dependencies.');
-  console.log('PASS ' + label + ': process exited before opening the API listener');
+
+  for (const [dependency, expected] of Object.entries(expectedServices)) {
+    if (readiness.services?.[dependency] !== expected) {
+      process.child.kill('SIGKILL');
+      throw new Error(
+        label + ' reported ' + dependency + '=' + readiness.services?.[dependency]
+        + '; expected ' + expected + '. Output: ' + process.output,
+      );
+    }
+  }
+
+  console.log('PASS ' + label + ': liveness remains available while readiness fails closed');
+  process.child.kill('SIGTERM');
+  await new Promise((resolve) => process.child.once('exit', resolve));
 }
 
 async function withMissingCheckpointerSchema(run) {
@@ -118,10 +156,10 @@ async function withMissingCheckpointerSchema(run) {
 }
 
 async function expectMissingCheckpointerSchema() {
-  await withMissingCheckpointerSchema(() => expectStartupFailure(
+  await withMissingCheckpointerSchema(() => expectDegradedStartup(
     'Agent checkpointer schema missing',
     { DATABASE_URL: databaseUrl, REDIS_URL: redisUrl },
-    'Production startup blocked: required dependency checks failed for agent checkpointer',
+    { database: true, redis: true, agentCheckpointer: false },
   ));
 }
 
@@ -139,7 +177,7 @@ async function expectHealthyRecovery() {
       throw new Error('Healthy recovery process exited early. Output: ' + process.output);
     }
     try {
-      const response = await fetch('http://127.0.0.1:' + port + '/health', {
+      const response = await fetch('http://127.0.0.1:' + port + '/readyz', {
         signal: AbortSignal.timeout(1000),
       });
       const body = await response.json();
@@ -170,10 +208,10 @@ async function expectHealthyRecovery() {
 try {
   const unreachableDatabase = new URL(databaseUrl);
   unreachableDatabase.port = '1';
-  await expectStartupFailure(
+  await expectDegradedStartup(
     'PostgreSQL unavailable',
     { DATABASE_URL: unreachableDatabase.toString(), REDIS_URL: redisUrl },
-    'Production startup blocked',
+    { database: false, redis: true, agentCheckpointer: false },
   );
 
   // Hide the migrated checkpoint ledger in disposable CI PostgreSQL.
@@ -182,23 +220,23 @@ try {
 
   const unreachableRedis = new URL(redisUrl);
   unreachableRedis.port = '1';
-  await expectStartupFailure(
+  await expectDegradedStartup(
     'Redis unavailable',
     { DATABASE_URL: databaseUrl, REDIS_URL: unreachableRedis.toString() },
-    'Production startup blocked: required dependency checks failed for Redis',
+    { database: true, redis: false, agentCheckpointer: true },
   );
 
   // Combined outage: startup aggregates every unavailable dependency in
   // stable diagnostic order, including the dependent checkpointer check.
   const combinedUnavailableDatabase = new URL(databaseUrl);
   combinedUnavailableDatabase.port = '1';
-  await expectStartupFailure(
+  await expectDegradedStartup(
     'PostgreSQL and Redis unavailable together',
     {
       DATABASE_URL: combinedUnavailableDatabase.toString(),
       REDIS_URL: unreachableRedis.toString(),
     },
-    'Production startup blocked: required dependency checks failed for PostgreSQL, Redis, agent checkpointer',
+    { database: false, redis: false, agentCheckpointer: false },
   );
 
   await expectHealthyRecovery();
