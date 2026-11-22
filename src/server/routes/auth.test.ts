@@ -223,7 +223,21 @@ describe('Supabase API authentication', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
       authenticated: true,
-      user: { id: user.id, email: user.email, role: 'user', isOwner: false, sessionAssurance: 'aal2' },
+      user: { id: user.id, email: user.email, role: 'user', isOwner: false, pluginPreferences: {}, sessionAssurance: 'aal2' },
+      user: {
+        id: user.id,
+        email: user.email,
+        role: 'user',
+        isOwner: false,
+        pluginPreferences: {},
+        responsePreferences: {
+          personality: 'balanced',
+          responseStyle: 'balanced',
+          initiative: 'ask-first',
+          collaboration: 'collaborative',
+        },
+        sessionAssurance: 'aal2',
+      },
     });
     expect(getUser).toHaveBeenCalledExactlyOnceWith('synthetic-access-token');
     expect(createContextClient).toHaveBeenCalledWith(

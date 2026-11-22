@@ -62,6 +62,21 @@ describe('agent checkpointer initialization', () => {
     expect(humanInTheLoopAgent).toBeDefined();
   });
 
+  it('keeps tool execution behind the approval interrupt when initiative is proactive', async () => {
+    vi.stubEnv('NODE_ENV', 'test');
+    vi.stubEnv('RYANAI_AGENT_MEMORY_MODE', 'ephemeral');
+    const { responsePreferenceInstruction } = await import('../shared/responsePreferences.js');
+    const guidance = responsePreferenceInstruction({ initiative: 'proactive' });
+    await import('./approvalEngine.js');
+
+    expect(guidance).toContain('Never execute an action');
+    expect(guidance).toContain('explicit approval');
+    expect(state.createReactAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ interruptBefore: ['tools'] }),
+    );
+    expect(state.setup).not.toHaveBeenCalled();
+  });
+
   it('routes the production LangGraph saver through the configured Supabase Session Pooler with strict TLS', async () => {
     const projectRef = 'narsvpwymvlrhurqbthu';
     const poolerHost = 'aws-1-eu-west-1.pooler.supabase.com';

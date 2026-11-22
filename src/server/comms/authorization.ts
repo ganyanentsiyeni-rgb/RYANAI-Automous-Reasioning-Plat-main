@@ -334,13 +334,13 @@ export const commsAuthorizationRoutes: FastifyPluginAsync = async (fastify) => {
     if (channel === 'email') return reply.code(503).send({ error: 'Outbound email approvals are unavailable because no outbound email provider is wired. No approval was created.' });
     const recipient = typeof body.recipient === 'string' && body.recipient.trim()
       ? body.recipient.trim()
-      : (channel === 'email' ? process.env.RYANAI_OWNER_EMAIL?.trim() : process.env.RYANAI_OWNER_PHONE?.trim()) || '';
+      : process.env.RYANAI_OWNER_PHONE?.trim() || '';
     const message = typeof body.message === 'string' ? body.message.trim() : '';
     const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim() : '';
     if (body.attachmentIds !== undefined && !Array.isArray(body.attachmentIds)) return reply.code(400).send({ error: 'Attachment IDs must be a list.' });
     const attachmentIds = Array.isArray(body.attachmentIds) ? body.attachmentIds : [];
     const normalizedRecipient = normalizeCommsRecipient(channel, recipient);
-    const destinationChannel: DestinationChannel = channel === 'email' ? 'email' : 'phone';
+    const destinationChannel: DestinationChannel = 'phone';
     if (!validRecipient(destinationChannel, normalizedRecipient)) return reply.code(400).send({ error: 'Recipient address is invalid.' });
     if (!idempotencyKey || idempotencyKey.length < 16 || idempotencyKey.length > 128 || !/^[a-zA-Z0-9._:-]+$/.test(idempotencyKey)) return reply.code(400).send({ error: 'A valid idempotency key is required.' });
     if ((!message && !(channel === 'whatsapp' && (body.contentSid || process.env.TWILIO_WHATSAPP_CONTENT_SID?.trim()))) || message.length > 4000) return reply.code(400).send({ error: 'A message of at most 4,000 characters is required.' });
@@ -348,10 +348,7 @@ export const commsAuthorizationRoutes: FastifyPluginAsync = async (fastify) => {
     const verified = await verifiedDestination(fastify.prisma, userId, channel, normalizedRecipient);
     if (!verified) return reply.code(403).send({ error: 'Verify this destination before requesting a send approval.' });
     const ownerPhone = process.env.RYANAI_OWNER_PHONE?.trim();
-    const ownerEmail = process.env.RYANAI_OWNER_EMAIL?.trim().toLowerCase();
-    const isOwnerRecipient = channel === 'email'
-      ? Boolean(ownerEmail && normalizedRecipient === ownerEmail)
-      : Boolean(ownerPhone && normalizeCommsRecipient('sms', normalizedRecipient) === normalizeCommsRecipient('sms', ownerPhone));
+    const isOwnerRecipient = Boolean(ownerPhone && normalizeCommsRecipient('sms', normalizedRecipient) === normalizeCommsRecipient('sms', ownerPhone));
     const deliveryBody = isOwnerRecipient && message ? addressOwnerMessage(message) : message;
     const payload = buildCommsActionPayload({
       channel,
