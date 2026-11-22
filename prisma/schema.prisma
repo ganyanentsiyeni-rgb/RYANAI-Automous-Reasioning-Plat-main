@@ -457,7 +457,7 @@ model AgentRun {
   requestedModel String? @map("requested_model")
   traceContext Json? @map("trace_context")
   executionScope Json @default("{}") @map("execution_scope")
-  approvalStatus String @default("approved") @map("approval_status")
+  approvalStatus String @default("pending") @map("approval_status")
   planSnapshot Json? @map("plan_snapshot")
   planHash String? @map("plan_hash")
   baseCommitSha String? @map("base_commit_sha")

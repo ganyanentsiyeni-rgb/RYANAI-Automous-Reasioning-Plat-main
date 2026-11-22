@@ -1,4 +1,5 @@
 import { resolveSupabaseSessionPoolerUrl } from './supabasePooler.ts';
+import { assertDatabaseManifestContract, getDatabaseStore } from '../config/databaseConfig.js';
 
 export interface ConnectionUrls {
   databaseUrl: string;
@@ -62,6 +63,10 @@ export function resolveConnectionUrls(
   const redis = redisUrl?.trim();
 
   const strictRuntime = nodeEnv === 'production' || nodeEnv === 'staging';
+  const manifestEnvironment = strictRuntime ? nodeEnv : 'staging';
+  assertDatabaseManifestContract(manifestEnvironment);
+  const primaryStore = getDatabaseStore(manifestEnvironment, 'primary');
+  const cacheStore = getDatabaseStore(manifestEnvironment, 'cache');
 
   if (strictRuntime && database) {
     parseProductionDatabaseUrl(database);
@@ -89,8 +94,8 @@ export function resolveConnectionUrls(
 
   if (strictRuntime) {
     const missing = [
-      !database ? 'DATABASE_URL' : undefined,
-      !redis ? 'REDIS_URL' : undefined,
+      !database ? primaryStore.url_env : undefined,
+      !redis ? cacheStore.url_env : undefined,
     ].filter(Boolean);
 
     if (missing.length) {
