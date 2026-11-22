@@ -6,6 +6,7 @@ const state = vi.hoisted(() => ({
   invoke: vi.fn(),
   listen: vi.fn().mockResolvedValue('http://localhost:3000'),
   events: [] as string[],
+  genxDecision: 'ALLOW' as 'ALLOW' | 'DENY',
 }));
 
 // Exercise the real launcher's routes without external services or a TCP listener.
@@ -103,6 +104,10 @@ vi.mock('./databaseSchema.js', () => ({
 vi.mock('../agent/operations.js', () => ({
   startAgentTaskWorker: vi.fn(() => () => {}),
   startBrainHealthMonitor: vi.fn(() => () => {}),
+}));
+
+vi.mock('../security/genxPolicy.js', () => ({
+  evaluateGenXSecurityEvent: vi.fn(() => ({ decision: state.genxDecision, ruleId: 'test-genx-rule' })),
 }));
 
 vi.mock('../agent/invoke.js', () => ({
@@ -249,6 +254,27 @@ describe('launcher reasoning routes', () => {
     });
     expect(response.statusCode).toBe(401);
     expect(state.invoke).not.toHaveBeenCalled();
+  });
+
+  it('does not let proactive response preferences bypass a Gen-X authorization denial', async () => {
+    state.genxDecision = 'DENY';
+    state.invoke.mockClear();
+    try {
+      const response = await state.app!.inject({
+        method: 'POST',
+        url: '/api/reason',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          prompt: 'Prepare an external action',
+          responsePreferences: { initiative: 'proactive', approved: true, role: 'admin' },
+        },
+      });
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({ success: false, error: 'Gen-X denied this reasoning request.' });
+      expect(state.invoke).not.toHaveBeenCalled();
+    } finally {
+      state.genxDecision = 'ALLOW';
+    }
   });
 
   it('handles the browser CORS preflight', async () => {
