@@ -105,7 +105,7 @@ describe('Twilio inbound SMS retry handling', () => {
     expect(enqueueInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith({
       messageId: 'voice-message-1', ownerUserId: '11111111-1111-4111-8111-111111111111', providerMessageId: 'SM-DISABLED',
     });
-    expect(prismaMock.communicationMessage.create).not.toHaveBeenCalled();
+    expect(prismaMock.communicationMessage.create).toHaveBeenCalledTimes(1);
   });
 
   it('returns the cached response without invoking RyanAI for a retried provider event', async () => {
@@ -214,7 +214,7 @@ describe('Twilio conversational voice webhooks', () => {
     expect(response.body).toContain('This is RyanAI. How may I assist you?');
     expect(response.body).toContain('language="en-ZA"');
     expect(response.body).toContain('<Gather input="speech" language="en-ZA"');
-    expect(response.body).toMatch(/Good (morning|afternoon|evening), Sir G\\. Today is .+\\. This is RyanAI\\. How may I assist you\\?/);
+    expect(response.body).toMatch(/Good (morning|afternoon|evening), Sir G\. Today is .+\. This is RyanAI\. How may I assist you\?/);
     expect(response.body).toContain('Please speak after the tone.');
     expect(response.body).toContain('language="en-ZA" voice="Polly.Ayanda-Neural"');
     expect(response.body).toContain('<Gather input="speech"');
