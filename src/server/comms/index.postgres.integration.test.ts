@@ -96,6 +96,8 @@ integration('Comms Twilio status callback with disposable PostgreSQL', () => {
 
   afterAll(async () => {
     if (app) await app.close();
+    // Delivery receipts are append-only and intentionally RESTRICT dispatch deletion.
+    // Remove only this disposable test fixture's receipts before its parent rows.
     // Delivery receipts have RESTRICT foreign keys to both the dispatch and
     // communication message, so remove this fixture's receipts before either parent.
     await prisma.commsDeliveryReceipt.deleteMany({ where: { communicationMessageId: messageId } });
