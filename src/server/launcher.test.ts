@@ -336,7 +336,7 @@ describe('launcher reasoning routes', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({ success: true, output: 'answer' });
     expect(state.invoke).toHaveBeenCalledWith(expect.objectContaining({
-      responsePreferences: { personality: 'warm', responseStyle: 'detailed', initiative: 'proactive', collaboration: 'independent' },
+      responsePreferences: { personality: 'balanced', responseStyle: 'balanced', initiative: 'ask-first', collaboration: 'collaborative' },
     }));
   });
 
