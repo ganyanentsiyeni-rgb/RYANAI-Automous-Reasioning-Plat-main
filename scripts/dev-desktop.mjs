@@ -69,7 +69,13 @@ process.once('SIGTERM', () => void shutdown(0));
 
 start('npm run dev:api:desktop', { NODE_ENV: 'development', PORT: '3002', RYANAI_API_BASE_URL: 'http://127.0.0.1:3002' });
 start('npm run dev:web:desktop', { VITE_PORT: '1422', VITE_API_BASE_URL: 'http://127.0.0.1:3002', VITE_WS_URL: 'ws://127.0.0.1:3002' });
-start('npm --prefix mcp-server run start:http', { MCP_PORT: '8767' });
+// The desktop API listens on 3002; point MCP health and provider-gateway calls
+// at that same API instead of the MCP server's unrelated default port 3000.
+start('npm --prefix mcp-server run start:http', {
+  MCP_PORT: '8767',
+  RYANAI_API_BASE_URL: 'http://127.0.0.1:3002',
+  RYANAI_API_HEALTH_URL: 'http://127.0.0.1:3002/health',
+});
 
 console.log('[desktop] API: http://127.0.0.1:3002');
 console.log('[desktop] Web: http://127.0.0.1:1422');

@@ -62,6 +62,12 @@ for (const name of ['dev:api:desktop', 'dev:web:desktop']) {
 if (!desktopRunner.includes("MCP_PORT: '8767'")) {
   fail('Desktop MCP service must use port 8767');
 }
+if (
+  !desktopRunner.includes("RYANAI_API_BASE_URL: 'http://127.0.0.1:3002'") ||
+  !desktopRunner.includes("RYANAI_API_HEALTH_URL: 'http://127.0.0.1:3002/health'")
+) {
+  fail('Desktop MCP service must route health and provider-gateway requests to the desktop API on port 3002');
+}
 
 // The legacy CLI server is intentionally quarantined. Keep it from becoming
 // a second, unsupported API runtime; the supported runtime is launcher.ts.
