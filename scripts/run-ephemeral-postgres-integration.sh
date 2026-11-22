@@ -3,6 +3,7 @@ set -euo pipefail
 
 SUPABASE_CLI=(npx --yes supabase@3.0.0)
 DB_URL=""
+PUBLIC_SCHEMA_FILE=""
 SUPABASE_STARTED=0
 
 log() {
@@ -11,6 +12,9 @@ log() {
 
 cleanup() {
   local exit_code=$?
+  if [ -n "$PUBLIC_SCHEMA_FILE" ]; then
+    rm -f "$PUBLIC_SCHEMA_FILE"
+  fi
   if [ "$SUPABASE_STARTED" = "1" ]; then
     printf '\n[ephemeral-supabase] Stopping isolated Supabase stack...\n'
     "${SUPABASE_CLI[@]}" stop --no-backup >/dev/null 2>&1 || true
@@ -162,6 +166,9 @@ END
 $drop_external_auth_fks$;
 SQL
 
+log "Excluding separately-owned Supabase tables from the Prisma-only drift comparison"
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+DROP TABLE
 log "Asserting and excluding Supabase-owned public tables from the Prisma-only drift comparison"
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
 DO $assert_supabase_owned_tables$
@@ -202,11 +209,17 @@ DROP TABLE
   public.phonelink_events,
   public.phonelink_pairings,
   public.phonelink_devices,
+  public.community_feedback_submissions,
+  public.community_beta_interest,
   public.ryanai_attachment_scans,
   public.ryanai_attachment_upload_events
 CASCADE;
 SQL
 
+log "Checking the resulting Prisma-owned public schema contract"
+PUBLIC_SCHEMA_FILE="$(mktemp)"
+sed 's/schemas  = \["public", "auth"\]/schemas  = ["public"]/' \
+  prisma/schema.prisma > "$PUBLIC_SCHEMA_FILE"
 log "Checking the resulting Prisma schema contract"
       RAISE EXCEPTION 'Expected Supabase-managed table public.% is missing', table_name;
     END IF;
@@ -228,7 +241,7 @@ SQL
 log "Checking the resulting Prisma-owned public schema contract"
 npx prisma migrate diff \
   --from-url "$DATABASE_URL" \
-  --to-schema-datamodel prisma/schema.prisma \
+  --to-schema-datamodel "$PUBLIC_SCHEMA_FILE" \
   --exit-code
 
 # Restore Supabase-owned tables before the remaining disposable integration

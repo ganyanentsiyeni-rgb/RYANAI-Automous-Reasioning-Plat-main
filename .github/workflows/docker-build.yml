@@ -148,6 +148,9 @@ jobs:
             printf '%s\\n' "$container_logs"
             exit 1
           fi
+          container_logs="$(docker logs ryanai-mcpjungle-db 2>&1 || true)"
+          if ! grep -Eqi 'superuser password is not specified' <<< "$container_logs"; then
+            echo "MCPJungle Postgres did not report the expected missing-password error"
           if ! grep -Eqi 'superuser password is not specified' <<< "$container_logs"; then
             echo "MCPJungle Postgres did not report the expected missing-password error; state=$state"
             printf '%s\\n' "$container_logs"
