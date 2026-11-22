@@ -119,6 +119,74 @@ describe('Twilio inbound SMS retry handling', () => {
     expect(response.body).toContain('Already processed.');
     expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
   });
+
+  it('requests a provider retry when a newly queued SMS AgentRun is still processing', async () => {
+    waitForInboundCommunicationRun.mockResolvedValueOnce({ completed: false });
+    const response = await send('/api/webhooks/twilio/sms', smsUrl, {
+      MessageSid: 'SM-pending-new-run', From: '+15555550123', Body: 'Please check my system',
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ retryable: true });
+    expect(enqueueInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith({
+      messageId: 'voice-message-1', ownerUserId: 'owner-test', providerMessageId: 'SM-pending-new-run',
+    });
+  });
+
+  it('requests a provider retry when a duplicate SMS has no linked AgentRun yet', async () => {
+    prismaMock.communicationMessage.create.mockRejectedValueOnce({ code: 'P2002' });
+    prismaMock.communicationMessage.findUnique.mockResolvedValueOnce({
+      id: 'sms-existing-unlinked',
+      status: 'processing',
+      metadata: null,
+      agentRunId: null,
+      body: 'Please check my system',
+      conversation: { channel: 'sms', ownerUserId: 'owner-test' },
+    });
+
+    const response = await send('/api/webhooks/twilio/sms', smsUrl, {
+      MessageSid: 'SM-pending-unlinked', From: '+15555550123', Body: 'Please check my system',
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ retryable: true });
+    expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
+    expect(waitForInboundCommunicationRun).not.toHaveBeenCalled();
+  });
+
+  it('resumes the existing SMS AgentRun and requests a retry while it remains unfinished', async () => {
+    prismaMock.communicationMessage.create.mockRejectedValueOnce({ code: 'P2002' });
+    prismaMock.communicationMessage.findUnique.mockResolvedValueOnce({
+      id: 'sms-existing-linked',
+      status: 'processing',
+      metadata: null,
+      agentRunId: 'sms-run-existing',
+      body: 'Please check my system',
+      conversation: { channel: 'sms', ownerUserId: 'owner-test' },
+    });
+    waitForInboundCommunicationRun.mockResolvedValueOnce({ completed: false });
+
+    const response = await send('/api/webhooks/twilio/sms', smsUrl, {
+      MessageSid: 'SM-pending-linked', From: '+15555550123', Body: 'Please check my system',
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ retryable: true });
+    expect(waitForInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith('sms-run-existing', 'owner-test');
+    expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
+  });
+
+  it('returns retryable 503 when durable SMS AgentRun enqueue fails', async () => {
+    enqueueInboundCommunicationRun.mockRejectedValueOnce(new Error('database unavailable'));
+
+    const response = await send('/api/webhooks/twilio/sms', smsUrl, {
+      MessageSid: 'SM-enqueue-failed', From: '+15555550123', Body: 'Please check my system',
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ retryable: true });
+    expect(response.body).toContain('provider may retry');
+  });
 });
 
 describe('Twilio conversational voice webhooks', () => {
