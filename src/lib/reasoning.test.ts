@@ -116,6 +116,51 @@ describe('authenticated reasoning requests', () => {
     expect(callbacks.onToken).toHaveBeenCalledWith('Tshivenda');
   });
 
+  it('forwards normalized non-authoritative preferences on the JSON reasoning path', async () => {
+    authenticatedFetch.mockResolvedValue(Response.json({ success: true, output: 'Answer' }));
+    await expect(quickReason('Explain this', DEFAULT_MODEL, undefined, undefined, {
+      personality: 'warm',
+      responseStyle: 'detailed',
+      initiative: 'proactive',
+      collaboration: 'independent',
+      role: 'admin',
+      approved: true,
+    })).resolves.toBe('Answer');
+    const request = authenticatedFetch.mock.calls[0][1] as RequestInit;
+    expect(JSON.parse(String(request.body))).toEqual({
+      prompt: 'Explain this',
+      model: DEFAULT_MODEL,
+      language: 'en-ZA',
+      responsePreferences: {
+        personality: 'warm',
+        responseStyle: 'detailed',
+        initiative: 'proactive',
+        collaboration: 'independent',
+      },
+    });
+  });
+
+  it('forwards normalized non-authoritative preferences on the streaming reasoning path', async () => {
+    const bytes = new TextEncoder().encode('data: {"status":"complete","result":"Answer"}\\n\\n');
+    authenticatedFetch.mockResolvedValue(new Response(new ReadableStream({
+      start(controller) { controller.enqueue(bytes); controller.close(); },
+    })));
+    await streamReasoning('Explain this', DEFAULT_MODEL, { onToken: vi.fn() }, undefined, undefined, {
+      initiative: 'proactive',
+      responseStyle: 'concise',
+      personality: 'professional',
+      collaboration: 'collaborative',
+      permissions: ['deploy'],
+    });
+    const request = authenticatedFetch.mock.calls[0][1] as RequestInit;
+    expect(JSON.parse(String(request.body)).responsePreferences).toEqual({
+      personality: 'professional',
+      responseStyle: 'concise',
+      initiative: 'proactive',
+      collaboration: 'collaborative',
+    });
+  });
+
   it('reports authentication failure to the streaming error callback without completing', async () => {
     authenticatedFetch.mockRejectedValue(
       new Error('Please sign in to continue.'),
