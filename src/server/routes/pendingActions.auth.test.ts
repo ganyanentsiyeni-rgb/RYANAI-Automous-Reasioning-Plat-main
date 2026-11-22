@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { createMutableAuthMock } from '../../../test/helpers/authFixture';
+import { createMutableAuthMock } from '../../../test/helpers/authFixture.js';
 
 const {
   createContextClient, listOpenActions, decideAction
