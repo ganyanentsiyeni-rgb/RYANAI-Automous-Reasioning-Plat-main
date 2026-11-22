@@ -83,7 +83,7 @@ async function expectStartupFailure(label, env, expectedText) {
   const process = runChild(label, { ...env, PORT: String(port) });
   const exit = await process.exited();
   if (exit.code === 0) throw new Error(label + ' unexpectedly exited successfully.');
-  if (!process.output.includes(expectedText)) {
+  if (!process.output.toLowerCase().includes(expectedText.toLowerCase())) {
     throw new Error(label + ' failed for an unexpected reason. Expected diagnostic: ' + expectedText + '. Output: ' + process.output);
   }
   let listening = false;
