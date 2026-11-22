@@ -94,9 +94,15 @@ def normalize_base_schema(schema_text: str, migration_sql: str) -> str:
         ),
     )
     for old, replacement_text in replacements:
-        if old not in schema_text:
+        # Check the normalized form first: some additions are strict supersets
+        # of the legacy anchor, so replacing the anchor again would duplicate
+        # fields in an already-normalized schema.
+        if replacement_text in schema_text:
+            continue
+        if old in schema_text:
+            schema_text = schema_text.replace(old, replacement_text)
+        else:
             raise RuntimeError(f"Legacy Comms baseline normalization anchor missing: {old[:100]}")
-        schema_text = schema_text.replace(old, replacement_text)
     return schema_text
 
 def prisma_schema_diff(base_schema: Path, current_schema: Path) -> str:

@@ -43,6 +43,38 @@ class BreakingSchemaGuardTests(unittest.TestCase):
         self.assertIn("onDelete: Restrict", normalized)
         self.assertIn("comms_delivery_receipts_communication_message_id_fkey", normalized)
 
+    def test_accepts_already_normalized_comms_baseline_idempotently(self):
+        baseline = (
+            "model CommunicationMessage {\n"
+            "  outboundDispatch  OutboundCommsDispatch?\n"
+            "  deliveryReceipts  CommsDeliveryReceipt[]\n"
+            "}\n"
+            "model OutboundCommsDispatch {\n"
+            '  communicationMessage   CommunicationMessage     @relation(fields: [communicationMessageId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "outbound_comms_dispatches_communication_message_id_fkey")\n'
+            "}\n"
+            "model CommsDeliveryReceipt {\n"
+            '  dispatch               OutboundCommsDispatch @relation(fields: [dispatchId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "comms_delivery_receipts_dispatch_id_fkey")\n'
+            '  communicationMessageId String                @map("communication_message_id")\n'
+            + (
+                '  communicationMessage   CommunicationMessage '
+                '@relation(fields: [communicationMessageId], references: [id], '
+                'onDelete: Restrict, onUpdate: Cascade, '
+                'map: "comms_delivery_receipts_communication_message_id_fkey")\n'
+            )
+            + "  providerMessageId String\n"
+            "}\n"
+        )
+        migration_sql = (
+            '"outbound_comms_dispatches_communication_message_id_fkey" '
+            'REFERENCES "public"."communication_messages"("id") ON DELETE RESTRICT ON UPDATE CASCADE '
+            '"comms_delivery_receipts_dispatch_id_fkey" '
+            'REFERENCES "public"."outbound_comms_dispatches"("id") '
+            '"comms_delivery_receipts_communication_message_id_fkey" '
+            'ON DELETE RESTRICT ON UPDATE CASCADE'
+        )
+        normalized = guard.normalize_base_schema(baseline, migration_sql)
+        self.assertEqual(normalized, baseline)
+
     def test_rejects_conflicting_duplicate_baseline_models(self):
         baseline = (
             "model A {\n  id String @id\n}\n"
