@@ -173,19 +173,6 @@ jobs:
     needs: validate
 
     services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_USER: ryanai
-          POSTGRES_PASSWORD: ci_password
-          POSTGRES_DB: ryanai_disposable_db
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U ryanai -d ryanai_disposable_db"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
       redis:
         image: redis:7-alpine
         ports:
@@ -200,7 +187,6 @@ jobs:
       NODE_ENV: production
       HOST: 127.0.0.1
       PORT: '3000'
-      DATABASE_URL: postgresql://ryanai:ci_password@127.0.0.1:5432/ryanai_disposable_db
       REDIS_URL: redis://127.0.0.1:6379
       JWT_SECRET: ci_only_secret_at_least_32_characters_long
       OPENAI_API_KEY: ''
@@ -224,18 +210,93 @@ jobs:
         # Prisma CLI is a dev dependency required by db:setup, even though the service runs in production mode.
         run: npm ci --include=dev --legacy-peer-deps
 
-      - name: Prepare disposable PostgreSQL with Supabase Auth compatibility
-        env:
-          DATABASE_URL: ${{ env.DATABASE_URL }}
-        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/prepare-disposable-supabase-auth-fixture.sql
+      - name: Set up pinned Supabase CLI
+        id: setup_supabase_cli
+        uses: supabase/setup-cli@v3
+        with:
+          version: 3.0.0
+
+      - name: Start isolated local Supabase stack
+        run: supabase start
+
+      - name: Apply the complete Supabase migration chain and export local database URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db reset --local
+          # Capture status output privately: it includes local service keys.
+          eval "$(supabase status --env)"
+          [[ "${DB_URL:-}" == *"127.0.0.1"* || "${DB_URL:-}" == *"localhost"* ]] || {
+            echo "::error::Supabase DB_URL is not loopback; refusing disposable integration tests."
+            exit 1
+          }
+          echo "DATABASE_URL=$DB_URL" >> "$GITHUB_ENV"
+          echo "RYANAI_DISPOSABLE_DB=1" >> "$GITHUB_ENV"
+          echo "RYANAI_DISPOSABLE_SUPABASE=1" >> "$GITHUB_ENV"
+          psql "$DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $assert$
+          BEGIN
+            IF to_regclass('auth.users') IS NULL OR to_regprocedure('auth.uid()') IS NULL THEN
+              RAISE EXCEPTION 'Supabase Auth baseline is incomplete';
+            END IF;
+            IF to_regclass('storage.buckets') IS NULL OR to_regclass('storage.objects') IS NULL THEN
+              RAISE EXCEPTION 'Supabase Storage baseline is incomplete';
+            END IF;
+            IF to_regclass('public.profiles') IS NULL OR to_regclass('public.conversations') IS NULL THEN
+              RAISE EXCEPTION 'Supabase application baseline is incomplete';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='profiles' AND policyname='select_own_profile') THEN
+              RAISE EXCEPTION 'Supabase profiles RLS policy is missing';
+            END IF;
+          END $assert$;
+          SQL
 
       - name: Prepare database
-        # This job uses a disposable PostgreSQL instance, never a production database.
+        # The Supabase platform chain has completed on the isolated local stack.
         env:
           NODE_ENV: test
         run: |
           npx prisma migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
           npm run db:setup
+
+      - name: Verify complete Supabase and Prisma migration contract
+        run: |
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $assert$
+          BEGIN
+            IF to_regclass('public.users') IS NULL
+              OR to_regclass('public.agent_runs') IS NULL
+              OR to_regclass('public.agent_handoffs') IS NULL
+              OR to_regclass('public.agent_brain_health') IS NULL
+              OR to_regclass('public.agent_run_evidence') IS NULL THEN
+              RAISE EXCEPTION 'Required Prisma agent runtime schema is incomplete';
+            END IF;
+            IF to_regclass('auth.users') IS NULL
+              OR to_regclass('storage.buckets') IS NULL
+              OR to_regclass('storage.objects') IS NULL THEN
+              RAISE EXCEPTION 'Required Supabase platform schema is incomplete';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='on_auth_user_created' AND NOT tgisinternal) THEN
+              RAISE EXCEPTION 'Supabase Auth-to-profile identity trigger is missing';
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='profiles' AND policyname='select_own_profile') THEN
+              RAISE EXCEPTION 'Supabase profiles RLS policy is missing';
+            END IF;
+          END $assert$;
+          SQL
+
+      - name: Verify agent lease migration rollback on disposable Supabase
+        env:
+          RYANAI_DISPOSABLE_DB: '1'
+          RYANAI_DISPOSABLE_SUPABASE: '1'
+        run: node scripts/test-agent-run-lease-migration-rollback.mjs
+
+      - name: Verify agent runtime migration replay on disposable Supabase
+        env:
+          RYANAI_DISPOSABLE_DB: '1'
+          RYANAI_DISPOSABLE_SUPABASE: '1'
+        run: node scripts/test-agent-runs-runtime-migration-upgrade.mjs
 
       # Vite's build uses emptyOutDir=true and clears dist/. Build the frontend
       # first, then compile the API so the server output survives for startup.
@@ -254,7 +315,7 @@ jobs:
       - name: Verify intelligence-event inbox concurrency and audit atomicity against disposable PostgreSQL
         env:
           RYANAI_DISPOSABLE_DB: '1'
-          DATABASE_URL: ${{ env.DATABASE_URL }}
+          RYANAI_DISPOSABLE_SUPABASE: '1'
         run: node --import tsx/esm scripts/test-intelligence-event-inbox-postgres.mjs
 
 
@@ -331,6 +392,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+
+      - name: Stop isolated Supabase stack
+        if: always() && steps.setup_supabase_cli.outcome == 'success'
+        run: supabase stop --no-backup
 
   postgres19-compatibility:
     name: PostgreSQL 19 compatibility

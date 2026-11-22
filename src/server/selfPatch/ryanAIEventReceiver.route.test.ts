@@ -21,7 +21,8 @@ function event(eventId: string) {
   };
 }
 
-async function postEvent(body: unknown, configuredSecret: string | undefined = secret) {
+async function postEvent(body: unknown, configuredSecret: string | null = secret) {
+  // null is an explicit "not configured" fixture; omitted uses the valid test secret.
   process.env.RYANAI_EVENT_HMAC_SECRET = configuredSecret ?? '';
   const timestamp = String(Math.floor(Date.now() / 1000));
   const signature = signRyanAIEventBody(timestamp, body, secret);
@@ -47,7 +48,8 @@ afterEach(async () => {
 
 describe('RyanAI authenticated event receiver route', () => {
   it('fails closed when the HMAC secret is not configured', async () => {
-    const response = await postEvent(event('123e4567-e89b-42d3-a456-426614174101'), undefined);
+    // Pass an explicit empty value; undefined/null would trigger the helper's default secret.
+    const response = await postEvent(event('123e4567-e89b-42d3-a456-426614174101'), '');
     expect(response.statusCode).toBe(503);
     expect(response.json()).toMatchObject({ accepted: false, state: 'not_configured' });
   });
