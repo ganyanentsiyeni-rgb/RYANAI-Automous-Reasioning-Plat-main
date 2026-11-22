@@ -39,6 +39,63 @@ export const agentOperationsRoutes: FastifyPluginAsync = async (fastify) => {
   // General autonomous AgentRuns are fail-closed until an authenticated administrator
   // explicitly approves them. PA delegations use their dedicated owner-scoped approval
   // path above; this route covers ordinary /api/agent/ops/tasks submissions.
+  fastify.post<{ Params: { id: string } }>('/api/agent/ops/tasks/:id/reject', {
+    preHandler: requireAdmin,
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    schema: { body: { type: 'object', additionalProperties: false, properties: {} } },
+  }, async (request, reply) => {
+    const adminId = request.authUser?.id;
+    if (!adminId) return reply.code(401).send({ error: 'Administrator authentication is required.' });
+
+    const result = await fastify.prisma.$transaction(async (tx) => {
+      const updated = await tx.agentRun.updateMany({
+        where: { id: request.params.id, approvalStatus: 'pending', status: 'queued' },
+        data: {
+          approvalStatus: 'rejected',
+          status: 'cancelled',
+          error: 'Rejected by the authenticated administrator.',
+          completedAt: new Date(),
+        },
+      });
+      if (updated.count !== 1) return false;
+
+      await tx.agentRunEvidence.create({
+        data: {
+          runId: request.params.id,
+          eventType: 'approval.rejected',
+          actorId: adminId,
+          payload: { approvedBy: null, rejectedBy: adminId, approvalStatus: 'rejected' },
+        },
+      });
+      return true;
+    });
+
+    if (!result) {
+      return reply.code(409).send({
+        status: 'BLOCKED',
+        error: 'AgentRun is no longer pending approval or does not exist.',
+      });
+    }
+    return { success: true, status: 'REJECTED', runId: request.params.id };
+  });
+
+  fastify.get('/api/agent/ops/approvals/pending', {
+    preHandler: requireAdmin,
+  }, async (request, reply) => {
+    if (!request.authUser?.id) return reply.code(401).send({ error: 'Administrator authentication is required.' });
+    const runs = await fastify.prisma.agentRun.findMany({
+      where: { approvalStatus: 'pending', status: 'queued', queueType: 'reasoning' },
+      orderBy: { createdAt: 'asc' },
+      take: 50,
+      select: {
+        id: true, userId: true, objective: true, status: true, approvalStatus: true,
+        executionScope: true, planSnapshot: true, planHash: true, baseCommitSha: true,
+        proposedDiffHash: true, createdAt: true,
+      },
+    });
+    return { approvals: runs };
+  });
+
   fastify.post<{ Params: { id: string } }>('/api/agent/ops/tasks/:id/approve', {
     preHandler: requireAdmin,
     config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
