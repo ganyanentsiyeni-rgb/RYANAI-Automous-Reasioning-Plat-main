@@ -106,6 +106,62 @@ BEGIN
 END $assert$;
 SQL
 
+log "Asserting and excluding Supabase-owned Auth foreign keys from the Prisma-only drift comparison"
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+DO $assert_auth_links$
+DECLARE
+  expected_name TEXT;
+BEGIN
+  FOREACH expected_name IN ARRAY ARRAY[
+    'conversations_user_id_fkey',
+    'memory_entries_user_id_fkey'
+  ] LOOP
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint c
+      JOIN pg_class src ON src.oid = c.conrelid
+      JOIN pg_namespace src_ns ON src_ns.oid = src.relnamespace
+      JOIN pg_class target ON target.oid = c.confrelid
+      JOIN pg_namespace target_ns ON target_ns.oid = target.relnamespace
+      WHERE c.contype = 'f'
+        AND src_ns.nspname = 'public'
+        AND c.conname = expected_name
+        AND target_ns.nspname = 'auth'
+        AND target.relname = 'users'
+    ) THEN
+      RAISE EXCEPTION 'Expected Supabase-owned Auth FK % is missing or targets the wrong table', expected_name;
+    END IF;
+  END LOOP;
+END
+$assert_auth_links$;
+
+-- Prisma owns only public application models. Supabase owns auth.users and
+-- the cross-schema FKs that reference it. Remove those FKs only from this
+-- disposable local Supabase database after asserting the required links.
+DO $drop_external_auth_fks$
+DECLARE
+  fk RECORD;
+BEGIN
+  FOR fk IN
+    SELECT src_ns.nspname AS source_schema,
+           src.relname AS source_table,
+           c.conname AS constraint_name
+    FROM pg_constraint c
+    JOIN pg_class src ON src.oid = c.conrelid
+    JOIN pg_namespace src_ns ON src_ns.oid = src.relnamespace
+    JOIN pg_class target ON target.oid = c.confrelid
+    JOIN pg_namespace target_ns ON target_ns.oid = target.relnamespace
+    WHERE c.contype = 'f'
+      AND src_ns.nspname = 'public'
+      AND target_ns.nspname = 'auth'
+  LOOP
+    EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT %I',
+      fk.source_schema, fk.source_table, fk.constraint_name);
+  END LOOP;
+END
+$drop_external_auth_fks$;
+SQL
+
 log "Checking the resulting Prisma schema contract"
 npx prisma migrate diff \
   --from-url "$DATABASE_URL" \
