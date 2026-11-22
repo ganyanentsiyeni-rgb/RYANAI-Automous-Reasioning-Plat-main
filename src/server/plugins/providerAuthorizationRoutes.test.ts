@@ -4,7 +4,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { providerAuthorizationRoutes } from './providerAuthorizationRoutes.js';
 import { encryptProviderCredential } from './providerAuthorization.js';
 
-const owner = { id: 'owner-user-1', role: 'user' as const, isOwner: true };
+const owner = {
+  id: 'owner-user-1',
+  role: 'user' as const,
+  isOwner: true,
+  pluginPreferences: {
+    'google-calendar': { enabled: true, scopes: [] },
+    'microsoft-365-calendar': { enabled: true, scopes: [] },
+    gmail: { enabled: true, scopes: [] },
+  },
+};
 const key = '5a'.repeat(32);
 
 function createPrismaFixture() {
@@ -266,7 +275,10 @@ describe('provider authorization HTTP lifecycle', () => {
     const updateArgs = (prisma.pluginProviderConnection.update as ReturnType<typeof vi.fn>).mock.calls[0][0] as { data: Record<string, unknown> };
     expect(updateArgs.data.encryptedAccessToken).toBeNull();
     expect(updateArgs.data.encryptedRefreshToken).toBeNull();
-    expect(events.some((event) => event.eventType === 'revocation_pending')).toBe(true);
+    expect(events).toContainEqual(expect.objectContaining({
+      providerId: 'google-calendar',
+      eventType: 'revocation_pending',
+    }));
     await app.close();
   });
 

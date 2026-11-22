@@ -128,23 +128,37 @@ jobs:
           MCP_PROXY_DELEGATION_TOKEN=ci_only_negative_test_placeholder
           EOF
           docker compose --project-name mcpjungle-negative --env-file "$negative_env" --profile mcp-gateway up -d mcpjungle-db
+          state=""
+          container_logs=""
+          # Wait for both the expected password error and the failed/restarting state.
+          # Postgres may exit before Docker has flushed its final log lines.
           for attempt in $(seq 1 30); do
             state="$(docker inspect --format '{{.State.Status}}' ryanai-mcpjungle-db 2>/dev/null || true)"
-            if [ "$state" = "exited" ] || [ "$state" = "restarting" ]; then break; fi
+            container_logs="$(docker logs ryanai-mcpjungle-db 2>&1 || true)"
+            if { [ "$state" = "exited" ] || [ "$state" = "restarting" ]; } \
+              && grep -Eqi 'superuser password is not specified' <<< "$container_logs"; then
+              break
+            fi
             sleep 1
           done
-          state="$(docker inspect --format '{{.State.Status}}' ryanai-mcpjungle-db)"
+          state="$(docker inspect --format '{{.State.Status}}' ryanai-mcpjungle-db 2>/dev/null || true)"
+          container_logs="$(docker logs ryanai-mcpjungle-db 2>&1 || true)"
           if [ "$state" != "exited" ] && [ "$state" != "restarting" ]; then
-            echo "Expected MCPJungle Postgres to fail closed when its password is unset; state=$state"
-            docker logs ryanai-mcpjungle-db 2>&1 || true
+            echo "Expected MCPJungle Postgres to stop/restart when its password is unset; state=$state"
+            printf '%s\\n' "$container_logs"
             exit 1
           fi
-          if ! docker logs ryanai-mcpjungle-db 2>&1 | grep -qi 'superuser password is not specified'; then
-            echo "MCPJungle Postgres did not report the expected missing-password error"
-            docker logs ryanai-mcpjungle-db 2>&1 || true
+          if ! grep -Eqi 'superuser password is not specified' <<< "$container_logs"; then
+            echo "MCPJungle Postgres did not report the expected missing-password error; state=$state"
+            printf '%s\\n' "$container_logs"
             exit 1
           fi
-          echo "PASS: gateway database refuses to initialize without a password"
+          if grep -Eqi 'database system is ready to accept connections' <<< "$container_logs"; then
+            echo "MCPJungle Postgres unexpectedly became ready without a password; state=$state"
+            printf '%s\\n' "$container_logs"
+            exit 1
+          fi
+          echo "PASS: gateway database refuses to initialize without a password (state=$state)"
       - name: Run isolated Enterprise gateway authentication and ACL tests
         shell: bash
         run: |
