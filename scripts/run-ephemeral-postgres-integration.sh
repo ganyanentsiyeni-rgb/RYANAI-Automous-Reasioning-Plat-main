@@ -27,6 +27,10 @@ if ! docker info >/dev/null 2>&1; then
   echo "Docker daemon is not available." >&2
   exit 1
 fi
+if ! command -v psql >/dev/null 2>&1; then
+  echo "The PostgreSQL client (psql) is required to assert the local Supabase schema." >&2
+  exit 1
+fi
 
 log "Starting pinned Supabase CLI local stack"
 "${SUPABASE_CLI[@]}" start
