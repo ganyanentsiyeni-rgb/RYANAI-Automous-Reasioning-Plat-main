@@ -737,10 +737,19 @@ jobs:
       - name: Read current API service settings (GET only)
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_API_SERVICE_ID: ${{ vars.RENDER_API_SERVICE_ID }}
         run: |
           set -euo pipefail
+          [[ -n "${RENDER_API_SERVICE_ID:-}" ]] || {
+            echo "::error::RENDER_API_SERVICE_ID repository variable is missing; configure the verified API service ID before the read-only audit can run."
+            exit 1
+          }
+          [[ "${RENDER_API_SERVICE_ID}" =~ ^srv-[a-zA-Z0-9]+$ ]] || {
+            echo "::error::RENDER_API_SERVICE_ID has an invalid format."
+            exit 1
+          }
           curl --fail-with-body --silent --show-error \
-            --url "https://api.render.com/v1/services/srv-dbk4giu7bikc7394a4r0" \
+            --url "https://api.render.com/v1/services/${RENDER_API_SERVICE_ID}" \
             --header "Authorization: Bearer ${RENDER_API_KEY}" \
             --header "accept: application/json" \
             --output render-service-current.json
