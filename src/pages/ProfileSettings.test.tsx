@@ -159,6 +159,8 @@ describe('RyanAI Settings', () => {
       
       ryanai_phonelink_settings: { autoReconnect: true, wifiOnlyTransfers: true, notifyComms: true, notifyTasks: true, allowShareIntake: true, requireConfirmation: true, quietHoursEnabled: false, quietHoursStart: '22:00', quietHoursEnd: '07:00' },
     });
+    expect(supabaseMock.from).toHaveBeenCalledWith('profiles');
+    expect(supabaseMock.from.mock.results[0]?.value.update).toHaveBeenCalledWith(expect.objectContaining({ full_name: 'Ntsiyeni Ganyane' }));
     expect(window.localStorage.getItem('ryanai:language:user-a')).toBe('ve-ZA');
     expect(container.textContent).toContain('RyanAI Settings were saved');
   });
