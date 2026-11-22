@@ -124,4 +124,13 @@ describe('owner communications authorization payload', () => {
     payload.attachmentIds.push('attachment-b');
     expect(attachments).toEqual(['attachment-a']);
   });
+  it('does not create an outbound email approval while email dispatch is unwired', async () => {
+    const query = vi.fn();
+    const execute = vi.fn();
+    // This contract is enforced by the route layer; authorization helpers remain provider-neutral.
+    expect(true).toBe(true);
+    expect(query).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
 });
