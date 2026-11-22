@@ -640,6 +640,21 @@ jobs:
             END IF;
           END $$;
           SQL
+      - name: Provision outbound dispatch schema in the disposable Supabase integration database
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval "$(supabase status --env)"
+          # The Comms callback integration runs against the disposable Supabase
+          # stack. The outbound dispatch schema is owned by Prisma migrations,
+          # not by supabase db reset. Create only the referenced AgentRun key
+          # target needed by the migration; this test never creates an AgentRun.
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -c \
+            "CREATE TABLE IF NOT EXISTS public.agent_runs (id text PRIMARY KEY)"
+          # Apply the canonical committed DDL without touching the Prisma ledger.
+          # This is a disposable CI database, never a staging or production DB.
+          psql "$DB_URL" -v ON_ERROR_STOP=1 \
+            -f prisma/migrations/20261121210000_comms_outbound_dispatch_receipts/migration.sql
       - name: Generate Prisma clients for Comms integration
         run: npm run db:generate
       - name: Run Comms PostgreSQL callback and attachment scanner integration tests
