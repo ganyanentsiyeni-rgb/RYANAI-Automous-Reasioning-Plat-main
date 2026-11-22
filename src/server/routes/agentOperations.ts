@@ -7,6 +7,7 @@ import { normalizeOfflineTaskBatch } from '../../agent/offlineTaskSync.js';
 import { createPADelegation, listPADelegations, getPADelegation, approvePADelegation, rejectPADelegation } from '../../agent/paDelegationService.js';
 import { PA_DELEGATION_CAPABILITIES, type PADelegationCapability } from '../../agent/paJarvisHandshake.js';
 import { evaluateGenXSecurityEvent } from '../../security/genxPolicy.js';
+import { appendRunEvidence } from '../../agent/engineeringEvidence.js';
 interface DispatchBody { objective: string; taskId?: string; }
 interface OfflineSyncBody { tasks: Array<{ taskId: string; objective: string }>; }
 interface PADelegationBody { objective: string; capabilities: PADelegationCapability[]; delegationId?: string; }
@@ -121,6 +122,52 @@ export const agentOperationsRoutes: FastifyPluginAsync = async (fastify) => {
     if (!PA_DELEGATION_ID.test(request.params.id)) return reply.code(400).send({ error: 'Invalid PA delegation reference.' });
     const rejected = await rejectPADelegation(user.id, request.params.id, user.id);
     return rejected ? { success: true, status: 'rejected' } : reply.code(404).send({ error: 'Pending PA delegation not found.' });
+  });
+  // Ordinary AgentRuns are fail-closed: queued work cannot reach the worker until
+  // an authenticated administrator records an explicit approval bound to the exact plan.
+  fastify.get('/api/agent/ops/approvals/pending', async (request, reply) => {
+    if (!request.authUser) return reply.code(401).send({ error: 'Sign in to continue.' });
+    if (request.authUser.role !== 'admin') return reply.code(403).send({ error: 'Administrator access is required.' });
+    const runs = await fastify.prisma.agentRun.findMany({
+      where: { queueType: 'reasoning', status: 'queued', approvalStatus: 'pending' },
+      orderBy: { createdAt: 'asc' }, take: 100,
+      select: { id: true, userId: true, objective: true, requestedModel: true, status: true, approvalStatus: true, planSnapshot: true, planHash: true, baseCommitSha: true, proposedDiffHash: true, createdAt: true },
+    });
+    return { approvals: runs };
+  });
+
+  fastify.post<{ Params: { id: string } }>('/api/agent/ops/tasks/:id/approve', async (request, reply) => {
+    if (!request.authUser) return reply.code(401).send({ error: 'Sign in to continue.' });
+    if (request.authUser.role !== 'admin') return reply.code(403).send({ error: 'Administrator access is required.' });
+    const run = await fastify.prisma.agentRun.findUnique({ where: { id: request.params.id }, select: { id: true, userId: true, status: true, approvalStatus: true, planSnapshot: true, planHash: true, baseCommitSha: true, proposedDiffHash: true } });
+    if (!run) return reply.code(404).send({ error: 'AgentRun not found.' });
+    if (run.approvalStatus === 'approved') return { success: true, status: 'approved', alreadyApproved: true, taskId: run.id };
+    if (run.approvalStatus !== 'pending' || run.status !== 'queued') return reply.code(409).send({ error: 'AgentRun is not awaiting approval.', status: run.status, approvalStatus: run.approvalStatus });
+    if (run.planSnapshot !== null && (!run.planHash || !run.baseCommitSha || !run.proposedDiffHash)) return reply.code(409).send({ error: 'AgentRun has a plan snapshot but is missing immutable plan/commit/diff hashes; approval is blocked.', status: 'BLOCKED' });
+    const now = new Date();
+    const approved = await fastify.prisma.$transaction(async (tx) => {
+      const changed = await tx.agentRun.updateMany({ where: { id: run.id, status: 'queued', approvalStatus: 'pending' }, data: { approvalStatus: 'approved', approvedBy: request.authUser!.id, approvedAt: now, approvedPlanHash: run.planSnapshot === null ? null : run.planHash, approvedCommitSha: run.planSnapshot === null ? null : run.baseCommitSha, approvedDiffHash: run.planSnapshot === null ? null : run.proposedDiffHash } });
+      if (changed.count !== 1) return false;
+      await appendRunEvidence(tx, { runId: run.id, eventType: 'approval.approved', actorId: request.authUser!.id, payload: { approvalStatus: 'approved', planHash: run.planHash, baseCommitSha: run.baseCommitSha, proposedDiffHash: run.proposedDiffHash } });
+      return true;
+    });
+    if (!approved) return reply.code(409).send({ error: 'AgentRun approval changed concurrently; refresh and review again.' });
+    try { await fastify.prisma.$queryRaw\`SELECT pg_notify('agent_task_queue', \${request.params.id})\`; } catch (error) { fastify.log.warn({ err: error, taskId: request.params.id }, 'Approved AgentRun queue notification failed; recovery sweep remains available.'); }
+    return { success: true, status: 'approved', taskId: run.id, approvedBy: request.authUser.id, approvedAt: now };
+  });
+
+  fastify.post<{ Params: { id: string } }>('/api/agent/ops/tasks/:id/reject', async (request, reply) => {
+    if (!request.authUser) return reply.code(401).send({ error: 'Sign in to continue.' });
+    if (request.authUser.role !== 'admin') return reply.code(403).send({ error: 'Administrator access is required.' });
+    const now = new Date();
+    const rejected = await fastify.prisma.$transaction(async (tx) => {
+      const changed = await tx.agentRun.updateMany({ where: { id: request.params.id, status: 'queued', approvalStatus: 'pending' }, data: { approvalStatus: 'rejected', status: 'cancelled', error: 'Rejected by administrator.', completedAt: now } });
+      if (changed.count !== 1) return false;
+      await appendRunEvidence(tx, { runId: request.params.id, eventType: 'approval.rejected', actorId: request.authUser!.id, payload: { approvalStatus: 'rejected' } });
+      return true;
+    });
+    if (!rejected) return reply.code(409).send({ error: 'AgentRun is not awaiting approval or was already decided.' });
+    return { success: true, status: 'rejected', taskId: request.params.id, approvedBy: request.authUser.id, decidedAt: now };
   });
   fastify.get('/api/agent/ops/knowledge', async (request, reply) => {
     if (!request.authUser) return reply.code(401).send({ error: 'Sign in to continue.' });
