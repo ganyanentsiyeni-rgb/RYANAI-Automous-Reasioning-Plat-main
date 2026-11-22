@@ -1909,3 +1909,397 @@ ALTER TABLE "agent_runs" ADD COLUMN IF NOT EXISTS "requested_model" TEXT;
 
 -- END PRISMA MIGRATION 20261107160000_agent_requested_model
 INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'cd01e42b50ff67140c2a9fe239e6576f338a1acd1fd463b1ea277a620f56c4d2',now(),'20261107160000_agent_requested_model',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261108010000_studio_native_core
+-- RyanAI Studio native core. This migration is reviewed in source control only;
+-- it is not applied to any production database by this change.
+CREATE TABLE "studio_projects" (
+  "id" TEXT NOT NULL,
+  "owner_user_id" TEXT NOT NULL,
+  "title" VARCHAR(200) NOT NULL,
+  "objective" TEXT NOT NULL,
+  "project_type" VARCHAR(32) NOT NULL,
+  "status" VARCHAR(32) NOT NULL DEFAULT 'draft',
+  "priority" INTEGER NOT NULL DEFAULT 0,
+  "metadata" JSONB NOT NULL DEFAULT '{}',
+  "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "studio_projects_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "studio_projects_owner_user_id_fkey" FOREIGN KEY ("owner_user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+CREATE INDEX "studio_projects_owner_status_updated_idx" ON "studio_projects"("owner_user_id", "status", "updated_at" DESC);
+CREATE INDEX "studio_projects_status_priority_created_idx" ON "studio_projects"("status", "priority", "created_at");
+
+CREATE TABLE "studio_tasks" (
+  "id" TEXT NOT NULL,
+  "project_id" TEXT NOT NULL,
+  "owner_user_id" TEXT NOT NULL,
+  "title" VARCHAR(240) NOT NULL,
+  "objective" TEXT NOT NULL,
+  "task_type" VARCHAR(48) NOT NULL,
+  "status" VARCHAR(32) NOT NULL DEFAULT 'queued',
+  "priority" INTEGER NOT NULL DEFAULT 0,
+  "required_capabilities" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  "assigned_worker_id" VARCHAR(96),
+  "depends_on_ids" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+  "input" JSONB NOT NULL DEFAULT '{}',
+  "output" JSONB,
+  "attempts" INTEGER NOT NULL DEFAULT 0,
+  "max_attempts" INTEGER NOT NULL DEFAULT 3,
+  "available_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "lease_owner" VARCHAR(128),
+  "lease_expires_at" TIMESTAMPTZ(6),
+  "heartbeat_at" TIMESTAMPTZ(6),
+  "approval_required" BOOLEAN NOT NULL DEFAULT FALSE,
+  "approval_status" VARCHAR(32) NOT NULL DEFAULT 'not_required',
+  "idempotency_key" VARCHAR(160),
+  "started_at" TIMESTAMPTZ(6),
+  "completed_at" TIMESTAMPTZ(6),
+  "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "studio_tasks_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "studio_tasks_project_id_fkey" FOREIGN KEY ("project_id") REFERENCES "studio_projects"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "studio_tasks_owner_user_id_fkey" FOREIGN KEY ("owner_user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "studio_tasks_attempts_check" CHECK ("attempts" >= 0 AND "max_attempts" > 0)
+);
+CREATE UNIQUE INDEX "studio_tasks_idempotency_key_key" ON "studio_tasks"("idempotency_key");
+CREATE INDEX "studio_tasks_project_status_priority_idx" ON "studio_tasks"("project_id", "status", "priority");
+CREATE INDEX "studio_tasks_claim_idx" ON "studio_tasks"("status", "available_at", "priority");
+CREATE INDEX "studio_tasks_lease_expiry_idx" ON "studio_tasks"("lease_expires_at");
+CREATE INDEX "studio_tasks_owner_created_idx" ON "studio_tasks"("owner_user_id", "created_at" DESC);
+
+CREATE TABLE "studio_artifacts" (
+  "id" TEXT NOT NULL,
+  "project_id" TEXT NOT NULL,
+  "task_id" TEXT,
+  "owner_user_id" TEXT NOT NULL,
+  "title" VARCHAR(240) NOT NULL,
+  "kind" VARCHAR(48) NOT NULL,
+  "storage_provider" VARCHAR(48) NOT NULL,
+  "storage_key" TEXT NOT NULL,
+  "mime_type" VARCHAR(160),
+  "byte_size" BIGINT,
+  "sha256" VARCHAR(64),
+  "provenance" JSONB NOT NULL DEFAULT '{}',
+  "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "studio_artifacts_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "studio_artifacts_project_id_fkey" FOREIGN KEY ("project_id") REFERENCES "studio_projects"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "studio_artifacts_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES "studio_tasks"("id") ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT "studio_artifacts_owner_user_id_fkey" FOREIGN KEY ("owner_user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "studio_artifacts_byte_size_check" CHECK ("byte_size" IS NULL OR "byte_size" >= 0),
+  CONSTRAINT "studio_artifacts_sha256_check" CHECK ("sha256" IS NULL OR "sha256" ~ '^[a-f0-9]{64}$')
+);
+CREATE INDEX "studio_artifacts_project_created_idx" ON "studio_artifacts"("project_id", "created_at" DESC);
+CREATE INDEX "studio_artifacts_owner_created_idx" ON "studio_artifacts"("owner_user_id", "created_at" DESC);
+
+CREATE TABLE "studio_events" (
+  "id" TEXT NOT NULL,
+  "project_id" TEXT NOT NULL,
+  "task_id" TEXT,
+  "owner_user_id" TEXT NOT NULL,
+  "actor_id" TEXT,
+  "event_type" VARCHAR(64) NOT NULL,
+  "payload" JSONB NOT NULL DEFAULT '{}',
+  "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "studio_events_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "studio_events_project_id_fkey" FOREIGN KEY ("project_id") REFERENCES "studio_projects"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT "studio_events_task_id_fkey" FOREIGN KEY ("task_id") REFERENCES "studio_tasks"("id") ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT "studio_events_owner_user_id_fkey" FOREIGN KEY ("owner_user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+CREATE INDEX "studio_events_project_created_idx" ON "studio_events"("project_id", "created_at");
+CREATE INDEX "studio_events_task_created_idx" ON "studio_events"("task_id", "created_at");
+CREATE INDEX "studio_events_owner_created_idx" ON "studio_events"("owner_user_id", "created_at" DESC);
+
+-- END PRISMA MIGRATION 20261108010000_studio_native_core
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'a02855c2d896633df1c2df728df338d51458e62b5b523eb50e3fad8fafc5b1c4',now(),'20261108010000_studio_native_core',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261108080000_agent_runs_runtime_contract
+-- Additive runtime-contract repair for public.agent_runs.
+-- Legacy queued/unclassified work is quarantined before the reasoning worker can
+-- claim it. Workbench rows already classified as coding remain in that queue.
+-- Existing running rows with a worker ID and lock timestamp retain their
+-- pre-migration reasoning approval so the existing lease heartbeat/reclaim
+-- contract can finish or retry them. No new work is auto-approved by this rule.
+-- This migration does NOT create coding_tasks or change the production allowlist.
+
+ALTER TABLE public.agent_runs
+  ADD COLUMN IF NOT EXISTS trace_context JSONB,
+  ADD COLUMN IF NOT EXISTS execution_scope JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'approved',
+  ADD COLUMN IF NOT EXISTS plan_snapshot JSONB,
+  ADD COLUMN IF NOT EXISTS plan_hash TEXT,
+  ADD COLUMN IF NOT EXISTS base_commit_sha TEXT,
+  ADD COLUMN IF NOT EXISTS proposed_diff_hash TEXT,
+  ADD COLUMN IF NOT EXISTS approved_plan_hash TEXT,
+  ADD COLUMN IF NOT EXISTS approved_commit_sha TEXT,
+  ADD COLUMN IF NOT EXISTS approved_diff_hash TEXT,
+  ADD COLUMN IF NOT EXISTS approved_by TEXT,
+  ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP(3),
+  ADD COLUMN IF NOT EXISTS steering_notes TEXT,
+  ADD COLUMN IF NOT EXISTS cancel_requested_at TIMESTAMP(3),
+  ADD COLUMN IF NOT EXISTS queue_type TEXT NOT NULL DEFAULT 'reasoning';
+
+-- ADD COLUMN defaults populate legacy rows. Preserve only a running row that
+-- has both pieces of lease evidence written by claimNextAgentRun; the worker's
+-- existing cancellation, plan-binding, attempt-limit and lease-expiry checks
+-- remain authoritative. Everything else in the reasoning/default queue fails
+-- closed and requires explicit classification/approval.
+UPDATE public.agent_runs
+SET approval_status = 'pending'
+WHERE queue_type IS NULL
+   OR (
+     queue_type = 'reasoning'
+     AND NOT (
+       status = 'running'
+       AND worker_id IS NOT NULL
+       AND locked_at IS NOT NULL
+     )
+   )
+   OR approval_status IS NULL;
+
+UPDATE public.agent_runs
+SET queue_type = 'unclassified'
+WHERE queue_type IS NULL
+   OR (
+     queue_type = 'reasoning'
+     AND NOT (
+       status = 'running'
+       AND worker_id IS NOT NULL
+       AND locked_at IS NOT NULL
+     )
+   );
+
+ALTER TABLE public.agent_runs
+  ALTER COLUMN queue_type SET DEFAULT 'reasoning',
+  ALTER COLUMN queue_type SET NOT NULL,
+  ALTER COLUMN approval_status SET DEFAULT 'approved',
+  ALTER COLUMN approval_status SET NOT NULL;
+
+CREATE INDEX IF NOT EXISTS agent_runs_queue_type_status_created_idx
+  ON public.agent_runs (queue_type, status, created_at);
+
+CREATE INDEX IF NOT EXISTS agent_runs_approval_status_created_idx
+  ON public.agent_runs (approval_status, created_at);
+
+-- END PRISMA MIGRATION 20261108080000_agent_runs_runtime_contract
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'6cf735b99bef5939fb306a3c3910987d92127ad0c2df59c446d3260dfd6f0d7e',now(),'20261108080000_agent_runs_runtime_contract',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261108100000_shared_rooms_compatibility
+-- Shared-room table contract for Prisma-only disposable installs.
+-- Keep only the columns and primary keys present in the supplied live schema
+-- snapshot. Supabase owns RLS policies; unknown constraints are not invented.
+CREATE TABLE IF NOT EXISTS public.rooms (
+  id UUID NOT NULL,
+  name TEXT NOT NULL,
+  created_by UUID NOT NULL,
+  created_at TIMESTAMPTZ(6) NOT NULL,
+  CONSTRAINT rooms_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS public.room_members (
+  room_id UUID NOT NULL,
+  user_id UUID NOT NULL,
+  joined_at TIMESTAMPTZ(6) NOT NULL,
+  CONSTRAINT room_members_pkey PRIMARY KEY (room_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.room_messages (
+  id UUID NOT NULL,
+  room_id UUID NOT NULL,
+  sender_id UUID NOT NULL,
+  body TEXT NOT NULL,
+  created_at TIMESTAMPTZ(6) NOT NULL,
+  CONSTRAINT room_messages_pkey PRIMARY KEY (id)
+);
+
+-- END PRISMA MIGRATION 20261108100000_shared_rooms_compatibility
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'b855a19cd5b2fa9d0e3896747fbedd4fca99dbb6c8f1814a02f1cbaf3d2625a4',now(),'20261108100000_shared_rooms_compatibility',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261108120000_correct_pending_reasoning_queue_classification
+-- Correct legacy queue rows that the original coding-queue migration
+-- classified using approval_status alone. Approval is a gate, not evidence
+-- that a run belongs in the coding workbench.
+--
+-- A run remains coding only when it has explicit workbench plan or diff data.
+-- This migration is deliberately additive so previously recorded migration
+-- checksums remain unchanged.
+UPDATE public.agent_runs
+SET queue_type = 'unclassified'
+WHERE queue_type = 'coding'
+  AND approval_status = 'pending'
+  AND plan_snapshot IS NULL
+  AND proposed_diff_hash IS NULL;
+
+-- END PRISMA MIGRATION 20261108120000_correct_pending_reasoning_queue_classification
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'d7525c68c23422354fc00942223220ef83b675b979ddea7d9396c31f5fe9b2ce',now(),'20261108120000_correct_pending_reasoning_queue_classification',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261109100000_studio_worker_heartbeat_compatibility
+-- Prisma-only compatibility contract for the Supabase-owned Studio worker heartbeat table.
+-- The Supabase migration remains the owner of RLS/browser policies; this migration
+-- only provisions the table for disposable Prisma validation installs.
+CREATE TABLE IF NOT EXISTS public.studio_worker_heartbeats (
+  worker_id VARCHAR(160) NOT NULL,
+  status VARCHAR(24) NOT NULL DEFAULT 'starting',
+  started_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  stopped_at TIMESTAMPTZ(6),
+  metadata JSONB NOT NULL DEFAULT '{}',
+  CONSTRAINT studio_worker_heartbeats_pkey PRIMARY KEY (worker_id)
+);
+
+CREATE INDEX IF NOT EXISTS studio_worker_heartbeats_status_seen_idx
+  ON public.studio_worker_heartbeats (status, last_seen_at DESC);
+
+-- END PRISMA MIGRATION 20261109100000_studio_worker_heartbeat_compatibility
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'2c5c926dee79e89f5ba61ca1c70bb1329afacc521a30a62fd4c2f2bfa9040f12',now(),'20261109100000_studio_worker_heartbeat_compatibility',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261117190000_comms_owner_authorization
+-- Additive authorization records for owner-verified outbound communications.
+-- This migration is intentionally not applied by this change or its CI workflow.
+
+CREATE TABLE IF NOT EXISTS public.comms_verified_destinations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id uuid NOT NULL,
+  channel text NOT NULL CHECK (channel IN ('phone', 'email')),
+  address text NOT NULL,
+  normalized_address text NOT NULL,
+  verified_at timestamptz NOT NULL,
+  revoked_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT comms_verified_destinations_owner_channel_address_key
+    UNIQUE (owner_user_id, channel, normalized_address)
+);
+
+CREATE INDEX IF NOT EXISTS comms_verified_destinations_owner_active_idx
+  ON public.comms_verified_destinations (owner_user_id, channel, normalized_address);
+
+CREATE TABLE IF NOT EXISTS public.comms_destination_verification_challenges (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id uuid NOT NULL,
+  channel text NOT NULL CHECK (channel IN ('phone', 'email')),
+  address text NOT NULL,
+  normalized_address text NOT NULL,
+  provider_verification_sid text NOT NULL,
+  expires_at timestamptz NOT NULL,
+  consumed_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS comms_destination_challenges_owner_expiry_idx
+  ON public.comms_destination_verification_challenges (owner_user_id, expires_at);
+
+CREATE TABLE IF NOT EXISTS public.comms_send_approvals (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id uuid NOT NULL,
+  channel text NOT NULL CHECK (channel IN ('whatsapp', 'sms', 'voice', 'email')),
+  recipient text NOT NULL,
+  payload_hash char(64) NOT NULL,
+  payload jsonb NOT NULL,
+  policy_rule_id text NOT NULL,
+  status text NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'approved', 'dispatching', 'accepted', 'unknown', 'failed', 'rejected', 'expired')),
+  expires_at timestamptz NOT NULL,
+  approved_at timestamptz,
+  dispatched_at timestamptz,
+  provider_message_id text,
+  provider_status text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS comms_send_approvals_owner_status_expiry_idx
+  ON public.comms_send_approvals (owner_user_id, status, expires_at);
+
+CREATE INDEX IF NOT EXISTS comms_send_approvals_provider_message_idx
+  ON public.comms_send_approvals (provider_message_id);
+
+-- END PRISMA MIGRATION 20261117190000_comms_owner_authorization
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'680d7b29b50eb2478dc3aabb63d244d552741f4c117cfdd563fb7f9cf46084cc',now(),'20261117190000_comms_owner_authorization',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261118170000_intelligence_event_inbox
+-- Durable, provider-neutral event inbox. Application code owns retries and lease lifecycle.
+-- This migration is additive and is not applied automatically by this PR.
+
+CREATE TABLE IF NOT EXISTS public.intelligence_event_inbox (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id uuid NOT NULL UNIQUE,
+  event_type varchar(160) NOT NULL,
+  schema_version integer NOT NULL CHECK (schema_version > 0),
+  occurred_at timestamptz NOT NULL,
+  source_provider varchar(80) NOT NULL,
+  source_service varchar(80),
+  correlation_id varchar(160),
+  idempotency_key varchar(200) NOT NULL,
+  classification varchar(16) NOT NULL
+    CHECK (classification IN ('public', 'internal', 'confidential', 'restricted')),
+  payload jsonb NOT NULL,
+  payload_hash char(64) NOT NULL,
+  status varchar(16) NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'processing', 'retry', 'processed', 'dead_letter')),
+  attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  max_attempts integer NOT NULL DEFAULT 5 CHECK (max_attempts > 0),
+  available_at timestamptz NOT NULL DEFAULT now(),
+  lease_owner varchar(128),
+  lease_expires_at timestamptz,
+  last_error text,
+  received_at timestamptz NOT NULL DEFAULT now(),
+  processed_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT intelligence_event_inbox_provider_idempotency_key
+    UNIQUE (source_provider, idempotency_key)
+);
+
+CREATE INDEX IF NOT EXISTS intelligence_event_inbox_claim_idx
+  ON public.intelligence_event_inbox (status, available_at, received_at);
+
+CREATE INDEX IF NOT EXISTS intelligence_event_inbox_lease_idx
+  ON public.intelligence_event_inbox (status, lease_expires_at);
+
+CREATE INDEX IF NOT EXISTS intelligence_event_inbox_type_received_idx
+  ON public.intelligence_event_inbox (event_type, received_at DESC);
+
+-- No client-facing policies are created. Only the trusted server database role
+-- should read or mutate the inbox; external providers must use authenticated adapters.
+ALTER TABLE public.intelligence_event_inbox ENABLE ROW LEVEL SECURITY;
+
+CREATE TABLE IF NOT EXISTS public.intelligence_event_attempts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_inbox_id uuid NOT NULL REFERENCES public.intelligence_event_inbox(id) ON DELETE CASCADE,
+  attempt integer NOT NULL CHECK (attempt > 0),
+  worker_id varchar(128) NOT NULL,
+  status varchar(24) NOT NULL
+    CHECK (status IN ('started', 'succeeded', 'retry', 'dead_letter', 'lease_expired')),
+  error text,
+  started_at timestamptz NOT NULL DEFAULT now(),
+  finished_at timestamptz,
+  CONSTRAINT intelligence_event_attempt_event_attempt_key UNIQUE (event_inbox_id, attempt)
+);
+
+CREATE INDEX IF NOT EXISTS intelligence_event_attempt_event_started_idx
+  ON public.intelligence_event_attempts (event_inbox_id, started_at DESC);
+
+CREATE INDEX IF NOT EXISTS intelligence_event_attempt_status_started_idx
+  ON public.intelligence_event_attempts (status, started_at DESC);
+
+ALTER TABLE public.intelligence_event_attempts ENABLE ROW LEVEL SECURITY;
+
+-- END PRISMA MIGRATION 20261118170000_intelligence_event_inbox
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'02139b3a661edcb22cfe656b0712728cfa931a6a75f0102fa84862a881997a58',now(),'20261118170000_intelligence_event_inbox',now(),1);
+
+-- BEGIN PRISMA MIGRATION 20261118183000_intelligence_event_attempts_fk_update_cascade
+-- Align the existing event-attempt foreign key with Prisma's explicit
+-- referential action. This is a forward-only repair for databases that
+-- already applied the original inbox migration.
+ALTER TABLE public.intelligence_event_attempts
+  DROP CONSTRAINT IF EXISTS intelligence_event_attempts_event_inbox_id_fkey;
+
+ALTER TABLE public.intelligence_event_attempts
+  ADD CONSTRAINT intelligence_event_attempts_event_inbox_id_fkey
+  FOREIGN KEY (event_inbox_id)
+  REFERENCES public.intelligence_event_inbox(id)
+  ON DELETE CASCADE
+  ON UPDATE CASCADE;
+
+-- END PRISMA MIGRATION 20261118183000_intelligence_event_attempts_fk_update_cascade
+INSERT INTO public."_prisma_migrations" ("id","checksum","finished_at","migration_name","started_at","applied_steps_count") VALUES (gen_random_uuid()::text,'2cadc590b758399818e962dd83a7eb7f3bad0af34a7f20aae55e6cf7772a67e7',now(),'20261118183000_intelligence_event_attempts_fk_update_cascade',now(),1);
