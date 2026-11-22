@@ -98,7 +98,9 @@ async function expectDegradedStartup(label, env, expectedServices) {
       live = liveResponse.ok && liveBody.status === 'alive';
 
       const readyResponse = await fetch('http://127.0.0.1:' + port + '/readyz', {
-        signal: AbortSignal.timeout(1000),
+        // Readiness probes have their own bounded 1.5s dependency checks.
+        // Allow the HTTP request to finish instead of aborting it prematurely.
+        signal: AbortSignal.timeout(2500),
       });
       const readyBody = await readyResponse.json();
       if (readyResponse.status === 503 && readyBody.status === 'degraded') {
