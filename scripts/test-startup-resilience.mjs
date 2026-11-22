@@ -183,7 +183,9 @@ try {
 
   const unreachableRedis = new URL(redisUrl);
   unreachableRedis.port = '1';
-  unreachableRedis.searchParams.set('connectTimeout', '3000');
+  // Do not encode ioredis numeric options in a URL query: URL values are strings,
+  // and ioredis passes connectTimeout to Socket.setTimeout, which requires a number.
+  // Port 1 refuses immediately in CI, so the default timeout is not needed here.
   await expectStartupFailure(
     'Redis unavailable',
     { DATABASE_URL: databaseUrl, REDIS_URL: unreachableRedis.toString() },
