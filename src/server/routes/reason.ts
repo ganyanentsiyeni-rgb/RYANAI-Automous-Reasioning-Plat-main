@@ -18,7 +18,7 @@ export const reasonPlugin: FastifyPluginAsync = async (fastify) => {
         model: request.body?.model,
         user: request.authUser,
         language: request.body?.language,
-        responsePreferences: request.body?.responsePreferences,
+        responsePreferences: request.authUser?.responsePreferences ?? request.body?.responsePreferences,
       });
 
       const lastMessage = result.messages[result.messages.length - 1];
