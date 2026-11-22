@@ -176,9 +176,6 @@ jobs:
       - name: Confirm a second deploy is a no-op
         run: npx prisma migrate deploy --schema=prisma/schema.prisma
 
-      - name: Compare the resulting database to the Prisma data model
-        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
-
       - name: Run the repository migration readiness audit
         run: npm run db:migration:audit
 
@@ -203,3 +200,15 @@ jobs:
           }
           console.log('PASS: both protected operational routes are registered and retain their auth guard.');
           NODE
+
+      - name: Compare Prisma-owned public schema without Supabase Auth catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          # auth.users is owned by Supabase, not by Prisma's public data model.
+          # Remove it only from this disposable CI database after all Auth-dependent
+          # migration and readiness assertions have completed. CASCADE removes only
+          # its external FK dependants in this throwaway database.
+          psql_url="$(node -e 'const url = new URL(process.env.DATABASE_URL); url.searchParams.delete("schema"); process.stdout.write(url.toString())')"
+          psql "$psql_url" -v ON_ERROR_STOP=1 -c "DROP TABLE IF EXISTS auth.users CASCADE;"
+          npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
