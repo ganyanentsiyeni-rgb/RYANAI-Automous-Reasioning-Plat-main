@@ -66,6 +66,9 @@ beforeEach(() => {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
+});
+
+it('wires profile search to the server-side directory endpoint and resets pagination', async () => {
 
 
 });
@@ -93,12 +96,26 @@ describe('Admin Console request ownership', () => {
     await mount('admin-account-a');
     await vi.waitFor(() => expect(container.querySelector('input[aria-label="Search profiles"]')).toBeTruthy());
     const input = container.querySelector('input[aria-label="Search profiles"]') as HTMLInputElement;
+    await act(async () => {
+      const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      setInputValue?.call(input, 'alice');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
     const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
     await act(async () => { valueSetter?.call(input, 'alice'); input.dispatchEvent(new Event('input', { bubbles: true })); });
     await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/api/admin/users?limit=50&page=1&search=alice', expect.any(Object), 'admin-account-a'));
     expect(container.textContent).toContain('Alice');
   });
 
+afterEach(async () => {
+  await act(async () => root.unmount());
+  container.remove();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+describe('Admin Console request ownership', () => {
   it('scopes every dashboard read to the authenticated administrator account', async () => {
     await mount('admin-account-a');
     await vi.waitFor(() => expect(container.textContent).toContain('Send approved test message'));
