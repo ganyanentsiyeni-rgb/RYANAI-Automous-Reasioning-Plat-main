@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import path from 'node:path';
 import process from 'node:process';
 import { routeReasoning, SUPPORTED_REASONING_PROVIDERS } from './provider-router.js';
-import { resolveHealthUrl } from './health-url.js';
+import { isDegradedHealthResponse, resolveHealthUrl } from './health-url.js';
 import { resolveToolRegistry } from './tool-registry.js';
 import { authorizeDelegatedTool, MCP_TOOL_SCOPES, verifyMcpDelegationToken } from './delegation.js';
 
@@ -152,7 +152,11 @@ export function createMcpServer({ delegatedToken, requireDelegation = false } = 
         const url = resolveHealthUrl(typeof args.url === 'string' ? args.url : undefined, configuredUrl);
         const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
         const body = await response.text();
-        if (!response.ok) throw new Error(`RyanAI API returned HTTP ${response.status}: ${body.slice(0, 500)}`);
+        // A structured HTTP 503 with status=degraded is a valid readiness
+        // snapshot, not a failed MCP invocation. Preserve other non-2xx failures.
+        if (!response.ok && !isDegradedHealthResponse(response.status, body)) {
+          throw new Error(`RyanAI API returned HTTP ${response.status}: ${body.slice(0, 500)}`);
+        }
         return textResult(body);
       }
       if (request.params.name === 'reasoning_route') {
