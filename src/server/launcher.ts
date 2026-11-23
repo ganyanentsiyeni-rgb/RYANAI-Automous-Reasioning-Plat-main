@@ -303,10 +303,13 @@ function registerCoreRoutes() {
     fastify.get('/api/health', healthCheck);
   }
 
-  // Sentry integration test route
-  fastify.get('/debug-sentry', async () => {
-    throw new Error('RyanAI Sentry Integration Test Exception!');
-  });
+  // Sentry integration test route is development/test-only. Never expose a
+  // deliberate exception endpoint from a staging or production API.
+  if (config.nodeEnv === 'development' || config.nodeEnv === 'test') {
+    fastify.get('/debug-sentry', async () => {
+      throw new Error('RyanAI Sentry Integration Test Exception!');
+    });
+  }
 
   // Root
   fastify.get('/', async () => {
