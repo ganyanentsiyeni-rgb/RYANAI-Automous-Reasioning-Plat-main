@@ -20,6 +20,12 @@ environments:
         - agent_run_evidence
       required_runtime_tables:
         - coding_tasks
+        - communication_conversations
+        - communication_messages
+        - checkpoints
+        - checkpoint_blobs
+        - checkpoint_writes
+        - checkpoint_migrations
     cache:
       adapter: redis
       url_env: REDIS_URL
