@@ -78,8 +78,8 @@ try {
   `, [newRunId]);
   assert.deepEqual(inserted.rows[0], {
     queue_type: 'reasoning',
-    approval_status: 'approved',
-  }, 'new task defaults must remain eligible for the reasoning queue');
+    approval_status: 'pending',
+  }, 'new reasoning tasks must remain pending until an administrator approves them');
 
   const claimable = async (id) => pool.query(`
     SELECT id
@@ -98,15 +98,21 @@ try {
       AND cancel_requested_at IS NULL
   `, [id]);
 
+  assert.equal((await claimable(newRunId)).rowCount, 0,
+    'a newly created pending reasoning task must not be claimable before approval');
+  await pool.query(
+    "UPDATE public.agent_runs SET approval_status = 'approved' WHERE id = $1",
+    [newRunId],
+  );
   assert.equal((await claimable(newRunId)).rowCount, 1,
-    'a newly created approved reasoning task must satisfy the worker claim predicate');
+    'an explicitly approved new reasoning task must satisfy the worker claim predicate');
   assert.equal((await claimable(legacyRunId)).rowCount, 0,
     'a legacy row must never satisfy the reasoning worker claim predicate');
 
   console.log('PASS: legacy reasoning rows are unclassified and pending.');
   console.log('PASS: pre-existing coding workbench rows retain coding classification.');
-  console.log('PASS: new tasks default to reasoning and approved.');
-  console.log('PASS: worker claim predicate admits new tasks and rejects legacy rows.');
+  console.log('PASS: new reasoning tasks default to pending until approved.');
+  console.log('PASS: worker claim predicate rejects pending and legacy rows, and admits explicitly approved new tasks.');
 } finally {
   await pool.query('DELETE FROM public.agent_runs WHERE id = $1', [newRunId]).catch(() => {});
   await pool.end();
