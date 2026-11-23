@@ -95,4 +95,20 @@ export function assertDatabaseManifestContract(
   if (primary.required_tables?.includes('agent_runs') !== true) {
     throw new Error('database.yml primary store must require public.agent_runs.');
   }
+
+  const requiredRuntimeTables = [
+    'coding_tasks',
+    'communication_conversations',
+    'communication_messages',
+    'checkpoints',
+    'checkpoint_blobs',
+    'checkpoint_writes',
+    'checkpoint_migrations',
+  ];
+
+  for (const table of requiredRuntimeTables) {
+    if (primary.required_runtime_tables?.includes(table) !== true) {
+      throw new Error('database.yml ' + environment + ' primary store must require runtime table: ' + table + '.');
+    }
+  }
 }
