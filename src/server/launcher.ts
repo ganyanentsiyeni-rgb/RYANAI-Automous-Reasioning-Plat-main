@@ -21,6 +21,7 @@ import { startupSummary } from './startupDiagnostics.js';
 import { evaluateStudioWorkerHeartbeats, inspectReadiness, isAgentWorkerReady } from './readiness.js';
 
 import { API_ROUTES } from '../config/core.js';
+import { normalizeResponsePreferences } from '../shared/responsePreferences.js';
 import { evaluateGenXSecurityEvent } from '../security/genxPolicy.js';
 
 import { invokeReasoningAgent } from '../agent/invoke.js';
@@ -561,6 +562,7 @@ function registerCoreRoutes() {
     }
 
     try {
+      return await runReasoning(prompt, request.body?.model, request.authUser, request.body?.language, normalizeResponsePreferences(request.body?.responsePreferences ?? request.authUser.responsePreferences));
       return await runReasoning(prompt, request.body?.model, request.authUser, request.body?.language, request.body?.responsePreferences ?? request.authUser.responsePreferences);
     } catch (err) {
       fastify.log.error({ err }, 'Reasoning request failed');
@@ -638,6 +640,7 @@ function registerCoreRoutes() {
         request.body?.model,
         request.authUser,
         request.body?.language,
+        normalizeResponsePreferences(request.body?.responsePreferences ?? request.authUser.responsePreferences),
         request.body?.responsePreferences ?? request.authUser.responsePreferences,
         (progress) => sendEvent({
           status: 'processing',
@@ -717,9 +720,9 @@ async function initializeDatabase() {
     const result = await dbPool.query('SELECT NOW()');
     const schema = await inspectDatabaseSchema((sql) => dbPool!.query(sql));
 
-    if (!schema.communications) {
+    if (!schema.requiredTables) {
       throw new Error(
-        'Required communication schema is missing. Run npm run db:migrate before starting the API.',
+        'Required application database tables are missing (users, agent_runs, agent_handoffs, agent_brain_health, agent_run_evidence, coding_tasks, communication tables, or LangGraph checkpoint tables). Validate and apply the approved versioned migration in staging; production migration requires separate approval.',
       );
     }
 
