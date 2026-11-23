@@ -217,7 +217,7 @@
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.118.0",
     "@tauri-apps/api": "^2.2.0",
-    "axios": "^1.20.0",
+    "axios": "^1.21.1",
     "bcrypt": "^6.0.0",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.2",
