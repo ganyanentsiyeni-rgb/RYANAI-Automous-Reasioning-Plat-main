@@ -26,6 +26,12 @@ environments:
         - checkpoint_blobs
         - checkpoint_writes
         - checkpoint_migrations
+        - communication_conversations
+        - communication_messages
+        - checkpoints
+        - checkpoint_blobs
+        - checkpoint_writes
+        - checkpoint_migrations
     cache:
       adapter: redis
       url_env: REDIS_URL
