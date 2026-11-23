@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { startPostgresNotificationListener, type PostgresNotificationListenerStatus } from './postgresNotificationListener.js';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { ChatOpenAI } from '@langchain/openai';
@@ -33,6 +33,7 @@ const brains = {
 } satisfies Record<BrainId, ReturnType<typeof resolveBrainProviderConfig> & { client: typeof primaryBrain }>;
 const localRuntime = (endpoint: string) => /localhost|127\.0\.0\.1/.test(endpoint) || endpoint === process.env.LM_STUDIO_URL || endpoint === process.env.OLLAMA_URL || endpoint === process.env.OLLAMA_BASE_URL;
 const asText = (value: unknown) => typeof value === 'string' ? value : JSON.stringify(value ?? '') ?? '';
+const buildApprovalPlanHash = (objective: string) => createHash('sha256').update(objective, 'utf8').digest('hex');
 
 async function updateRunHandoffs(
   run: Pick<ClaimedAgentRun, 'id' | 'worker_id' | 'attempts'>,
@@ -566,7 +567,7 @@ export async function dispatchAutonomousTask(
   try {
     run = await prisma.$transaction(async (tx) => {
       const created = await tx.agentRun.create({
-        data: { ...(taskId ? { id: taskId } : {}), userId, objective, requestedModel: requestedModel ?? null, executionScope, traceContext: captureQueueTraceContextForStorage(), approvalStatus: 'pending', status: 'queued' },
+        data: { ...(taskId ? { id: taskId } : {}), userId, objective, requestedModel: requestedModel ?? null, executionScope, traceContext: captureQueueTraceContextForStorage(), approvalStatus: 'pending', status: 'queued', planHash: buildApprovalPlanHash(objective) },
         select: { id: true, userId: true, objective: true, status: true, createdAt: true },
       });
       await tx.agentHandoff.createMany({ data: [
@@ -608,7 +609,7 @@ export async function dispatchAutonomousTask(
 export async function dispatchJarvisTask(actorId: string, objective: string, executionScope: ExecutionChange = { eventKnown: false, snapshotFresh: false }) {
   const run = await prisma.$transaction(async (tx) => {
     const created = await tx.agentRun.create({
-      data: { userId: actorId, objective, executionScope, traceContext: captureQueueTraceContextForStorage(), approvalStatus: 'pending', status: 'queued' },
+      data: { userId: actorId, objective, executionScope, traceContext: captureQueueTraceContextForStorage(), approvalStatus: 'pending', status: 'queued', planHash: buildApprovalPlanHash(objective) },
       select: { id: true, userId: true, objective: true, status: true, createdAt: true },
     });
     await tx.agentHandoff.createMany({ data: [

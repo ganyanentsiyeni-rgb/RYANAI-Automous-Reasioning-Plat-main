@@ -143,10 +143,11 @@ export const agentOperationsRoutes: FastifyPluginAsync = async (fastify) => {
     if (!run) return reply.code(404).send({ error: 'AgentRun not found.' });
     if (run.approvalStatus === 'approved') return { success: true, status: 'approved', alreadyApproved: true, taskId: run.id };
     if (run.approvalStatus !== 'pending' || run.status !== 'queued') return reply.code(409).send({ error: 'AgentRun is not awaiting approval.', status: run.status, approvalStatus: run.approvalStatus });
-    if (run.planSnapshot !== null && (!run.planHash || !run.baseCommitSha || !run.proposedDiffHash)) return reply.code(409).send({ error: 'AgentRun has a plan snapshot but is missing immutable plan/commit/diff hashes; approval is blocked.', status: 'BLOCKED' });
+    if (!run.planHash) return reply.code(409).send({ error: 'AgentRun is missing its immutable approval request hash; approval is blocked.', status: 'BLOCKED' });
+    if (run.planSnapshot !== null && (!run.baseCommitSha || !run.proposedDiffHash)) return reply.code(409).send({ error: 'AgentRun has a plan snapshot but is missing immutable commit/diff hashes; approval is blocked.', status: 'BLOCKED' });
     const now = new Date();
     const approved = await fastify.prisma.$transaction(async (tx) => {
-      const changed = await tx.agentRun.updateMany({ where: { id: run.id, status: 'queued', approvalStatus: 'pending' }, data: { approvalStatus: 'approved', approvedBy: request.authUser!.id, approvedAt: now, approvedPlanHash: run.planSnapshot === null ? null : run.planHash, approvedCommitSha: run.planSnapshot === null ? null : run.baseCommitSha, approvedDiffHash: run.planSnapshot === null ? null : run.proposedDiffHash } });
+      const changed = await tx.agentRun.updateMany({ where: { id: run.id, status: 'queued', approvalStatus: 'pending' }, data: { approvalStatus: 'approved', approvedBy: request.authUser!.id, approvedAt: now, approvedPlanHash: run.planHash, approvedCommitSha: run.planSnapshot === null ? null : run.baseCommitSha, approvedDiffHash: run.planSnapshot === null ? null : run.proposedDiffHash } });
       if (changed.count !== 1) return false;
       await appendRunEvidence(tx, { runId: run.id, eventType: 'approval.approved', actorId: request.authUser!.id, payload: { approvalStatus: 'approved', planHash: run.planHash, baseCommitSha: run.baseCommitSha, proposedDiffHash: run.proposedDiffHash } });
       return true;
