@@ -2,6 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { inspectDatabaseSchema } from './databaseSchema.js';
 
 const readyTables = {
+  users: true,
+  agent_runs: true,
+  agent_handoffs: true,
+  agent_brain_health: true,
+  agent_run_evidence: true,
+  coding_tasks: true,
   communication_conversations: true,
   communication_messages: true,
   checkpoints: true,
@@ -19,6 +25,7 @@ describe('inspectDatabaseSchema', () => {
 
     await expect(inspectDatabaseSchema(query)).resolves.toEqual({
       communications: true,
+      requiredTables: true,
       agentCheckpointer: true,
     });
     expect(query).toHaveBeenCalledTimes(2);
@@ -32,6 +39,20 @@ describe('inspectDatabaseSchema', () => {
 
     await expect(inspectDatabaseSchema(query)).resolves.toEqual({
       communications: true,
+      requiredTables: true,
+      agentCheckpointer: false,
+    });
+    expect(query).toHaveBeenCalledOnce();
+  });
+
+  it('marks the database unready when a manifest-required runtime table is missing', async () => {
+    const query = vi.fn().mockResolvedValueOnce({
+      rows: [{ ...readyTables, coding_tasks: false }],
+    });
+
+    await expect(inspectDatabaseSchema(query)).resolves.toEqual({
+      communications: true,
+      requiredTables: false,
       agentCheckpointer: false,
     });
     expect(query).toHaveBeenCalledOnce();
@@ -57,6 +78,7 @@ describe('inspectDatabaseSchema', () => {
 
     await expect(inspectDatabaseSchema(query)).resolves.toEqual({
       communications: false,
+      requiredTables: true,
       agentCheckpointer: true,
     });
     expect(query).toHaveBeenCalledTimes(2);

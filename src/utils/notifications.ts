@@ -6,63 +6,67 @@ interface ApprovalNotification {
   args: Record<string, unknown>;
 }
 
-export async function notifyPendingApproval({ threadId, tool, args }: ApprovalNotification) {
-  const dashboardUrl = process.env.ADMIN_DASHBOARD_URL || 'http://localhost:3000/admin/approvals';
+export interface ApprovalNotificationResult {
+  sent: boolean;
+  channels: string[];
+}
 
-  // 1. Send Slack Incoming Webhook Notification with Interactive Buttons
+export async function notifyPendingApproval({ threadId, tool, args }: ApprovalNotification): Promise<ApprovalNotificationResult> {
+  const dashboardUrl = process.env.ADMIN_DASHBOARD_URL || 'http://localhost:3000/admin/approvals';
+  const channels: string[] = [];
+
   if (process.env.SLACK_WEBHOOK_URL) {
     try {
-      const payload = {
-        text: `🚨 RyanAI Action Pending Approval: \${tool}`,
-        blocks: [
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `🚨 *Approval Required for Pending Action*\n*Thread ID:* \`${threadId}\`\n*Tool Request:* \`${tool}\``,
-            },
-          },
-          {
-            type: 'section',
-            text: {
-              type: 'mrkdwn',
-              text: `*Arguments:*\n\`\`\`${JSON.stringify(args, null, 2)}\`\`\``,
-            },
-          },
-          {
-            type: 'actions',
-            block_id: 'approval_actions',
-            elements: [
-              {
-                type: 'button',
-                text: { type: 'plain_text', text: '✅ Approve & Execute' },
-                style: 'primary',
-                action_id: 'approve_action',
-                value: JSON.stringify({ threadId, approved: true }),
-              },
-              {
-                type: 'button',
-                text: { type: 'plain_text', text: '❌ Reject Action' },
-                style: 'danger',
-                action_id: 'reject_action',
-                value: JSON.stringify({ threadId, approved: false }),
-              },
-            ],
-          },
-        ],
-      };
-
-      await fetch(process.env.SLACK_WEBHOOK_URL, {
+      const response = await fetch(process.env.SLACK_WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          text: `🚨 RyanAI Action Pending Approval: ${tool}`,
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `🚨 *Approval Required for Pending Action*\n*Thread ID:* \`${threadId}\`\n*Tool Request:* \`${tool}\``,
+              },
+            },
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `*Arguments:*\n\`\`\`${JSON.stringify(args, null, 2)}\`\`\``,
+              },
+            },
+            {
+              type: 'actions',
+              block_id: 'approval_actions',
+              elements: [
+                {
+                  type: 'button',
+                  text: { type: 'plain_text', text: '✅ Approve & Execute' },
+                  style: 'primary',
+                  action_id: 'approve_action',
+                  value: JSON.stringify({ threadId, approved: true }),
+                },
+                {
+                  type: 'button',
+                  text: { type: 'plain_text', text: '❌ Reject Action' },
+                  style: 'danger',
+                  action_id: 'reject_action',
+                  value: JSON.stringify({ threadId, approved: false }),
+                },
+              ],
+            },
+          ],
+        }),
       });
+      if (!response.ok) throw new Error(`Slack returned HTTP ${response.status}`);
+      channels.push('slack');
     } catch (err) {
       console.error('Failed to send Slack approval alert:', err);
     }
   }
 
-  // 2. Send Admin Email Notification
   if (process.env.SMTP_USER && process.env.ADMIN_EMAIL) {
     try {
       const transporter = nodemailer.createTransport({
@@ -89,8 +93,11 @@ export async function notifyPendingApproval({ threadId, tool, args }: ApprovalNo
           </div>
         `,
       });
+      channels.push('email');
     } catch (err) {
       console.error('Failed to send Email approval alert:', err);
     }
   }
+
+  return { sent: channels.length > 0, channels };
 }
