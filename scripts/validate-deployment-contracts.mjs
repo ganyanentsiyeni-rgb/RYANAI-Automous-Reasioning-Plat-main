@@ -105,7 +105,7 @@ const hasVerifiedCaContract = (stage) =>
   && stage.includes('scripts/verify-node-ca.sh')
   && !stage.includes('NODE_TLS_REJECT_UNAUTHORIZED');
 
-const vercelConfig = JSON.parse(read('vercel.json'));
+
 const vercelServices = vercelConfig.services ?? {};
 const vercelRewrites = vercelConfig.rewrites ?? [];
 const hasVercelServicesContract =
