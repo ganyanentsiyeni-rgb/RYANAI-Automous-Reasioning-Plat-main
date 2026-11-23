@@ -105,6 +105,24 @@ const hasVerifiedCaContract = (stage) =>
   && stage.includes('scripts/verify-node-ca.sh')
   && !stage.includes('NODE_TLS_REJECT_UNAUTHORIZED');
 
+const hasVercelBuildContract =
+  vercelConfig.installCommand === 'npm ci --legacy-peer-deps'
+  && vercelConfig.buildCommand === 'npm run build:web'
+  && vercelConfig.outputDirectory === 'dist';
+const hasVercelDeploymentContract =
+  platformDeployWorkflow.includes('workflow_dispatch:')
+  && platformDeployWorkflow.includes("inputs.vercel_confirmation == 'DEPLOY'")
+  && platformDeployWorkflow.includes('needs: [gate, railway]')
+  && platformDeployWorkflow.includes('environment: production')
+  && platformDeployWorkflow.includes('VERCEL_TOKEN')
+  && platformDeployWorkflow.includes('VERCEL_ORG_ID')
+  && platformDeployWorkflow.includes('VERCEL_PROJECT_ID')
+  && platformDeployWorkflow.includes('VERCEL_CLI_VERSION')
+  && platformDeployWorkflow.includes('vercel build --prod')
+  && platformDeployWorkflow.includes('vercel deploy --prebuilt --prod --skip-domain')
+  && platformDeployWorkflow.includes('ref: ${{ needs.gate.outputs.sha }}');
+
+const checks = [
 const vercelConfig = JSON.parse(read('vercel.json'));
 const vercelServices = vercelConfig.services ?? {};
 const vercelRewrites = vercelConfig.rewrites ?? [];
