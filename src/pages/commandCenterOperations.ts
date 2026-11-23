@@ -111,6 +111,7 @@ interface StreamAssistantResponseOptions {
   conversationId: string;
   userId: string;
   language: string;
+  responsePreferences?: unknown;
   mountedRef: MutableRefObject<boolean>;
   requestStartRef: MutableRefObject<number | null>;
   setSending: Dispatch<SetStateAction<boolean>>;
@@ -127,6 +128,7 @@ export async function streamAssistantResponse({
   conversationId,
   userId,
   language,
+  responsePreferences,
   mountedRef,
   requestStartRef,
   setSending,
@@ -254,7 +256,7 @@ export async function streamAssistantResponse({
       onTitle: updateConversationTitle,
       onDone: finishWithAssistantMessage,
       onError: finishWithStreamError,
-    }, language);
+    }, language, userId, responsePreferences);
   } catch {
     console.error('Stream failed');
   } finally {
