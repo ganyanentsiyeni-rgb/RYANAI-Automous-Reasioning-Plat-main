@@ -198,9 +198,9 @@ const checks = [
   ['Render deployment requires explicit enablement and approval', renderDeploy.includes("vars.RENDER_STAGING_DEPLOY_ENABLED == 'true'") && renderDeploy.includes("vars.RENDER_STAGING_ISOLATION_CONFIRMED == 'true'")],
   ['Render staging deploys only the exact open PR head after CI/security passes', renderDeploy.includes('commits/${TARGET_SHA}/pulls') && renderDeploy.includes('head.sha == $sha') && renderDeploy.includes('check-runs') && renderDeploy.includes('conclusion == "success"') && renderDeploy.includes('inputs.confirmation == \'STAGE\'')],
   ['Render staging deploy refuses production service IDs and verifies staging service identity', renderDeploy.includes('RENDER_STAGING_SERVICE_ID') && renderDeploy.includes('ryanai-staging') && renderDeploy.includes('srv-dbk4giu7bikc7394a4r0')],
-  ['Railway uses Dockerfile.api and /health', railway.build?.dockerfilePath === 'Dockerfile.api' && railway.deploy?.healthcheckPath === '/health'],
+  ['Railway uses Dockerfile.api and the live dependency readiness endpoint /readyz', railway.build?.dockerfilePath === 'Dockerfile.api' && railway.deploy?.healthcheckPath === '/readyz'],
   ['Render is the default frontend and API delivery provider', renderWeb?.runtime === 'static' && renderApi?.runtime === 'docker'],
-  ['Railway is the default Docker and persistent-workload provider', railway.build?.dockerfilePath === 'Dockerfile.api' && railway.deploy?.healthcheckPath === '/health'],
+  ['Railway is the default Docker and persistent-workload provider', railway.build?.dockerfilePath === 'Dockerfile.api' && railway.deploy?.healthcheckPath === '/readyz'],
   ['Railway staging deploy is manual, limited to exact open PR heads, and isolated', railwayDeploy.includes('workflow_dispatch:') && !railwayDeploy.includes('workflow_run:') && railwayDeploy.includes("inputs.confirmation == 'STAGE'") && railwayDeploy.includes("vars.RAILWAY_STAGING_ISOLATION_CONFIRMED == 'true'") && railwayDeploy.includes('RAILWAY_STAGING_PROJECT_ID') && railwayDeploy.includes('RAILWAY_STAGING_ENVIRONMENT_ID') && railwayDeploy.includes('commits/${TARGET_SHA}/pulls')],
 ];
 
