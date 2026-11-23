@@ -105,6 +105,7 @@ const hasVerifiedCaContract = (stage) =>
   && stage.includes('scripts/verify-node-ca.sh')
   && !stage.includes('NODE_TLS_REJECT_UNAUTHORIZED');
 
+
 const hasVercelBuildContract =
   vercelConfig.installCommand === 'npm ci --legacy-peer-deps'
   && vercelConfig.buildCommand === 'npm run build:web'
