@@ -720,9 +720,9 @@ async function initializeDatabase() {
     const result = await dbPool.query('SELECT NOW()');
     const schema = await inspectDatabaseSchema((sql) => dbPool!.query(sql));
 
-    if (!schema.communications) {
+    if (!schema.requiredTables) {
       throw new Error(
-        'Required communication schema is missing. Run npm run db:migrate before starting the API.',
+        'Required application database tables are missing (users, agent_runs, agent_handoffs, agent_brain_health, agent_run_evidence, coding_tasks, communication tables, or LangGraph checkpoint tables). Validate and apply the approved versioned migration in staging; production migration requires separate approval.',
       );
     }
 
