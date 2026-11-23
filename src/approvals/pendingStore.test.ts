@@ -35,13 +35,14 @@ describe('createPendingAction', () => {
     });
     expect(pendingAction.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: {
+        data: expect.objectContaining({
           userId: 'user-1',
+          threadId: expect.stringMatching(/^legacy-pending-action:/),
           tool: 'send_email',
           args: email,
           summary: 'Email to ada@example.com: "Hello"',
           expiresAt: new Date('2026-10-28T10:00:00Z'),
-        },
+        }),
       }),
     );
   });
