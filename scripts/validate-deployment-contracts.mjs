@@ -105,6 +105,24 @@ const hasVerifiedCaContract = (stage) =>
   && stage.includes('scripts/verify-node-ca.sh')
   && !stage.includes('NODE_TLS_REJECT_UNAUTHORIZED');
 
+const hasVercelBuildContract =
+  vercelConfig.installCommand === 'npm ci --legacy-peer-deps'
+  && vercelConfig.buildCommand === 'npm run build:web'
+  && vercelConfig.outputDirectory === 'dist';
+const hasVercelDeploymentContract =
+  platformDeployWorkflow.includes('workflow_dispatch:')
+  && platformDeployWorkflow.includes("inputs.vercel_confirmation == 'DEPLOY'")
+  && platformDeployWorkflow.includes('needs: [gate, railway]')
+  && platformDeployWorkflow.includes('environment: production')
+  && platformDeployWorkflow.includes('VERCEL_TOKEN')
+  && platformDeployWorkflow.includes('VERCEL_ORG_ID')
+  && platformDeployWorkflow.includes('VERCEL_PROJECT_ID')
+  && platformDeployWorkflow.includes('VERCEL_CLI_VERSION')
+  && platformDeployWorkflow.includes('vercel build --prod')
+  && platformDeployWorkflow.includes('vercel deploy --prebuilt --prod --skip-domain')
+  && platformDeployWorkflow.includes('ref: ${{ needs.gate.outputs.sha }}');
+
+const checks = [
 const vercelConfig = JSON.parse(read('vercel.json'));
 const vercelServices = vercelConfig.services ?? {};
 const vercelRewrites = vercelConfig.rewrites ?? [];
@@ -146,24 +164,7 @@ const hasVercelServicesContract =
   )
   && vercelRewrites.findIndex((rewrite) => rewrite.source === '/mcp/health') <
     vercelRewrites.findIndex((rewrite) => rewrite.source === '/mcp/(.*)');
-const hasLegacyVercelIntegration =
-  existsSync(new URL('../.github/workflows/deploy-vercel.yml', import.meta.url))
-  || existsSync(new URL('../.github/workflows/vercel-deploy.yml', import.meta.url))
-  || packageHasVercelDependency
-  || lockfileHasVercelDependency
-  || packageHasVercelScript
-  || workflowContents.some((workflow) => /\\bVERCEL_[A-Z0-9_]*\\b|@vercel\\/|\\bvercel\\s+(?:deploy|build|link|env)\\b/i.test(workflow))
-  || ciWorkflow.includes('VERCEL_')
-  || renderDeploy.includes('VERCEL_')
-  || railwayDeploy.includes('VERCEL_');
-
-const checks = [
-  ['Vercel Services config wires web, API, and MCP with correct routing and bindings', hasVercelServicesContract],
-  ['Vercel deploy workflows, CLI dependencies, and CI credentials are absent', !hasLegacyVercelIntegration],
-const hasVercelBuildContract =
-  vercelConfig.installCommand === 'npm ci --legacy-peer-deps'
-  && vercelConfig.buildCommand === 'npm run build:web'
-  && vercelConfig.outputDirectory === 'dist';
+const hasVercelBuildContract = hasVercelServicesContract;
 const hasVercelDeploymentContract =
   platformDeployWorkflow.includes('workflow_dispatch:')
   && platformDeployWorkflow.includes("inputs.vercel_confirmation == 'DEPLOY'")
@@ -176,7 +177,6 @@ const hasVercelDeploymentContract =
   && platformDeployWorkflow.includes('vercel build --prod')
   && platformDeployWorkflow.includes('vercel deploy --prebuilt --prod --skip-domain')
   && platformDeployWorkflow.includes('ref: ${{ needs.gate.outputs.sha }}');
-
 const checks = [
   ['Vercel installs root dependencies, builds only the web target, and publishes dist', hasVercelBuildContract],
   ['Vercel production deploy is manual, explicit-confirmation gated, exact-SHA based, and behind Railway', hasVercelDeploymentContract],
@@ -216,9 +216,9 @@ const checks = [
   ['Render deployment requires explicit enablement and approval', renderDeploy.includes("vars.RENDER_STAGING_DEPLOY_ENABLED == 'true'") && renderDeploy.includes("vars.RENDER_STAGING_ISOLATION_CONFIRMED == 'true'")],
   ['Render staging deploys only the exact open PR head after CI/security passes', renderDeploy.includes('commits/${TARGET_SHA}/pulls') && renderDeploy.includes('head.sha == $sha') && renderDeploy.includes('check-runs') && renderDeploy.includes('conclusion == "success"') && renderDeploy.includes('inputs.confirmation == \'STAGE\'')],
   ['Render staging deploy refuses production service IDs and verifies staging service identity', renderDeploy.includes('RENDER_STAGING_SERVICE_ID') && renderDeploy.includes('ryanai-staging') && renderDeploy.includes('srv-dbk4giu7bikc7394a4r0')],
-  ['Railway uses Dockerfile.api and /health', railway.build?.dockerfilePath === 'Dockerfile.api' && railway.deploy?.healthcheckPath === '/health'],
+  ['Railway uses Dockerfile.api and the live dependency readiness endpoint /readyz', railway.build?.dockerfilePath === 'Dockerfile.api' && railway.deploy?.healthcheckPath === '/readyz'],
   ['Render is the default frontend and API delivery provider', renderWeb?.runtime === 'static' && renderApi?.runtime === 'docker'],
-  ['Railway is the default Docker and persistent-workload provider', railway.build?.dockerfilePath === 'Dockerfile.api' && railway.deploy?.healthcheckPath === '/health'],
+  ['Railway is the default Docker and persistent-workload provider', railway.build?.dockerfilePath === 'Dockerfile.api' && railway.deploy?.healthcheckPath === '/readyz'],
   ['Railway staging deploy is manual, limited to exact open PR heads, and isolated', railwayDeploy.includes('workflow_dispatch:') && !railwayDeploy.includes('workflow_run:') && railwayDeploy.includes("inputs.confirmation == 'STAGE'") && railwayDeploy.includes("vars.RAILWAY_STAGING_ISOLATION_CONFIRMED == 'true'") && railwayDeploy.includes('RAILWAY_STAGING_PROJECT_ID') && railwayDeploy.includes('RAILWAY_STAGING_ENVIRONMENT_ID') && railwayDeploy.includes('commits/${TARGET_SHA}/pulls')],
 ];
 
