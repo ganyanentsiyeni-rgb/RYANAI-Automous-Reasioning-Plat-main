@@ -471,6 +471,7 @@ export default function CommandCenter({
         conversationId,
         userId,
         language: voiceLanguage,
+        responsePreferences: copilotSettings,
         mountedRef,
         requestStartRef,
         setSending,
@@ -481,7 +482,7 @@ export default function CommandCenter({
         setStatus,
       });
     },
-    [activeId, model, newConversation, conversations, userId, voiceLanguage],
+    [activeId, model, newConversation, conversations, userId, voiceLanguage, copilotSettings],
   );
 
   /**
@@ -938,7 +939,7 @@ export default function CommandCenter({
         icon={<Terminal size={16} />}
       >
         <div className="h-[26rem] -m-2 overflow-hidden rounded-lg">
-          <ChatInterface initialModel={defaultInferenceModel} />
+          <ChatInterface initialModel={defaultInferenceModel} copilotSettings={copilotSettings} />
         </div>
       </Modal>
       <GithubModal
