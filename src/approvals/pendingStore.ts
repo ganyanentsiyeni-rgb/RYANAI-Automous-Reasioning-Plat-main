@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   MAX_PENDING_PER_USER,
   expiryFrom,
@@ -39,6 +40,10 @@ export async function createPendingAction(
   return prisma.pendingAction.create({
     data: {
       userId,
+      // The legacy queue has no LangGraph execution thread. Give each queued
+      // action an isolated, explicitly namespaced thread binding rather than
+      // leaving the durable non-null column unset.
+      threadId: `legacy-pending-action:${randomUUID()}`,
       tool,
       args,
       summary: summarizeAction(tool, args),
