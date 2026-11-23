@@ -9,6 +9,14 @@ on:
         description: "Exact reviewed commit SHA to deploy"
         required: true
         type: string
+      vercel_confirmation:
+        description: "Set to DEPLOY only when explicitly authorizing the Vercel production deployment"
+        required: true
+        type: choice
+        options:
+          - NO
+          - DEPLOY
+        default: NO
 
 permissions:
   contents: read
@@ -118,3 +126,51 @@ jobs:
               --header "Content-Type: application/json" \
               --data "$(jq -n --arg commitId "$DEPLOY_SHA" --arg deployMode "build_and_deploy" '{commitId:$commitId,deployMode:$deployMode}')" 
           done
+
+  vercel:
+    name: Vercel deploy
+    needs: [gate, railway]
+    if: inputs.vercel_confirmation == 'DEPLOY'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.gate.outputs.sha }}
+          persist-credentials: false
+
+      - name: Validate Vercel project configuration
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+          VERCEL_CLI_VERSION: ${{ vars.VERCEL_CLI_VERSION }}
+        run: |
+          set -euo pipefail
+          [[ -n "${VERCEL_TOKEN:-}" ]] || { echo "::error::VERCEL_TOKEN is not configured"; exit 1; }
+          [[ -n "${VERCEL_ORG_ID:-}" ]] || { echo "::error::VERCEL_ORG_ID is not configured"; exit 1; }
+          [[ -n "${VERCEL_PROJECT_ID:-}" ]] || { echo "::error::VERCEL_PROJECT_ID is not configured"; exit 1; }
+          [[ -n "${VERCEL_CLI_VERSION:-}" ]] || { echo "::error::VERCEL_CLI_VERSION is not configured"; exit 1; }
+          npm install --global "vercel@${VERCEL_CLI_VERSION}"
+
+      - name: Link the explicitly configured Vercel project
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: vercel link --yes --project "$VERCEL_PROJECT_ID" --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN"
+
+      - name: Pull Vercel production environment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
+
+      - name: Build exact reviewed commit
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel build --prod --token "$VERCEL_TOKEN"
+
+      - name: Deploy prebuilt artifact without changing domain aliases
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: vercel deploy --prebuilt --prod --skip-domain --token "$VERCEL_TOKEN"

@@ -46,6 +46,40 @@ describe('Supabase session assurance on the backend', () => {
     expect(response.json().authUser).toMatchObject({ id: userId, sessionAssurance: 'aal2' });
   });
 
+  it('normalizes saved Copilot response preferences from the verified account metadata without granting authority', async () => {
+    mocks.getUser.mockResolvedValue({
+      data: {
+        user: {
+          id: userId,
+          email: 'person@example.test',
+          is_anonymous: false,
+          app_metadata: {},
+          user_metadata: {
+            ryanai_copilot_settings: {
+              personality: 'warm',
+              responseStyle: 'detailed',
+              initiative: 'proactive',
+              collaboration: 'independent',
+              role: 'admin',
+              approved: true,
+            },
+          },
+        },
+      },
+      error: null,
+    });
+    const response = await authenticate();
+    expect(response.statusCode).toBe(200);
+    expect(response.json().authUser.responsePreferences).toEqual({
+      personality: 'warm',
+      responseStyle: 'detailed',
+      initiative: 'proactive',
+      collaboration: 'independent',
+    });
+    expect(response.json().authUser).not.toHaveProperty('approved');
+    expect(response.json().authUser).not.toHaveProperty('permissions');
+  });
+
   it('preserves aal1 as aal1 rather than upgrading it from a Twilio-style verification', async () => {
     mocks.getClaims.mockResolvedValue({
       data: { claims: { sub: userId, aal: 'aal1' } }, error: null,

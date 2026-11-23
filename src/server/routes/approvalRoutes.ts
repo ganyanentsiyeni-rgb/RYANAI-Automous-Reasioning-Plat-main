@@ -3,6 +3,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { humanInTheLoopAgent } from '../../agent/approvalEngine.js';
 import { enterpriseMultiAgent } from '../../agent/supervisorGraph.js';
 import { notifyPendingApproval } from '../../utils/notifications.js';
+import { prisma } from '../../lib/prisma.js';
 
 interface WithApprovalBody {
   prompt: string;
@@ -18,11 +19,13 @@ interface AdminResolveBody {
   approved: boolean;
 }
 
+const APPROVAL_TTL_MS = 30 * 60 * 1000;
+
 /** Register admin-only routes to inspect, approve, or reject paused agent work. */
 export const approvalRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', requireAdmin);
 
-  // 1. Initial Prompt Handler for Single Agent: Halts when a tool is called & triggers notification
+  // 1. Initial Prompt Handler for Single Agent: Halts when a tool is called & triggers durable approval.
   fastify.post<{ Body: WithApprovalBody }>(
     '/api/reason/with-approval',
     async (request, reply) => {
@@ -34,40 +37,52 @@ export const approvalRoutes: FastifyPluginAsync = async (fastify) => {
 
       const config = { configurable: { thread_id: threadId } };
 
-      // Run agent up to the interrupt point
       await humanInTheLoopAgent.invoke(
         { messages: [{ role: 'user', content: prompt }] },
         config,
       );
 
-      // Inspect graph state to verify pending tool call
       const currentState = await humanInTheLoopAgent.getState(config);
 
       if (currentState.next && currentState.next.includes('tools')) {
         const lastMessage = currentState.values?.messages?.at(-1);
         const pendingTool = lastMessage?.tool_calls?.[0];
+        const expiresAt = new Date(Date.now() + APPROVAL_TTL_MS);
 
-        // Dispatch notification asynchronously
-        try {
-          notifyPendingApproval({
+        // The approval decision is durable and owner/admin-bound. Graph checkpoint
+        // state alone is not sufficient evidence of approval.
+        const pendingAction = await prisma.pendingAction.create({
+          data: {
+            userId: request.authUser!.id,
             threadId,
             tool: pendingTool?.name || 'unknown_tool',
             args: pendingTool?.args || {},
-          });
-        } catch (err) {
-          fastify.log.warn(
-            `Failed to dispatch notification: ${(err as Error).message}`,
-          );
-        }
+            summary: `Approval required for tool ${pendingTool?.name || 'unknown_tool'}`,
+            status: 'pending',
+            expiresAt,
+          },
+          select: { id: true, expiresAt: true },
+        });
+
+        const notification = await notifyPendingApproval({
+          threadId,
+          tool: pendingTool?.name || 'unknown_tool',
+          args: pendingTool?.args || {},
+        });
 
         return {
           status: 'PENDING_APPROVAL',
           threadId,
+          pendingActionId: pendingAction.id,
+          pendingActionExpiresAt: pendingAction.expiresAt,
           pendingAction: {
             tool: pendingTool?.name,
             arguments: pendingTool?.args,
           },
-          message: 'Tool execution paused. Notification sent to admin.',
+          notification: notification.sent ? 'sent' : 'unavailable',
+          message: notification.sent
+            ? 'Tool execution paused. Approval is durably recorded and notification was dispatched.'
+            : 'Tool execution paused. Approval is durably recorded; notification delivery is unavailable.',
         };
       }
 
@@ -78,7 +93,7 @@ export const approvalRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
-  // 2. Resume Endpoint for Single Agent: Resumes or cancels tool execution based on user response
+  // 2. Resume Endpoint for Single Agent: durable decision is required before checkpoint resume.
   fastify.post<{ Body: ApproveBody }>(
     '/api/reason/approve',
     async (request, reply) => {
@@ -88,10 +103,35 @@ export const approvalRoutes: FastifyPluginAsync = async (fastify) => {
         return { error: 'threadId is required.' };
       }
 
-      const config = { configurable: { thread_id: threadId } };
+      const pendingAction = await prisma.pendingAction.findFirst({
+        where: {
+          threadId,
+          userId: request.authUser!.id,
+          status: 'pending',
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (!pendingAction) {
+        reply.status(409);
+        return {
+          status: 'BLOCKED',
+          error: 'No active durable approval exists for this thread.',
+        };
+      }
 
       if (!approved) {
-        // User rejected action: Feed rejection back into conversation without running tool
+        await prisma.pendingAction.update({
+          where: { id: pendingAction.id },
+          data: {
+            status: 'rejected',
+            decidedAt: new Date(),
+            decidedBy: request.authUser!.id,
+            result: 'Rejected by administrator.',
+          },
+        });
+
         const rejectedResult = await humanInTheLoopAgent.invoke(
           {
             messages: [
@@ -101,26 +141,57 @@ export const approvalRoutes: FastifyPluginAsync = async (fastify) => {
               },
             ],
           },
-          config,
+          { configurable: { thread_id: threadId } },
         );
 
         return {
           status: 'REJECTED',
+          pendingActionId: pendingAction.id,
           response: rejectedResult?.messages?.at(-1)?.content,
         };
       }
 
-      // User approved: Passing `null` resumes execution from the saved checkpoint
-      const approvedResult = await humanInTheLoopAgent.invoke(null, config);
+      await prisma.pendingAction.update({
+        where: { id: pendingAction.id },
+        data: {
+          status: 'approved',
+          decidedAt: new Date(),
+          decidedBy: request.authUser!.id,
+        },
+      });
 
-      return {
-        status: 'EXECUTED',
-        response: approvedResult?.messages?.at(-1)?.content,
-      };
+      try {
+        const approvedResult = await humanInTheLoopAgent.invoke(null, {
+          configurable: { thread_id: threadId },
+        });
+
+        await prisma.pendingAction.update({
+          where: { id: pendingAction.id },
+          data: {
+            status: 'executed',
+            result: 'Approved and resumed successfully.',
+          },
+        });
+
+        return {
+          status: 'EXECUTED',
+          pendingActionId: pendingAction.id,
+          response: approvedResult?.messages?.at(-1)?.content,
+        };
+      } catch (error) {
+        await prisma.pendingAction.update({
+          where: { id: pendingAction.id },
+          data: {
+            status: 'failed',
+            result: error instanceof Error ? error.message.slice(0, 500) : 'Approval resume failed.',
+          },
+        });
+        throw error;
+      }
     },
   );
 
-  // 3. Multi-Agent Supergraph: Check current thread state for pending worker interrupts
+  // 3. Multi-Agent Supergraph: Check current thread state for pending worker interrupts.
   fastify.get<{ Params: { threadId: string } }>(
     '/api/admin/threads/:threadId/pending',
     async (request) => {
@@ -136,48 +207,106 @@ export const approvalRoutes: FastifyPluginAsync = async (fastify) => {
         };
       }
 
+      const pendingAction = await prisma.pendingAction.findFirst({
+        where: {
+          threadId,
+          userId: request.authUser!.id,
+          status: 'pending',
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, tool: true, args: true, expiresAt: true },
+      });
+
       return {
         paused: true,
-        nextNodes: state.next, // e.g., ['commsWorker']
+        nextNodes: state.next,
         pendingMessage: state.values?.messages?.at(-1),
+        pendingAction,
       };
     },
   );
 
-  // 4. Multi-Agent Supergraph: Resume graph execution upon admin approval or rejection
+  // 4. Multi-Agent Supergraph: durable decision is required before resume.
   fastify.post<{ Params: { threadId: string }; Body: AdminResolveBody }>(
     '/api/admin/threads/:threadId/resolve',
     async (request, reply) => {
       const { threadId } = request.params;
       const { approved } = request.body || {};
-      const config = { configurable: { thread_id: threadId } };
+
+      const pendingAction = await prisma.pendingAction.findFirst({
+        where: {
+          threadId,
+          userId: request.authUser!.id,
+          status: 'pending',
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (!pendingAction) {
+        reply.status(409);
+        return {
+          success: false,
+          status: 'BLOCKED',
+          error: 'No active durable approval exists for this thread.',
+        };
+      }
 
       try {
-        let result;
+        await prisma.pendingAction.update({
+          where: { id: pendingAction.id },
+          data: {
+            status: approved ? 'approved' : 'rejected',
+            decidedAt: new Date(),
+            decidedBy: request.authUser!.id,
+            result: approved ? null : 'Rejected by administrator.',
+          },
+        });
 
+        let result;
         if (approved) {
-          // Resume graph execution by passing null to continue past the interrupt breakpoint
-          result = await enterpriseMultiAgent.invoke(null, config);
+          result = await enterpriseMultiAgent.invoke(null, {
+            configurable: { thread_id: threadId },
+          });
+          await prisma.pendingAction.update({
+            where: { id: pendingAction.id },
+            data: { status: 'executed', result: 'Approved and resumed successfully.' },
+          });
         } else {
-          // If rejected, inject rejection feedback into conversation state
           result = await enterpriseMultiAgent.invoke(
             {
               messages: [
                 {
                   role: 'user',
-                  content:
-                    'Execution rejected by administrator. Halt task processing.',
+                  content: 'Execution rejected by administrator. Halt task processing.',
                 },
               ],
             },
-            config,
+            { configurable: { thread_id: threadId } },
           );
         }
 
-        return { success: true, result };
+        return {
+          success: true,
+          status: approved ? 'EXECUTED' : 'REJECTED',
+          pendingActionId: pendingAction.id,
+          result,
+        };
       } catch (err: unknown) {
+        await prisma.pendingAction.update({
+          where: { id: pendingAction.id },
+          data: {
+            status: 'failed',
+            result: err instanceof Error ? err.message.slice(0, 500) : 'Approval resolution failed.',
+          },
+        });
         reply.status(500);
-        return { success: false, error: (err as Error).message };
+        return {
+          success: false,
+          status: 'FAILED',
+          error: err instanceof Error ? err.message : 'Approval resolution failed.',
+        };
       }
     },
   );
