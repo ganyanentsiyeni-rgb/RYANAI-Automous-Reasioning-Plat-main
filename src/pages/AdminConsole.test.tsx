@@ -266,6 +266,7 @@ describe('Admin Console request ownership', () => {
   });
 
   it('wires profile search to the server-side directory endpoint and resets pagination', async () => {
+    apiFetch.mockImplementation(async (input) => {
     apiFetch.mockImplementation(async (input, init) => {
       const path = String(input);
       if (path === '/api/auth/verify') return response({ authenticated: true, user: { id: 'admin-account-a', email: 'admin@example.test', role: 'admin', isOwner: true } });
@@ -280,6 +281,8 @@ describe('Admin Console request ownership', () => {
     await mount('admin-account-a');
     await vi.waitFor(() => expect(container.querySelector('input[aria-label="Search profiles"]')).toBeTruthy());
     const input = container.querySelector('input[aria-label="Search profiles"]') as HTMLInputElement;
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    await act(async () => { valueSetter?.call(input, 'alice'); input.dispatchEvent(new Event('input', { bubbles: true })); });
     const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
     await act(async () => {
       setInputValue?.call(input, 'alice');

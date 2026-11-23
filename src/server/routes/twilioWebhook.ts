@@ -78,6 +78,12 @@ export const twilioWebhookPlugin: FastifyPluginAsync = async (fastify) => {
           reply.type('text/xml');
           return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
         }
+        // Replays must obey the same explicit owner authorization gate as the
+        // first delivery. A completed AgentRun is not permission to send a reply.
+        if (!isCommunicationsTestAuthorized()) {
+          reply.type('text/xml');
+          return '<?xml version="1.0" encoding="UTF-8"?><Response/>';
+        }
         if (claim.existing?.agentRunId) {
           const resumed = await waitForInboundCommunicationRun(claim.existing.agentRunId, ownerUserId);
           if (resumed.completed) {

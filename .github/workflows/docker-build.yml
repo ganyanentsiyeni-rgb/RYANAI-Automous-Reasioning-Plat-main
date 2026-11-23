@@ -128,6 +128,18 @@ jobs:
           MCP_PROXY_DELEGATION_TOKEN=ci_only_negative_test_placeholder
           EOF
           docker compose --project-name mcpjungle-negative --env-file "$negative_env" --profile mcp-gateway up -d mcpjungle-db
+          logs=""
+          state=""
+          # Docker may report the container as exited before its log driver has
+          # made the entrypoint error available. Wait for both signals rather
+          # than treating an initially empty docker-logs response as a failure.
+          for attempt in $(seq 1 30); do
+            state="$(docker inspect --format '{{.State.Status}}' ryanai-mcpjungle-db 2>/dev/null || true)"
+            logs="$(docker logs ryanai-mcpjungle-db 2>&1 || true)"
+            if printf '%s' "$logs" | grep -qi 'superuser password is not specified'; then break; fi
+            if [ "$state" != "exited" ] && [ "$state" != "restarting" ]; then
+              sleep 1
+              continue
           state=""
           container_logs=""
           # Wait for both the expected password error and the failed/restarting state.
@@ -142,6 +154,18 @@ jobs:
             sleep 1
           done
           state="$(docker inspect --format '{{.State.Status}}' ryanai-mcpjungle-db 2>/dev/null || true)"
+          logs="$(docker logs ryanai-mcpjungle-db 2>&1 || true)"
+          if [ "$state" != "exited" ] && [ "$state" != "restarting" ]; then
+            echo "Expected MCPJungle Postgres to fail closed when its password is unset; state=$state"
+            printf '%s\n' "$logs"
+            exit 1
+          fi
+          container_logs="$(docker logs ryanai-mcpjungle-db 2>&1 || true)"
+          if ! grep -Eqi 'superuser password is not specified' <<< "$container_logs"; then
+            echo "MCPJungle Postgres did not report the expected missing-password error"
+          if ! printf '%s' "$logs" | grep -qi 'superuser password is not specified'; then
+            echo "MCPJungle Postgres did not report the expected missing-password error after waiting for container logs"
+            printf '%s\n' "$logs"
           container_logs="$(docker logs ryanai-mcpjungle-db 2>&1 || true)"
           if [ "$state" != "exited" ] && [ "$state" != "restarting" ]; then
             echo "Expected MCPJungle Postgres to stop/restart when its password is unset; state=$state"
