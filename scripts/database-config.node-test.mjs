@@ -10,7 +10,7 @@ assert.equal(manifest.environments.staging.primary.url_env, 'DATABASE_URL');
 assert.equal(manifest.environments.production.primary.url_env, 'DATABASE_URL');
 assert.equal(manifest.agent_runs.table, 'agent_runs');
 assert.equal(manifest.agent_runs.schema, 'public');
-for (const table of [
+[
   'coding_tasks',
   'communication_conversations',
   'communication_messages',
@@ -18,12 +18,12 @@ for (const table of [
   'checkpoint_blobs',
   'checkpoint_writes',
   'checkpoint_migrations',
-]) {
+].forEach(function (table) {
   assert.ok(manifest.environments.production.primary.required_runtime_tables.includes(table),
-    `production database contract must declare runtime table: ${table}`);
+    'production database contract must declare runtime table: ' + table);
   assert.ok(manifest.environments.staging.primary.required_runtime_tables.includes(table),
-    `staging database contract must declare runtime table: ${table}`);
-}
+    'staging database contract must declare runtime table: ' + table);
+});
 assert.equal(manifest.fleet_contract.expected_agents, 12);
 assert.equal(manifest.fleet_contract.expected_workers, 10);
 assert.equal(getDatabaseStore('production', 'cache').url_env, 'REDIS_URL');
