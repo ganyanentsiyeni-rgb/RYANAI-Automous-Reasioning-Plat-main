@@ -166,6 +166,9 @@ END
 $drop_external_auth_fks$;
 SQL
 
+log "Asserting and excluding Supabase-owned public tables from the Prisma-only drift comparison"
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+DO $assert_supabase_owned_tables$
 log "Excluding separately-owned Supabase tables from the Prisma-only drift comparison"
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
 DROP TABLE
