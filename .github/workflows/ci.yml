@@ -252,12 +252,12 @@ jobs:
           SQL
 
       - name: Prepare database
-        # The Supabase platform chain has completed on the isolated local stack.
+        # supabase db reset has already applied the combined migration chain.
+        # The Prisma bootstrap migration records the Supabase baseline marker
+        # in _prisma_migrations, so resolving it again would fail with P3008.
         env:
           NODE_ENV: test
-        run: |
-          npx prisma migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
-          npm run db:setup
+        run: npm run db:setup
 
       - name: Verify complete Supabase and Prisma migration contract
         run: |
