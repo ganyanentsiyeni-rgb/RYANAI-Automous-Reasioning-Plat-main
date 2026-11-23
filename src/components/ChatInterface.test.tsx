@@ -82,6 +82,33 @@ describe('Inference Console progress and result states', () => {
     expect(stream.mock.calls[0][0]).toBe('Explain the task');
   });
 
+  it('passes saved Copilot response preferences into the inference stream', async () => {
+    stream.mockResolvedValue(undefined);
+    const copilotSettings = {
+      showAlexStatus: true,
+      showDelegationPanel: true,
+      refreshIntervalSeconds: 30 as const,
+      personality: 'warm' as const,
+      responseStyle: 'detailed' as const,
+      initiative: 'proactive' as const,
+      collaboration: 'independent' as const,
+      useAccountMemory: true,
+    };
+
+    await act(async () => root.render(<ChatInterface copilotSettings={copilotSettings} />));
+    await setPrompt('Review this plan');
+    await submit();
+
+    expect(stream).toHaveBeenCalledWith(
+      'Review this plan',
+      expect.any(String),
+      expect.any(Object),
+      undefined,
+      undefined,
+      copilotSettings,
+    );
+  });
+
   it('shows authenticated API errors and does not mark a failed run complete', async () => {
     stream.mockImplementation(async (_prompt, _model, callbacks) => {
       callbacks.onError?.('Reasoning provider request failed. Please try again later.');
