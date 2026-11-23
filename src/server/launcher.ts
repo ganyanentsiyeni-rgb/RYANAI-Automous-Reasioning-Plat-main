@@ -545,7 +545,8 @@ function registerCoreRoutes() {
     request: FastifyRequest<{ Body: { prompt?: string; model?: string; language?: string; responsePreferences?: unknown } }>,
     reply: FastifyReply,
   ) => {
-    if (!request.authUser?.id) {
+    const authUser = request.authUser;
+    if (!authUser?.id) {
       return reply.code(401).send({
         success: false,
         error: 'Sign in to use traceable three-brain reasoning.',
@@ -557,13 +558,21 @@ function registerCoreRoutes() {
         .code(400)
         .send({ success: false, error: 'A non-empty prompt is required' });
     }
-    if (authorizeUserReasoning(request.authUser.id).decision !== 'ALLOW') {
+    if (authorizeUserReasoning(authUser.id).decision !== 'ALLOW') {
       return reply.code(403).send({ success: false, error: 'Gen-X denied this reasoning request.' });
     }
 
     try {
-      return await runReasoning(prompt, request.body?.model, request.authUser, request.body?.language, normalizeResponsePreferences(request.body?.responsePreferences ?? request.authUser.responsePreferences));
-      return await runReasoning(prompt, request.body?.model, request.authUser, request.body?.language, request.body?.responsePreferences ?? request.authUser.responsePreferences);
+      const responsePreferences = normalizeResponsePreferences(
+        request.body?.responsePreferences ?? authUser.responsePreferences,
+      );
+      return await runReasoning(
+        prompt,
+        request.body?.model,
+        authUser,
+        request.body?.language,
+        responsePreferences,
+      );
     } catch (err) {
       fastify.log.error({ err }, 'Reasoning request failed');
       return reply.code(502).send({
@@ -591,7 +600,8 @@ function registerCoreRoutes() {
   fastify.post<{
     Body: { prompt?: string; sessionId?: string; model?: string; language?: string; responsePreferences?: unknown };
   }>(API_ROUTES.streamPath, { schema: reasoningBodySchema }, async (request, reply) => {
-    if (!request.authUser?.id) {
+    const authUser = request.authUser;
+    if (!authUser?.id) {
       return reply.code(401).send({
         success: false,
         error: 'Sign in to use traceable three-brain reasoning.',
@@ -604,7 +614,7 @@ function registerCoreRoutes() {
         .code(400)
         .send({ success: false, error: 'A non-empty prompt is required' });
     }
-    if (authorizeUserReasoning(request.authUser.id).decision !== 'ALLOW') {
+    if (authorizeUserReasoning(authUser.id).decision !== 'ALLOW') {
       return reply.code(403).send({ success: false, error: 'Gen-X denied this reasoning request.' });
     }
 
@@ -638,11 +648,10 @@ function registerCoreRoutes() {
       const result = await runReasoning(
         prompt,
         request.body?.model,
-        request.authUser,
+        authUser,
         request.body?.language,
-        normalizeResponsePreferences(request.body?.responsePreferences ?? request.authUser.responsePreferences),
-        request.body?.responsePreferences ?? request.authUser.responsePreferences,
-        (progress) => sendEvent({
+        normalizeResponsePreferences(request.body?.responsePreferences ?? authUser.responsePreferences),
+        (progress: AgentRunProgressEvent) => sendEvent({
           status: 'processing',
           message: 'Persisted brain handoff state changed.',
           runId: progress.runId,
