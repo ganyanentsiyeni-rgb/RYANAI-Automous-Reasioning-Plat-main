@@ -45,6 +45,18 @@ projects:
                 sync: false
               - key: SUPABASE_PUBLISHABLE_KEY
                 sync: false
+              # Brain credentials belong in the API runtime as well as GitHub Actions.
+              # sync:false preserves existing values and never commits secret material.
+              - key: NVIDIA_API_KEY
+                sync: false
+              - key: QWEN_API_KEY
+                sync: false
+              - key: TOGETHER_API_KEY
+                sync: false
+              - key: LOGIC_API_KEY
+                sync: false
+              - key: OPENAI_API_KEY
+                sync: false
               # Shared MCP signing/service credentials must match the MCP service; set from the existing Render test environment group.
               - key: RYANAI_MCP_DELEGATION_SECRET
                 sync: false

@@ -123,6 +123,79 @@ const hasVercelDeploymentContract =
   && platformDeployWorkflow.includes('ref: ${{ needs.gate.outputs.sha }}');
 
 const checks = [
+const vercelConfig = JSON.parse(read('vercel.json'));
+const vercelServices = vercelConfig.services ?? {};
+const vercelRewrites = vercelConfig.rewrites ?? [];
+const hasVercelServicesContract =
+  ['web', 'api', 'mcp'].every((name) => Object.hasOwn(vercelServices, name))
+  && vercelServices.web.root === '.'
+  && vercelServices.web.framework === 'vite'
+  && vercelServices.web.installCommand === 'npm ci --legacy-peer-deps'
+  && vercelServices.web.buildCommand === 'npm run build:web'
+  && vercelServices.web.outputDirectory === 'dist'
+  && vercelServices.api.root === '.'
+  && vercelServices.api.runtime === 'container'
+  && vercelServices.api.entrypoint === 'Dockerfile.api'
+  && vercelServices.mcp.root === '.'
+  && vercelServices.mcp.runtime === 'container'
+  && vercelServices.mcp.entrypoint === 'mcp-server/Dockerfile'
+  && (vercelServices.mcp.bindings ?? []).some((binding) =>
+    binding.type === 'service'
+    && binding.service === 'api'
+    && binding.format === 'url'
+    && binding.env === 'RYANAI_API_BASE_URL'
+  )
+  && [
+    ['/api', 'api'],
+    ['/api/(.*)', 'api'],
+    ['/health', 'api'],
+    ['/readyz', 'api'],
+    ['/livez', 'api'],
+    ['/mcp', 'mcp'],
+    ['/mcp/(.*)', 'mcp'],
+    ['/(.*)', 'web'],
+  ].every(([source, service]) => vercelRewrites.some((rewrite) =>
+    rewrite.source === source && rewrite.destination?.service === service
+  ))
+  && vercelRewrites.some((rewrite) =>
+    rewrite.source === '/mcp/health'
+    && rewrite.destination?.service === 'mcp'
+    && rewrite.destination?.path === '/health'
+  )
+  && vercelRewrites.findIndex((rewrite) => rewrite.source === '/mcp/health') <
+    vercelRewrites.findIndex((rewrite) => rewrite.source === '/mcp/(.*)');
+const hasLegacyVercelIntegration =
+  existsSync(new URL('../.github/workflows/deploy-vercel.yml', import.meta.url))
+  || existsSync(new URL('../.github/workflows/vercel-deploy.yml', import.meta.url))
+  || packageHasVercelDependency
+  || lockfileHasVercelDependency
+  || packageHasVercelScript
+  || workflowContents.some((workflow) => /\\bVERCEL_[A-Z0-9_]*\\b|@vercel\\/|\\bvercel\\s+(?:deploy|build|link|env)\\b/i.test(workflow))
+  || ciWorkflow.includes('VERCEL_')
+  || renderDeploy.includes('VERCEL_')
+  || railwayDeploy.includes('VERCEL_');
+
+const checks = [
+  ['Vercel Services config wires web, API, and MCP with correct routing and bindings', hasVercelServicesContract],
+  ['Vercel deploy workflows, CLI dependencies, and CI credentials are absent', !hasLegacyVercelIntegration],
+const hasVercelBuildContract =
+  vercelConfig.installCommand === 'npm ci --legacy-peer-deps'
+  && vercelConfig.buildCommand === 'npm run build:web'
+  && vercelConfig.outputDirectory === 'dist';
+const hasVercelDeploymentContract =
+  platformDeployWorkflow.includes('workflow_dispatch:')
+  && platformDeployWorkflow.includes("inputs.vercel_confirmation == 'DEPLOY'")
+  && platformDeployWorkflow.includes('needs: [gate, railway]')
+  && platformDeployWorkflow.includes('environment: production')
+  && platformDeployWorkflow.includes('VERCEL_TOKEN')
+  && platformDeployWorkflow.includes('VERCEL_ORG_ID')
+  && platformDeployWorkflow.includes('VERCEL_PROJECT_ID')
+  && platformDeployWorkflow.includes('VERCEL_CLI_VERSION')
+  && platformDeployWorkflow.includes('vercel build --prod')
+  && platformDeployWorkflow.includes('vercel deploy --prebuilt --prod --skip-domain')
+  && platformDeployWorkflow.includes('ref: ${{ needs.gate.outputs.sha }}');
+
+const checks = [
   ['Vercel installs root dependencies, builds only the web target, and publishes dist', hasVercelBuildContract],
   ['Vercel production deploy is manual, explicit-confirmation gated, exact-SHA based, and behind Railway', hasVercelDeploymentContract],
   ['Render Blueprint declares services through a supported top-level or project-environment list', Array.isArray(renderConfig.services) || renderProjects.some((project) => (project.environments ?? []).some((environment) => Array.isArray(environment.services)))],

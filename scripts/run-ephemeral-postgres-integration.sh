@@ -3,6 +3,7 @@ set -euo pipefail
 
 SUPABASE_CLI=(npx --yes supabase@3.0.0)
 DB_URL=""
+PUBLIC_SCHEMA_FILE=""
 SUPABASE_STARTED=0
 
 log() {
@@ -11,6 +12,9 @@ log() {
 
 cleanup() {
   local exit_code=$?
+  if [ -n "$PUBLIC_SCHEMA_FILE" ]; then
+    rm -f "$PUBLIC_SCHEMA_FILE"
+  fi
   if [ "$SUPABASE_STARTED" = "1" ]; then
     printf '\n[ephemeral-supabase] Stopping isolated Supabase stack...\n'
     "${SUPABASE_CLI[@]}" stop --no-backup >/dev/null 2>&1 || true
@@ -162,6 +166,15 @@ END
 $drop_external_auth_fks$;
 SQL
 
+log "Asserting and excluding Supabase-owned public tables from the Prisma-only drift comparison"
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+DO $assert_supabase_owned_tables$
+log "Excluding separately-owned Supabase tables from the Prisma-only drift comparison"
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+DROP TABLE
+log "Asserting and excluding Supabase-owned public tables from the Prisma-only drift comparison"
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+DO $assert_supabase_owned_tables$
 # Supabase SQL migrations own these public tables. Keep their rows, RLS,
 # indexes and constraints intact, but temporarily move them out of public so
 # Prisma's public-schema diff checks only Prisma-owned application models.
@@ -182,6 +195,35 @@ BEGIN
     'ryanai_attachment_upload_events'
   ] LOOP
     IF to_regclass(format('public.%I', table_name)) IS NULL THEN
+      RAISE EXCEPTION 'Expected Supabase-owned public table public.% is missing before Prisma-only drift comparison', table_name;
+    END IF;
+  END LOOP;
+END
+$assert_supabase_owned_tables$;
+
+-- These tables are owned by the Supabase migration chain and are intentionally
+-- not represented as Prisma models. Remove them only from this disposable local
+-- stack after proving the migrations created them. The hosted database and all
+-- committed migration definitions remain untouched.
+DROP TABLE
+  public.community_beta_interest,
+  public.community_feedback_submissions,
+  public.phonelink_device_exchanges,
+  public.phonelink_events,
+  public.phonelink_pairings,
+  public.phonelink_devices,
+  public.community_feedback_submissions,
+  public.community_beta_interest,
+  public.ryanai_attachment_scans,
+  public.ryanai_attachment_upload_events
+CASCADE;
+SQL
+
+log "Checking the resulting Prisma-owned public schema contract"
+PUBLIC_SCHEMA_FILE="$(mktemp)"
+sed 's/schemas  = \["public", "auth"\]/schemas  = ["public"]/' \
+  prisma/schema.prisma > "$PUBLIC_SCHEMA_FILE"
+log "Checking the resulting Prisma schema contract"
       RAISE EXCEPTION 'Expected Supabase-managed table public.% is missing', table_name;
     END IF;
   END LOOP;
@@ -202,7 +244,7 @@ SQL
 log "Checking the resulting Prisma-owned public schema contract"
 npx prisma migrate diff \
   --from-url "$DATABASE_URL" \
-  --to-schema-datamodel prisma/schema.prisma \
+  --to-schema-datamodel "$PUBLIC_SCHEMA_FILE" \
   --exit-code
 
 # Restore Supabase-owned tables before the remaining disposable integration

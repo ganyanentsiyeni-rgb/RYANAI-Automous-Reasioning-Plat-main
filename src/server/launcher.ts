@@ -16,7 +16,7 @@ import { getAudiobookPrismaClient } from './audiobookPrisma.js';
 import { connectRedis, isRedisReady } from './connectRedis.js';
 import { prisma } from '../lib/prisma.js';
 import { databaseFailureDiagnostic } from './startupDiagnostics.js';
-import { resolveConnectionUrls } from './startupConfig.js';
+import { assertProductionDependencies, resolveConnectionUrls } from './startupConfig.js';
 import { startupSummary } from './startupDiagnostics.js';
 import { evaluateStudioWorkerHeartbeats, inspectReadiness, isAgentWorkerReady } from './readiness.js';
 
@@ -717,9 +717,9 @@ async function initializeDatabase() {
     const result = await dbPool.query('SELECT NOW()');
     const schema = await inspectDatabaseSchema((sql) => dbPool!.query(sql));
 
-    if (!schema.communications) {
+    if (!schema.requiredTables) {
       throw new Error(
-        'Required communication schema is missing. Run npm run db:migrate before starting the API.',
+        'Required application database tables are missing (users, agent_runs, agent_handoffs, agent_brain_health, agent_run_evidence, coding_tasks, communication tables, or LangGraph checkpoint tables). Validate and apply the approved versioned migration in staging; production migration requires separate approval.',
       );
     }
 
@@ -874,7 +874,20 @@ async function start() {
       );
     }
 
-    // Bind the HTTP listener before any network-dependent database probe.
+    // Production/staging startup is fail-closed: perform required dependency
+    // probes before binding the HTTP listener. Local development retains the
+    // existing degraded-start behavior.
+    const [databaseReady, redisReady] = await Promise.all([
+      initializeDatabase(),
+      verifyRedis(),
+    ]);
+
+    assertProductionDependencies(config.nodeEnv, {
+      database: databaseReady,
+      redis: redisReady,
+      agentCheckpointer: serviceStatus.agentCheckpointer,
+    });
+
     console.log('\n🚀 Starting Fastify Server...\n');
     await fastify.listen({ port: config.port, host: config.host });
     serviceStatus.api = true;
@@ -887,20 +900,6 @@ async function start() {
     console.log('    - System: http://' + config.host + ':' + config.port + '/api/system');
     console.log('    - Signin: http://' + config.host + ':' + config.port + '/signin');
 
-    // Probe PostgreSQL only after the listener is available. Failed credentials
-    // leave readiness degraded, but cannot prevent PA from reporting the outage.
-    const [databaseReady, redisReady] = await Promise.all([
-      initializeDatabase(),
-      verifyRedis(),
-    ]);
-
-    if (!databaseReady || !redisReady || !serviceStatus.agentCheckpointer) {
-      fastify.log.warn({
-        database: databaseReady,
-        redis: redisReady,
-        agentCheckpointer: serviceStatus.agentCheckpointer,
-      }, 'API listener remains live in degraded mode; PA monitoring continues until dependencies recover.');
-    }
     fastify.log.info(startupSummary(serviceStatus));
     fastify.log.info({ startupSummary: startupSummary(serviceStatus) }, 'RyanAI startup dependency summary');
 

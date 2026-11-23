@@ -153,7 +153,7 @@ export function resolveBrainProviderConfig(
   }
 
   if (brain === 'secondary') {
-    const endpoint = validateEndpoint(env.QWEN_API_ENDPOINT || env.LM_STUDIO_URL || 'https://api.together.xyz/v1', role);
+    const endpoint = validateEndpoint(env.QWEN_API_ENDPOINT || env.TOGETHER_API_ENDPOINT || env.LM_STUDIO_URL || 'https://api.together.xyz/v1', role);
     const config = {
       role,
       adapter: 'openai-compatible' as const,
