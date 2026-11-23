@@ -6,6 +6,7 @@ const state = vi.hoisted(() => ({
   invoke: vi.fn(),
   listen: vi.fn().mockResolvedValue('http://localhost:3000'),
   events: [] as string[],
+  genxDecision: 'ALLOW' as 'ALLOW' | 'DENY',
 }));
 
 // Exercise the real launcher's routes without external services or a TCP listener.
@@ -74,7 +75,7 @@ vi.mock('./routes/auth.js', async (importOriginal) => {
     installAuthentication: (app: FastifyInstance) => {
       app.addHook('preHandler', async (request) => {
         if (request.headers.authorization === 'Bearer test-token') {
-          Object.assign(request, { authUser: { id: 'test-user', role: 'user' } });
+          Object.assign(request, { authUser: { id: 'test-user', role: 'user', responsePreferences: { personality: 'warm', responseStyle: 'detailed', initiative: 'proactive', collaboration: 'independent' } } });
         }
       });
     },
@@ -103,6 +104,10 @@ vi.mock('./databaseSchema.js', () => ({
 vi.mock('../agent/operations.js', () => ({
   startAgentTaskWorker: vi.fn(() => () => {}),
   startBrainHealthMonitor: vi.fn(() => () => {}),
+}));
+
+vi.mock('../security/genxPolicy.js', () => ({
+  evaluateGenXSecurityEvent: vi.fn(() => ({ decision: state.genxDecision, ruleId: 'test-genx-rule' })),
 }));
 
 vi.mock('../agent/invoke.js', () => ({
@@ -154,10 +159,11 @@ describe('Render liveness endpoint', () => {
 });
 
 describe('launcher startup dependency order', () => {
-  it('binds the HTTP listener before probing PostgreSQL', () => {
+  it('probes PostgreSQL before binding the HTTP listener in fail-closed startup', () => {
     expect(state.events.indexOf('redis')).toBeGreaterThanOrEqual(0);
     expect(state.events.indexOf('listen')).toBeGreaterThan(state.events.indexOf('redis'));
-    expect(state.events.indexOf('database')).toBeGreaterThan(state.events.indexOf('listen'));
+    expect(state.events.indexOf('database')).toBeGreaterThanOrEqual(0);
+    expect(state.events.indexOf('database')).toBeLessThan(state.events.indexOf('listen'));
   });
 });
 
@@ -174,7 +180,10 @@ describe('launcher reasoning routes', () => {
     expect(response.headers['access-control-allow-origin']).toBe('https://ryanai-web.onrender.com');
     expect(response.headers['content-type']).toBe('text/event-stream');
     expect(response.body).toContain('"status":"complete","result":"answer"');
-    expect(state.invoke).toHaveBeenCalledWith(expect.objectContaining({ language: 've-ZA' }));
+    expect(state.invoke).toHaveBeenCalledWith(expect.objectContaining({
+      language: 've-ZA',
+      responsePreferences: { personality: 'warm', responseStyle: 'detailed', initiative: 'proactive', collaboration: 'independent' },
+    }));
   });
 
   it('streams persisted brain handoff transitions during authenticated reasoning', async () => {
@@ -234,6 +243,41 @@ describe('launcher reasoning routes', () => {
     expect(state.invoke).not.toHaveBeenCalled();
   });
 
+  it('does not let proactive preferences bypass authentication on the streaming path', async () => {
+    state.invoke.mockClear();
+    const response = await state.app!.inject({
+      method: 'POST',
+      url: '/api/reasoning/stream',
+      payload: {
+        prompt: 'Prepare an action',
+        responsePreferences: { initiative: 'proactive' },
+      },
+    });
+    expect(response.statusCode).toBe(401);
+    expect(state.invoke).not.toHaveBeenCalled();
+  });
+
+  it('does not let proactive response preferences bypass a Gen-X authorization denial', async () => {
+    state.genxDecision = 'DENY';
+    state.invoke.mockClear();
+    try {
+      const response = await state.app!.inject({
+        method: 'POST',
+        url: '/api/reason',
+        headers: { authorization: 'Bearer test-token' },
+        payload: {
+          prompt: 'Prepare an external action',
+          responsePreferences: { initiative: 'proactive' },
+        },
+      });
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({ success: false, error: 'Gen-X denied this reasoning request.' });
+      expect(state.invoke).not.toHaveBeenCalled();
+    } finally {
+      state.genxDecision = 'ALLOW';
+    }
+  });
+
   it('handles the browser CORS preflight', async () => {
     const response = await state.app!.inject({
       method: 'OPTIONS',
@@ -288,10 +332,19 @@ describe('launcher reasoning routes', () => {
       method: 'POST',
       url: '/api/reason',
       headers: { authorization: 'Bearer test-token' },
-      payload: { prompt: 'hello' },
+      payload: { prompt: 'hello', responsePreferences: { initiative: 'ask-first' } },
     });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({ success: true, output: 'answer' });
+    expect(state.invoke).toHaveBeenCalledWith(expect.objectContaining({
+      responsePreferences: { personality: 'balanced', responseStyle: 'balanced', initiative: 'ask-first', collaboration: 'collaborative' },
+      responsePreferences: { initiative: 'ask-first' },
+      user: expect.objectContaining({
+        responsePreferences: {
+          personality: 'warm', responseStyle: 'detailed', initiative: 'proactive', collaboration: 'independent',
+        },
+      }),
+    }));
   });
 
   it('rejects an empty prompt before starting the stream', async () => {

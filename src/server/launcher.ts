@@ -16,11 +16,12 @@ import { getAudiobookPrismaClient } from './audiobookPrisma.js';
 import { connectRedis, isRedisReady } from './connectRedis.js';
 import { prisma } from '../lib/prisma.js';
 import { databaseFailureDiagnostic } from './startupDiagnostics.js';
-import { resolveConnectionUrls } from './startupConfig.js';
+import { assertProductionDependencies, resolveConnectionUrls } from './startupConfig.js';
 import { startupSummary } from './startupDiagnostics.js';
 import { evaluateStudioWorkerHeartbeats, inspectReadiness, isAgentWorkerReady } from './readiness.js';
 
 import { API_ROUTES } from '../config/core.js';
+import { normalizeResponsePreferences } from '../shared/responsePreferences.js';
 import { evaluateGenXSecurityEvent } from '../security/genxPolicy.js';
 
 import { invokeReasoningAgent } from '../agent/invoke.js';
@@ -494,9 +495,10 @@ function registerCoreRoutes() {
     model?: string,
     user?: FastifyRequest['authUser'],
     language?: string,
+    responsePreferences?: unknown,
     onProgress?: (event: AgentRunProgressEvent) => void,
   ) {
-    const result = await invokeReasoningAgent({ prompt, model, user, language, onProgress });
+    const result = await invokeReasoningAgent({ prompt, model, user, language, responsePreferences, onProgress });
     const reasoningTrace = result.messages.map(
       (message: { content: unknown }) => contentToText(message.content),
     );
@@ -525,12 +527,22 @@ function registerCoreRoutes() {
         model: { type: 'string', maxLength: 100 },
         sessionId: { type: 'string', maxLength: 200 },
         language: { type: 'string', maxLength: 16 },
+        responsePreferences: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            personality: { type: 'string', maxLength: 24 },
+            responseStyle: { type: 'string', maxLength: 24 },
+            initiative: { type: 'string', maxLength: 24 },
+            collaboration: { type: 'string', maxLength: 24 },
+          },
+        },
       },
     },
   };
 
   const handleReasoningRequest = async (
-    request: FastifyRequest<{ Body: { prompt?: string; model?: string; language?: string } }>,
+    request: FastifyRequest<{ Body: { prompt?: string; model?: string; language?: string; responsePreferences?: unknown } }>,
     reply: FastifyReply,
   ) => {
     if (!request.authUser?.id) {
@@ -550,7 +562,8 @@ function registerCoreRoutes() {
     }
 
     try {
-      return await runReasoning(prompt, request.body?.model, request.authUser, request.body?.language);
+      return await runReasoning(prompt, request.body?.model, request.authUser, request.body?.language, normalizeResponsePreferences(request.body?.responsePreferences ?? request.authUser.responsePreferences));
+      return await runReasoning(prompt, request.body?.model, request.authUser, request.body?.language, request.body?.responsePreferences ?? request.authUser.responsePreferences);
     } catch (err) {
       fastify.log.error({ err }, 'Reasoning request failed');
       return reply.code(502).send({
@@ -561,13 +574,13 @@ function registerCoreRoutes() {
   };
 
   // Collision-free reasoning endpoint registrations
-  fastify.post<{ Body: { prompt?: string; model?: string; language?: string } }>(
+  fastify.post<{ Body: { prompt?: string; model?: string; language?: string; responsePreferences?: unknown } }>(
     API_ROUTES.reasonPath,
     { schema: reasoningBodySchema },
     handleReasoningRequest,
   );
   if (API_ROUTES.reasonPath !== '/api/reason') {
-    fastify.post<{ Body: { prompt?: string; model?: string; language?: string } }>(
+    fastify.post<{ Body: { prompt?: string; model?: string; language?: string; responsePreferences?: unknown } }>(
       '/api/reason',
       { schema: reasoningBodySchema },
       handleReasoningRequest,
@@ -576,7 +589,7 @@ function registerCoreRoutes() {
 
   // Reasoning stream endpoint
   fastify.post<{
-    Body: { prompt?: string; sessionId?: string; model?: string; language?: string };
+    Body: { prompt?: string; sessionId?: string; model?: string; language?: string; responsePreferences?: unknown };
   }>(API_ROUTES.streamPath, { schema: reasoningBodySchema }, async (request, reply) => {
     if (!request.authUser?.id) {
       return reply.code(401).send({
@@ -627,6 +640,8 @@ function registerCoreRoutes() {
         request.body?.model,
         request.authUser,
         request.body?.language,
+        normalizeResponsePreferences(request.body?.responsePreferences ?? request.authUser.responsePreferences),
+        request.body?.responsePreferences ?? request.authUser.responsePreferences,
         (progress) => sendEvent({
           status: 'processing',
           message: 'Persisted brain handoff state changed.',
@@ -705,9 +720,9 @@ async function initializeDatabase() {
     const result = await dbPool.query('SELECT NOW()');
     const schema = await inspectDatabaseSchema((sql) => dbPool!.query(sql));
 
-    if (!schema.communications) {
+    if (!schema.requiredTables) {
       throw new Error(
-        'Required communication schema is missing. Run npm run db:migrate before starting the API.',
+        'Required application database tables are missing (users, agent_runs, agent_handoffs, agent_brain_health, agent_run_evidence, coding_tasks, communication tables, or LangGraph checkpoint tables). Validate and apply the approved versioned migration in staging; production migration requires separate approval.',
       );
     }
 
@@ -862,7 +877,20 @@ async function start() {
       );
     }
 
-    // Bind the HTTP listener before any network-dependent database probe.
+    // Production/staging startup is fail-closed: perform required dependency
+    // probes before binding the HTTP listener. Local development retains the
+    // existing degraded-start behavior.
+    const [databaseReady, redisReady] = await Promise.all([
+      initializeDatabase(),
+      verifyRedis(),
+    ]);
+
+    assertProductionDependencies(config.nodeEnv, {
+      database: databaseReady,
+      redis: redisReady,
+      agentCheckpointer: serviceStatus.agentCheckpointer,
+    });
+
     console.log('\n🚀 Starting Fastify Server...\n');
     await fastify.listen({ port: config.port, host: config.host });
     serviceStatus.api = true;
@@ -875,20 +903,6 @@ async function start() {
     console.log('    - System: http://' + config.host + ':' + config.port + '/api/system');
     console.log('    - Signin: http://' + config.host + ':' + config.port + '/signin');
 
-    // Probe PostgreSQL only after the listener is available. Failed credentials
-    // leave readiness degraded, but cannot prevent PA from reporting the outage.
-    const [databaseReady, redisReady] = await Promise.all([
-      initializeDatabase(),
-      verifyRedis(),
-    ]);
-
-    if (!databaseReady || !redisReady || !serviceStatus.agentCheckpointer) {
-      fastify.log.warn({
-        database: databaseReady,
-        redis: redisReady,
-        agentCheckpointer: serviceStatus.agentCheckpointer,
-      }, 'API listener remains live in degraded mode; PA monitoring continues until dependencies recover.');
-    }
     fastify.log.info(startupSummary(serviceStatus));
     fastify.log.info({ startupSummary: startupSummary(serviceStatus) }, 'RyanAI startup dependency summary');
 
