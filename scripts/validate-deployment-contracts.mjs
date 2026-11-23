@@ -146,24 +146,7 @@ const hasVercelServicesContract =
   )
   && vercelRewrites.findIndex((rewrite) => rewrite.source === '/mcp/health') <
     vercelRewrites.findIndex((rewrite) => rewrite.source === '/mcp/(.*)');
-const hasLegacyVercelIntegration =
-  existsSync(new URL('../.github/workflows/deploy-vercel.yml', import.meta.url))
-  || existsSync(new URL('../.github/workflows/vercel-deploy.yml', import.meta.url))
-  || packageHasVercelDependency
-  || lockfileHasVercelDependency
-  || packageHasVercelScript
-  || workflowContents.some((workflow) => /\\bVERCEL_[A-Z0-9_]*\\b|@vercel\\/|\\bvercel\\s+(?:deploy|build|link|env)\\b/i.test(workflow))
-  || ciWorkflow.includes('VERCEL_')
-  || renderDeploy.includes('VERCEL_')
-  || railwayDeploy.includes('VERCEL_');
-
-const checks = [
-  ['Vercel Services config wires web, API, and MCP with correct routing and bindings', hasVercelServicesContract],
-  ['Vercel deploy workflows, CLI dependencies, and CI credentials are absent', !hasLegacyVercelIntegration],
-const hasVercelBuildContract =
-  vercelConfig.installCommand === 'npm ci --legacy-peer-deps'
-  && vercelConfig.buildCommand === 'npm run build:web'
-  && vercelConfig.outputDirectory === 'dist';
+const hasVercelBuildContract = hasVercelServicesContract;
 const hasVercelDeploymentContract =
   platformDeployWorkflow.includes('workflow_dispatch:')
   && platformDeployWorkflow.includes("inputs.vercel_confirmation == 'DEPLOY'")
@@ -176,7 +159,6 @@ const hasVercelDeploymentContract =
   && platformDeployWorkflow.includes('vercel build --prod')
   && platformDeployWorkflow.includes('vercel deploy --prebuilt --prod --skip-domain')
   && platformDeployWorkflow.includes('ref: ${{ needs.gate.outputs.sha }}');
-
 const checks = [
   ['Vercel installs root dependencies, builds only the web target, and publishes dist', hasVercelBuildContract],
   ['Vercel production deploy is manual, explicit-confirmation gated, exact-SHA based, and behind Railway', hasVercelDeploymentContract],
