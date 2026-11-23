@@ -66,6 +66,10 @@ export async function inspectDatabaseSchema(
     row.communication_conversations === true &&
     row.communication_messages === true;
 
+  if (!requiredTables) {
+    return { communications, requiredTables: false, agentCheckpointer: false };
+  }
+
   const checkpointTablesPresent =
     row.checkpoints === true &&
     row.checkpoint_blobs === true &&
