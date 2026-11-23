@@ -140,3 +140,9 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget --quiet --tries=1 --spider "http://127.0.0.1:${PORT}/health" || exit 1
 ENTRYPOINT ["/usr/local/bin/ryanai-web-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]
+
+# Railway's current service is auto-detecting the root Dockerfile. Keep the API
+# as the default final stage so a builder that does not honor railway.json's
+# Dockerfile.api setting cannot accidentally ship the nginx-only web image.
+# Explicit Compose targets (api, web, migrate, studio-worker) remain unchanged.
+FROM api AS default-api
