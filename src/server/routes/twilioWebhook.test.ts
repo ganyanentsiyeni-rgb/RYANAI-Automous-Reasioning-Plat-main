@@ -163,6 +163,33 @@ describe('Twilio webhook provider authentication', () => {
     expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
   });
 
+  it('suppresses a completed duplicate WhatsApp reply when owner test authorization is disabled', async () => {
+    vi.stubEnv('RYANAI_COMMS_TEST_AUTHORIZED', 'false');
+    prismaMock.communicationMessage.create.mockRejectedValueOnce({ code: 'P2002' });
+    prismaMock.communicationMessage.findUnique.mockResolvedValueOnce({
+      id: 'message-1',
+      status: 'processing',
+      metadata: {},
+      createdAt: new Date(),
+      agentRunId: 'run-1',
+      body: 'Please help',
+      conversation: {
+        channel: 'whatsapp',
+        ownerUserId: '11111111-1111-4111-8111-111111111111',
+      },
+    });
+    const signature = twilio.getExpectedTwilioSignature(token, webhookUrl, body);
+
+    const response = await sendWebhook(signature);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('text/xml');
+    expect(response.body).toBe('<?xml version="1.0" encoding="UTF-8"?><Response/>');
+    expect(response.body).not.toContain('<Message>');
+    expect(waitForInboundCommunicationRun).not.toHaveBeenCalled();
+    expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
+  });
+
   it('stores an authentic inbound WhatsApp message but suppresses the auto-reply until explicitly authorized', async () => {
     vi.stubEnv('RYANAI_COMMS_TEST_AUTHORIZED', 'false');
     const signature = twilio.getExpectedTwilioSignature(token, webhookUrl, body);

@@ -479,6 +479,7 @@ export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) =
         data: {
           ownerUserId,
           providerId,
+          providerId: config?.id ?? providerId,
           connectionId: connection.id,
           eventType: remoteRevoked ? 'revocation_confirmed' : 'revocation_pending',
           actorUserId: ownerUserId,
