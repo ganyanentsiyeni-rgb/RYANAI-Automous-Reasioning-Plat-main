@@ -1,0 +1,87 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "web": {
+      "root": ".",
+      "framework": "vite",
+      "installCommand": "npm ci --legacy-peer-deps",
+      "buildCommand": "npm run build:web",
+      "outputDirectory": "dist"
+    },
+    "api": {
+      "root": ".",
+      "runtime": "container",
+      "entrypoint": "Dockerfile.api"
+    },
+    "mcp": {
+      "root": ".",
+      "runtime": "container",
+      "entrypoint": "mcp-server/Dockerfile",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "api",
+          "format": "url",
+          "env": "RYANAI_API_BASE_URL"
+        }
+      ]
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api",
+      "destination": {
+        "service": "api"
+      }
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": {
+        "service": "api"
+      }
+    },
+    {
+      "source": "/health",
+      "destination": {
+        "service": "api"
+      }
+    },
+    {
+      "source": "/readyz",
+      "destination": {
+        "service": "api"
+      }
+    },
+    {
+      "source": "/livez",
+      "destination": {
+        "service": "api"
+      }
+    },
+    {
+      "source": "/mcp/health",
+      "destination": {
+        "service": "mcp",
+        "path": "/health"
+      }
+    },
+    {
+      "source": "/mcp",
+      "destination": {
+        "service": "mcp"
+      }
+    },
+    {
+      "source": "/mcp/(.*)",
+      "destination": {
+        "service": "mcp"
+      }
+    },
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "web"
+      }
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { parse as parseYaml } from 'yaml';
 
 const read = (path) => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
@@ -66,17 +66,8 @@ const apiDockerfile = read('Dockerfile.api');
 const poolerAdapter = read('src/server/supabasePooler.ts');
 const generatedClientCopy = read('scripts/copy-server-assets.mjs');
 const packageJson = JSON.parse(read('package.json'));
-const packageLock = JSON.parse(read('package-lock.json'));
-const workflowDirectory = new URL('../.github/workflows/', import.meta.url);
-const workflowContents = readdirSync(workflowDirectory)
-  .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
-  .map((name) => readFileSync(new URL(name, workflowDirectory), 'utf8'));
-const packageHasVercelDependency = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']
-  .some((section) => Object.keys(packageJson[section] ?? {}).some((name) => name.startsWith('@vercel/')));
-const lockfileHasVercelDependency = Object.keys(packageLock.packages ?? {})
-  .some((path) => path.startsWith('node_modules/@vercel/'));
-const packageHasVercelScript = Object.entries(packageJson.scripts ?? {})
-  .some(([name, command]) => /\bvercel\b/i.test(name) || /\bvercel\b/i.test(command));
+const vercelConfig = JSON.parse(read('vercel.json'));
+const platformDeployWorkflow = read('.github/workflows/deploy-platforms.yml');
 const envExample = read('.env.example');
 const featureFlags = read('src/server/comms/featureFlags.ts');
 const commsPlugin = read('src/server/comms/index.ts');
@@ -114,20 +105,63 @@ const hasVerifiedCaContract = (stage) =>
   && stage.includes('scripts/verify-node-ca.sh')
   && !stage.includes('NODE_TLS_REJECT_UNAUTHORIZED');
 
-const hasLegacyVercelIntegration =
-  existsSync(new URL('../vercel.json', import.meta.url))
-  || existsSync(new URL('../.github/workflows/deploy-vercel.yml', import.meta.url))
-  || existsSync(new URL('../.github/workflows/vercel-deploy.yml', import.meta.url))
-  || packageHasVercelDependency
-  || lockfileHasVercelDependency
-  || packageHasVercelScript
-  || workflowContents.some((workflow) => /\bVERCEL_[A-Z0-9_]*\b|@vercel\/|vercel\.com|\bvercel\s+(?:deploy|build|link|env)\b/i.test(workflow))
-  || ciWorkflow.includes('VERCEL_')
-  || renderDeploy.includes('VERCEL_')
-  || railwayDeploy.includes('VERCEL_');
-
+const vercelConfig = JSON.parse(read('vercel.json'));
+const vercelServices = vercelConfig.services ?? {};
+const vercelRewrites = vercelConfig.rewrites ?? [];
+const hasVercelServicesContract =
+  ['web', 'api', 'mcp'].every((name) => Object.hasOwn(vercelServices, name))
+  && vercelServices.web.root === '.'
+  && vercelServices.web.framework === 'vite'
+  && vercelServices.web.installCommand === 'npm ci --legacy-peer-deps'
+  && vercelServices.web.buildCommand === 'npm run build:web'
+  && vercelServices.web.outputDirectory === 'dist'
+  && vercelServices.api.root === '.'
+  && vercelServices.api.runtime === 'container'
+  && vercelServices.api.entrypoint === 'Dockerfile.api'
+  && vercelServices.mcp.root === '.'
+  && vercelServices.mcp.runtime === 'container'
+  && vercelServices.mcp.entrypoint === 'mcp-server/Dockerfile'
+  && (vercelServices.mcp.bindings ?? []).some((binding) =>
+    binding.type === 'service'
+    && binding.service === 'api'
+    && binding.format === 'url'
+    && binding.env === 'RYANAI_API_BASE_URL'
+  )
+  && [
+    ['/api', 'api'],
+    ['/api/(.*)', 'api'],
+    ['/health', 'api'],
+    ['/readyz', 'api'],
+    ['/livez', 'api'],
+    ['/mcp', 'mcp'],
+    ['/mcp/(.*)', 'mcp'],
+    ['/(.*)', 'web'],
+  ].every(([source, service]) => vercelRewrites.some((rewrite) =>
+    rewrite.source === source && rewrite.destination?.service === service
+  ))
+  && vercelRewrites.some((rewrite) =>
+    rewrite.source === '/mcp/health'
+    && rewrite.destination?.service === 'mcp'
+    && rewrite.destination?.path === '/health'
+  )
+  && vercelRewrites.findIndex((rewrite) => rewrite.source === '/mcp/health') <
+    vercelRewrites.findIndex((rewrite) => rewrite.source === '/mcp/(.*)');
+const hasVercelBuildContract = hasVercelServicesContract;
+const hasVercelDeploymentContract =
+  platformDeployWorkflow.includes('workflow_dispatch:')
+  && platformDeployWorkflow.includes("inputs.vercel_confirmation == 'DEPLOY'")
+  && platformDeployWorkflow.includes('needs: [gate, railway]')
+  && platformDeployWorkflow.includes('environment: production')
+  && platformDeployWorkflow.includes('VERCEL_TOKEN')
+  && platformDeployWorkflow.includes('VERCEL_ORG_ID')
+  && platformDeployWorkflow.includes('VERCEL_PROJECT_ID')
+  && platformDeployWorkflow.includes('VERCEL_CLI_VERSION')
+  && platformDeployWorkflow.includes('vercel build --prod')
+  && platformDeployWorkflow.includes('vercel deploy --prebuilt --prod --skip-domain')
+  && platformDeployWorkflow.includes('ref: ${{ needs.gate.outputs.sha }}');
 const checks = [
-  ['Vercel project, build package, deployment workflows, and CI credentials are absent', !hasLegacyVercelIntegration],
+  ['Vercel installs root dependencies, builds only the web target, and publishes dist', hasVercelBuildContract],
+  ['Vercel production deploy is manual, explicit-confirmation gated, exact-SHA based, and behind Railway', hasVercelDeploymentContract],
   ['Render Blueprint declares services through a supported top-level or project-environment list', Array.isArray(renderConfig.services) || renderProjects.some((project) => (project.environments ?? []).some((environment) => Array.isArray(environment.services)))],
   ['Render Blueprint declares exactly the expected API, web, Redis, and MCP resources', renderServices.length === expectedRenderServiceNames.length && expectedRenderServiceNames.every((name) => renderServiceNames.includes(name)) && new Set(renderServiceNames).size === expectedRenderServiceNames.length],
   ['U2EB MCP host allowlist contains only the canonical Render hostname', envVar(u2ebMcp, 'MCP_ALLOWED_HOSTS', renderConfig)?.value === 'ryanai-mcp-u2eb-u2eb.onrender.com'],
@@ -164,9 +198,9 @@ const checks = [
   ['Render deployment requires explicit enablement and approval', renderDeploy.includes("vars.RENDER_STAGING_DEPLOY_ENABLED == 'true'") && renderDeploy.includes("vars.RENDER_STAGING_ISOLATION_CONFIRMED == 'true'")],
   ['Render staging deploys only the exact open PR head after CI/security passes', renderDeploy.includes('commits/${TARGET_SHA}/pulls') && renderDeploy.includes('head.sha == $sha') && renderDeploy.includes('check-runs') && renderDeploy.includes('conclusion == "success"') && renderDeploy.includes('inputs.confirmation == \'STAGE\'')],
   ['Render staging deploy refuses production service IDs and verifies staging service identity', renderDeploy.includes('RENDER_STAGING_SERVICE_ID') && renderDeploy.includes('ryanai-staging') && renderDeploy.includes('srv-dbk4giu7bikc7394a4r0')],
-  ['Railway uses Dockerfile.api and /health', railway.build?.dockerfilePath === 'Dockerfile.api' && railway.deploy?.healthcheckPath === '/health'],
+  ['Railway uses Dockerfile.api and the live dependency readiness endpoint /readyz', railway.build?.dockerfilePath === 'Dockerfile.api' && railway.deploy?.healthcheckPath === '/readyz'],
   ['Render is the default frontend and API delivery provider', renderWeb?.runtime === 'static' && renderApi?.runtime === 'docker'],
-  ['Railway is the default Docker and persistent-workload provider', railway.build?.dockerfilePath === 'Dockerfile.api' && railway.deploy?.healthcheckPath === '/health'],
+  ['Railway is the default Docker and persistent-workload provider', railway.build?.dockerfilePath === 'Dockerfile.api' && railway.deploy?.healthcheckPath === '/readyz'],
   ['Railway staging deploy is manual, limited to exact open PR heads, and isolated', railwayDeploy.includes('workflow_dispatch:') && !railwayDeploy.includes('workflow_run:') && railwayDeploy.includes("inputs.confirmation == 'STAGE'") && railwayDeploy.includes("vars.RAILWAY_STAGING_ISOLATION_CONFIRMED == 'true'") && railwayDeploy.includes('RAILWAY_STAGING_PROJECT_ID') && railwayDeploy.includes('RAILWAY_STAGING_ENVIRONMENT_ID') && railwayDeploy.includes('commits/${TARGET_SHA}/pulls')],
 ];
 
