@@ -31,7 +31,7 @@ vi.mock('../../utils/notifications.js', () => ({
 const applications: FastifyInstance[] = [];
 const bearer = { authorization: 'Bearer synthetic-access-token' };
 const user = {
-  id: 'verified-user-id',
+  id: '11111111-1111-4111-8111-111111111111',
   email: 'member@example.test',
   app_metadata: {},
   user_metadata: { role: 'admin' },
@@ -394,18 +394,19 @@ describe('Supabase API authentication', () => {
       error: null,
     });
     const app = await createApp();
-    expect(
-      (
-        await app.inject({
-          method,
-          url,
-          headers: bearer,
-          ...(method === 'POST'
-            ? { payload: { threadId: 'pending-thread', approved: true } }
-            : {}),
-        })
-      ).statusCode,
-    ).toBe(200);
+    const response = await app.inject({
+      method,
+      url,
+      headers: bearer,
+      ...(method === 'POST'
+        ? { payload: { threadId: 'pending-thread', approved: true } }
+        : {}),
+    });
+    // The admin gate succeeds, but this fixture has no durable pending action;
+    // the approval route must correctly return conflict instead of executing.
+    expect(response.statusCode).toBe(
+      method === 'POST' && url === '/api/reason/approve' ? 409 : 200,
+    );
   });
 
   it('retires the legacy Prisma sign-in endpoint without returning a session success', async () => {
