@@ -63,13 +63,10 @@ jobs:
       LOGIC_API_KEY: ${{ matrix.provider == 'logic' && secrets.LOGIC_API_KEY || '' }}
       OPENAI_API_KEY: ${{ matrix.provider == 'logic' && secrets.OPENAI_API_KEY || '' }}
       GROK_API_KEY: ${{ matrix.provider == 'logic' && secrets.GROK_API_KEY || '' }}
-      # Match the production resolver exactly. Do not use a generic
-      # PROVIDER_API_KEY: resolveProviderProbeConfig never reads that name.
-      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-      TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
-      QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
-      LOGIC_API_KEY: ${{ secrets.LOGIC_API_KEY }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_API_KEY: ${{ matrix.provider == 'logic' && secrets.OPENAI_API_KEY || '' }}
+      GROK_API_KEY: ${{ matrix.provider == 'logic' && secrets.GROK_API_KEY || '' }}
+      # Provider credentials above are deliberately scoped to the selected
+      # matrix entry. Never add an unconditional provider secret here.
       NVIDIA_API_ENDPOINT: ${{ vars.NVIDIA_API_ENDPOINT }}
       QWEN_API_ENDPOINT: ${{ vars.QWEN_API_ENDPOINT }}
       TOGETHER_API_ENDPOINT: ${{ vars.TOGETHER_API_ENDPOINT }}
