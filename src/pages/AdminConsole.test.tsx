@@ -103,8 +103,6 @@ describe('Admin Console request ownership', () => {
       input.dispatchEvent(new Event('input', { bubbles: true }));
       input.dispatchEvent(new Event('change', { bubbles: true }));
     });
-    const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-    await act(async () => { valueSetter?.call(input, 'alice'); input.dispatchEvent(new Event('input', { bubbles: true })); });
     await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/api/admin/users?limit=50&page=1&search=alice', expect.any(Object), 'admin-account-a'));
     expect(container.textContent).toContain('Alice');
   });
@@ -266,7 +264,6 @@ describe('Admin Console request ownership', () => {
   });
 
   it('wires profile search to the server-side directory endpoint and resets pagination', async () => {
-    apiFetch.mockImplementation(async (input) => {
     apiFetch.mockImplementation(async (input, init) => {
       const path = String(input);
       if (path === '/api/auth/verify') return response({ authenticated: true, user: { id: 'admin-account-a', email: 'admin@example.test', role: 'admin', isOwner: true } });
