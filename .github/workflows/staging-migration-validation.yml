@@ -176,9 +176,6 @@ jobs:
       - name: Confirm a second deploy is a no-op
         run: npx prisma migrate deploy --schema=prisma/schema.prisma
 
-      - name: Compare the resulting database to the Prisma data model
-        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
-
       - name: Run the repository migration readiness audit
         run: npm run db:migration:audit
 
@@ -203,3 +200,17 @@ jobs:
           }
           console.log('PASS: both protected operational routes are registered and retain their auth guard.');
           NODE
+
+      - name: Compare Prisma-owned public schema without Supabase Auth catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Prisma's production datasource includes auth only so migration deploy can
+          # resolve Supabase-owned FK targets. The application data model owns public.
+          # Use a temporary public-only schema for drift comparison; do not drop or
+          # mutate any Supabase Auth objects, even in this disposable fixture.
+          temp_schema="$(mktemp)"
+          trap 'rm -f "$temp_schema"' EXIT
+          sed 's/schemas  = \["public", "auth"\]/schemas  = ["public"]/' \
+            prisma/schema.prisma > "$temp_schema"
+          npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel "$temp_schema" --exit-code

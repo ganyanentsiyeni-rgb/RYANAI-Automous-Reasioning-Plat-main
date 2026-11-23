@@ -39,6 +39,17 @@ describe('independent brain provider credentials', () => {
     });
   });
 
+  it('uses TOGETHER_API_ENDPOINT when the canonical Qwen endpoint is not set', () => {
+    const env = {
+      TOGETHER_API_ENDPOINT: 'https://api.together.xyz/v1',
+      TOGETHER_API_KEY: 'together-endpoint-key',
+    };
+    const config = resolveBrainProviderConfig('secondary', env);
+    expect(config.endpoint).toBe('https://api.together.xyz/v1');
+    expect(config.credential).toBe(true);
+    expect(resolveBrainApiKey('secondary', config, env)).toBe('together-endpoint-key');
+  });
+
   it('uses endpoint-matched default model identifiers for supported Qwen hosts', () => {
     expect(resolveBrainProviderConfig('secondary', {}).model).toBe('Qwen/Qwen3-235B-A22B-Instruct-2507-tput');
     expect(resolveBrainProviderConfig('secondary', {
