@@ -3,11 +3,20 @@ import { END, StateGraph, MessagesAnnotation } from "@langchain/langgraph";
 import { AIMessage } from "@langchain/core/messages";
 import { Pool } from "pg";
 import { runCppInference } from "../native/bridge.js";
+import { resolveConnectionUrls } from "../server/startupConfig.js";
 
-// 1. Setup PostgreSQL connection pool for LangGraph checkpointing
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || "postgres://postgres:postgres@localhost:5432/ryan_ai_db",
-});
+const nodeEnv = process.env.NODE_ENV || "development";
+const { databaseUrl } = resolveConnectionUrls(
+  nodeEnv,
+  process.env.DATABASE_URL,
+  process.env.REDIS_URL,
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SESSION_POOLER_HOST,
+  process.env.SUPABASE_SSL_ROOT_CERT_PATH,
+  process.env.RYANAI_LOCAL_COMPOSE === "true",
+  process.env.RYANAI_DISPOSABLE_SUPABASE === "1",
+);
+const pool = new Pool({ connectionString: databaseUrl });
 
 // The checkpointer schema is applied by npm run db:migrate before service use.
 // Graph creation and requests must never perform schema DDL.
@@ -21,13 +30,13 @@ export async function createRyanAgentGraph() {
     const lastMessage = messages[messages.length - 1];
     const promptText = typeof lastMessage.content === 'string' ? lastMessage.content : 'Execute task';
 
-    console.log(`[RYAN REACT AGENT] Evaluating prompt via C++ engine: "${promptText}"`);
+    console.log('[RYAN REACT AGENT] Evaluating prompt via C++ engine:', promptText);
     
     // Call our compiled C++ native reasoning module
     const nativeResult = runCppInference(promptText);
 
     const response = new AIMessage({
-      content: `[RyanAI ReAct Engine] ${nativeResult}`
+      content: '[RyanAI ReAct Engine] ' + nativeResult
     });
 
     return { messages: [response] };
