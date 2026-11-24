@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { getStudioWorkerHandlerReadiness } from './studioNativeCore.js';
-import { registerRyanAISpecialistTaskHandlers, runRyanAIInspectorAudit } from './ryanaiSpecialistTaskHandlers.js';
+import { registerRyanAISpecialistTaskHandlers, runRyanAIInspectorAudit, runRyanAIRepositoryInventory } from './ryanaiSpecialistTaskHandlers.js';
 import { findModuleAgentForTask, getModuleAgentForModule } from '../../agent/moduleAgentRegistry.js';
 import { findWorkerForTask } from '../../agent/workerRegistry.js';
 import { registerRyanAICiDiagnosticsTaskHandlers } from './ryanaiCiDiagnosticsTask.js';
@@ -33,6 +33,29 @@ describe('RyanAI specialist worker handler registration', () => {
     expect(readiness.ready).toBe(true);
     expect(readiness.missingTaskTypes).toEqual([]);
     expect(readiness.registeredTaskTypes).toHaveLength(readiness.supportedTaskTypes.length);
+  });
+
+  it('returns a bounded read-only repository inventory without executing discovered commands', async () => {
+    const context = {
+      task: { id: 'inventory-test', objective: 'Inspect repository structure', requiredCapabilities: ['read-repository'] },
+    } as unknown as Parameters<typeof runRyanAIRepositoryInventory>[0];
+    const inventory = await runRyanAIRepositoryInventory(context);
+    expect(inventory.kind).toBe('repository.inventory');
+    expect(inventory.taskId).toBe('inventory-test');
+    expect(inventory.mode).toBe('READ_ONLY_STATIC_INVENTORY');
+    expect(inventory.commandsExecuted).toBe(false);
+    expect(inventory.environmentValuesRead).toBe(false);
+    expect(inventory.packages.some((item) => item.path === 'package.json')).toBe(true);
+    expect(inventory.packageScriptCount).toBeGreaterThan(0);
+    expect(inventory.workflows.length).toBeGreaterThan(0);
+    expect(inventory.repositoryScripts.every((item) => item.status === 'NOT_EXECUTED')).toBe(true);
+  });
+
+  it('rejects repository inventory without the explicit read-repository capability', async () => {
+    const context = {
+      task: { id: 'inventory-denied', objective: 'Inspect repository', requiredCapabilities: [] },
+    } as unknown as Parameters<typeof runRyanAIRepositoryInventory>[0];
+    await expect(runRyanAIRepositoryInventory(context)).rejects.toThrow('explicit read-repository capability');
   });
 
   it('routes the dedicated AI Inspector module to the repository-auditor handler', () => {
