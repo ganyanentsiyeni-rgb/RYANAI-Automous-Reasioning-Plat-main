@@ -29,8 +29,10 @@ jobs:
         image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: ryanai
-          POSTGRES_PASSWORD: ci_password
           POSTGRES_DB: ryanai_db
+          # This disposable service is isolated to the GitHub Actions job network.
+          # Trust auth avoids putting a fake PostgreSQL password in the repository.
+          POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
         options: >-
@@ -52,7 +54,7 @@ jobs:
       NODE_ENV: test
       HOST: 127.0.0.1
       PORT: '3000'
-      DATABASE_URL: postgresql://ryanai:ci_password@127.0.0.1:5432/ryanai_db
+      DATABASE_URL: postgresql://ryanai@127.0.0.1:5432/ryanai_db
       REDIS_URL: redis://127.0.0.1:6379
       JWT_SECRET: ci_only_secret_at_least_32_characters_long
       OPENAI_API_KEY: ""
