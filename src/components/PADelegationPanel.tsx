@@ -111,8 +111,7 @@ export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilo
       });
       createRequestRef.current = null;
       setObjective('');
-      const status = (await api<{ status?: string }>('/api/agent/ops/pa/delegations/' + encodeURIComponent(createRequestRef.current?.delegationId ?? ''))).status;
-      setNotice(status === 'approved' ? 'Gen-X functional approval recorded. PA and its internal Comms task are queued; any Push Deploy still waits for exact-SHA CI/security checks.' : 'Alex received the handoff. This scope is waiting for a functional policy decision before execution.');
+      setNotice(created.status === 'approved' ? 'Gen-X functional approval recorded. PA is queued; its internal Comms task will receive the result. Any Push Deploy still waits for exact-SHA CI/security checks.' : 'Alex received the handoff. This scope is waiting for a functional policy decision before execution.');
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Alex could not accept this handoff.');
