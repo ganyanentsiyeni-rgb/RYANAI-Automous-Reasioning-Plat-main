@@ -28,6 +28,16 @@ The exact service-to-provider mapping must be checked against current workflow a
 
 ## 3. Core data and migration ownership
 
+## 2.5 Shared PA / Darkside / Admin / Comms control plane
+
+PA Agent and Darkside Copilot use the same governed responsibility and capability model, with the Admin Console providing an administrative view of that control plane. Their shared capability surface includes internal Comms task creation and governed deployment orchestration. UI selection is never authorization; server-side owner scope and Gen-X remain authoritative.
+
+A deployment request is explicit: `PUSH DEPLOY`. The release workflow must validate the exact candidate SHA, confirm current `main`, and require every named CI/CD/security check for that exact SHA to pass before any provider job begins. Render, Railway, and Vercel then execute independently and each reports deployment identity, source SHA, provider status, and runtime health. A provider failure does not silently cancel the other provider jobs.
+
+The PA execution receipt distinguishes workflow-dispatch acceptance from provider completion. A queued deployment receipt is never treated as a successful deployment. The durable internal Comms child task receives the per-provider outcome for reporting; it does not imply outbound delivery.
+
+
+
 - PostgreSQL is authoritative application persistence; pgvector supports vector retrieval.
 - Redis/Valkey is used for supported cache/queue workloads, not as the authoritative record of business state.
 - Supabase owns Supabase platform objects, Auth-linked data, Storage policies, and Supabase-specific migration history.
