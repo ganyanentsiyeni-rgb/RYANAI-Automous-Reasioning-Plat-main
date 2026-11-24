@@ -72,9 +72,12 @@ function assertDatabaseUrlMatchesSupabaseProject(databaseUrl: string, supabaseUr
       throw new Error('DATABASE_URL has an invalid PostgreSQL username encoding. Credentials are not logged.');
     }
     const usernameProjectRef = username.split('.').slice(1).join('.').toLowerCase();
-    if (usernameProjectRef === projectRef) return;
+    // An unqualified legacy username is safe to normalize because the pooler
+    // resolver rewrites it to the project-qualified form before connecting.
+    // If a project suffix is present, it must match the configured project.
+    if (!usernameProjectRef || usernameProjectRef === projectRef) return;
     throw new Error(
-      'DATABASE_URL must use a project-qualified Supabase Session Pooler username matching SUPABASE_URL. Credentials are not logged.',
+      'DATABASE_URL Session Pooler username identifies a different Supabase project than SUPABASE_URL. Credentials are not logged.',
     );
   }
 
