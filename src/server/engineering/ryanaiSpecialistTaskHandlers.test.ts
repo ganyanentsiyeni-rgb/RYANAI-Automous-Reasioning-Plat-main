@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { getStudioWorkerHandlerReadiness, registerStudioTaskHandler } from './studioNativeCore.js';
-import { registerRyanAISpecialistTaskHandlers, runRyanAIInspectorAudit } from './ryanaiSpecialistTaskHandlers.js';
+import { normalizeAIInspectorFailureExitCode, registerRyanAISpecialistTaskHandlers, runRyanAIInspectorAudit } from './ryanaiSpecialistTaskHandlers.js';
 import { findModuleAgentForTask, getModuleAgentForModule } from '../../agent/moduleAgentRegistry.js';
 import { findWorkerForTask } from '../../agent/workerRegistry.js';
 import { registerRyanAICiDiagnosticsTaskHandlers } from './ryanaiCiDiagnosticsTask.js';
@@ -56,6 +56,7 @@ describe('RyanAI specialist worker handler registration', () => {
     expect(report.taskId).toBe('test-inspector-run');
     expect(report.report).toContain('# RyanAI Inspector & Audit Report');
     expect(report.report).toContain('## Cross-module source inspection');
+    expect(report.report).toContain('\n## Cross-module source inspection\n');
     expect(report.report).toContain('src/agent');
     expect(report.inspectionEvidenceFiles).toContain('package.json');
     expect(report.findings).toBeInstanceOf(Array);
@@ -72,6 +73,13 @@ describe('RyanAI specialist worker handler registration', () => {
     expect(readiness.registeredTaskTypes).toEqual(['security-audit']);
     expect(readiness.missingTaskTypes).toEqual(['dependency-audit', 'container-audit']);
     expect(readiness.reason).toContain('registration is incomplete');
+  });
+
+  it('normalizes Inspector failure exit codes without producing NaN', () => {
+    expect(normalizeAIInspectorFailureExitCode(undefined)).toBe(1);
+    expect(normalizeAIInspectorFailureExitCode(Number.NaN)).toBe(1);
+    expect(normalizeAIInspectorFailureExitCode(0)).toBe(1);
+    expect(normalizeAIInspectorFailureExitCode(2)).toBe(2);
   });
 
   it('does not register a handler for an unknown worker profile', () => {
