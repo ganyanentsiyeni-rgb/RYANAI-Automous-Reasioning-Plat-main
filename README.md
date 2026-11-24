@@ -615,6 +615,25 @@ wsl --list --running
 
 `.wslconfig` is stored in the Windows user profile and applies to WSL 2 distributions globally. WSL configuration keys and experimental options can change; consult [Microsoft's WSL configuration reference](https://learn.microsoft.com/en-us/windows/wsl/wsl-config) before changing advanced settings.
 
+### Start Docker and use the Windows-mounted checkout
+
+The following sequence uses the repository path on the Windows `C:` drive as mounted inside WSL at `/mnt/c`. Run it from the Ubuntu/WSL terminal:
+
+~~~bash
+sudo service docker start
+sudo usermod -aG docker "$USER"
+newgrp docker
+
+cd /mnt/c/Users/General/Downloads/RYANAI-Automous-Reasion-Plat-main-main
+docker compose ps -a
+docker compose up --build --detach --wait
+docker compose ps
+~~~
+
+The `usermod` command is a one-time setup for the current Linux user. `newgrp docker` starts a shell with the updated group membership; alternatively, close and reopen the WSL session. Membership in the `docker` group grants effectively root-level control over the Docker daemon, so use it only for a trusted local development account.
+
+Before starting the stack for the first time, ensure the repository-root `.env` file exists and contains unique local development values for the required Compose variables. Do not reuse production credentials. The final `docker compose ps` shows container state; it does not by itself prove API readiness or end-to-end functionality. Use the health checks below for additional local evidence.
+
 ### Prepare and start RyanAI from WSL
 
 From the Ubuntu shell, change to the repository root. The following example assumes the repository has already been cloned:
