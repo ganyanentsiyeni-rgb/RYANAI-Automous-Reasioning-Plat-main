@@ -320,7 +320,7 @@ export async function runRyanAIInspectorAudit(input: { taskId: string; signal?: 
         taskId: input.taskId,
         report: appendSourceInspection(value.stdout),
         stderr: typeof value.stderr === 'string' ? value.stderr : '',
-        exitCode: sourceHasHighFindings || typeof value.code === 'number' ? Math.max(1, value.code) : 1,
+        exitCode: sourceHasHighFindings ? 1 : typeof value.code === 'number' ? Math.max(1, value.code) : 1,
         reportSource: 'scripts/ai-inspector-audit.mjs',
         sourceInspectionSource: 'src/server/engineering/ryanaiSpecialistTaskHandlers.ts',
         persistedBy: 'agent-run-evidence',
