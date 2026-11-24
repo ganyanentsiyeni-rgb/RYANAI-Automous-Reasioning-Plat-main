@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { prisma } from '../src/lib/prisma.ts';
 import {
+  cancelStudioTask,
   claimStudioTask,
   createStudioProject,
   heartbeatStudioTask,
@@ -159,6 +160,22 @@ try {
     'the replacement worker can renew its new lease',
   );
   assert.ok(await prisma.studioEvent.findFirst({ where: { taskId: claimB.id, eventType: 'task.lease_recovered' } }));
+
+  const cancelled = await cancelStudioTask(claimA.id, ownerUserId, 'integration cancellation');
+  assert.equal(cancelled.cancelled, true, 'the owner can cancel its running task');
+  const cancelledTask = await taskById(claimA.id);
+  assert.equal(cancelledTask.status, 'cancelled');
+  assert.equal(cancelledTask.leaseOwner, null);
+  assert.equal(cancelledTask.leaseToken, null, 'cancellation must clear the fencing token');
+  assert.equal(cancelledTask.leaseExpiresAt, null);
+  assert.equal(cancelledTask.heartbeatAt, null);
+  assert.equal(
+    await heartbeatStudioTask(claimA.id, claimA.leaseOwner, claimA.leaseToken),
+    false,
+    'a cancelled worker cannot renew its former lease',
+  );
+  assert.ok(await prisma.studioEvent.findFirst({ where: { taskId: claimA.id, eventType: 'task.cancelled' } }));
+
 
   const successTask = created.tasks.find((item) => item.taskType === taskType.success);
   assert.ok(successTask);
