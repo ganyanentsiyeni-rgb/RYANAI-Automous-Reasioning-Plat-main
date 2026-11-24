@@ -19,6 +19,7 @@ const PA_CAPABILITY_POLICY: Record<PADelegationCapability, { toolName: string; a
   'patch.propose': { toolName: 'patch_proposal', action: 'CREATE', target: 'reviewable-patch-proposal' },
   'tests.run': { toolName: 'test_runner', action: 'EXECUTE', target: 'isolated-test-suite' },
   'evidence.record': { toolName: 'evidence_record', action: 'UPDATE', target: 'agent-run-evidence' },
+  'comms.task.create': { toolName: 'comms_internal_task_create', action: 'CREATE', target: 'internal-comms-task' },
 };
 
 function policyEnvironment(): 'development' | 'staging' | 'production' {
