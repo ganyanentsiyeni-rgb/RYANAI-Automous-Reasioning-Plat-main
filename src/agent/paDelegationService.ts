@@ -220,11 +220,14 @@ export async function linkPACommsRun(ownerUserId: string, delegationId: string, 
     if (delegation.commsRunId && delegation.commsRunId !== commsRunId) {
       throw new Error('PA delegation already links a different Comms task.');
     }
-    const linked = await tx.paDelegation.updateMany({
-      where: { id: delegationId, ownerUserId, OR: [{ commsRunId: null }, { commsRunId }] },
-      data: { commsRunId },
-    });
-    if (linked.count !== 1) throw new Error('PA-to-Comms task link changed concurrently; retry the same delegation.');
+    const createdLink = delegation.commsRunId === null;
+    if (createdLink) {
+      const linked = await tx.paDelegation.updateMany({
+        where: { id: delegationId, ownerUserId, commsRunId: null },
+        data: { commsRunId },
+      });
+      if (linked.count !== 1) throw new Error('PA-to-Comms task link changed concurrently; retry the same delegation.');
+    }
     const activated = await tx.agentRun.updateMany({
       where: { id: delegation.agentRunId, userId: ownerUserId, status: 'queued', approvalStatus: 'pending' },
       data: { approvalStatus: 'approved', approvedBy: ownerUserId, approvedAt: new Date() },
@@ -233,12 +236,14 @@ export async function linkPACommsRun(ownerUserId: string, delegationId: string, 
       const parent = await tx.agentRun.findFirst({ where: { id: delegation.agentRunId, userId: ownerUserId }, select: { approvalStatus: true } });
       if (parent?.approvalStatus !== 'approved') throw new Error('PA task could not be activated after its internal Comms task was linked.');
     }
-    await appendRunEvidence(tx, {
-      runId: delegation.agentRunId,
-      eventType: 'pa.comms_task.queued',
-      actorId: 'ryanai-pa',
-      payload: { delegationId, commsRunId, ownerUserId, outboundDispatchAllowed: false },
-    });
+    if (createdLink || activated.count === 1) {
+      await appendRunEvidence(tx, {
+        runId: delegation.agentRunId,
+        eventType: 'pa.comms_task.queued',
+        actorId: 'ryanai-pa',
+        payload: { delegationId, commsRunId, ownerUserId, outboundDispatchAllowed: false },
+      });
+    }
     return { commsRunId };
   });
 }
