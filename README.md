@@ -622,7 +622,11 @@ The following sequence uses the repository path on the Windows `C:` drive as mou
 ~~~bash
 sudo service docker start
 sudo usermod -aG docker "$USER"
+
+# Refresh group membership using ONE of these options:
 newgrp docker
+# Or start a fresh login shell instead:
+su - "$USER"
 
 cd /mnt/c/Users/General/Downloads/RYANAI-Automous-Reasion-Plat-main-main
 docker compose ps -a
@@ -630,7 +634,7 @@ docker compose up --build --detach --wait
 docker compose ps
 ~~~
 
-The `usermod` command is a one-time setup for the current Linux user. `newgrp docker` starts a shell with the updated group membership; alternatively, close and reopen the WSL session. Membership in the `docker` group grants effectively root-level control over the Docker daemon, so use it only for a trusted local development account.
+The `usermod` command is a one-time setup for the current Linux user. Use **one** group-refresh method: `newgrp docker` starts a shell with the updated group, while `su - "$USER"` starts a fresh login shell and may prompt for the account password. You can also close and reopen the WSL session. Do not run both refresh commands in sequence; either one is sufficient. Membership in the `docker` group grants effectively root-level control over the Docker daemon, so use it only for a trusted local development account.
 
 Before starting the stack for the first time, ensure the repository-root `.env` file exists and contains unique local development values for the required Compose variables. Do not reuse production credentials. The final `docker compose ps` shows container state; it does not by itself prove API readiness or end-to-end functionality. Use the health checks below for additional local evidence.
 
