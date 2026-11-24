@@ -168,7 +168,7 @@ const hasThreePlatformPushDeployContract =
   && platformDeployWorkflow.includes('uses: ./.github/workflows/ci-cd.yml')
   && platformDeployWorkflow.includes('Exact-SHA CI and security release gate')
   && platformDeployWorkflow.includes('needs: gate')
-  && !/\\\\n/.test(platformDeployWorkflow);
+  && !platformDeployWorkflow.includes('inputs.vercel_confirmation')
   && !platformDeployWorkflow.includes('needs: [gate, railway]')
   && platformDeployWorkflow.includes('RENDER_HEALTH_URLS')
   && platformDeployWorkflow.includes('RAILWAY_HEALTH_URL')
@@ -176,9 +176,9 @@ const hasThreePlatformPushDeployContract =
   && platformDeployWorkflow.includes('TruffleHog secret audit')
   && platformDeployWorkflow.includes('Analyze (javascript-typescript)')
   && platformDeployWorkflow.includes('Trivy filesystem scan')
-  && platformDeployWorkflow.includes('ref: ${{ needs.gate.outputs.sha }}')
+  && platformDeployWorkflow.includes('ref: \${{ needs.gate.outputs.sha }}')
   && ['railway:', 'render:', 'vercel:'].every((job) => platformDeployWorkflow.includes(job))
-  && !platformDeployWorkflow.includes('printf \'sha=%s\\\\n\'');
+  && !/\\\\n/.test(platformDeployWorkflow);
 const hasReusableExactShaCiCd =
   ciCdWorkflow.includes('workflow_call:')
   && ciCdWorkflow.includes('inputs.commit_sha')
