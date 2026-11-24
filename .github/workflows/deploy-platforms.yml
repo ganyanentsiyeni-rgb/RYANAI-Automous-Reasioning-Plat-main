@@ -52,7 +52,7 @@ jobs:
           set -euo pipefail
           sha="$INPUT_SHA"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Invalid deployment SHA"; exit 1; }
-          printf 'sha=%s\\n' "$sha" >> "$GITHUB_OUTPUT"
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
 
       - name: Require the exact current main commit
         env:
@@ -272,7 +272,7 @@ jobs:
           vercel build --prod --token "$VERCEL_TOKEN"
           deploy_output="$(vercel deploy --prebuilt --prod --skip-domain --token "$VERCEL_TOKEN" 2>&1)"
           echo "$deploy_output"
-          deployment_url="$(printf '%s\\n' "$deploy_output" | grep -Eo 'https://[^[:space:]]+' | tail -n1 | sed 's/[),]$//')"
+          deployment_url="$(printf '%s\n' "$deploy_output" | grep -Eo 'https://[^[:space:]]+' | tail -n1 | sed 's/[),]$//')"
           [[ "$deployment_url" == https://* ]] || { echo "::error::Vercel did not return a deployment URL"; exit 1; }
           echo "### Vercel" >> "$GITHUB_STEP_SUMMARY"
           echo "- Deployment URL: $deployment_url" >> "$GITHUB_STEP_SUMMARY"
