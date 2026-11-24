@@ -456,8 +456,10 @@ jobs:
               )
                 AND finished_at IS NOT NULL
                 AND rolled_back_at IS NULL
+              ORDER BY migration_name ASC
             `);
-            const applied = new Map(prisma.rows.map((row) => [row.migration_name, row.finished_at]));
+            const applied = new Set(prisma.rows.map((row) => row.migration_name));
+            const appliedOrder = prisma.rows.map((row) => row.migration_name);
             assert.ok(applied.has('20261014000000_supabase_platform_baseline'),
               'The Supabase platform baseline must initialize the Prisma ledger first');
             assert.ok(applied.has('20261015081513_init_reasoning_platform'),
@@ -466,11 +468,14 @@ jobs:
               'The Prisma application migration must create agent_runs');
             assert.ok(applied.has('20261107160000_agent_requested_model'),
               'The Prisma requested-model migration must be recorded as successfully applied');
-            assert.ok(applied.get('20261014000000_supabase_platform_baseline') < applied.get('20261015081513_init_reasoning_platform'),
+            assert.ok(appliedOrder.indexOf('20261014000000_supabase_platform_baseline')
+              < appliedOrder.indexOf('20261015081513_init_reasoning_platform'),
               'The Supabase platform baseline marker must precede Prisma application migrations');
-            assert.ok(applied.get('20261015081513_init_reasoning_platform') < applied.get('20261030120000_agent_operations'),
+            assert.ok(appliedOrder.indexOf('20261015081513_init_reasoning_platform')
+              < appliedOrder.indexOf('20261030120000_agent_operations'),
               'The initial Prisma schema must precede agent operations');
-            assert.ok(applied.get('20261030120000_agent_operations') < applied.get('20261107160000_agent_requested_model'),
+            assert.ok(appliedOrder.indexOf('20261030120000_agent_operations')
+              < appliedOrder.indexOf('20261107160000_agent_requested_model'),
               'The combined Supabase + Prisma install must create agent_runs before requested_model');
 
             const supabase = await pool.query(`
