@@ -107,8 +107,8 @@ export function evaluateGenXSecurityEvent(event: GenXSecurityEvent): GenXPolicyR
   // capabilities. This does not authorize agent/service network calls or writes.
   if (event.actorType === 'human' && event.ownerAuthorized === true &&
       event.toolName === 'plugin_provider_read' && event.action === 'NETWORK' &&
-      (/^plugin-provider:(google-calendar|microsoft-365-calendar):calendar\\.events\\.read$/.test(event.target ?? '') ||
-       /^plugin-provider:gmail:gmail\\.messages\\.read$/.test(event.target ?? ''))) {
+      (/^plugin-provider:(google-calendar|microsoft-365-calendar):calendar\.events\.read$/.test(event.target ?? '') ||
+       /^plugin-provider:gmail:gmail\.messages\.read$/.test(event.target ?? ''))) {
     return { decision: 'ALLOW', ruleId: 'GX-OWNER-PLUGIN-READ-001', reason: 'Verified owner may read data through an explicitly approved, owner-bound, read-only provider connection.', severity: 'LOW' };
   }
   // PA may create an internal Comms task only after the authenticated owner
