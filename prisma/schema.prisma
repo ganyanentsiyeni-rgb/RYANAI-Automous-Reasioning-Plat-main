@@ -523,6 +523,7 @@ model PaDelegation {
   agentRunId String? @unique @map("agent_run_id")
   agentRun AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
   commsRunId String? @unique @map("comms_run_id")
+  commsRunId String? @unique @map("comms_run_id")
   receipt PaExecutionReceipt?
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
