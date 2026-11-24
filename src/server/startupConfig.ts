@@ -7,9 +7,12 @@ export interface ConnectionUrls {
 }
 
 function localDevelopmentDatabaseUrl(): string {
-  const url = new URL('postgresql://localhost:5432/ryanai');
+  const url = new URL('http://localhost');
+  url.protocol = 'postgresql:';
   url.username = 'postgres';
   url.password = 'postgres';
+  url.port = '5432';
+  url.pathname = '/ryanai';
   return url.toString();
 }
 
