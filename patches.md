@@ -102,3 +102,11 @@ This patch does **not** trigger production deployment. Production deployment sti
 - Tightened worker readiness: a profile is ready only when every task type in its roster has a registered handler in that process; partial registration is now reported with the exact missing task types.
 - Kept coordinator task ownership singular: the shared specialist registrar owns planning/triage, while each worker bootstrap owns its coordination task implementation, avoiding duplicate registration in the server worker path.
 - Added bootstrap contract coverage for the repository inventory and CI diagnostic task handlers and a regression test proving partial registration cannot be marked ready.
+
+## Worker inventory TypeScript build repair
+
+- Fixed the exact-head `TS5055` failure caused by importing `scripts/repository-inventory.mjs` into the server TypeScript build.
+- Moved the bounded read-only inventory handler into `ryanaiSpecialistTaskHandlers.ts`, shared by server and CLI worker profiles; the standalone Node inventory utility remains independent.
+- Removed duplicate/incomplete coordinator registration in the CLI worker bootstrap and centralized repository-auditor task registration.
+- Fixed duplicate specialist registration in the workforce tests and added explicit inventory output/capability tests.
+- Corrected PA objective newline serialization so internal Comms tasks and memory context receive real line breaks.
