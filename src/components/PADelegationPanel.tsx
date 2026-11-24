@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Activity, ArrowRightLeft, CheckCircle2, Clock3, LoaderCircle, RefreshCw, Send, ShieldCheck, XCircle } from 'lucide-react';
 import { authenticatedFetch } from '@/lib/authenticatedFetch';
 
+type Capability = 'repository.inspect' | 'diagnostics.run' | 'patch.propose' | 'evidence.record' | 'comms.task.create';
 type Capability = 'repository.inspect' | 'diagnostics.run' | 'patch.propose' | 'evidence.record' | 'comms.task.create' | 'deployment.execute';
 type Handoff = { fromAgent: string; toAgent: string; status: string; output?: string | null; error?: string | null };
 type Delegation = {
@@ -172,6 +173,7 @@ export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilo
             ))}
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[10px] text-slate-500">Internal Comms tasks are durable, owner-scoped work items. Creating one does not start a conversation or send WhatsApp, SMS, voice, or email.</p>
             <p className="text-[10px] text-slate-500">Internal Comms tasks are durable and owner-scoped. To deploy, include the exact phrase PUSH DEPLOY in the objective; the three providers start only after every required exact-SHA CI/security check passes. No outbound messages are sent.</p>
             <button type="button" onClick={() => void submit()} disabled={busy !== null || objective.trim().length < 5 || capabilities.length === 0} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-xs font-semibold text-cyan-100 hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-40">
               {busy === 'create' ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Send to Alex

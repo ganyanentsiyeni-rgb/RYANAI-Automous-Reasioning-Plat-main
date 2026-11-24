@@ -176,6 +176,14 @@ const hasThreePlatformPushDeployContract =
   && platformDeployWorkflow.includes('TruffleHog secret audit')
   && platformDeployWorkflow.includes('Analyze (javascript-typescript)')
   && platformDeployWorkflow.includes('Trivy filesystem scan')
+  && platformDeployWorkflow.includes('ref: ${{ needs.gate.outputs.sha }}')
+  && ['railway:', 'render:', 'vercel:'].every((job) =>
+    platformDeployWorkflow.includes(job)
+  );
+const hasReusableExactShaCiCd =
+  ciCdWorkflow.includes('workflow_call:')
+  && ciCdWorkflow.includes('inputs.commit_sha')
+  && ciCdWorkflow.includes('ref: ${{ inputs.commit_sha || github.sha }}')
   && platformDeployWorkflow.includes('needs.gate.outputs.sha')
   && (platformDeployWorkflow.match(/needs: gate/g) ?? []).length === 3;
 const hasReusableExactShaCiCd =

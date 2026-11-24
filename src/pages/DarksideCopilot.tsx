@@ -165,6 +165,7 @@ export default function DarksideCopilot(props: DarksideCopilotProps) {
           voiceSettings={props.voiceSettings}
           copilotSettings={props.copilotSettings}
         />
+        {props.copilotSettings.showDelegationPanel && <div className="mt-5"><PADelegationPanel mode="shared" /></div>}
         <div id="darkside-pa-control-plane" className="mt-5" aria-label="Shared PA Agent and Darkside Copilot control plane"><PADelegationPanel mode="shared" /></div>
       </div>
     </section>

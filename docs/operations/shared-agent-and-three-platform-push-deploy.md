@@ -10,6 +10,10 @@ The shared surface includes internal Comms task creation. A PA-to-Comms handoff 
 
 ## Push Deploy contract
 
+The release workflow is manually dispatched with the explicit `PUSH DEPLOY` input and an exact 40-character commit SHA. Before any provider job starts, it:
+
+1. Runs the reusable CI/CD validation workflow against that exact SHA.
+2. Confirms the requested SHA is still the current `main` commit.
 The release workflow is manually dispatched with the explicit \`PUSH DEPLOY\` input and an exact 40-character commit SHA. Before any provider job starts, it:
 
 1. Runs the reusable CI/CD validation workflow against that exact SHA.
@@ -23,6 +27,7 @@ Required environment configuration is read at runtime from protected GitHub envi
 
 ## Future Comms message-trigger contract
 
+A future Comms trigger may route messages tagged with `@RyanAI`, `@PA Agents`, `@Comms`, `@Security`, `@updates`, and `@self-patches` into the release coordinator. These tags are routing metadata, not permissions. The message must also contain the explicit `PUSH DEPLOY` command and resolve to an exact current-main SHA. The release gate above remains mandatory.
 ## Current implementation boundary
 
 The current Push Deploy path is a fixed GitHub `workflow_dispatch` release workflow. PA may be governed to dispatch it only through the owner-scoped GitHub connection and Gen-X policy path. The workflow itself remains the final release gate for exact-SHA CI/security evidence and provider execution.
