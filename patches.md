@@ -83,6 +83,12 @@ This patch does **not** trigger production deployment. Production deployment sti
 - Added a regression test for PA report delivery, alongside handler registration/routing tests.
 - No deployment, migration, secret changes, paid upgrade, auto-merge, or outbound communications.
 
+## 9. Studio worker lifecycle and lease regression fixtures
+
+- Updated the concurrent-stop test to wait for the actual terminal-heartbeat boundary before asserting that only one shutdown drain is active.
+- Made terminal-heartbeat failure injection conditional on the `stopped` status, so background healthy heartbeats cannot consume the intended shutdown failure.
+- Aligned queue test query fixtures with the current terminal-dependency sweep, claim query, and token-fenced authorization re-check.
+- Kept the production lease/authorization logic unchanged; these changes repair stale test assumptions and preserve the existing Gen-X and lease-token fences.
 ## AI Inspector module and PA report skills
 
 - Allocated the dedicated `ai-inspector-module-agent` as the 13th module identity, with bounded read/inspect/test/evidence/patch-proposal actions and no privileged execution authority.
