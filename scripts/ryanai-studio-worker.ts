@@ -4,7 +4,6 @@ import {
   registerStudioTaskHandler,
 } from '../src/server/engineering/studioNativeCore.js';
 import { registerRyanAICiDiagnosticsTaskHandlers } from '../src/server/engineering/ryanaiCiDiagnosticsTask.js';
-import { generateRepositoryInventory } from './repository-inventory.mjs';
 import { prisma } from '../src/lib/prisma.js';
 import { inspectConnectedGitHubWorkflowEvidence } from '../src/server/routes/githubIntegration.js';
 import { registerRyanAISpecialistTaskHandlers } from '../src/server/engineering/ryanaiSpecialistTaskHandlers.js';
@@ -12,24 +11,15 @@ import { registerRyanAISpecialistTaskHandlers } from '../src/server/engineering/
 const profileId = process.env.RYANAI_STUDIO_WORKER_PROFILE_ID?.trim() || 'coordinator';
 const workerId = process.env.RYANAI_STUDIO_WORKER_ID?.trim();
 
-const runRepositoryInventoryTask = async ({ task, signal }: {
-  task: { id: string; objective: string; requiredCapabilities: string[] };
-  signal?: AbortSignal;
-}) => {
-  signal?.throwIfAborted();
-  if (!task.requiredCapabilities.includes('read-repository')) {
-    throw new Error('Repository inventory requires the explicit read-repository capability.');
-  }
-  return {
-    kind: 'repository.inventory',
-    schemaVersion: 1,
-    taskId: task.id,
-    objective: task.objective,
-    inventory: await generateRepositoryInventory({ signal }),
-  };
-};
-
 const unregisterSpecialistHandlers = registerRyanAISpecialistTaskHandlers(profileId);
+const unregisterCiDiagnosticsHandlers = profileId === 'ci-diagnostics'
+  ? registerRyanAICiDiagnosticsTaskHandlers((ownerUserId, headSha, options) => inspectConnectedGitHubWorkflowEvidence(
+      { prisma },
+      ownerUserId,
+      headSha,
+      options,
+    ))
+  : () => undefined;
 const unregisterHandlers = profileId === 'coordinator'
   ? [
       registerStudioTaskHandler('coordination', async ({ task }) => ({
@@ -47,21 +37,6 @@ const unregisterHandlers = profileId === 'coordinator'
         status: 'plan_proposed',
         executionAuthority: 'none',
       })),
-      unregisterSpecialistHandlers,
-    ]
-  : profileId === 'repository-auditor'
-const unregisterCiDiagnosticsHandlers = profileId === 'ci-diagnostics'
-  ? registerRyanAICiDiagnosticsTaskHandlers((ownerUserId, headSha, options) => inspectConnectedGitHubWorkflowEvidence(
-      { prisma },
-      ownerUserId,
-      headSha,
-      options,
-    ))
-  : () => undefined;
-const unregisterHandlers = profileId === 'repository-auditor'
-  ? [
-      registerStudioTaskHandler('repository-audit', runRepositoryInventoryTask),
-      registerStudioTaskHandler('inventory', runRepositoryInventoryTask),
       unregisterSpecialistHandlers,
       unregisterCiDiagnosticsHandlers,
     ]
