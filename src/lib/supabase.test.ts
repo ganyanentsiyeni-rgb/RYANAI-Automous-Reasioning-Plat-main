@@ -31,6 +31,17 @@ describe('optional browser Supabase client', () => {
     },
   );
 
+  it.each(['REPLACE_WITH_SUPABASE_URL', 'postgresql://db.example.test:5432/postgres', 'not a URL'])(
+    'does not construct a browser client for an invalid URL (%s)',
+    async (url) => {
+      vi.stubEnv('VITE_SUPABASE_URL', url);
+      vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'sb_publishable_test');
+      const { supabase } = await import('./supabase');
+      expect(supabase).toBeNull();
+      expect(createClient).not.toHaveBeenCalled();
+    },
+  );
+
   it('fails closed when the Supabase URL is missing even if a publishable key exists', async () => {
     vi.stubEnv('VITE_SUPABASE_PUBLISHABLE_KEY', 'sb_publishable_test');
     const { supabase } = await import('./supabase');

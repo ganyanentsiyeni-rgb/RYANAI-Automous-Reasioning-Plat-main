@@ -2,12 +2,25 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { PrismaClient } from '@prisma/client';
+import { resolveConnectionUrls } from '../server/startupConfig.js';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-export const db = globalForPrisma.prisma ?? new PrismaClient();
+const nodeEnv = process.env.NODE_ENV || 'development';
+const { databaseUrl } = resolveConnectionUrls(
+  nodeEnv,
+  process.env.DATABASE_URL,
+  process.env.REDIS_URL,
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SESSION_POOLER_HOST,
+  process.env.SUPABASE_SSL_ROOT_CERT_PATH,
+);
+
+export const db = globalForPrisma.prisma ?? new PrismaClient({
+  datasources: { db: { url: databaseUrl } },
+});
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = db;
