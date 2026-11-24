@@ -4,6 +4,7 @@ export interface PACapabilityReceipt {
   capability: PADelegationCapability;
   status: 'passed' | 'failed' | 'queued' | 'skipped' | 'provider_blocked';
   evidenceReferences: string[];
+  childRunId?: string;
   repositoryInspection?: {
     repositoryFullName: string;
     commitSha: string;
@@ -34,6 +35,9 @@ export function assertPACompletionCapabilityReceipts(scopeValue: unknown, receip
   if (missing.length) throw new Error('PA delegation cannot be finalized: missing capability receipts: ' + missing.join(', ') + '.');
   for (const capability of expected) {
     const receipt = byCapability.get(capability)!;
+    if (capability === 'comms.task.create' && (typeof receipt.childRunId !== 'string' || !receipt.childRunId.startsWith('pa_comms_'))) {
+      throw new Error('PA delegation cannot be finalized: comms.task.create has no durable child task reference.');
+    }
     if (receipt.status !== 'passed' || !Array.isArray(receipt.evidenceReferences) || receipt.evidenceReferences.length === 0 ||
         receipt.evidenceReferences.some((reference) => typeof reference !== 'string' || !reference.trim())) {
       throw new Error('PA delegation cannot be finalized: ' + capability + ' has no passed, evidence-backed receipt.');

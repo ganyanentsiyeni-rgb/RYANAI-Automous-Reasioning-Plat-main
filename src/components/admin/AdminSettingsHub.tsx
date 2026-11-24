@@ -21,6 +21,8 @@ const settingsAreas: SettingsArea[] = [
 
 const workspaceAreas = [
   { title: 'Admin Console', route: 'admin', detail: 'Administrator-only control plane' },
+  { title: 'PA Agent', route: 'pa', detail: 'Shared task delegation, Comms and release coordination' },
+  { title: 'Darkside Copilot', route: 'copilot', detail: 'Shared PA capabilities and command surface' },
   { title: 'Operator Console', route: 'operator', detail: 'Task execution and progress' },
   { title: 'Cockpit', route: 'cockpit', detail: 'Command and operational awareness' },
   { title: 'Quant Lab', route: 'quant', detail: 'Isolated research and paper trading' },

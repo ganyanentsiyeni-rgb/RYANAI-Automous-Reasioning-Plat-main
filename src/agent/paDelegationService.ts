@@ -179,7 +179,7 @@ export async function persistPAExecutionReceipt(input: { delegationId: string; a
 }
 
 export async function listPADelegations(ownerUserId: string) {
-  return prisma.paDelegation.findMany({
+  const delegations = await prisma.paDelegation.findMany({
     where: { ownerUserId },
     orderBy: { createdAt: 'desc' },
     take: 50,
@@ -194,6 +194,76 @@ export async function listPADelegations(ownerUserId: string) {
       },
     },
   });
+  const commsRunIds = delegations.map((item) => item.commsRunId).filter((id): id is string => Boolean(id));
+  const commsRuns = commsRunIds.length
+    ? await prisma.agentRun.findMany({
+        where: { id: { in: commsRunIds }, userId: ownerUserId },
+        select: { id: true, status: true, approvalStatus: true, attempts: true, result: true, error: true, completedAt: true },
+      })
+    : [];
+  const byId = new Map(commsRuns.map((run) => [run.id, run]));
+  return delegations.map((item) => ({ ...item, commsRun: item.commsRunId ? byId.get(item.commsRunId) ?? null : null }));
+}
+
+export async function linkPACommsRun(ownerUserId: string, delegationId: string, commsRunId: string) {
+  return prisma.$transaction(async (tx) => {
+    const delegation = await tx.paDelegation.findFirst({
+      where: { id: delegationId, ownerUserId },
+      select: { id: true, agentRunId: true, commsRunId: true },
+    });
+    if (!delegation?.agentRunId) throw new Error('Approved PA delegation was not found for the Comms handoff.');
+    const child = await tx.agentRun.findFirst({
+      where: { id: commsRunId, userId: ownerUserId },
+      select: { id: true },
+    });
+    if (!child) throw new Error('Internal Comms task is not owned by the PA delegation owner.');
+    if (delegation.commsRunId && delegation.commsRunId !== commsRunId) {
+      throw new Error('PA delegation already links a different Comms task.');
+    }
+    const createdLink = delegation.commsRunId === null;
+    if (createdLink) {
+      const linked = await tx.paDelegation.updateMany({
+        where: { id: delegationId, ownerUserId, commsRunId: null },
+        data: { commsRunId },
+      });
+      if (linked.count !== 1) throw new Error('PA-to-Comms task link changed concurrently; retry the same delegation.');
+    }
+    const activated = await tx.agentRun.updateMany({
+      where: { id: delegation.agentRunId, userId: ownerUserId, status: 'queued', approvalStatus: 'pending' },
+      data: { approvalStatus: 'approved', approvedBy: ownerUserId, approvedAt: new Date() },
+    });
+    if (activated.count !== 1) {
+      const parent = await tx.agentRun.findFirst({ where: { id: delegation.agentRunId, userId: ownerUserId }, select: { approvalStatus: true } });
+      if (parent?.approvalStatus !== 'approved') throw new Error('PA task could not be activated after its internal Comms task was linked.');
+    }
+    if (createdLink || activated.count === 1) {
+      await appendRunEvidence(tx, {
+        runId: delegation.agentRunId,
+        eventType: 'pa.comms_task.queued',
+        actorId: 'ryanai-pa',
+        payload: { delegationId, commsRunId, ownerUserId, outboundDispatchAllowed: false },
+      });
+    }
+    return { commsRunId };
+  });
+}
+
+export async function getPADelegation(ownerUserId: string, delegationId: string) {
+  const delegation = await prisma.paDelegation.findFirst({
+    where: { id: delegationId, ownerUserId },
+    include: {
+      receipt: true,
+      agentRun: {
+        select: { id: true, status: true, approvalStatus: true, attempts: true, result: true, error: true, createdAt: true, completedAt: true, handoffs: { orderBy: { startedAt: 'asc' } } },
+      },
+    },
+  });
+  if (!delegation?.commsRunId) return delegation ? { ...delegation, commsRun: null } : null;
+  const commsRun = await prisma.agentRun.findFirst({
+    where: { id: delegation.commsRunId, userId: ownerUserId },
+    select: { id: true, status: true, approvalStatus: true, attempts: true, result: true, error: true, completedAt: true },
+  });
+  return { ...delegation, commsRun };
 }
 
 export async function approvePADelegation(
@@ -201,6 +271,7 @@ export async function approvePADelegation(
   delegationId: string,
   approvedBy: string,
   policyDecisions: Array<{ capability: string; decision: string; ruleId: string }>,
+  afterApproval?: (context: { ownerUserId: string; delegationId: string; runId: string; objective: string }) => Promise<{ commsRunId: string }>,
 ) {
   const result = await prisma.$transaction(async (tx) => {
     const delegation = await tx.paDelegation.findFirst({
@@ -210,14 +281,14 @@ export async function approvePADelegation(
     if (!delegation?.agentRun) return null;
     const run = delegation.agentRun;
     if (run.approvalStatus === 'approved') {
-      return { delegationId, runId: run.id, status: run.status, alreadyApproved: true };
+      return { delegationId, runId: run.id, status: run.status, alreadyApproved: true, objective: delegation.objective };
     }
     if (run.approvalStatus !== 'pending' || run.status !== 'queued') {
       throw new Error('This PA delegation is no longer awaiting approval.');
     }
     const approvalUpdate = await tx.agentRun.updateMany({
       where: { id: run.id, approvalStatus: 'pending', status: 'queued' },
-      data: { approvalStatus: 'approved', approvedBy, approvedAt: new Date(), status: 'queued' },
+      data: { approvedBy, approvedAt: new Date(), status: 'queued' },
     });
     if (approvalUpdate.count !== 1) {
       const latestRun = await tx.agentRun.findUnique({
@@ -226,7 +297,7 @@ export async function approvePADelegation(
       });
       const transition = resolvePAApprovalTransition(approvalUpdate.count, latestRun?.approvalStatus ?? null);
       if (transition === 'already_approved') {
-        return { delegationId, runId: run.id, status: run.status, alreadyApproved: true };
+        return { delegationId, runId: run.id, status: run.status, alreadyApproved: true, objective: delegation.objective };
       }
       throw new Error('This PA delegation changed while approval was being recorded; reload before retrying.');
     }
@@ -240,14 +311,18 @@ export async function approvePADelegation(
     await tx.jarvisAuditEvent.create({
       data: { actorId: approvedBy, eventType: 'pa.delegation.approved', resourceId: delegationId, details: { ownerUserId, agentRunId: run.id, policyDecisions } },
     });
-    return { delegationId, runId: run.id, status: 'queued', alreadyApproved: false };
+    return { delegationId, runId: run.id, status: 'queued', alreadyApproved: false, objective: delegation.objective };
   });
-  if (!result || result.alreadyApproved) return result;
+  if (!result) return null;
+  const comms = afterApproval
+    ? await afterApproval({ ownerUserId, delegationId, runId: result.runId, objective: result.objective })
+    : null;
+  if (result.alreadyApproved) return { ...result, ...(comms ?? {}) };
   const notified = await publishAgentTaskNotification(result.runId, async (id) => {
     await prisma.$queryRaw`SELECT pg_notify('agent_task_queue', ${id})::text`;
   });
   const notification: 'sent' | 'recovery_sweep' = notified ? 'sent' : 'recovery_sweep';
-  return { ...result, notification };
+  return { ...result, ...(comms ?? {}), notification };
 }
 
 export async function rejectPADelegation(ownerUserId: string, delegationId: string, rejectedBy: string) {
@@ -278,17 +353,5 @@ export async function rejectPADelegation(ownerUserId: string, delegationId: stri
       data: { actorId: rejectedBy, eventType: 'pa.delegation.rejected', resourceId: delegationId, details: { ownerUserId, agentRunId: delegation.agentRun.id } },
     });
     return true;
-  });
-}
-
-export async function getPADelegation(ownerUserId: string, delegationId: string) {
-  return prisma.paDelegation.findFirst({
-    where: { id: delegationId, ownerUserId },
-    include: {
-      receipt: true,
-      agentRun: {
-        select: { id: true, status: true, approvalStatus: true, attempts: true, result: true, error: true, createdAt: true, completedAt: true, handoffs: { orderBy: { startedAt: 'asc' } } },
-      },
-    },
   });
 }

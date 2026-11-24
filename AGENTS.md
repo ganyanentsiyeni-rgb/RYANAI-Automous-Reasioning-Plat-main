@@ -52,10 +52,10 @@ Rules:
 
 ## Current RyanAI execution and release contract (21 November 2026)
 
-- The current documented release topology includes Railway as the primary gate, plus independent Render, Vercel, and MCP/MCP-server CI/deployment checks. Verify the exact workflow definitions and service mapping before making provider-specific claims.
+- RyanAI's required deployment set is exactly Railway, Render, and Vercel. A production release is an explicitly dispatched, all-three-platform operation: the operator must select `PUSH_DEPLOY`, the exact candidate must be current `main`, and every required CI/security check must be completed successfully on that exact SHA. No platform may be silently skipped; failure or missing provider credentials on any target fails the release workflow. MCP/MCP-server checks remain part of CI, not a fourth deployment target.
 - A release is not green until every required target has a terminal passing result on the exact candidate SHA, security checks have passed, the deployment has an identifiable provider deployment record, and runtime health has been verified. Queued, skipped, cancelled, missing, or provider-blocked is not passed.
 - Do not push documentation or application changes directly to `main`. Use a focused branch and pull request. Never enable auto-merge or bypass review/checks.
-- No production deploy, production database migration, secret creation/modification/rotation, paid upgrade, or production infrastructure mutation without separate explicit owner approval.
+- Production deployment is permitted only through the protected three-platform workflow after exact-head CI/security success and an explicit `PUSH_DEPLOY` dispatch. This authorization does not authorize production database migrations, secret creation/modification/rotation, paid upgrades, or unrelated production infrastructure mutations; those remain separately approved.
 - Comms inbound admission must be durable/idempotent. An interrupted `in_flight` operation is not silently marked failed or retried as safe: reconcile with the provider and record an explicit uncertain/reconciled outcome.
 - Keep AgentRun execution lifecycle separate from outbound dispatch and provider delivery receipts. Delivery callbacks are append-only evidence and may update dispatch projections; they must not overwrite execution state.
 - Follow the migration owner for each schema object. Prisma and Supabase migration histories are separate; do not use `db push`, reset, or edited historical migrations to conceal drift.

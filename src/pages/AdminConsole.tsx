@@ -6,6 +6,7 @@ import { createTelemetryMetricSnapshot } from '@/lib/telemetry/contracts';
 import AdminSettingsHub from '@/components/admin/AdminSettingsHub';
 import SelfPatchPanel from '@/components/SelfPatchPanel';
 import ResiliencePanel from '@/components/admin/ResiliencePanel';
+import PADelegationPanel from '@/components/PADelegationPanel';
 
 interface AdminIdentity {
   authenticated: boolean;
@@ -380,6 +381,16 @@ export default function AdminConsole({ userId }: { userId: string }) {
       {notice && <p role="status" className="rounded-lg border border-cyan-300/20 bg-cyan-950/20 p-3 text-sm text-cyan-100">{notice}</p>}
 
       <AdminSettingsHub />
+      {(identity?.user.role === 'admin' || identity?.user.isOwner) && (
+        <section id="admin-pa-control-plane" className="scroll-mt-6 space-y-3" aria-labelledby="admin-pa-control-plane-title">
+          <header>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-300">Shared agent operations</p>
+            <h2 id="admin-pa-control-plane-title" className="mt-1 text-xl font-semibold text-white">PA Agent & Darkside Copilot</h2>
+            <p className="mt-1 text-sm text-slate-400">Shared delegation queue, capability scope and internal Comms task handoff. Backend identity checks and Gen-X policy remain authoritative.</p>
+          </header>
+          <PADelegationPanel mode="shared" />
+        </section>
+      )}
 
       {identity?.user.isOwner && <SelfPatchPanel />}
       {identity?.user.isOwner && <ResiliencePanel userId={userId} />}
