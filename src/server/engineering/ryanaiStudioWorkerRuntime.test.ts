@@ -115,6 +115,41 @@ describe('RyanAI native Studio worker runtime', () => {
     );
   });
 
+
+  it('aborts the execution signal before draining in-flight work', async () => {
+    let receivedSignal: AbortSignal | undefined;
+    let finishExecution!: (value: { state: string; taskId: string }) => void;
+    const pendingExecution = new Promise<{ state: string; taskId: string }>((resolve) => { finishExecution = resolve; });
+    const executeOnce = vi.fn((_id: string, _profile: string, _lease: number, signal: AbortSignal) => {
+      receivedSignal = signal;
+      return pendingExecution;
+    });
+    const heartbeat = vi.fn().mockResolvedValue(undefined);
+    const runtime = createRyanAIStudioWorkerRuntime({
+      workerProfileId: 'coordinator',
+      workerInstanceId: 'studio-worker-abort',
+      pollIntervalMs: 60_000,
+      heartbeatIntervalMs: 60_000,
+      recoveryIntervalMs: 60_000,
+      executeOnce,
+      heartbeat,
+      recoverExpiredLeases: vi.fn().mockResolvedValue({ inspected: 0, recovered: 0, failed: 0 }),
+    });
+
+    await runtime.start();
+    await Promise.resolve();
+    expect(receivedSignal).toBeInstanceOf(AbortSignal);
+    expect(receivedSignal?.aborted).toBe(false);
+
+    const stopping = runtime.stop();
+    expect(receivedSignal?.aborted).toBe(true);
+    expect(heartbeat).not.toHaveBeenLastCalledWith('studio-worker-abort', 'stopped', expect.anything());
+
+    finishExecution({ state: 'interrupted', taskId: 'task-abort' });
+    await stopping;
+    expect(runtime.snapshot().status).toBe('stopped');
+  });
+
   it('shares one shutdown drain across concurrent stop calls', async () => {
     let finishStopped!: () => void;
     const stoppedHeartbeat = new Promise<void>((resolve) => { finishStopped = resolve; });
