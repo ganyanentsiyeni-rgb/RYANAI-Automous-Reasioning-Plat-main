@@ -5,6 +5,9 @@ export interface PACapabilityReceipt {
   status: 'passed' | 'failed' | 'queued' | 'skipped' | 'provider_blocked';
   evidenceReferences: string[];
   childRunId?: string;
+  workflowId?: string;
+  commitSha?: string;
+  dispatchAccepted?: boolean;
   repositoryInspection?: {
     repositoryFullName: string;
     commitSha: string;
@@ -35,10 +38,14 @@ export function assertPACompletionCapabilityReceipts(scopeValue: unknown, receip
   if (missing.length) throw new Error('PA delegation cannot be finalized: missing capability receipts: ' + missing.join(', ') + '.');
   for (const capability of expected) {
     const receipt = byCapability.get(capability)!;
-    if (capability === 'comms.task.create' && (typeof receipt.childRunId !== 'string' || !receipt.childRunId.startsWith('pa_comms_'))) {
+    if (capability === 'comms.task.create' && (typeof receipt.childRunId !== 'string' || !receipt.childRunId.startsWith('comms_assist_'))) {
       throw new Error('PA delegation cannot be finalized: comms.task.create has no durable child task reference.');
     }
-    if (receipt.status !== 'passed' || !Array.isArray(receipt.evidenceReferences) || receipt.evidenceReferences.length === 0 ||
+    if (capability === 'deployment.execute' && (receipt.status !== 'queued' || receipt.workflowId !== 'deploy-platforms.yml' || receipt.dispatchAccepted !== true || typeof receipt.commitSha !== 'string' || !/^[a-f0-9]{40}$/i.test(receipt.commitSha))) {
+      throw new Error('PA delegation cannot be finalized: deployment.execute lacks an exact-SHA accepted Push Deploy workflow receipt.');
+    }
+    const validStatus = receipt.status === 'passed' || capability === 'deployment.execute' && receipt.status === 'queued';
+    if (!validStatus || !Array.isArray(receipt.evidenceReferences) || receipt.evidenceReferences.length === 0 ||
         receipt.evidenceReferences.some((reference) => typeof reference !== 'string' || !reference.trim())) {
       throw new Error('PA delegation cannot be finalized: ' + capability + ' has no passed, evidence-backed receipt.');
     }

@@ -22,6 +22,9 @@ This index identifies the primary documents for product, architecture, agents, s
 ## 2. Architecture and governance
 
 - [Architecture overview](docs/ARCHITECTURE.md)
+- [Shared PA / Darkside / Comms / three-platform Push Deploy contract](docs/operations/shared-agent-and-three-platform-push-deploy.md)
+- [Shared PA / Darkside / Comms / release architecture addendum](architecture.md)
+- [Shared PA / Darkside / Comms / Push Deploy patch record](patches.md)
 - [Canonical topology](docs/architecture/RYANAI_CANONICAL_TOPOLOGY.md)
 - [Mission-centric operating architecture](docs/architecture/mission-centric-operating-architecture.md)
 - [API control-plane contract](docs/architecture/API_CONTROL_PLANE_CONTRACT.md)

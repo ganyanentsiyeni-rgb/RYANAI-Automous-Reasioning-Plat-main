@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Activity, ArrowRightLeft, CheckCircle2, Clock3, LoaderCircle, RefreshCw, Send, ShieldCheck, XCircle } from 'lucide-react';
 import { authenticatedFetch } from '@/lib/authenticatedFetch';
 
-type Capability = 'repository.inspect' | 'diagnostics.run' | 'patch.propose' | 'evidence.record' | 'comms.task.create';
+type Capability = 'repository.inspect' | 'diagnostics.run' | 'patch.propose' | 'evidence.record' | 'comms.task.create' | 'deployment.execute';
 type Handoff = { fromAgent: string; toAgent: string; status: string; output?: string | null; error?: string | null };
 type Delegation = {
   id: string;
@@ -31,6 +31,7 @@ const CAPABILITIES: Array<{ id: Capability; label: string }> = [
   { id: 'patch.propose', label: 'Draft a reviewable patch recommendation' },
   { id: 'evidence.record', label: 'Include evidence in the result' },
   { id: 'comms.task.create', label: 'Create an internal Comms task' },
+  { id: 'deployment.execute', label: 'Push Deploy to Render, Railway and Vercel' },
 ];
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -57,7 +58,7 @@ function displayStatus(delegation: Delegation): string {
 export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilot' | 'pa' | 'shared' }) {
   const [delegations, setDelegations] = useState<Delegation[]>([]);
   const [objective, setObjective] = useState('');
-  const [capabilities, setCapabilities] = useState<Capability[]>(['repository.inspect', 'diagnostics.run']);
+  const [capabilities, setCapabilities] = useState<Capability[]>(['repository.inspect', 'comms.task.create']);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
@@ -103,14 +104,14 @@ export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilo
       if (!createRequestRef.current || createRequestRef.current.fingerprint !== fingerprint) {
         createRequestRef.current = { fingerprint, delegationId: crypto.randomUUID() };
       }
-      await api('/api/agent/ops/pa/delegations', {
+      const created = await api<{ status?: string }>('/api/agent/ops/pa/delegations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ objective: objective.trim(), capabilities, delegationId: createRequestRef.current.delegationId }),
       });
       createRequestRef.current = null;
       setObjective('');
-      setNotice('Alex received the handoff. It is waiting for your approval before any reasoning work is queued.');
+      setNotice(created.status === 'approved' ? 'Gen-X functional approval recorded. PA is queued; its internal Comms task will receive the result. Any Push Deploy still waits for exact-SHA CI/security checks.' : 'Alex received the handoff. This scope is waiting for a functional policy decision before execution.');
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Alex could not accept this handoff.');
@@ -165,13 +166,13 @@ export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilo
           <div className="grid gap-2 sm:grid-cols-2">
             {CAPABILITIES.map(item => (
               <label key={item.id} className="flex items-center gap-2 text-[11px] text-slate-300">
-                <input type="checkbox" checked={capabilities.includes(item.id)} onChange={event => setCapabilities(current => event.target.checked ? [...current, item.id] : current.filter(value => value !== item.id))} className="accent-cyan-400" />
+                <input type="checkbox" checked={capabilities.includes(item.id)} onChange={event => setCapabilities(current => { const next = event.target.checked ? [...current, item.id] : current.filter(value => value !== item.id); if (event.target.checked && item.id === 'deployment.execute' && !next.includes('comms.task.create')) next.push('comms.task.create'); if (!event.target.checked && item.id === 'comms.task.create' && next.includes('deployment.execute')) return next.filter(value => value !== 'deployment.execute'); return next; })} className="accent-cyan-400" />
                 {item.label}
               </label>
             ))}
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[10px] text-slate-500">Internal Comms tasks are durable, owner-scoped work items. Creating one does not start a conversation or send WhatsApp, SMS, voice, or email.</p>
+            <p className="text-[10px] text-slate-500">Internal Comms tasks are durable and owner-scoped. To deploy, include the exact phrase PUSH DEPLOY in the objective; the three providers start only after every required exact-SHA CI/security check passes. No outbound messages are sent.</p>
             <button type="button" onClick={() => void submit()} disabled={busy !== null || objective.trim().length < 5 || capabilities.length === 0} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-xs font-semibold text-cyan-100 hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-40">
               {busy === 'create' ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Send to Alex
             </button>

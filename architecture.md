@@ -1,0 +1,60 @@
+# RyanAI Architecture — Shared PA, Darkside Copilot, Comms and Release Control Plane
+
+**Status:** architecture addendum. Source code, workflow definitions, schema, provider records, and exact-head CI evidence remain authoritative.
+
+## 1. Shared responsibility model
+
+PA Agent and Darkside Copilot are two operator surfaces over the same governed PA responsibility and capability model. The Admin Console exposes administrative controls over that same model.
+
+The UI does not grant authority. The server validates identity, owner scope, capability scope, and Gen-X policy before execution.
+
+## 2. Comms integration
+
+Comms is part of the shared control plane. A PA objective can create a new durable internal Comms child task directly from the objective; an existing Comms conversation is not a prerequisite.
+
+The child task is:
+
+- owner-scoped;
+- idempotent;
+- linked to the parent PA delegation;
+- internal-only;
+- suitable for status/result reporting.
+
+It cannot be treated as proof of outbound delivery.
+
+## 3. Release orchestration
+
+The governed deployment sequence is:
+
+1. PA or an authorized operator requests PUSH DEPLOY.
+2. The release request identifies the exact 40-character candidate SHA.
+3. The workflow confirms that SHA is the current main commit.
+4. All required CI/CD and security checks for that exact SHA must complete successfully.
+5. Only then do the Render, Railway, and Vercel jobs start.
+6. The three provider jobs are independent.
+7. Each provider records deployment identity/status, source SHA, and runtime health.
+8. The durable internal Comms task reports the separate outcomes.
+
+One provider's result never substitutes for another provider's result.
+
+## 4. Provider independence
+
+Render, Railway, and Vercel are mandatory release targets for this control plane. A failure or provider block is reported against that provider while the other provider jobs remain independently eligible after the common gate.
+
+The overall release is successful only when all required provider deployment and health checks succeed.
+
+## 5. Comms message routing
+
+The future routing tags @RyanAI, @PA Agents, @Comms, @Security, @updates, and @self-patches identify routing intent only.
+
+A message-trigger adapter must still enforce authentication, owner scope, idempotency, exact-SHA resolution, the explicit PUSH DEPLOY command, and the same CI/security gate. Until that adapter is implemented and verified, tagged messages must not be interpreted as deployment authorization.
+
+## 6. Evidence and safety
+
+A workflow-dispatch receipt means only that GitHub accepted the workflow request. It does not mean CI passed or deployment completed.
+
+Evidence must distinguish:
+
+passed / failed / queued / skipped / cancelled / missing / provider-blocked.
+
+No production deployment, production migration, secret mutation, paid upgrade, or external communication is authorized by this document.

@@ -569,6 +569,92 @@ export async function inspectConnectedGitHubWorkflowEvidence(
   };
 }
 
+/**
+ * Dispatch the single approved Push Deploy workflow for the repository already
+ * bound to this owner's encrypted GitHub OAuth connection. This function never
+ * changes credentials and never accepts a repository, workflow, or branch from
+ * the caller.
+ */
+export async function dispatchConnectedGitHubPushDeploy(
+  fastify: Pick<FastifyInstance, 'prisma'>,
+  userId: string,
+  input: { commitSha: string; releaseRequestId: string },
+): Promise<{ workflowId: 'deploy-platforms.yml'; ref: 'main'; commitSha: string; dispatched: true; dispatchedAt: string }> {
+  const commitSha = input.commitSha.trim().toLowerCase();
+  const releaseRequestId = input.releaseRequestId.trim();
+  if (!/^[a-f0-9]{40}$/.test(commitSha) ||
+      !/^[a-zA-Z0-9._:-]{8,128}$/.test(releaseRequestId)) {
+    throw new GitHubOAuthError('github_push_deploy_request_invalid');
+  }
+  if (!userId.trim()) throw new GitHubOAuthError('github_owner_identity_missing');
+  const config = readGitHubAppConfig();
+  if (!config) throw new GitHubOAuthError('github_app_not_configured');
+  const connection = await fastify.prisma.gitHubAppConnection.findUnique({ where: { userId } });
+  if (!connection || connection.repositoryFullName !== GITHUB_APP_REPOSITORY) {
+    throw new GitHubOAuthError('github_owner_connection_missing_or_wrong_repository');
+  }
+  // Do not refresh or rotate stored credentials in a deployment worker. An expired
+  // token is a hard blocker and must be reauthorized through the normal OAuth flow.
+  if (connection.accessTokenExpiresAt &&
+      connection.accessTokenExpiresAt.getTime() <= Date.now() + REFRESH_SKEW_MS) {
+    throw new GitHubOAuthError('github_owner_reauthorization_required');
+  }
+  let accessToken: string;
+  try {
+    accessToken = decryptGitHubSecret(connection.encryptedAccessToken, config.encryptionKey);
+  } catch {
+    throw new GitHubOAuthError('github_owner_reauthorization_required');
+  }
+  const [account, repository, mainCommit] = await Promise.all([
+    githubApi<GitHubUser>('user', accessToken),
+    githubApi<GitHubRepository>('repos/' + GITHUB_APP_REPOSITORY, accessToken),
+    githubApi<{ sha?: string }>('repos/' + GITHUB_APP_REPOSITORY + '/commits/main', accessToken),
+  ]);
+  if (String(account.id ?? '') !== connection.githubUserId ||
+      String(repository.id ?? '') !== connection.repositoryId ||
+      repository.full_name !== GITHUB_APP_REPOSITORY ||
+      repository.permissions?.push !== true) {
+    throw new GitHubOAuthError('github_push_deploy_repository_write_access_missing');
+  }
+  if (typeof mainCommit.sha !== 'string' || mainCommit.sha.toLowerCase() !== commitSha) {
+    throw new GitHubOAuthError('github_push_deploy_sha_not_current_main');
+  }
+
+  const response = await fetch(
+    'https://api.github.com/repos/' + GITHUB_APP_REPOSITORY + '/actions/workflows/deploy-platforms.yml/dispatches',
+    {
+      method: 'POST',
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: 'Bearer ' + accessToken,
+        'Content-Type': 'application/json',
+        'X-GitHub-Api-Version': GITHUB_API_VERSION,
+      },
+      body: JSON.stringify({
+        ref: 'main',
+        inputs: {
+          commit_sha: commitSha,
+          push_deploy: 'PUSH DEPLOY',
+          release_request_id: releaseRequestId,
+        },
+      }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    },
+  );
+  if (response.status !== 204) {
+    throw new GitHubOAuthError(response.status === 403 || response.status === 404
+      ? 'github_push_deploy_workflow_permission_missing'
+      : 'github_push_deploy_dispatch_failed');
+  }
+  return {
+    workflowId: 'deploy-platforms.yml',
+    ref: 'main',
+    commitSha,
+    dispatched: true,
+    dispatchedAt: new Date().toISOString(),
+  };
+}
+
 export const githubIntegrationRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/api/github/status', { preHandler: requireUser }, async (request, reply) => {
     const userId = request.authUser?.id;
