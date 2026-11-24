@@ -240,7 +240,7 @@ export async function recoverExpiredStudioLeases() {
   });
 }
 
-export interface StudioWorkerContext { workerId: string; claimToken: string; task: StudioTask; heartbeat: () => Promise<boolean>; }
+export interface StudioWorkerContext { workerId: string; claimToken: string; task: StudioTask; heartbeat: () => Promise<boolean>; signal?: AbortSignal; }
 export type StudioTaskHandler = (context: StudioWorkerContext) => Promise<unknown>;
 const taskHandlers = new Map<string, StudioTaskHandler>();
 export function registerStudioTaskHandler(taskType: string, handler: StudioTaskHandler) {
@@ -313,7 +313,7 @@ export function getStudioWorkerHandlerReadiness(workerProfileId: string) {
   };
 }
 
-export async function runStudioWorkerOnce(workerId: string, workerProfileId: string | null = workerId, leaseSeconds = 90, authorize?: StudioTaskAuthorizer) {
+export async function runStudioWorkerOnce(workerId: string, workerProfileId: string | null = workerId, leaseSeconds = 90, authorize?: StudioTaskAuthorizer, signal?: AbortSignal) {
   const task = await claimStudioTask(workerId, [...taskHandlers.keys()], leaseSeconds, workerProfileId);
   if (!task) return { state: 'idle' as const };
   const handler = taskHandlers.get(task.taskType);
@@ -431,10 +431,12 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId: str
 
   let output: unknown;
   try {
+    if (signal?.aborted) return { state: 'interrupted' as const, taskId: task.id };
     output = await handler({
       workerId,
       claimToken: task.leaseToken ?? '',
       task,
+      signal,
       heartbeat: () => heartbeatStudioTask(task.id, workerId, task.leaseToken ?? ''),
     });
   } catch (error) {
