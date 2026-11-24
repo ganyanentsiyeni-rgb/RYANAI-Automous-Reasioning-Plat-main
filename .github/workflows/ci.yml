@@ -90,6 +90,8 @@ jobs:
 
       - name: Run Admin Resilience backup execution tests
         run: npx vitest run src/services/adminResilience.backupExecution.test.ts
+      - name: Test startup pg_dump connection URL mapping
+        run: node --test scripts/pg-dump-connection.test.mjs
 
       - name: Run Admin Resilience route tests
         run: npx vitest run src/server/routes/adminResilience.test.ts
