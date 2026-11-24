@@ -104,6 +104,8 @@ export function createRyanAIStudioWorkerRuntime(
       if (!decision.allowed) throw new Error('Gen-X denied Studio task execution: ' + decision.reason);
     };
     return runStudioWorkerOnce(id, profileId, seconds, authorize, signal);
+  const executeOnce = options.executeOnce ?? (async (id, profileId, seconds) => {
+    return runStudioWorkerOnce(id, profileId, seconds, authorizeStudioTaskWithGenX, shutdownController.signal);
   });
 
   const recover = options.recoverExpiredLeases ?? recoverExpiredStudioLeases;
