@@ -18,10 +18,10 @@ import { summarizeProviderError } from './providerErrors.js';
 import { assertBrainProbeResponse, BRAIN_PROBE_CHALLENGE, BRAIN_PROBE_ORDER } from './brainProbe.js';
 import { assertPAExecutionHandlersAvailable, buildAgentRunExecutionPrompt, buildPARepositoryInspectionContext, buildSharedReasoningObjective, planQueuedAgentRun } from './agentRunExecution.js';
 import { inspectConnectedGitHubRepository } from '../server/routes/githubIntegration.js';
-import { enqueuePACommsTask } from '../server/comms/paTask.js';
 import { enqueueCommsAssistRun } from '../server/comms/agentRuns.js';
 import { dispatchConnectedGitHubPushDeploy } from '../server/routes/githubIntegration.js';
 import { evaluateGenXSecurityEvent } from '../security/genxPolicy.js';
+import { runRyanAIInspectorAudit } from '../server/engineering/ryanaiSpecialistTaskHandlers.js';
 import type { PACapabilityReceipt } from './paCapabilityCompletion.js';
 import type { ExecutionChange } from './executionPlanner.js';
 import { recordRunEvidence, appendRunEvidence } from './engineeringEvidence.js';
@@ -308,9 +308,8 @@ async function processAgentRun(
         throw new Error('PA delegation capability scope changed after approval.');
       }
       await recordRunEvidence({ runId: run.id, eventType: 'pa.execution.scope_revalidated', payload: { delegationId: delegation.id, capabilities: runCapabilities } });
-      // Only repository.inspect has a real handler in this increment; all other capabilities remain fail-closed.
-      assertPAExecutionHandlersAvailable(paScope, ['repository.inspect', 'comms.task.create']);
-      assertPAExecutionHandlersAvailable(paScope, ['repository.inspect', 'comms.task.create', 'deployment.execute']);
+      // Every approved capability must have a concrete worker-boundary handler.
+      assertPAExecutionHandlersAvailable(paScope, ['repository.inspect', 'ai-inspector.inspect', 'comms.task.create', 'deployment.execute']);
       if (paScope.capabilities.includes('repository.inspect')) {
         const inspectionPolicy = evaluateGenXSecurityEvent({
           agentId: 'ryanai-pa',
@@ -356,6 +355,52 @@ async function processAgentRun(
             inspectedAt: snapshot.inspectedAt,
             source: snapshot.source,
           },
+        });
+      }
+      if (paScope.capabilities.includes('ai-inspector.inspect')) {
+        const inspectorPolicy = evaluateGenXSecurityEvent({
+          agentId: 'ryanai-pa',
+          principal: run.user_id,
+          toolName: 'system_diagnostics',
+          action: 'READ',
+          target: 'pa:ai-inspector-audit-report',
+          environment: process.env.NODE_ENV === 'production' ? 'production' : process.env.NODE_ENV === 'staging' ? 'staging' : 'development',
+          actorType: 'agent',
+        });
+        if (inspectorPolicy.decision !== 'ALLOW') {
+          throw new Error('Gen-X denied ai-inspector.inspect at the worker execution boundary.');
+        }
+        await assertExecutionLeaseActive();
+        const report = await runRyanAIInspectorAudit({ taskId: run.id, signal: cancellation.signal });
+        await assertExecutionLeaseActive();
+        const reportText = report.report.slice(0, 24_000);
+        const reportDigest = createHash('sha256').update(report.report, 'utf8').digest('hex');
+        verifiedCapabilityContext = [verifiedCapabilityContext, 'AI INSPECTOR AUDIT REPORT:\\n' + reportText]
+          .filter((part): part is string => Boolean(part))
+          .join('\\n\\n');
+        const evidence = await recordRunEvidence({
+          runId: run.id,
+          eventType: 'pa.capability.executed',
+          actorId: run.user_id,
+          payload: {
+            capability: 'ai-inspector.inspect',
+            reportSource: report.reportSource,
+            reportDigest,
+            reportExitCode: report.exitCode,
+            reportTruncated: report.report.length > reportText.length,
+            report: reportText,
+            readOnly: true,
+            externalActions: 'none',
+            genxDecision: inspectorPolicy.decision,
+            genxRuleId: inspectorPolicy.ruleId,
+          },
+        });
+        capabilityReceipts.push({
+          capability: 'ai-inspector.inspect',
+          status: 'passed',
+          evidenceReferences: ['agent-run-evidence:' + evidence.id],
+          reportDigest,
+          reportSource: report.reportSource,
         });
       }
       let deploymentContext: string | null = null;
@@ -436,11 +481,6 @@ async function processAgentRun(
           throw new Error('Gen-X denied comms.task.create at the worker execution boundary.');
         }
         await assertExecutionLeaseActive();
-        const child = await enqueuePACommsTask({
-          ownerUserId: run.user_id,
-          parentRunId: run.id,
-          delegationId: delegation.id,
-          objective: run.objective,
         const internalObjective = [
           'Internal Comms task created from an approved PA objective.',
           'Analyze and coordinate the objective below. Return an actionable internal Comms plan and release status summary.',
