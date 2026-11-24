@@ -22,7 +22,7 @@ const u2ebDatabases = u2ebEnvironment?.databases ?? [];
 const u2ebApi = u2ebServices.find((service) => service.name === 'ryanai-api-u2eb');
 const u2ebWeb = u2ebServices.find((service) => service.name === 'ryanai-web-u2eb');
 const u2ebRedis = u2ebServices.find((service) => service.name === 'ryanai-redis-u2eb');
-const u2ebMcp = u2ebServices.find((service) => service.name === 'ryanai-mcp-u2eb-u2eb');
+const u2ebMcp = u2ebServices.find((service) => service.name === 'ryanai-mcp-u2eb-u2eb-u2eb');
 const u2ebDatabase = u2ebDatabases.find((database) => database.name === 'ryanai_database');
 const renderApi = productionEnvironment
   ? renderServices.find((service) => service.name === 'ryanai-api')
@@ -41,7 +41,7 @@ const productionServiceNames = productionEnvironment
   : (Array.isArray(renderConfig.services) ? renderConfig.services.map((service) => service.name) : []);
 const expectedRenderServiceNames = productionEnvironment
   ? ['ryanai-api', 'ryanai-web', 'ryanai-redis']
-  : ['ryanai-api-u2eb', 'ryanai-web-u2eb', 'ryanai-redis-u2eb', 'ryanai-mcp-u2eb-u2eb'];
+  : ['ryanai-api-u2eb', 'ryanai-web-u2eb', 'ryanai-redis-u2eb', 'ryanai-mcp-u2eb-u2eb-u2eb'];
 const effectiveEnvVars = (service, config) => {
   const projects = Array.isArray(config?.projects) ? config.projects : [];
   const groups = new Map(projects.flatMap((project) => (project.environments ?? []).flatMap((environment) =>
@@ -179,8 +179,8 @@ const checks = [
   ['Vercel production deploy is manual, explicit-confirmation gated, exact-SHA based, and behind Railway', hasVercelDeploymentContract],
   ['Render Blueprint declares services through a supported top-level or project-environment list', Array.isArray(renderConfig.services) || renderProjects.some((project) => (project.environments ?? []).some((environment) => Array.isArray(environment.services)))],
   ['Render Blueprint declares exactly the expected API, web, Redis, and MCP resources', renderServices.length === expectedRenderServiceNames.length && expectedRenderServiceNames.every((name) => renderServiceNames.includes(name)) && new Set(renderServiceNames).size === expectedRenderServiceNames.length],
-  ['U2EB MCP host allowlist contains only the canonical Render hostname', envVar(u2ebMcp, 'MCP_ALLOWED_HOSTS', renderConfig)?.value === 'ryanai-mcp-u2eb-u2eb.onrender.com'],
-  ['U2EB MCP health observer targets the active Render service', envVar(u2ebApi, 'RYANAI_MCP_HEALTH_URL', renderConfig)?.value === 'https://ryanai-mcp-u2eb-u2eb.onrender.com/health'],
+  ['U2EB MCP host allowlist contains only the canonical Render hostname', envVar(u2ebMcp, 'MCP_ALLOWED_HOSTS', renderConfig)?.value === 'ryanai-mcp-u2eb-u2eb-u2eb.onrender.com'],
+  ['U2EB MCP health observer targets the active Render service', envVar(u2ebApi, 'RYANAI_MCP_HEALTH_URL', renderConfig)?.value === 'https://ryanai-mcp-u2eb-u2eb-u2eb.onrender.com/health'],
   ['U2EB MCP delegation and service credentials remain secret references', isSyncFalse(u2ebApi, 'RYANAI_MCP_DELEGATION_SECRET', renderConfig) && isSyncFalse(u2ebApi, 'RYANAI_MCP_SERVICE_TOKEN', renderConfig) && isSyncFalse(u2ebMcp, 'RYANAI_MCP_DELEGATION_SECRET', renderConfig) && isSyncFalse(u2ebMcp, 'RYANAI_MCP_SERVICE_TOKEN', renderConfig)],
   ['Render Blueprint declares exactly the API, web, and Redis resources', renderServices.length === expectedRenderServiceNames.length && expectedRenderServiceNames.every((name) => renderServiceNames.includes(name)) && new Set(renderServiceNames).size === renderServiceNames.length],
   ['Render API and web environment variable keys are unique', hasUniqueEnvKeys(renderApi, renderConfig) && hasUniqueEnvKeys(renderWeb, renderConfig) && hasUniqueEnvKeys(u2ebMcp, renderConfig)],
@@ -233,10 +233,10 @@ checks.push(
   ['Staging Redis is a separate staging resource in Oregon with private-only ingress', stagingRedis?.type === 'keyvalue' && stagingRedis?.region === 'oregon' && Array.isArray(stagingRedis?.ipAllowList) && stagingRedis.ipAllowList.length === 0 && stagingApi?.envVars?.some((item) => item.key === 'REDIS_URL' && item.fromService?.name === 'ryanai-redis-staging')],
   ['Staging disables schedulers, alerts, communications, attachments, scanning, and cleanup by default', ['SCHEDULER_ENABLED', 'ALERTS_ENABLED', 'COMMUNICATIONS_ENABLED', 'COMMUNICATION_ATTACHMENTS_ENABLED', 'ATTACHMENT_SCANNER_ENABLED', 'ATTACHMENT_ORPHAN_CLEANUP_ENABLED'].every(stagingFalse)],
   ['U2EB Blueprint declares exactly the API, web, MCP, and Redis resources without a managed database', u2ebServices.length === 4 && new Set(u2ebServices.map((service) => service.name)).size === 4 && Boolean(u2ebMcp) && !u2ebDatabase],
-  ['U2EB MCP uses the dedicated Docker service, CI-gated deployment, health endpoint, and authorised API origin', u2ebMcp?.name === 'ryanai-mcp-u2eb-u2eb' && u2ebMcp?.runtime === 'docker' && u2ebMcp?.dockerfilePath === './mcp-server/Dockerfile' && u2ebMcp?.healthCheckPath === '/health' && u2ebMcp?.autoDeployTrigger === 'checksPass' && u2ebMcp?.repo === 'https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main' && envVar(u2ebMcp, 'RYANAI_API_BASE_URL', renderConfig)?.value === 'https://ryanai-api-u2eb.onrender.com'],
-  ['U2EB MCP allows only the canonical service hostname and the test frontend origin', envVar(u2ebMcp, 'MCP_ALLOWED_HOSTS', renderConfig)?.value === 'ryanai-mcp-u2eb-u2eb.onrender.com' && !envVar(u2ebMcp, 'MCP_ALLOWED_HOSTS', renderConfig)?.value?.includes('ryanai-mcp-u2eb-u2eb-u2eb.onrender.com') && envVar(u2ebMcp, 'MCP_ALLOWED_ORIGINS', renderConfig)?.value?.includes('https://ryanai-web-u2eb.onrender.com')],
+  ['U2EB MCP uses the dedicated Docker service, CI-gated deployment, health endpoint, and authorised API origin', u2ebMcp?.name === 'ryanai-mcp-u2eb-u2eb-u2eb' && u2ebMcp?.runtime === 'docker' && u2ebMcp?.dockerfilePath === './mcp-server/Dockerfile' && u2ebMcp?.healthCheckPath === '/health' && u2ebMcp?.autoDeployTrigger === 'checksPass' && u2ebMcp?.repo === 'https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main' && envVar(u2ebMcp, 'RYANAI_API_BASE_URL', renderConfig)?.value === 'https://ryanai-api-u2eb.onrender.com'],
+  ['U2EB MCP allows only the canonical service hostname and the test frontend origin', envVar(u2ebMcp, 'MCP_ALLOWED_HOSTS', renderConfig)?.value === 'ryanai-mcp-u2eb-u2eb-u2eb.onrender.com' && envVar(u2ebMcp, 'MCP_ALLOWED_ORIGINS', renderConfig)?.value?.includes('https://ryanai-web-u2eb.onrender.com')],
   ['U2EB API and MCP require the same separately managed delegation and service credentials', ['RYANAI_MCP_DELEGATION_SECRET', 'RYANAI_MCP_SERVICE_TOKEN'].every((key) => isSyncFalse(u2ebApi, key, renderConfig) && isSyncFalse(u2ebMcp, key, renderConfig))],
-  ['U2EB API health observer targets the dedicated MCP health endpoint', envVar(u2ebApi, 'RYANAI_MCP_HEALTH_URL', renderConfig)?.value === 'https://ryanai-mcp-u2eb-u2eb.onrender.com/health'],
+  ['U2EB API health observer targets the dedicated MCP health endpoint', envVar(u2ebApi, 'RYANAI_MCP_HEALTH_URL', renderConfig)?.value === 'https://ryanai-mcp-u2eb-u2eb-u2eb.onrender.com/health'],
   ['U2EB API adopts the existing Docker service and deploys only after CI checks pass', u2ebApi?.runtime === 'docker' && u2ebApi?.dockerfilePath === './Dockerfile.api' && u2ebApi?.healthCheckPath === '/health' && u2ebApi?.autoDeployTrigger === 'checksPass' && u2ebApi?.repo === 'https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main'],
   ['U2EB API keeps its database URL, Supabase project URL, and Session Pooler host as explicit private environment values', isSyncFalse(u2ebApi, 'DATABASE_URL', renderConfig) && isSyncFalse(u2ebApi, 'SUPABASE_URL', renderConfig) && isSyncFalse(u2ebApi, 'SUPABASE_SESSION_POOLER_HOST', renderConfig)],
   ['U2EB API receives Redis through the existing Key Value resource reference, not a hardcoded credential', envVar(u2ebApi, 'REDIS_URL', renderConfig)?.fromService?.name === 'ryanai-redis-u2eb' && envVar(u2ebApi, 'REDIS_URL', renderConfig)?.fromService?.property === 'connectionString'],
