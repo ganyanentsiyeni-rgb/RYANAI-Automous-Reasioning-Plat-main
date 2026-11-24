@@ -9,6 +9,7 @@ import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { buildPgDumpEnvironment } from "./pg-dump-connection.mjs";
 import { createHash, randomUUID } from "node:crypto";
 
 const log = (message) => console.log("[startup-backup] " + message);
@@ -16,32 +17,13 @@ const warn = (message) => console.error("[startup-backup] WARNING: " + message);
 
 function pgDump(file) {
   return new Promise((resolve, reject) => {
-    let database;
+    let env;
     try {
-      database = new URL(process.env.DATABASE_URL || "");
-      if (!["postgres:", "postgresql:"].includes(database.protocol) || !database.hostname) {
-        throw new Error("Invalid PostgreSQL connection URL");
-      }
-      if (!database.pathname || database.pathname === "/") {
-        throw new Error("PostgreSQL database name is missing");
-      }
-    } catch {
-      reject(new Error("DATABASE_URL must be a valid PostgreSQL connection URL; credentials are not logged."));
+      env = buildPgDumpEnvironment(process.env.DATABASE_URL);
+    } catch (error) {
+      reject(error);
       return;
     }
-
-    const query = database.searchParams;
-    const env = { ...process.env };
-    env.PGHOST = database.hostname;
-    env.PGPORT = database.port || "5432";
-    env.PGDATABASE = decodeURIComponent(database.pathname.slice(1));
-    env.PGUSER = decodeURIComponent(database.username);
-    if (database.password) env.PGPASSWORD = decodeURIComponent(database.password);
-    if (query.has("sslmode")) env.PGSSLMODE = query.get("sslmode");
-    if (query.has("sslrootcert")) env.PGSSLROOTCERT = query.get("sslrootcert");
-    if (query.has("sslcert")) env.PGSSLCERT = query.get("sslcert");
-    if (query.has("sslkey")) env.PGSSLKEY = query.get("sslkey");
-    if (query.has("application_name")) env.PGAPPNAME = query.get("application_name");
 
     const child = spawn("pg_dump", ["--format=custom", "--no-owner", "--no-acl", "--file", file], {
       stdio: ["ignore", "ignore", "ignore"],
