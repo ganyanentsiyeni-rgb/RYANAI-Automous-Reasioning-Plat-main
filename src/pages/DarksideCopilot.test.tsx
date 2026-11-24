@@ -38,12 +38,12 @@ afterEach(async () => {
 });
 
 describe('Ryan Copilot preferences', () => {
-  it('does not poll or render optional panels when the owner hides them', async () => {
+  it('keeps the shared PA control plane linked even when optional Copilot panels are hidden', async () => {
     await act(async () => root.render(
       <DarksideCopilot {...baseProps} copilotSettings={{ showAlexStatus: false, showDelegationPanel: false, refreshIntervalSeconds: 60 }} />,
     ));
     expect(authenticatedFetch).not.toHaveBeenCalled();
-    expect(container.querySelector('[data-testid="delegation-panel"]')).toBeNull();
+    expect(container.querySelector('[data-testid="delegation-panel"]')).not.toBeNull();
     expect(container.textContent).not.toContain('Alex · PA Agent');
     expect(container.querySelector('[data-testid="command-center"]')).not.toBeNull();
   });
