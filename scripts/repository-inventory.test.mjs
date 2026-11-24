@@ -96,3 +96,17 @@ test('an unparseable package manifest is reported as INVALID_MANIFEST instead of
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('inventory stops promptly when its worker signal is aborted', async () => {
+  const root = await fixtureRepo();
+  const controller = new AbortController();
+  controller.abort(new Error('worker shutdown'));
+  try {
+    await assert.rejects(
+      generateRepositoryInventory({ rootDir: root, signal: controller.signal }),
+      /worker shutdown/,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
