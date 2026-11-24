@@ -54,7 +54,7 @@ jobs:
       NODE_ENV: test
       HOST: 127.0.0.1
       PORT: '3000'
-      DATABASE_URL: postgresql://ryanai@127.0.0.1:5432/ryanai_db
+
       REDIS_URL: redis://127.0.0.1:6379
       JWT_SECRET: ci_only_secret_at_least_32_characters_long
       OPENAI_API_KEY: ""
@@ -65,6 +65,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Configure disposable PostgreSQL connection
+        run: |
+          node <<'NODE' >> "$GITHUB_ENV"
+          const databaseUrl = new URL('http://localhost');
+          databaseUrl.protocol = 'postgresql:';
+          databaseUrl.username = 'ryanai';
+          databaseUrl.hostname = '127.0.0.1';
+          databaseUrl.port = '5432';
+          databaseUrl.pathname = '/ryanai_db';
+          process.stdout.write(`DATABASE_URL=${databaseUrl.toString()}\\n`);
+          NODE
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
