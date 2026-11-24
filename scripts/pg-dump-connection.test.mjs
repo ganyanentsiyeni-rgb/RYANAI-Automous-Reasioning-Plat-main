@@ -3,7 +3,8 @@ import { describe, it } from 'node:test';
 import { buildPgDumpEnvironment } from './pg-dump-connection.mjs';
 
 function makeConnectionUrl() {
-  const url = new URL('postgresql:');
+  const url = new URL('https://db.example.test/ryanai');
+  url.protocol = 'postgresql:';
   url.username = 'backup@user';
   url.password = 'p@ss:word';
   url.hostname = 'db.example.test';
@@ -32,10 +33,11 @@ describe('PostgreSQL dump connection environment', () => {
   });
 
   it('normalizes bracketed IPv6 hosts for libpq', () => {
-    const url = new URL('postgresql:');
+    const url = new URL('https://db.example.test/ryanai');
+    url.protocol = 'postgresql:';
     url.username = 'user';
     url.password = 'pass';
-    url.hostname = '[::1]';
+    url.hostname = '::1';
     url.port = '5433';
     url.pathname = '/ryanai';
     const env = buildPgDumpEnvironment(url.toString());
@@ -44,20 +46,21 @@ describe('PostgreSQL dump connection environment', () => {
   });
 
   it('preserves inherited PGUSER when URL omits a username', () => {
-    const url = new URL('postgresql:');
-    url.hostname = 'db.example.test';
+    const url = new URL('https://db.example.test/ryanai');
+    url.protocol = 'postgresql:';
     url.pathname = '/ryanai';
     const env = buildPgDumpEnvironment(url.toString(), { PGUSER: 'runtime-user' });
     assert.equal(env.PGUSER, 'runtime-user');
   });
 
   it('rejects non-PostgreSQL and incomplete URLs without echoing credentials', () => {
-    const invalid = new URL('https:');
+    const invalid = new URL('https://db.example.test/ryanai');
     invalid.username = 'user';
     invalid.password = 'private-password';
     invalid.hostname = 'db.example.test';
     invalid.pathname = '/ryanai';
-    const missingDatabase = new URL('postgresql:');
+    const missingDatabase = new URL('https://db.example.test/');
+    missingDatabase.protocol = 'postgresql:';
     missingDatabase.username = 'user';
     missingDatabase.password = 'private-password';
     missingDatabase.hostname = 'db.example.test';
