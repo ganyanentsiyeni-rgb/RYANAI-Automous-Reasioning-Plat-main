@@ -357,7 +357,7 @@ async function processAgentRun(
       }
       let deploymentContext: string | null = null;
       if (paScope.capabilities.includes('deployment.execute')) {
-        if (!/\\bPUSH\\s+DEPLOY\\b/i.test(run.objective)) {
+        if (!/\bPUSH\s+DEPLOY\b/i.test(run.objective)) {
           throw new Error('deployment.execute requires the exact explicit PUSH DEPLOY phrase in the approved PA objective.');
         }
         const deploymentPolicy = evaluateGenXSecurityEvent({
