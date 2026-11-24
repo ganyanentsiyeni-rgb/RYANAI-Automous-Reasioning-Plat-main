@@ -39,7 +39,7 @@ test('benchmark: shared worker roster has ten unique, accountable workers', () =
 test('benchmark: module workforce has twelve unique owners and safe bounded actions', () => {
   assert.equal(RYANAI_MODULE_AGENT_COUNT, 13);
   assert.equal(RYANAI_MODULE_AGENT_ROSTER.length, RYANAI_MODULE_AGENT_COUNT);
-  assert.equal(new Set(RYANAI_MODULE_AGENT_ROSTER.map((agent) => agent.id)).size, 12);
+  assert.equal(new Set(RYANAI_MODULE_AGENT_ROSTER.map((agent) => agent.id)).size, 13);
   assert.equal(new Set(RYANAI_MODULE_AGENT_ROSTER.map((agent) => agent.moduleId)).size, 13);
   for (const agent of RYANAI_MODULE_AGENT_ROSTER) {
     assert.ok(agent.name.trim());
