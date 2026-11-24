@@ -163,7 +163,11 @@ const hasVercelBuildContract = hasVercelServicesContract;
 const hasNoAmbiguousTopLevelVercelBuildSettings = !['installCommand', 'buildCommand', 'outputDirectory'].some((key) => Object.hasOwn(vercelConfig, key));
 const hasVercelDeploymentContract =
   platformDeployWorkflow.includes('workflow_dispatch:')
-  && platformDeployWorkflow.includes("inputs.vercel_confirmation == 'DEPLOY'")
+  && platformDeployWorkflow.includes("inputs.confirmation == 'PUSH_DEPLOY'")
+  && platformDeployWorkflow.includes('Require every exact-head CI and security check')
+  && !platformDeployWorkflow.includes("inputs.vercel_confirmation == 'DEPLOY'")
+  && platformDeployWorkflow.includes('name: Vercel deploy')
+  && !/vercel:\s+[\s\S]{0,120}?if:/.test(platformDeployWorkflow)
   && platformDeployWorkflow.includes('needs: [gate, railway]')
   && platformDeployWorkflow.includes('environment: production')
   && platformDeployWorkflow.includes('VERCEL_TOKEN')

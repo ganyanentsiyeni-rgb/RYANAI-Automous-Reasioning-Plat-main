@@ -13,10 +13,11 @@ one-shot Docker image through a protected GitHub workflow.
    `APPLY`.
 4. Approve the protected `production-migrations` GitHub environment when its
    reviewer gate is presented.
-5. After migrations succeed, a production API deployment requires a separate
-   dispatch of **Deploy API to Render** from the same `main` commit, selecting
-   `DEPLOY`. The existing Render enable/approval switches and the protected
-   `production` environment remain required.
+5. After migrations succeed, the production release requires a separate
+   dispatch of **Deploy Platforms via CI** from the same `main` commit, selecting
+   `PUSH_DEPLOY`. That workflow deploys Railway, Render, and Vercel together;
+   all three provider jobs and their protected `production` environment gates
+   must succeed.
 
 Selecting `NO`, dispatching from a different branch, using a stale main
 commit, missing protected connection configuration, or failing any preflight
@@ -100,13 +101,13 @@ startup.
 
 ## Deployment dependency
 
-The **Deploy API to Render** workflow is also manual. It requires the explicit
-`DEPLOY` input and a successful **Production database migrations** workflow
-run for the same exact `main` SHA. It independently verifies current main,
-CI/security, provider checks, Redis availability, Render configuration, and
-the live API health endpoint. The `production` environment must also require an independent reviewer and
-have **Prevent self-review** enabled. The workflow checks these settings
-before accessing the Render API credential or invoking a deployment.
+The **Deploy Platforms via CI** workflow is also manual. It requires the explicit
+`PUSH_DEPLOY` input, current exact `main` SHA, and successful exact-head CI/security
+checks. Railway, Render, and Vercel are mandatory jobs; failure or missing
+provider credentials on any target fails the release. The protected `production`
+environment remains required. This deployment workflow does not run or authorize
+database migrations; the separate migration workflow and its approval remain mandatory
+when a release includes database changes.
 
 A migration success for an older commit cannot authorize deployment of a
 newer one. Run the migration workflow again for the current main commit.

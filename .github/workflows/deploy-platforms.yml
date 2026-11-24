@@ -9,12 +9,15 @@ on:
         description: Exact reviewed main commit SHA to deploy.
         required: true
         type: string
+      confirmation:
+        description: "Type PUSH_DEPLOY only to authorize the exact-main deployment to Railway, Render, and Vercel after every required CI/security check passes."
       push_deploy:
         description: Select PUSH DEPLOY to authorize the three-platform release.
         required: true
         type: choice
         options:
           - NO
+          - PUSH_DEPLOY
           - PUSH DEPLOY
         default: NO
 
@@ -24,6 +27,7 @@ permissions:
   checks: read
 
 concurrency:
+  group: platform-deploy-${{ github.ref_name }}
   group: platform-push-deploy-${{ inputs.commit_sha || github.ref_name }}
   cancel-in-progress: false
 
@@ -36,6 +40,8 @@ jobs:
       commit_sha: ${{ inputs.commit_sha }}
 
   gate:
+    name: Verify exact-head CI and security gate
+    if: github.event_name == 'workflow_dispatch' && inputs.confirmation == 'PUSH_DEPLOY'
     name: Exact-SHA CI and security release gate
     needs: ci_cd
     if: inputs.push_deploy == 'PUSH DEPLOY'
@@ -72,6 +78,12 @@ jobs:
           SHA: ${{ steps.sha.outputs.sha }}
         run: |
           set -euo pipefail
+          runs="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${SHA}&per_page=100" --jq '.workflow_runs[] | select(.name=="CI - Build, Test, and Integrate") | [.status,.conclusion,.id] | @tsv')"
+          echo "$runs"
+          echo "$runs" | grep -q $'completed\tsuccess\t' || {
+            echo "::error::No successful CI workflow run exists for the exact deployment SHA."
+            exit 1
+          }
           required=(
             "Validate (typecheck, lint, test, build)"
             "MCP server and workflow worker"
@@ -105,6 +117,36 @@ jobs:
           done
           echo "All required CI and security checks passed for $SHA."
 
+      - name: Require every exact-head CI and security check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          required=(
+            "Validate (typecheck, lint, test, build)"
+            "MCP server and workflow worker"
+            "Issue 435 migrations and attachment security"
+            "Test agent API contracts"
+            "Dependency audit"
+            "Trivy filesystem scan"
+            "Analyze (javascript-typescript)"
+            "Analyze (python)"
+            "TruffleHog secret audit"
+            "Codacy Security Scan"
+          )
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs?per_page=100" > check-pages.json
+          jq -s '[.[].check_runs[]]' check-pages.json > checks.json
+          for name in "${required[@]}"; do
+            jq -e --arg name "$name" '
+              [.[] | select(.name == $name)] as $matches
+              | ($matches | length) > 0
+                and all($matches[]; .status == "completed" and .conclusion == "success")
+            ' checks.json >/dev/null || {
+              echo "::error::Required exact-head check is missing, queued, skipped, cancelled, or failed: $name"
+              exit 1
+            }
+          done
   railway:
     name: Railway deploy and health verification
     needs: gate
@@ -176,6 +218,7 @@ jobs:
     environment: production
     timeout-minutes: 30
     steps:
+      - name: Deploy and verify every Render service at the exact SHA
       - name: Trigger all configured Render services and verify each result
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
@@ -188,6 +231,42 @@ jobs:
           [[ -n "${RENDER_SERVICE_IDS:-}" ]] || { echo "::error::RENDER_SERVICE_IDS is not configured"; exit 1; }
           [[ -n "${RENDER_HEALTH_URLS:-}" ]] || { echo "::error::RENDER_HEALTH_URLS is not configured"; exit 1; }
           IFS=',' read -ra services <<< "$RENDER_SERVICE_IDS"
+          deployed=0
+          for service_id in "${services[@]}"; do
+            service_id="$(echo "$service_id" | xargs)
+            [[ -n "$service_id" ]] || continue
+            echo "Triggering Render service $service_id at $DEPLOY_SHA"
+            response="$(curl --fail-with-body --silent --show-error \
+              --request POST \
+              --url "https://api.render.com/v1/services/${service_id}/deploys" \
+              --header "Authorization: Bearer ${RENDER_API_KEY}" \
+              --header "Content-Type: application/json" \
+              --data "$(jq -n --arg commitId "$DEPLOY_SHA" --arg deployMode "build_and_deploy" '{commitId:$commitId,deployMode:$deployMode}')")"
+            deploy_id="$(jq -er '.id' <<< "$response")"
+            status=""
+            for attempt in $(seq 1 40); do
+              final="$(curl --fail-with-body --silent --show-error \
+                --url "https://api.render.com/v1/services/${service_id}/deploys/${deploy_id}" \
+                --header "Authorization: Bearer ${RENDER_API_KEY}" \
+                --header "accept: application/json")"
+              status="$(jq -r '.status // empty' <<< "$final")"
+              deployed_sha="$(jq -r '.commit.id // .commitId // empty' <<< "$final")"
+              [[ -z "$deployed_sha" || "$deployed_sha" == "$DEPLOY_SHA" ]] || { echo "::error::Render service $service_id deployed unexpected SHA $deployed_sha"; exit 1; }
+              case "$status" in
+                build_failed|update_failed|canceled) echo "::error::Render deployment $deploy_id ended with $status"; exit 1 ;;
+                live) break ;;
+              esac
+              sleep 15
+            done
+            [[ "$status" == "live" ]] || { echo "::error::Render deployment $deploy_id did not become live"; exit 1; }
+            echo "Render service $service_id is live at $DEPLOY_SHA (deployment $deploy_id)"
+            deployed=$((deployed + 1))
+          done
+          [[ "$deployed" -gt 0 ]] || { echo "::error::No Render services were deployed"; exit 1; }
+
+  vercel:
+    name: Vercel deploy
+    needs: [gate, railway]
           IFS=',' read -ra health_urls <<< "$RENDER_HEALTH_URLS"
           [[ "${#services[@]}" -gt 0 && "${#services[@]}" -eq "${#health_urls[@]}" ]] || {
             echo "::error::RENDER_SERVICE_IDS and RENDER_HEALTH_URLS must contain the same non-zero number of comma-separated entries."
