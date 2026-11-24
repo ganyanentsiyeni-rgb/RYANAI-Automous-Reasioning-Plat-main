@@ -65,22 +65,21 @@ describe('inspectDatabaseSchema', () => {
 
     await expect(inspectDatabaseSchema(query)).resolves.toEqual({
       communications: true,
+      requiredTables: true,
       agentCheckpointer: false,
     });
   });
 
   it('reports missing communication schema without pretending the database is ready', async () => {
-    const query = vi.fn()
-      .mockResolvedValueOnce({
-        rows: [{ ...readyTables, communication_messages: false }],
-      })
-      .mockResolvedValueOnce({ rows: [{ version: 5 }] });
+    const query = vi.fn().mockResolvedValueOnce({
+      rows: [{ ...readyTables, communication_messages: false }],
+    });
 
     await expect(inspectDatabaseSchema(query)).resolves.toEqual({
       communications: false,
-      requiredTables: true,
-      agentCheckpointer: true,
+      requiredTables: false,
+      agentCheckpointer: false,
     });
-    expect(query).toHaveBeenCalledTimes(2);
+    expect(query).toHaveBeenCalledOnce();
   });
 });
