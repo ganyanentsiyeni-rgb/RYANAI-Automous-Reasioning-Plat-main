@@ -1,5 +1,5 @@
 export type JarvisRisk = 'read-only' | 'diagnostic' | 'code-change' | 'privileged';
-export type JarvisCapability = 'repository.inspect' | 'diagnostics.run' | 'patch.propose' | 'tests.run' | 'evidence.record' | 'secrets.read' | 'production.change' | 'deployment.execute' | 'comms.task.create';
+export type JarvisCapability = 'repository.inspect' | 'diagnostics.run' | 'ai-inspector.inspect' | 'patch.propose' | 'tests.run' | 'evidence.record' | 'secrets.read' | 'production.change' | 'deployment.execute' | 'comms.task.create';
 
 export interface JarvisAgentDefinition {
   id: string;
@@ -9,17 +9,17 @@ export interface JarvisAgentDefinition {
 }
 
 export const JARVIS_AGENT_REGISTRY: readonly JarvisAgentDefinition[] = Object.freeze([
-  { id: 'jarvis-supervisor', role: 'supervisor', capabilities: ['repository.inspect', 'diagnostics.run', 'patch.propose', 'tests.run', 'evidence.record', 'comms.task.create'], permissions: ['read-only', 'diagnostic', 'code-change'] },
-  { id: 'jarvis-supervisor', role: 'supervisor', capabilities: ['repository.inspect', 'diagnostics.run', 'patch.propose', 'tests.run', 'evidence.record', 'comms.task.create', 'deployment.execute'], permissions: ['read-only', 'diagnostic', 'code-change'] },
-  { id: 'repository-inspector', role: 'repository', capabilities: ['repository.inspect', 'evidence.record'], permissions: ['read-only'] },
-  { id: 'diagnostics-agent', role: 'diagnostics', capabilities: ['diagnostics.run', 'tests.run', 'evidence.record'], permissions: ['read-only', 'diagnostic'] },
+  { id: 'jarvis-supervisor', role: 'supervisor', capabilities: ['repository.inspect', 'diagnostics.run', 'ai-inspector.inspect', 'patch.propose', 'tests.run', 'evidence.record', 'comms.task.create'], permissions: ['read-only', 'diagnostic', 'code-change'] },
+  { id: 'jarvis-supervisor', role: 'supervisor', capabilities: ['repository.inspect', 'diagnostics.run', 'ai-inspector.inspect', 'patch.propose', 'tests.run', 'evidence.record', 'comms.task.create', 'deployment.execute'], permissions: ['read-only', 'diagnostic', 'code-change'] },
+  { id: 'repository-inspector', role: 'repository', capabilities: ['repository.inspect', 'ai-inspector.inspect', 'evidence.record'], permissions: ['read-only'] },
+  { id: 'diagnostics-agent', role: 'diagnostics', capabilities: ['diagnostics.run', 'ai-inspector.inspect', 'tests.run', 'evidence.record'], permissions: ['read-only', 'diagnostic'] },
   { id: 'security-reviewer', role: 'security', capabilities: ['repository.inspect', 'diagnostics.run', 'evidence.record'], permissions: ['read-only', 'diagnostic'] },
   { id: 'patch-proposer', role: 'patch', capabilities: ['patch.propose'], permissions: ['code-change'] },
   { id: 'verification-agent', role: 'verification', capabilities: ['tests.run', 'evidence.record'], permissions: ['read-only', 'diagnostic'] },
 ]);
 
 const PRIVILEGED_CAPABILITIES = new Set<JarvisCapability>(['secrets.read', 'production.change', 'deployment.execute', 'comms.task.create']);
-const KNOWN_CAPABILITIES = new Set<JarvisCapability>(['repository.inspect', 'diagnostics.run', 'patch.propose', 'tests.run', 'evidence.record', 'secrets.read', 'production.change', 'deployment.execute', 'comms.task.create']);
+const KNOWN_CAPABILITIES = new Set<JarvisCapability>(['repository.inspect', 'diagnostics.run', 'ai-inspector.inspect', 'patch.propose', 'tests.run', 'evidence.record', 'secrets.read', 'production.change', 'deployment.execute', 'comms.task.create']);
 
 export function authorizeJarvisCapability(agentId: string, capability: JarvisCapability, approved = false): { allowed: boolean; requiresApproval: boolean; reason: string } {
   const agent = JARVIS_AGENT_REGISTRY.find((candidate) => candidate.id === agentId);
