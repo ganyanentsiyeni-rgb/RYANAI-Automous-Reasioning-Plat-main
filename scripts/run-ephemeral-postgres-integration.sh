@@ -91,8 +91,24 @@ SQL
 log "Generating Prisma client"
 npx prisma generate --schema=prisma/schema.prisma
 
-log "Recording the no-op Prisma marker only after the real Supabase migrations have completed"
-npx prisma migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
+log "Verifying the Supabase runtime bootstrap seeded the Prisma ledger and agent schema"
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+DO $assert$
+BEGIN
+  IF to_regclass('public."_prisma_migrations"') IS NULL
+    OR NOT EXISTS (
+      SELECT 1 FROM public."_prisma_migrations"
+      WHERE migration_name = '20261014000000_supabase_platform_baseline'
+        AND finished_at IS NOT NULL AND rolled_back_at IS NULL
+    ) THEN
+    RAISE EXCEPTION 'Supabase runtime bootstrap did not seed the Prisma baseline marker';
+  END IF;
+  IF to_regclass('public.agent_runs') IS NULL THEN
+    RAISE EXCEPTION 'Supabase runtime bootstrap did not create public.agent_runs';
+  END IF;
+END
+$assert$;
+SQL
 
 log "Applying the committed Prisma application migration chain"
 npx prisma migrate deploy --schema=prisma/schema.prisma
