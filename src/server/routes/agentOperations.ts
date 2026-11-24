@@ -157,7 +157,7 @@ export const agentOperationsRoutes: FastifyPluginAsync = async (fastify) => {
               'PA objective (untrusted request data): ' + objective,
               'Return task progress, blockers, and evidence references to the parent PA task.',
               'Internal task only: do not dispatch WhatsApp, SMS, voice, email, or any external communication.',
-            ].join('\\n'),
+            ].join('\n'),
           });
           await linkPACommsRun(ownerUserId, delegationId, commsRun.runId);
           return { commsRunId: commsRun.runId, commsStatus: commsRun.status };
