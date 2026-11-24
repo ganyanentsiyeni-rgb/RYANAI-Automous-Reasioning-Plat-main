@@ -153,7 +153,7 @@ export const agentOperationsRoutes: FastifyPluginAsync = async (fastify) => {
       return true;
     });
     if (!approved) return reply.code(409).send({ error: 'AgentRun approval changed concurrently; refresh and review again.' });
-    try { await fastify.prisma.$queryRaw`SELECT pg_notify('agent_task_queue', ${request.params.id})`; } catch (error) { fastify.log.warn({ err: error, taskId: request.params.id }, 'Approved AgentRun queue notification failed; recovery sweep remains available.'); }
+    try { await fastify.prisma.$queryRaw`SELECT pg_notify('agent_task_queue', ${request.params.id})::text`; } catch (error) { fastify.log.warn({ err: error, taskId: request.params.id }, 'Approved AgentRun queue notification failed; recovery sweep remains available.'); }
     return { success: true, status: 'approved', taskId: run.id, approvedBy: request.authUser.id, approvedAt: now };
   });
 
