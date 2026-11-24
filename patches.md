@@ -62,3 +62,12 @@ Do not convert queued, skipped, cancelled, missing, stale, or provider-blocked c
 ## 6. Deployment boundary
 
 This patch does **not** trigger production deployment. Production deployment still requires the explicit Push Deploy action after the required exact-SHA checks pass.
+
+## 7. AI Inspector module and worker handler coverage
+
+- Added a dedicated `ai-inspector-module-agent` module owner with `ai-inspector.audit` and `ai-inspector.report` routing.
+- Routed those task types to the repository-auditor profile, with read-repository capability checks and report output persisted through the Studio task completion boundary.
+- Added bounded read-only specialist handlers for coordinator, security, runtime/infrastructure, data/queue, provider configuration, communications/identity, frontend/accessibility, and release readiness. The existing repository inventory and CI diagnostics handlers remain distinct.
+- Updated the AI Inspector workflow to run the audit with `--write`, creating the report path that the artifact-upload step expects.
+- Added registry and handler-readiness regression tests. These validate registration, not deployed/live heartbeats.
+- No production deployment, database migration, secret change, auto-merge, or external message delivery.

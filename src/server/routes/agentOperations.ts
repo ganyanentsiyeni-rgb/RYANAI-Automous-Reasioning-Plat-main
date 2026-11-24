@@ -16,6 +16,7 @@ const PA_DELEGATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-
 const PA_CAPABILITY_POLICY: Record<PADelegationCapability, { toolName: string; action: 'READ' | 'CREATE' | 'UPDATE' | 'EXECUTE'; target: string }> = {
   'repository.inspect': { toolName: 'mcp_repository_status', action: 'READ', target: 'repository-status' },
   'diagnostics.run': { toolName: 'system_diagnostics', action: 'READ', target: 'system-diagnostics' },
+  'ai-inspector.inspect': { toolName: 'system_diagnostics', action: 'READ', target: 'ai-inspector-audit-report' },
   'patch.propose': { toolName: 'patch_proposal', action: 'CREATE', target: 'reviewable-patch-proposal' },
   'tests.run': { toolName: 'test_runner', action: 'EXECUTE', target: 'isolated-test-suite' },
   'evidence.record': { toolName: 'evidence_record', action: 'UPDATE', target: 'agent-run-evidence' },
@@ -73,7 +74,7 @@ export const agentOperationsRoutes: FastifyPluginAsync = async (fastify) => {
         capabilities: request.body.capabilities,
       });
       const functionalCapabilities = new Set<PADelegationCapability>([
-        'repository.inspect', 'comms.task.create', 'deployment.execute',
+        'repository.inspect', 'ai-inspector.inspect', 'comms.task.create', 'deployment.execute',
       ]);
       const functionallyAuthorized = request.body.capabilities.every((capability) => functionalCapabilities.has(capability)) &&
         decisions.every((decision) => decision.decision === 'ALLOW');

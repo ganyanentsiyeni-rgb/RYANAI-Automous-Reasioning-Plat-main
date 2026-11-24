@@ -6,6 +6,7 @@ export const JARVIS_IDENTITY = 'ryanai-jarvis';
 export const PA_DELEGATION_CAPABILITIES = [
   'repository.inspect',
   'diagnostics.run',
+  'ai-inspector.inspect',
   'patch.propose',
   'tests.run',
   'evidence.record',

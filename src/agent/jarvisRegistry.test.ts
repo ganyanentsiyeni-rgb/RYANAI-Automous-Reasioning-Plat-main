@@ -9,6 +9,7 @@ describe('Jarvis agent registry', () => {
   });
   it('allows only capabilities explicitly granted to an agent', () => {
     expect(authorizeJarvisCapability('repository-inspector', 'repository.inspect').allowed).toBe(true);
+    expect(authorizeJarvisCapability('repository-inspector', 'ai-inspector.inspect').allowed).toBe(true);
     expect(authorizeJarvisCapability('repository-inspector', 'patch.propose').allowed).toBe(false);
     expect(authorizeJarvisCapability('not-registered', 'repository.inspect').allowed).toBe(false);
   });

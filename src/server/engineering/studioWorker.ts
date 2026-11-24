@@ -1,10 +1,22 @@
 import { prisma } from '../../lib/prisma.js';
 import { createRyanAIStudioWorkerRuntime } from './ryanaiStudioWorkerRuntime.js';
-import { createStudioArtifact, registerStudioTaskHandler } from './studioNativeCore.js';
+import { createStudioArtifact, getStudioWorkerHandlerReadiness, registerStudioTaskHandler } from './studioNativeCore.js';
 import { storeStudioArtifact } from './studioArtifactStorage.js';
+import { registerRyanAISpecialistTaskHandlers } from './ryanaiSpecialistTaskHandlers.js';
+import { createRyanAICiDiagnosticsTaskHandler } from './ryanaiCiDiagnosticsTask.js';
+import { inspectConnectedGitHubWorkflowEvidence } from '../routes/githubIntegration.js';
 
-const workerProfileId = 'coordinator';
+const workerProfileId = process.env.RYANAI_STUDIO_WORKER_PROFILE_ID?.trim() || 'coordinator';
 const workerInstanceId = process.env.RYANAI_STUDIO_WORKER_ID?.trim() || undefined;
+const unregisterSpecialistHandlers = registerRyanAISpecialistTaskHandlers(workerProfileId);
+const unregisterHandlers: Array<() => void> = [unregisterSpecialistHandlers];
+if (workerProfileId === 'ci-diagnostics') {
+  const runCiDiagnosticsTask = createRyanAICiDiagnosticsTaskHandler((ownerUserId, headSha, options) =>
+    inspectConnectedGitHubWorkflowEvidence({ prisma }, ownerUserId, headSha, options));
+  for (const taskType of ['ci-failure', 'test-failure', 'build-failure']) {
+    unregisterHandlers.push(registerStudioTaskHandler(taskType, runCiDiagnosticsTask));
+  }
+}
 
 function log(event: string, detail: Record<string, unknown> = {}) {
   console.info('[studio-worker]', JSON.stringify({ event, ...detail }));
@@ -14,7 +26,7 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-const unregister = registerStudioTaskHandler('coordination', async ({ task, workerId, claimToken }) => {
+if (workerProfileId === 'coordinator') unregisterHandlers.push(registerStudioTaskHandler('coordination', async ({ task, workerId, claimToken }) => {
   const plan = {
     schemaVersion: 1,
     projectId: task.projectId,
@@ -59,7 +71,7 @@ const unregister = registerStudioTaskHandler('coordination', async ({ task, work
     leaseFence: { workerId, claimToken },
   });
   return { artifactId: artifact.id, sha256: stored.sha256, byteSize: stored.byteSize, state: 'plan_artifact_created' };
-});
+}));
 
 const runtime = createRyanAIStudioWorkerRuntime({
   workerProfileId,
@@ -87,7 +99,7 @@ async function shutdown(signal: string) {
     }
 
     try {
-      unregister();
+      for (const unregister of unregisterHandlers) unregister();
     } catch (error) {
       shutdownErrors.push('handler-unregister: ' + errorMessage(error));
       log('handler-unregister-failed', { signal, error: errorMessage(error) });
@@ -133,15 +145,17 @@ async function main() {
       await new Promise<void>((resolve) => { disabledStopResolver = resolve; });
       return;
     }
+    const readiness = getStudioWorkerHandlerReadiness(workerProfileId);
+    if (!readiness.ready) throw new Error('Studio worker profile has no registered task handler: ' + readiness.reason);
     await runtime.start();
     log('started', {
       workerId: runtime.snapshot().workerId,
       workerProfileId,
       status: runtime.snapshot().status,
-      registeredTaskTypes: ['coordination'],
+      registeredTaskTypes: readiness.registeredTaskTypes,
     });
   } catch (error) {
-    unregister();
+    for (const unregister of unregisterHandlers) unregister();
     await prisma.$disconnect().catch(() => undefined);
     throw error;
   }

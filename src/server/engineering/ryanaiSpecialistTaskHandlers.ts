@@ -127,6 +127,12 @@ function findRuleEvidence(spec: AuditSpec, files: Array<{ path: string; content:
   return findings;
 }
 
+async function runStaticInspection(profileId: string, context: StudioWorkerContext, requiredCapability?: string) {
+  const spec = SPECS[profileId];
+  if (!spec) throw new Error('No static inspection specification exists for this worker.');
+  const capability = requiredCapability ?? spec.capability;
+  if (!context.task.requiredCapabilities.includes(capability)) {
+    throw new Error(profileId + ' requires the explicit ' + capability + ' capability.');
 async function runStaticInspection(profileId: string, context: StudioWorkerContext) {
   const spec = SPECS[profileId];
   if (!spec) throw new Error('No static inspection specification exists for this worker.');
@@ -170,6 +176,20 @@ async function runCoordinator(context: StudioWorkerContext) {
   };
 }
 
+export async function runRyanAIInspectorAudit(input: { taskId: string; signal?: AbortSignal }) {
+  input.signal?.throwIfAborted();
+  const script = path.resolve(process.cwd(), 'scripts/ai-inspector-audit.mjs');
+  try {
+    const result = await (execFileAsync as unknown as (file: string, args: string[], options: object) => Promise<{ stdout: string; stderr: string }>)(
+      process.execPath, [script], { cwd: process.cwd(), encoding: 'utf8', maxBuffer: 2 * 1024 * 1024, signal: input.signal },
+    );
+    if (!result.stdout.trim()) throw new Error('AI Inspector returned an empty report.');
+    return { schemaVersion: 1, kind: 'ryanai.ai-inspector.report', taskId: input.taskId, report: result.stdout, stderr: result.stderr, exitCode: 0, reportSource: 'scripts/ai-inspector-audit.mjs', persistedBy: 'agent-run-evidence', externalActions: 'none' };
+  } catch (error) {
+    input.signal?.throwIfAborted();
+    const value = error as { stdout?: unknown; stderr?: unknown; code?: unknown };
+    if (typeof value.stdout === 'string' && value.stdout.trim()) {
+      return { schemaVersion: 1, kind: 'ryanai.ai-inspector.report', taskId: input.taskId, report: value.stdout, stderr: typeof value.stderr === 'string' ? value.stderr : '', exitCode: typeof value.code === 'number' ? value.code : 1, reportSource: 'scripts/ai-inspector-audit.mjs', persistedBy: 'agent-run-evidence', externalActions: 'none' };
 async function runAIInspector(context: StudioWorkerContext) {
   if (!context.task.requiredCapabilities.includes('read-repository')) throw new Error('AI Inspector requires the explicit read-repository capability.');
   context.signal?.throwIfAborted();
@@ -189,12 +209,22 @@ async function runAIInspector(context: StudioWorkerContext) {
   }
 }
 
+async function runAIInspector(context: StudioWorkerContext) {
+  if (!context.task.requiredCapabilities.includes('read-repository')) throw new Error('AI Inspector requires the explicit read-repository capability.');
+  return runRyanAIInspectorAudit({ taskId: context.task.id, signal: context.signal });
+}
+
 export function registerRyanAISpecialistTaskHandlers(profileId: string) {
   const unregister: Array<() => void> = [];
   const add = (taskType: string, handler: (context: StudioWorkerContext) => Promise<unknown>) => {
     unregister.push(registerStudioTaskHandler(taskType, handler));
   };
   if (profileId === 'coordinator') {
+    for (const type of ['planning', 'triage']) add(type, runCoordinator);
+  } else if (profileId === 'repository-auditor') {
+    add('repository-audit', runAIInspector);
+    add('inventory', runAIInspector);
+    add('documentation-audit', (context) => runStaticInspection('release-readiness', context, 'read-repository'));
     for (const type of ['planning', 'triage', 'coordination']) add(type, runCoordinator);
   } else if (profileId === 'repository-auditor') {
     add('documentation-audit', (context) => runStaticInspection('release-readiness', context));
