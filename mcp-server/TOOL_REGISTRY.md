@@ -42,3 +42,16 @@ MCP_AUTH_TOKEN=<at-least-32-character-random-secret>
 - Enabling either tool requires `MCP_AUTH_TOKEN` to contain at least 32 characters. Streamable HTTP checks the bearer token with constant-time comparison.
 - The shared bearer token authenticates the MCP client/service, not a human end-user. These tools must not be used for delegated private-history access or provider dispatch.
 - Stdio access is a trusted local-process boundary; protect it with OS permissions.
+
+
+## Canonical tool contract metadata
+
+Each registry entry now exposes a stable `toolId` (`ryanai.mcp.<tool-name>`), contract `version`, the runtime's actual `inputSchema`, an `outputContract` identifier, a bounded `timeoutMs`, and an `idempotency` classification alongside its existing owner, risk, capability, execution, approval, audit and hard-deny fields.
+
+- `safe` means repeating the operation does not create an externally visible mutation.
+- `best-effort` means the operation may perform local work and callers must not assume retry safety.
+- `non-idempotent` means a repeated request may repeat provider/model work; callers must not retry blindly.
+
+The registry reports the schema from the tool actually available in the current process. An unavailable tool is never made available by metadata. These fields describe the current MCP server contract; they do not grant scopes, bypass API-issued delegation, skip execution-time Gen-X authorization, or enable a tool. The operator allowlist and delegated scope intersection remain mandatory.
+
+`outputContract: mcp-text-content` identifies the current MCP text-content response envelope; it is not a promise that every tool returns the same business payload.
