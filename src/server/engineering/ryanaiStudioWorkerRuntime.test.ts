@@ -115,6 +115,60 @@ describe('RyanAI native Studio worker runtime', () => {
     );
   });
 
+  it('shares one shutdown drain across concurrent stop calls', async () => {
+    let finishStopped!: () => void;
+    const stoppedHeartbeat = new Promise<void>((resolve) => { finishStopped = resolve; });
+    const heartbeat = vi.fn(async (_id: string, status: string) => {
+      if (status === 'stopped') await stoppedHeartbeat;
+    });
+    const runtime = createRyanAIStudioWorkerRuntime({
+      workerProfileId: 'coordinator',
+      workerInstanceId: 'studio-worker-concurrent-stop',
+      pollIntervalMs: 60_000,
+      heartbeatIntervalMs: 60_000,
+      recoveryIntervalMs: 60_000,
+      executeOnce: vi.fn().mockResolvedValue({ state: 'idle' }),
+      heartbeat,
+      recoverExpiredLeases: vi.fn().mockResolvedValue({ inspected: 0, recovered: 0, failed: 0 }),
+    });
+
+    await runtime.start();
+    const firstStop = runtime.stop();
+    const secondStop = runtime.stop();
+    await Promise.resolve();
+    expect(heartbeat.mock.calls.filter((call) => call[1] === 'stopped')).toHaveLength(1);
+
+    finishStopped();
+    await Promise.all([firstStop, secondStop]);
+    expect(runtime.snapshot().status).toBe('stopped');
+  });
+
+  it('allows shutdown retry when the terminal heartbeat write fails', async () => {
+    const heartbeat = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('terminal heartbeat unavailable'))
+      .mockResolvedValueOnce(undefined);
+    const runtime = createRyanAIStudioWorkerRuntime({
+      workerProfileId: 'coordinator',
+      workerInstanceId: 'studio-worker-stop-retry',
+      pollIntervalMs: 60_000,
+      heartbeatIntervalMs: 60_000,
+      recoveryIntervalMs: 60_000,
+      executeOnce: vi.fn().mockResolvedValue({ state: 'idle' }),
+      heartbeat,
+      recoverExpiredLeases: vi.fn().mockResolvedValue({ inspected: 0, recovered: 0, failed: 0 }),
+    });
+
+    await runtime.start();
+    await expect(runtime.stop()).rejects.toThrow('terminal heartbeat unavailable');
+    expect(runtime.snapshot().status).toBe('healthy');
+
+    await runtime.stop();
+    expect(runtime.snapshot().status).toBe('stopped');
+    expect(heartbeat.mock.calls.filter((call) => call[1] === 'stopped')).toHaveLength(2);
+  });
+
   it('allows startup retry after the initial durable heartbeat fails', async () => {
     const heartbeat = vi.fn()
       .mockRejectedValueOnce(new Error('heartbeat store unavailable'))
