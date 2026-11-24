@@ -158,6 +158,11 @@ export function createRyanAIStudioWorkerRuntime(
     } catch (error) {
       status = 'degraded';
       lastError = error instanceof Error ? error.message : 'Studio lease recovery failed.';
+      // Recovery failures must be visible in the durable worker heartbeat
+      // immediately, not only after the next periodic heartbeat interval.
+      // Preserve the original recovery error if the heartbeat store is also
+      // unavailable; the next scheduled heartbeat will retry persistence.
+      await persistHeartbeat('degraded').catch(() => undefined);
     } finally {
       if (!stopping) recoveryTimer = setTimeout(() => { track(recoveryLoop()); }, recoveryIntervalMs);
     }
