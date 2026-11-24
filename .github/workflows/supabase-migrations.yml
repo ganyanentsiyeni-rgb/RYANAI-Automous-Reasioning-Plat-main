@@ -49,7 +49,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          eval "$(supabase status -o env)"
+          eval "$(supabase status --env)"
           test -n "${DB_URL:-}"
           psql "$DB_URL" -v ON_ERROR_STOP=1 -f scripts/test-shared-rooms-rls.sql
 
