@@ -244,7 +244,7 @@ export async function approvePADelegation(
   });
   if (!result || result.alreadyApproved) return result;
   const notified = await publishAgentTaskNotification(result.runId, async (id) => {
-    await prisma.$queryRaw`SELECT pg_notify('agent_task_queue', ${id})`;
+    await prisma.$queryRaw`SELECT pg_notify('agent_task_queue', ${id})::text`;
   });
   const notification: 'sent' | 'recovery_sweep' = notified ? 'sent' : 'recovery_sweep';
   return { ...result, notification };
