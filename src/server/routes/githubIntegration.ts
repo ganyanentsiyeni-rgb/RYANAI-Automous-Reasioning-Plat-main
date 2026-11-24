@@ -311,8 +311,8 @@ export async function inspectConnectedGitHubRepository(
   }
 
   const [account, repository] = await Promise.all([
-    githubApi<GitHubUser>('user', accessToken, signal),
-    githubApi<GitHubRepository>('repos/' + GITHUB_APP_REPOSITORY, accessToken, signal),
+    githubApi<GitHubUser>('user', accessToken),
+    githubApi<GitHubRepository>('repos/' + GITHUB_APP_REPOSITORY, accessToken),
   ]);
   if (
     String(account.id ?? '') !== connection.githubUserId ||
