@@ -1,8 +1,19 @@
 name: Build and Publish RyanAI Containers
 
 on:
+  workflow_call:
+    inputs:
+      commit_sha:
+        description: Exact source commit to validate before release.
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
+      commit_sha:
+        description: Optional exact source commit to validate.
+        required: false
+        default: ''
+        type: string
       publish_images:
         description: 'Explicitly authorize publishing API and web images to GHCR'
         required: false
@@ -24,8 +35,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Checkout
+      - name: Checkout exact source commit
         uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit_sha || github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v7

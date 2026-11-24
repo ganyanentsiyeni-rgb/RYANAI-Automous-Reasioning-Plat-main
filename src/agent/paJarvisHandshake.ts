@@ -9,6 +9,7 @@ export const PA_DELEGATION_CAPABILITIES = [
   'patch.propose',
   'tests.run',
   'evidence.record',
+  'comms.task.create',
 ] as const satisfies readonly JarvisCapability[];
 
 export type PADelegationCapability = (typeof PA_DELEGATION_CAPABILITIES)[number];

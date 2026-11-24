@@ -231,7 +231,7 @@ export default function PAAgentPage() {
 
       {errors.map((error, index) => <p key={index} role="alert" className="flex items-start gap-2 rounded-xl border border-amber-300/20 bg-amber-300/5 p-3 text-sm text-amber-100"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</p>)}
 
-      <PADelegationPanel mode="pa" />
+      <PADelegationPanel mode="shared" />
 
       <section className="rounded-2xl border border-cyan-300/20 bg-slate-900/70 p-5 sm:p-6" aria-labelledby="pa-runtime-title">
         <div className="flex flex-wrap items-center justify-between gap-3">

@@ -18,6 +18,7 @@ import { summarizeProviderError } from './providerErrors.js';
 import { assertBrainProbeResponse, BRAIN_PROBE_CHALLENGE, BRAIN_PROBE_ORDER } from './brainProbe.js';
 import { assertPAExecutionHandlersAvailable, buildAgentRunExecutionPrompt, buildPARepositoryInspectionContext, buildSharedReasoningObjective, planQueuedAgentRun } from './agentRunExecution.js';
 import { inspectConnectedGitHubRepository } from '../server/routes/githubIntegration.js';
+import { enqueuePACommsTask } from '../server/comms/paTask.js';
 import { evaluateGenXSecurityEvent } from '../security/genxPolicy.js';
 import type { PACapabilityReceipt } from './paCapabilityCompletion.js';
 import type { ExecutionChange } from './executionPlanner.js';
@@ -306,7 +307,7 @@ async function processAgentRun(
       }
       await recordRunEvidence({ runId: run.id, eventType: 'pa.execution.scope_revalidated', payload: { delegationId: delegation.id, capabilities: runCapabilities } });
       // Only repository.inspect has a real handler in this increment; all other capabilities remain fail-closed.
-      assertPAExecutionHandlersAvailable(paScope, ['repository.inspect']);
+      assertPAExecutionHandlersAvailable(paScope, ['repository.inspect', 'comms.task.create']);
       if (paScope.capabilities.includes('repository.inspect')) {
         const inspectionPolicy = evaluateGenXSecurityEvent({
           agentId: 'ryanai-pa',
@@ -352,6 +353,51 @@ async function processAgentRun(
             inspectedAt: snapshot.inspectedAt,
             source: snapshot.source,
           },
+        });
+      }
+      if (paScope.capabilities.includes('comms.task.create')) {
+        const commsPolicy = evaluateGenXSecurityEvent({
+          agentId: 'ryanai-pa',
+          principal: run.user_id,
+          toolName: 'comms_internal_task_create',
+          action: 'CREATE',
+          target: 'pa:internal-comms-task',
+          environment: process.env.NODE_ENV === 'production' ? 'production' : process.env.NODE_ENV === 'staging' ? 'staging' : 'development',
+          actorType: 'agent',
+        });
+        if (commsPolicy.decision !== 'ALLOW') {
+          throw new Error('Gen-X denied comms.task.create at the worker execution boundary.');
+        }
+        await assertExecutionLeaseActive();
+        const child = await enqueuePACommsTask({
+          ownerUserId: run.user_id,
+          parentRunId: run.id,
+          delegationId: delegation.id,
+          objective: run.objective,
+        });
+        await assertExecutionLeaseActive();
+        const evidence = await recordRunEvidence({
+          runId: run.id,
+          eventType: 'pa.capability.executed',
+          actorId: run.user_id,
+          payload: {
+            capability: 'comms.task.create',
+            childRunId: child.runId,
+            childStatus: child.status,
+            replayed: child.replayed,
+            notified: child.notified,
+            internalOnly: true,
+            outboundDispatch: false,
+            genxDecision: commsPolicy.decision,
+            genxRuleId: commsPolicy.ruleId,
+          },
+        });
+        capabilityReceipts.push({
+          capability: 'comms.task.create',
+          status: 'passed',
+          evidenceReferences: ['agent-run-evidence:' + evidence.id],
+          childRunId: child.runId,
+          internalOnly: true,
         });
       }
     }
