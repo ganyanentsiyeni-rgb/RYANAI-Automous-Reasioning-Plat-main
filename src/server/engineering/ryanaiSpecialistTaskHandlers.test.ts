@@ -24,11 +24,6 @@ describe('RyanAI specialist worker handler registration', () => {
     if (profileId === 'coordinator') {
       unregister.push(registerStudioTaskHandler('coordination', async () => ({ kind: 'ryanai.coordination.plan' })));
     }
-    if (profileId === 'repository-auditor') {
-      unregister.push(registerStudioTaskHandler('repository-audit', async () => ({ kind: 'repository.inventory' })));
-      unregister.push(registerStudioTaskHandler('inventory', async () => ({ kind: 'repository.inventory' })));
-    }
-    unregister.push(registerRyanAISpecialistTaskHandlers(profileId));
     if (profileId === 'ci-diagnostics') {
       unregister.push(registerRyanAICiDiagnosticsTaskHandlers(async () => { throw new Error('GitHub evidence fixture is not connected.'); }));
     } else {
@@ -41,8 +36,6 @@ describe('RyanAI specialist worker handler registration', () => {
   });
 
   it('routes the dedicated AI Inspector module to the repository-auditor handler', () => {
-    unregister.push(registerStudioTaskHandler('repository-audit', async () => ({ kind: 'repository.inventory' })));
-    unregister.push(registerStudioTaskHandler('inventory', async () => ({ kind: 'repository.inventory' })));
     unregister.push(registerRyanAISpecialistTaskHandlers('repository-auditor'));
     expect(getModuleAgentForModule('ai-inspector')?.id).toBe('ai-inspector-module-agent');
     expect(findModuleAgentForTask('ai-inspector.audit')?.id).toBe('ai-inspector-module-agent');
