@@ -279,7 +279,7 @@ export function registerRyanAISpecialistTaskHandlers(profileId: string) {
   };
 
   if (profileId === 'coordinator') {
-    for (const type of ['planning', 'triage', 'coordination']) add(type, runCoordinator);
+    for (const type of ['planning', 'triage']) add(type, runCoordinator);
   } else if (profileId === 'repository-auditor') {
     for (const type of ['ai-inspector.audit', 'ai-inspector.report']) add(type, runAIInspector);
     add('documentation-audit', (context) => runStaticInspection('release-readiness', context, 'read-repository'));
