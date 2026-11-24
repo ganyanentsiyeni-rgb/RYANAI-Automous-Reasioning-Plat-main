@@ -97,7 +97,7 @@ jobs:
             --header "Authorization: Bearer $RENDER_API_KEY" \
             --header "accept: application/json" > render-staging-service.json
           jq -e '
-            (.name | startswith("ryanai-staging"))
+            (.name | startswith("ryanai-api-staging"))
             and (.repo == "https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main")
             and (.autoDeployTrigger == "off")
           ' render-staging-service.json >/dev/null || {
