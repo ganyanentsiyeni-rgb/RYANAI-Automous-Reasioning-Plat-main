@@ -60,7 +60,7 @@ test('registry publishes stable versioned tool contracts and bounded execution m
   assert.equal(health.timeoutMs, 5000);
   assert.equal(health.idempotency, 'safe');
   assert.equal(health.outputContract, 'mcp-text-content');
-  assert.deepEqual(health.inputSchema, { type: 'object', properties: {} });
+  assert.deepEqual(health.inputSchema, { type: 'object', properties: { url: { type: 'string' } } });
   assert.equal(draft.timeoutMs, 10000);
   assert.equal(draft.idempotency, 'safe');
   assert.equal(draft.inputSchema.additionalProperties, false);
