@@ -58,3 +58,11 @@ Evidence must distinguish:
 passed / failed / queued / skipped / cancelled / missing / provider-blocked.
 
 No production deployment, production migration, secret mutation, paid upgrade, or external communication is authorized by this document.
+
+## 7. AI Inspector and specialist handlers
+
+The AI Inspector has a dedicated module owner, `ai-inspector-module-agent`, and task types `ai-inspector.audit` and `ai-inspector.report`. PA can route inspection objectives to the repository-auditor specialist. The Inspector returns structured, evidence-file-linked findings as the durable Studio task output; the CI workflow separately writes `reports/ai-inspector-audit.md` and uploads it as an artifact.
+
+The specialist worker process registers bounded handlers per profile. Security, infrastructure, data/queue, provider, communications, frontend/accessibility, and release handlers perform read-only static inspections. Provider configuration presence is never represented as live provider health. Runtime verification remains `not_performed` unless independently supported by fresh runtime evidence. The coordinator proposes a plan only; it has no execution authority.
+
+The 13 module agents and 10 specialist worker profiles are registry contracts, not live-runtime assertions. A worker is live only when a real process has a fresh healthy persisted heartbeat and its task/lease execution evidence is available. CI diagnostics remains bound to connected GitHub workflow evidence. No handler can approve, merge, deploy, migrate production, mutate secrets, or send external communications.
