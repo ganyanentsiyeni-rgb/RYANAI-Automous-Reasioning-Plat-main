@@ -5,6 +5,16 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 // database and produce misleading auth/data-fetch failures.
 export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL?.trim() ?? '';
 
+function isValidHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+
 const publishableKey =
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ?? '';
 const legacyAnonKey =
@@ -29,6 +39,6 @@ const authOptions = {
 
 // Explicitly typed and fail closed when configuration is missing or unsafe.
 export const supabase: SupabaseClient | null =
-  SUPABASE_URL && supabaseKey
+  isValidHttpUrl(SUPABASE_URL) && supabaseKey
     ? createClient(SUPABASE_URL, supabaseKey, { auth: authOptions })
     : null;
