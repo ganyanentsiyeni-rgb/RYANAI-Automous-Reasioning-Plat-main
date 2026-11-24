@@ -168,7 +168,7 @@ const hasThreePlatformPushDeployContract =
   && platformDeployWorkflow.includes('uses: ./.github/workflows/ci-cd.yml')
   && platformDeployWorkflow.includes('Exact-SHA CI and security release gate')
   && platformDeployWorkflow.includes('needs: gate')
-  && !platformDeployWorkflow.includes('inputs.vercel_confirmation')
+  && !/\\\\n/.test(platformDeployWorkflow);
   && !platformDeployWorkflow.includes('needs: [gate, railway]')
   && platformDeployWorkflow.includes('RENDER_HEALTH_URLS')
   && platformDeployWorkflow.includes('RAILWAY_HEALTH_URL')
