@@ -576,6 +576,7 @@ export async function cancelStudioTask(taskId: string, ownerUserId: string, reas
       data: {
         status: 'cancelled',
         leaseOwner: null,
+        leaseToken: null,
         leaseExpiresAt: null,
         heartbeatAt: null,
         completedAt: now,
