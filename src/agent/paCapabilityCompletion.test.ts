@@ -3,6 +3,7 @@ import { assertPACompletionCapabilityReceipts, assertPARepositoryInspectionEvide
 
 const scope = { paDelegationId: '123e4567-e89b-42d3-a456-426614174000', capabilities: ['repository.inspect', 'evidence.record'] };
 const passed = (capability: 'repository.inspect' | 'evidence.record' | 'comms.task.create') => ({ capability, status: 'passed' as const, evidenceReferences: ['evidence:' + capability], ...(capability === 'comms.task.create' ? { childRunId: 'pa_comms_' + 'a'.repeat(64) } : {}) });
+const passed = (capability: 'repository.inspect' | 'evidence.record' | 'comms.task.create' | 'deployment.execute') => ({ capability, status: 'passed' as const, evidenceReferences: ['evidence:' + capability], ...(capability === 'comms.task.create' ? { childRunId: 'comms_assist_' + 'a'.repeat(64) } : {}) });
 
 describe('PA finalization capability receipts', () => {
   it('does not allow reasoning-only completion without capability receipts', () => {
@@ -72,5 +73,32 @@ describe('PA internal Comms child-task receipts', () => {
   });
   it('accepts a passed, evidence-backed internal Comms child task', () => {
     expect(() => assertPACompletionCapabilityReceipts(commsScope, [passed('comms.task.create')])).not.toThrow();
+  });
+});
+
+describe('PA exact-SHA Push Deploy receipts', () => {
+  const deployScope = {
+    paDelegationId: '123e4567-e89b-42d3-a456-426614174000',
+    capabilities: ['deployment.execute', 'comms.task.create'],
+  };
+  const queuedDeploy = {
+    capability: 'deployment.execute' as const,
+    status: 'queued' as const,
+    evidenceReferences: ['agent-run-evidence:deploy-1'],
+    workflowId: 'deploy-platforms.yml',
+    commitSha: 'a'.repeat(40),
+    dispatchAccepted: true,
+  };
+  it('accepts dispatch acceptance as queued, not as a completed deployment', () => {
+    expect(() => assertPACompletionCapabilityReceipts(deployScope, [
+      queuedDeploy,
+      passed('comms.task.create'),
+    ])).not.toThrow();
+  });
+  it('rejects a queued deployment without exact SHA and dispatch evidence', () => {
+    expect(() => assertPACompletionCapabilityReceipts(deployScope, [
+      { ...queuedDeploy, commitSha: 'not-a-sha' },
+      passed('comms.task.create'),
+    ])).toThrow(/exact-SHA accepted Push Deploy/);
   });
 });

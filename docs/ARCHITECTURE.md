@@ -34,6 +34,20 @@ Specialist models may return suggestions or derived data. They do not become tru
 
 ## 3. Persistence, memory, and private data
 
+## 2.5 Shared PA Agent, Darkside Copilot, Admin Console, and Comms control plane
+
+PA Agent and Darkside Copilot share the same governed responsibility/capability vocabulary and execution boundary. The Admin Console exposes the same control plane for administrative operation. These surfaces are presentation and task-submission layers; they do not grant authorization by themselves.
+
+The shared capability model includes internal Comms task creation and governed deployment execution. A PA objective may create a durable owner-scoped Comms child task directly from the objective, without an existing Comms conversation. The child is internal-only and exists to coordinate/report work; outbound provider delivery remains a separate capability requiring its own authorization and provider evidence.
+
+For release orchestration, `PUSH DEPLOY` is the explicit trigger. The workflow accepts an exact candidate SHA, verifies that it is current `main`, and requires the named CI/CD and security checks for that exact SHA to complete successfully before any provider deployment starts. After the gate, Render, Railway, and Vercel are independent jobs so a failure at one provider does not silently suppress the other two. Each provider reports deployment identity/status, source SHA, and health verification separately.
+
+A PA deployment receipt means only that the fixed Push Deploy workflow was accepted by GitHub. It does not mean CI passed or that any provider deployed successfully. Provider completion must be reconciled from the workflow's per-provider evidence and runtime health checks.
+
+Future Comms tags such as `@RyanAI`, `@PA Agents`, `@Comms`, `@Security`, `@updates`, and `@self-patches` are routing metadata, not authorization. Any message-trigger adapter must be authenticated, owner-scoped, idempotent, and linked to the PA task, exact SHA, workflow run, and provider results. It must not bypass the explicit Push Deploy command or exact-SHA gate.
+
+
+
 PostgreSQL is the authoritative durable application and memory store; pgvector is the vector-search foundation for semantic retrieval. Prisma schema and migrations define the relational data contract. Redis may support runtime coordination and caching, but it is not the authoritative long-term memory store.
 
 Required data controls:

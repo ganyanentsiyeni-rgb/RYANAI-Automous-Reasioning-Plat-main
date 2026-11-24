@@ -14,6 +14,10 @@ The release workflow is manually dispatched with the explicit `PUSH DEPLOY` inpu
 
 1. Runs the reusable CI/CD validation workflow against that exact SHA.
 2. Confirms the requested SHA is still the current `main` commit.
+The release workflow is manually dispatched with the explicit \`PUSH DEPLOY\` input and an exact 40-character commit SHA. Before any provider job starts, it:
+
+1. Runs the reusable CI/CD validation workflow against that exact SHA.
+2. Confirms the requested SHA is still the current \`main\` commit.
 3. Requires every named CI and security check to be completed successfully on that SHA. Missing, queued, skipped, cancelled, neutral, stale, provider-blocked, or failed checks block release.
 4. Uses the exact checked-out SHA for provider deployment.
 
@@ -24,6 +28,15 @@ Required environment configuration is read at runtime from protected GitHub envi
 ## Future Comms message-trigger contract
 
 A future Comms trigger may route messages tagged with `@RyanAI`, `@PA Agents`, `@Comms`, `@Security`, `@updates`, and `@self-patches` into the release coordinator. These tags are routing metadata, not permissions. The message must also contain the explicit `PUSH DEPLOY` command and resolve to an exact current-main SHA. The release gate above remains mandatory.
+## Current implementation boundary
+
+The current Push Deploy path is a fixed GitHub `workflow_dispatch` release workflow. PA may be governed to dispatch it only through the owner-scoped GitHub connection and Gen-X policy path. The workflow itself remains the final release gate for exact-SHA CI/security evidence and provider execution.
+
+The tagged Comms trigger described below is **not** implemented merely by documenting the tags. Until its authenticated event adapter exists and is verified, a tagged message must not be treated as a deployment command. The durable Comms child task can report a release request/result without becoming an outbound provider sender.
+
+
+
+A future Comms trigger may route messages tagged with \`@RyanAI\`, \`@PA Agents\`, \`@Comms\`, \`@Security\`, \`@updates\`, and \`@self-patches\` into the release coordinator. These tags are routing metadata, not permissions. The message must also contain the explicit \`PUSH DEPLOY\` command and resolve to an exact current-main SHA. The release gate above remains mandatory.
 
 The Comms event handler must be authenticated, owner-scoped, idempotent by provider/message ID, and append an audit record linking the source message, PA task, commit SHA, workflow run, and each provider deployment. Duplicate webhook deliveries must not dispatch a second release. No outbound message is considered sent without a provider receipt. This event-trigger adapter is a separate implementation step; the current workflow_dispatch release path does not yet subscribe to tagged Comms conversations.
 

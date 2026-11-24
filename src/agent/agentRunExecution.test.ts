@@ -60,7 +60,7 @@ describe('durable agent-run execution planning', () => {
 
 
 describe('PA execution scope validation', () => {
-  it('accepts only a complete allowlisted delegation scope', () => {
+  it('accepts deployment execution only as an allowlisted scoped capability', () => {\n    expect(parsePAExecutionScope({ paDelegationId: '123e4567-e89b-42d3-a456-426614174000', capabilities: ['deployment.execute', 'comms.task.create'] })).toEqual({ delegationId: '123e4567-e89b-42d3-a456-426614174000', capabilities: ['deployment.execute', 'comms.task.create'] });\n  });\n  it('accepts only a complete allowlisted delegation scope', () => {
     expect(parsePAExecutionScope({ paDelegationId: '123e4567-e89b-42d3-a456-426614174000', capabilities: ['tests.run'] })).toEqual({ delegationId: '123e4567-e89b-42d3-a456-426614174000', capabilities: ['tests.run'] });
     expect(parsePAExecutionScope({ unrelated: true })).toBeNull();
   });

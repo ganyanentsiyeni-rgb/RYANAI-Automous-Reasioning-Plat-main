@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { getWorkerProfile } from '../../agent/workerRegistry.js';
 import { recoverExpiredStudioLeases, runStudioWorkerOnce } from './studioNativeCore.js';
+import { authorizeStudioTaskWithGenX } from './studioGenXPolicy.js';
 import { prisma } from '../../lib/prisma.js';
 
 export type RyanAIStudioWorkerStatus = 'starting' | 'healthy' | 'degraded' | 'stopped';
@@ -97,8 +98,14 @@ export function createRyanAIStudioWorkerRuntime(
     });
   });
 
+  const executeOnce = options.executeOnce ?? (async (id, profileId, seconds, signal) => {
+    const authorize = async (task: Parameters<typeof authorizeStudioTaskWithGenX>[0], workerId: string) => {
+      const decision = await authorizeStudioTaskWithGenX(task, workerId);
+      if (!decision.allowed) throw new Error('Gen-X denied Studio task execution: ' + decision.reason);
+    };
+    return runStudioWorkerOnce(id, profileId, seconds, authorize, signal);
   const executeOnce = options.executeOnce ?? (async (id, profileId, seconds) => {
-    return runStudioWorkerOnce(id, profileId, seconds, undefined, shutdownController.signal);
+    return runStudioWorkerOnce(id, profileId, seconds, authorizeStudioTaskWithGenX, shutdownController.signal);
   });
 
   const recover = options.recoverExpiredLeases ?? recoverExpiredStudioLeases;

@@ -11,12 +11,24 @@ on:
         type: string
       push_deploy:
         description: Select PUSH DEPLOY to authorize the three-platform release.
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Exact reviewed main SHA to release.
+        required: true
+        type: string
+      push_deploy:
+        description: Explicitly authorize Push Deploy after the exact-SHA CI and CI/CD gates pass.
         required: true
         type: choice
         options:
           - NO
           - PUSH DEPLOY
         default: NO
+      release_request_id:
+        description: Optional durable PA/Comms release-request reference.
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -41,6 +53,7 @@ jobs:
     if: inputs.push_deploy == 'PUSH DEPLOY'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    timeout-minutes: 45
     outputs:
       sha: ${{ steps.sha.outputs.sha }}
     steps:
@@ -67,15 +80,27 @@ jobs:
           }
 
       - name: Require every CI and security check to pass on this SHA
+      - name: Wait for every required exact-SHA CI and security check
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ steps.sha.outputs.sha }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
           required=(
             "Validate (typecheck, lint, test, build)"
             "MCP server and workflow worker"
             "Issue 435 migrations and attachment security"
+          current_suite="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CURRENT_RUN_ID}" --jq '.check_suite_id // empty')"
+          [[ -n "$current_suite" ]] || { echo "::error::Cannot identify this Push Deploy check suite."; exit 1; }
+
+          required=(
+            "Validate (typecheck, lint, test, build)"
+            "MCP server and workflow worker"
+            "Integration and end-to-end checks"
+            "PostgreSQL 19 compatibility"
+            "Issue 435 migrations and attachment security"
+            "Audit Render API configuration (read-only)"
             "validate-database"
             "Upgrade legacy pgvector database safely (quoted)"
             "Upgrade legacy pgvector database safely (unquoted)"
@@ -104,6 +129,42 @@ jobs:
             }
           done
           echo "All required CI and security checks passed for $SHA."
+
+          for attempt in $(seq 1 90); do
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs?per_page=100" --jq '.check_runs[]' > check-runs.ndjson
+            jq -s --arg suite "$current_suite" '[.[] | select((.check_suite.id | tostring) != $suite)]' check-runs.ndjson > checks.json
+            pending=0
+            failed=0
+            missing=()
+            for name in "${required[@]}"; do
+              count="$(jq --arg name "$name" '[.[] | select(.name == $name)] | length' checks.json)"
+              if [[ "$count" == "0" ]]; then
+                missing+=("$name")
+                pending=1
+                continue
+              fi
+              state="$(jq -r --arg name "$name" '[.[] | select(.name == $name)] | sort_by(.started_at // .completed_at // "") | last | [.status // "missing", .conclusion // ""] | @tsv' checks.json)"
+              status="${state%%$'\t'*}"
+              conclusion="${state#*$'\t'}"
+              if [[ "$status" == "completed" && "$conclusion" == "success" ]]; then
+                continue
+              elif [[ "$status" == "completed" ]]; then
+                echo "::error::Required exact-SHA check $name concluded $conclusion."
+                failed=1
+              else
+                pending=1
+              fi
+            done
+            [[ "$failed" == "0" ]] || exit 1
+            if [[ "$pending" == "0" ]]; then
+              echo "All required CI and security checks passed for $SHA."
+              exit 0
+            fi
+            echo "Waiting for exact-SHA checks. Attempt $attempt/90. Missing: ${missing[*]:-none}."
+            sleep 30
+          done
+          echo "::error::CI/security checks did not all pass within 45 minutes. No provider deployment was started."
+          exit 1
 
   railway:
     name: Railway deploy and health verification
@@ -136,6 +197,7 @@ jobs:
 
       - name: Deploy, capture deployment ID, and verify runtime
         id: railway
+      - name: Deploy exact SHA, capture deployment ID, and verify runtime
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
@@ -148,11 +210,13 @@ jobs:
           before="$(railway deployment list --json --limit 1 --service "$RAILWAY_SERVICE_ID" --environment "$RAILWAY_ENVIRONMENT_ID" 2>/dev/null | jq -r '.[0].id // empty' || true)"
           railway up --ci --service "$RAILWAY_SERVICE_ID" --environment "$RAILWAY_ENVIRONMENT_ID" --project "$RAILWAY_PROJECT_ID" --message "RyanAI Push Deploy $DEPLOY_SHA"
           deployment_id=""
+          status=""
           for attempt in $(seq 1 60); do
             deployments="$(railway deployment list --json --limit 10 --service "$RAILWAY_SERVICE_ID" --environment "$RAILWAY_ENVIRONMENT_ID")"
             deployment_id="$(echo "$deployments" | jq -r --arg before "$before" '[.[] | select(.id != $before)][0].id // empty')"
             status="$(echo "$deployments" | jq -r --arg id "$deployment_id" '.[] | select(.id == $id) | .status' | head -n1)"
             if [[ -n "$deployment_id" && "$status" == "SUCCESS" ]]; then break; fi
+            [[ "$status" == "SUCCESS" ]] && break
             if [[ "$status" == "FAILED" || "$status" == "CRASHED" || "$status" == "REMOVED" ]]; then
               echo "::error::Railway deployment $deployment_id reached $status"
               exit 1
@@ -177,6 +241,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Trigger all configured Render services and verify each result
+    timeout-minutes: 35
+    steps:
+      - name: Deploy and verify every configured Render service independently
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_IDS: ${{ vars.RENDER_SERVICE_IDS }}
@@ -226,6 +293,61 @@ jobs:
               echo "- $service_id · $deployment_id: live; health passed" >> "$GITHUB_STEP_SUMMARY"
             else
               echo "- $service_id · $deployment_id: live; health failed" >> "$GITHUB_STEP_SUMMARY"; overall=1
+          set -uo pipefail
+          overall=0
+          echo "### Render" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -z "${RENDER_API_KEY:-}" || -z "${RENDER_SERVICE_IDS:-}" || -z "${RENDER_HEALTH_URLS:-}" ]]; then
+            echo "::error::Render credentials or service/health configuration is missing."
+            exit 1
+          fi
+          IFS=',' read -ra services <<< "$RENDER_SERVICE_IDS"
+          IFS=',' read -ra health_urls <<< "$RENDER_HEALTH_URLS"
+          if [[ "${#services[@]}" -eq 0 || "${#services[@]}" -ne "${#health_urls[@]}" ]]; then
+            echo "::error::Render service IDs and health URLs must have the same non-zero number of entries."
+            exit 1
+          fi
+          for index in "${!services[@]}"; do
+            service_id="$(echo "${services[$index]}" | xargs)"
+            health_url="$(echo "${health_urls[$index]}" | xargs)"
+            if [[ -z "$service_id" || -z "$health_url" ]]; then
+              echo "- Entry $index: missing service ID or health URL" >> "$GITHUB_STEP_SUMMARY"
+              overall=1
+              continue
+            fi
+            response="$(curl --silent --show-error --fail-with-body --request POST               --url "https://api.render.com/v1/services/${service_id}/deploys"               --header "Authorization: Bearer ${RENDER_API_KEY}"               --header "Content-Type: application/json"               --data "$(jq -n --arg commitId "$DEPLOY_SHA" --arg deployMode "build_and_deploy" '{commitId:$commitId,deployMode:$deployMode}')")" || {
+                echo "- $service_id: deploy request failed" >> "$GITHUB_STEP_SUMMARY"
+                overall=1
+                continue
+              }
+            deployment_id="$(jq -r '.id // empty' <<< "$response")"
+            if [[ -z "$deployment_id" ]]; then
+              echo "- $service_id: provider response omitted deployment ID" >> "$GITHUB_STEP_SUMMARY"
+              overall=1
+              continue
+            fi
+            status=""
+            for attempt in $(seq 1 60); do
+              final="$(curl --silent --show-error --fail-with-body                 --url "https://api.render.com/v1/services/${service_id}/deploys/${deployment_id}"                 --header "Authorization: Bearer ${RENDER_API_KEY}"                 --header "accept: application/json")" || { status="provider_error"; break; }
+              status="$(jq -r '.status // empty' <<< "$final")"
+              deployed_sha="$(jq -r '.commit.id // .commitId // empty' <<< "$final")"
+              if [[ -n "$deployed_sha" && "$deployed_sha" != "$DEPLOY_SHA" ]]; then
+                status="unexpected_sha"
+                break
+              fi
+              [[ "$status" == "live" ]] && break
+              [[ "$status" == "build_failed" || "$status" == "pre_deploy_failed" || "$status" == "update_failed" || "$status" == "deactivated" || "$status" == "canceled" ]] && break
+              sleep 10
+            done
+            if [[ "$status" != "live" ]]; then
+              echo "- $service_id · $deployment_id: deployment failed or not live (${status:-unknown})" >> "$GITHUB_STEP_SUMMARY"
+              overall=1
+              continue
+            fi
+            if curl --fail --silent --show-error --retry 18 --retry-all-errors --retry-delay 10 --retry-max-time 180 "$health_url" >/dev/null; then
+              echo "- $service_id · $deployment_id: live at $DEPLOY_SHA; health passed" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "- $service_id · $deployment_id: live; health failed" >> "$GITHUB_STEP_SUMMARY"
+              overall=1
             fi
           done
           exit "$overall"
@@ -237,6 +359,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Check out exact reviewed SHA
         uses: actions/checkout@v7
@@ -273,6 +396,7 @@ jobs:
           deploy_output="$(vercel deploy --prebuilt --prod --skip-domain --token "$VERCEL_TOKEN" 2>&1)"
           echo "$deploy_output"
           deployment_url="$(printf '%s\\n' "$deploy_output" | grep -Eo 'https://[^[:space:]]+' | tail -n1 | sed 's/[),]$//')"
+          deployment_url="$(printf '%s\n' "$deploy_output" | grep -Eo 'https://[^[:space:]]+' | tail -n1 | sed 's/[),]$//')"
           [[ "$deployment_url" == https://* ]] || { echo "::error::Vercel did not return a deployment URL"; exit 1; }
           echo "### Vercel" >> "$GITHUB_STEP_SUMMARY"
           echo "- Deployment URL: $deployment_url" >> "$GITHUB_STEP_SUMMARY"

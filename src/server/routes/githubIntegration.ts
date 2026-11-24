@@ -100,14 +100,18 @@ async function refreshGitHubToken(config: GitHubAppConfig, refreshToken: string)
   return payload as GitHubTokenResponse;
 }
 
-async function readBoundedGitHubArchive(response: Response, maxBytes: number): Promise<Uint8Array> {
+async function readBoundedGitHubArchive(response: Response, maxBytes: number, signal?: AbortSignal): Promise<Uint8Array> {
   const reader = response.body?.getReader();
   if (!reader) throw new GitHubOAuthError('github_job_log_archive_empty');
   const chunks: Uint8Array[] = [];
   let total = 0;
+  const cancelOnAbort = () => { void reader.cancel(signal?.reason).catch(() => undefined); };
+  signal?.addEventListener('abort', cancelOnAbort, { once: true });
   try {
     while (true) {
+      signal?.throwIfAborted();
       const item = await reader.read();
+      signal?.throwIfAborted();
       if (item.done) break;
       total += item.value.byteLength;
       if (total > maxBytes) {
@@ -117,6 +121,7 @@ async function readBoundedGitHubArchive(response: Response, maxBytes: number): P
       chunks.push(item.value);
     }
   } finally {
+    signal?.removeEventListener('abort', cancelOnAbort);
     reader.releaseLock();
   }
   const result = new Uint8Array(total);
@@ -128,14 +133,20 @@ async function readBoundedGitHubArchive(response: Response, maxBytes: number): P
   return result;
 }
 
-async function githubApi<T>(path: string, accessToken: string): Promise<T> {
+function githubRequestSignal(signal?: AbortSignal): AbortSignal {
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
+async function githubApi<T>(path: string, accessToken: string, signal?: AbortSignal): Promise<T> {
+  signal?.throwIfAborted();
   const response = await fetch('https://api.github.com/' + path.replace(/^\/+/, ''), {
     headers: {
       Accept: 'application/vnd.github+json',
       Authorization: 'Bearer ' + accessToken,
       'X-GitHub-Api-Version': GITHUB_API_VERSION,
     },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: githubRequestSignal(signal),
   });
   if (!response.ok) throw new GitHubOAuthError('github_repository_verification_failed');
   return await response.json() as T;
@@ -364,8 +375,10 @@ export async function inspectConnectedGitHubWorkflowEvidence(
   fastify: Pick<FastifyInstance, 'prisma'>,
   userId: string,
   requestedHeadSha: string,
-  options: { includeJobLogs?: boolean } = {},
+  options: { includeJobLogs?: boolean; signal?: AbortSignal } = {},
 ): Promise<ConnectedGitHubWorkflowEvidence> {
+  const signal = options.signal;
+  signal?.throwIfAborted();
   if (!/^[a-f0-9]{40}$/i.test(requestedHeadSha)) {
     throw new GitHubOAuthError('github_workflow_head_sha_invalid');
   }
@@ -387,13 +400,15 @@ export async function inspectConnectedGitHubWorkflowEvidence(
   }
 
   const [account, repository, commit] = await Promise.all([
-    githubApi<GitHubUser>('user', accessToken),
-    githubApi<GitHubRepository>('repos/' + GITHUB_APP_REPOSITORY, accessToken),
+    githubApi<GitHubUser>('user', accessToken, signal),
+    githubApi<GitHubRepository>('repos/' + GITHUB_APP_REPOSITORY, accessToken, signal),
     githubApi<{ sha?: string }>(
       'repos/' + GITHUB_APP_REPOSITORY + '/commits/' + encodeURIComponent(requestedHeadSha),
       accessToken,
+      signal,
     ),
   ]);
+  signal?.throwIfAborted();
   if (
     String(account.id ?? '') !== connection.githubUserId ||
     String(repository.id ?? '') !== connection.repositoryId ||
@@ -420,7 +435,9 @@ export async function inspectConnectedGitHubWorkflowEvidence(
       'repos/' + GITHUB_APP_REPOSITORY + '/actions/runs?head_sha=' +
         encodeURIComponent(requestedHeadSha) + '&per_page=50&page=' + page,
       accessToken,
+      signal,
     );
+    signal?.throwIfAborted();
     const pageRuns = Array.isArray(runPayload.workflow_runs) ? runPayload.workflow_runs : [];
     rawRuns.push(...pageRuns);
     const totalCount = typeof runPayload.total_count === 'number' ? runPayload.total_count : null;
@@ -448,7 +465,9 @@ export async function inspectConnectedGitHubWorkflowEvidence(
         'repos/' + GITHUB_APP_REPOSITORY + '/actions/runs/' +
           encodeURIComponent(String(run.id)) + '/jobs?per_page=100&page=' + page,
         accessToken,
+        signal,
       );
+      signal?.throwIfAborted();
       const pageJobs = Array.isArray(jobsPayload.jobs) ? jobsPayload.jobs : [];
       rawJobs.push(...pageJobs);
       const totalCount = typeof jobsPayload.total_count === 'number' ? jobsPayload.total_count : null;
@@ -493,7 +512,7 @@ export async function inspectConnectedGitHubWorkflowEvidence(
                 'X-GitHub-Api-Version': GITHUB_API_VERSION,
               },
               redirect: 'manual',
-              signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+              signal: githubRequestSignal(signal),
             },
           );
           if (![301, 302, 303, 307, 308].includes(logResponse.status)) {
@@ -513,7 +532,7 @@ export async function inspectConnectedGitHubWorkflowEvidence(
           const archiveResponse = await fetch(archiveUrl, {
             method: 'GET',
             redirect: 'manual',
-            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+            signal: githubRequestSignal(signal),
           });
           if (!archiveResponse.ok || archiveResponse.status >= 300) {
             jobLogStatus = 'partial';
@@ -521,12 +540,13 @@ export async function inspectConnectedGitHubWorkflowEvidence(
           }
           const declaredLength = Number(archiveResponse.headers.get('content-length') ?? 0);
           if (declaredLength > 2 * 1024 * 1024) { jobLogStatus = 'partial'; continue; }
-          const archive = await readBoundedGitHubArchive(archiveResponse, 2 * 1024 * 1024);
+          const archive = await readBoundedGitHubArchive(archiveResponse, 2 * 1024 * 1024, signal);
           const excerpts = extractRyanAIGitHubJobLogExcerpts(archive);
           for (const excerpt of excerpts) {
             jobLogExcerpts.push({ runId: run.id, ...excerpt });
           }
-        } catch {
+        } catch (error) {
+          if (signal?.aborted) signal.throwIfAborted();
           jobLogStatus = 'partial';
         }
       }
@@ -535,6 +555,7 @@ export async function inspectConnectedGitHubWorkflowEvidence(
     if (jobLogStatus === 'complete' && attempted === 0) jobLogStatus = 'complete';
   }
 
+  signal?.throwIfAborted();
   return {
     repositoryFullName: GITHUB_APP_REPOSITORY,
     requestedHeadSha: requestedHeadSha.toLowerCase(),
@@ -545,6 +566,92 @@ export async function inspectConnectedGitHubWorkflowEvidence(
     jobLogExcerpts,
     jobLogStatus,
     complete: runsComplete && jobsComplete,
+  };
+}
+
+/**
+ * Dispatch the single approved Push Deploy workflow for the repository already
+ * bound to this owner's encrypted GitHub OAuth connection. This function never
+ * changes credentials and never accepts a repository, workflow, or branch from
+ * the caller.
+ */
+export async function dispatchConnectedGitHubPushDeploy(
+  fastify: Pick<FastifyInstance, 'prisma'>,
+  userId: string,
+  input: { commitSha: string; releaseRequestId: string },
+): Promise<{ workflowId: 'deploy-platforms.yml'; ref: 'main'; commitSha: string; dispatched: true; dispatchedAt: string }> {
+  const commitSha = input.commitSha.trim().toLowerCase();
+  const releaseRequestId = input.releaseRequestId.trim();
+  if (!/^[a-f0-9]{40}$/.test(commitSha) ||
+      !/^[a-zA-Z0-9._:-]{8,128}$/.test(releaseRequestId)) {
+    throw new GitHubOAuthError('github_push_deploy_request_invalid');
+  }
+  if (!userId.trim()) throw new GitHubOAuthError('github_owner_identity_missing');
+  const config = readGitHubAppConfig();
+  if (!config) throw new GitHubOAuthError('github_app_not_configured');
+  const connection = await fastify.prisma.gitHubAppConnection.findUnique({ where: { userId } });
+  if (!connection || connection.repositoryFullName !== GITHUB_APP_REPOSITORY) {
+    throw new GitHubOAuthError('github_owner_connection_missing_or_wrong_repository');
+  }
+  // Do not refresh or rotate stored credentials in a deployment worker. An expired
+  // token is a hard blocker and must be reauthorized through the normal OAuth flow.
+  if (connection.accessTokenExpiresAt &&
+      connection.accessTokenExpiresAt.getTime() <= Date.now() + REFRESH_SKEW_MS) {
+    throw new GitHubOAuthError('github_owner_reauthorization_required');
+  }
+  let accessToken: string;
+  try {
+    accessToken = decryptGitHubSecret(connection.encryptedAccessToken, config.encryptionKey);
+  } catch {
+    throw new GitHubOAuthError('github_owner_reauthorization_required');
+  }
+  const [account, repository, mainCommit] = await Promise.all([
+    githubApi<GitHubUser>('user', accessToken),
+    githubApi<GitHubRepository>('repos/' + GITHUB_APP_REPOSITORY, accessToken),
+    githubApi<{ sha?: string }>('repos/' + GITHUB_APP_REPOSITORY + '/commits/main', accessToken),
+  ]);
+  if (String(account.id ?? '') !== connection.githubUserId ||
+      String(repository.id ?? '') !== connection.repositoryId ||
+      repository.full_name !== GITHUB_APP_REPOSITORY ||
+      repository.permissions?.push !== true) {
+    throw new GitHubOAuthError('github_push_deploy_repository_write_access_missing');
+  }
+  if (typeof mainCommit.sha !== 'string' || mainCommit.sha.toLowerCase() !== commitSha) {
+    throw new GitHubOAuthError('github_push_deploy_sha_not_current_main');
+  }
+
+  const response = await fetch(
+    'https://api.github.com/repos/' + GITHUB_APP_REPOSITORY + '/actions/workflows/deploy-platforms.yml/dispatches',
+    {
+      method: 'POST',
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: 'Bearer ' + accessToken,
+        'Content-Type': 'application/json',
+        'X-GitHub-Api-Version': GITHUB_API_VERSION,
+      },
+      body: JSON.stringify({
+        ref: 'main',
+        inputs: {
+          commit_sha: commitSha,
+          push_deploy: 'PUSH DEPLOY',
+          release_request_id: releaseRequestId,
+        },
+      }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    },
+  );
+  if (response.status !== 204) {
+    throw new GitHubOAuthError(response.status === 403 || response.status === 404
+      ? 'github_push_deploy_workflow_permission_missing'
+      : 'github_push_deploy_dispatch_failed');
+  }
+  return {
+    workflowId: 'deploy-platforms.yml',
+    ref: 'main',
+    commitSha,
+    dispatched: true,
+    dispatchedAt: new Date().toISOString(),
   };
 }
 
