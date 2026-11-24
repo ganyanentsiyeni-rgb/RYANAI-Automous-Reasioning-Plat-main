@@ -206,7 +206,8 @@ services:
   mcp-server:
     build:
       context: .
-      dockerfile: Dockerfile.mcp_server
+      # Canonical MCP image, shared with render.yaml and the Docker CI workflows.
+      dockerfile: mcp-server/Dockerfile
     container_name: ryanai-mcp
     environment:
       NODE_ENV: production

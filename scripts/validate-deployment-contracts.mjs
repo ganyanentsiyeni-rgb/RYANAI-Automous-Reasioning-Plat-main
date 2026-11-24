@@ -92,6 +92,7 @@ const renderRepair = read('.github/workflows/guarded-render-api-source-repair.ym
 const renderDeploy = read('.github/workflows/deploy-render.yml');
 const ciWorkflow = read('.github/workflows/ci.yml');
 const railwayDeploy = read('.github/workflows/deploy-railway.yml');
+const dockerCompose = read('docker-compose.yml');
 
 function dockerStage(source, preferredNames) {
   const stages = [...source.matchAll(/^FROM\s+.+?\s+AS\s+([\w-]+)\s*$/gim)];
@@ -212,7 +213,7 @@ const checks = [
   ['Render CI configuration audit is read-only and checks the authorised source without deploying', ciWorkflow.includes('GET only') && ciWorkflow.includes('Report configuration drift without changing the service') && ciWorkflow.includes('https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main') && !ciWorkflow.includes('--request PATCH') && !ciWorkflow.includes('/deploys')],
   ['Render deployment requires explicit enablement and approval', renderDeploy.includes("vars.RENDER_STAGING_DEPLOY_ENABLED == 'true'") && renderDeploy.includes("vars.RENDER_STAGING_ISOLATION_CONFIRMED == 'true'")],
   ['Render staging deploys only the exact open PR head after CI/security passes', renderDeploy.includes('commits/${TARGET_SHA}/pulls') && renderDeploy.includes('head.sha == $sha') && renderDeploy.includes('check-runs') && renderDeploy.includes('conclusion == "success"') && renderDeploy.includes("inputs.confirmation == 'STAGE'")],
-  ['Render staging deploy refuses production service IDs and verifies staging service identity', renderDeploy.includes('RENDER_STAGING_SERVICE_ID') && renderDeploy.includes('ryanai-staging') && renderDeploy.includes('srv-dbk4giu7bikc7394a4r0')],
+  ['Render staging deploy refuses production service IDs and verifies staging service identity', renderDeploy.includes('RENDER_STAGING_SERVICE_ID') && renderDeploy.includes('ryanai-api-staging') && renderDeploy.includes('srv-dbk4giu7bikc7394a4r0')],
   ['Railway uses Dockerfile.api and the live dependency readiness endpoint /readyz', railway.build?.dockerfilePath === 'Dockerfile.api' && railway.deploy?.healthcheckPath === '/readyz'],
   ['Render is the default frontend and API delivery provider', renderWeb?.runtime === 'static' && renderApi?.runtime === 'docker'],
   ['Railway is the default Docker and persistent-workload provider', railway.build?.dockerfilePath === 'Dockerfile.api' && railway.deploy?.healthcheckPath === '/readyz'],
@@ -248,6 +249,11 @@ checks.push(
   ['U2EB Redis retains its existing name and Oregon region without changing database plan or credentials', u2ebRedis?.type === 'keyvalue' && u2ebRedis?.region === 'oregon' && Array.isArray(u2ebRedis?.ipAllowList) && u2ebRedis.ipAllowList.length === 0 && !u2ebDatabase],
   ['U2EB resource names do not overlap Production or the isolated staging Blueprint', !u2ebServices.some((service) => productionServiceNames.includes(service.name) || stagingServiceNames.includes(service.name)) && !stagingServiceNames.includes('ryanai-redis-u2eb')],
   ['Production and staging Blueprint resource names do not overlap', !productionServiceNames.some((name) => stagingServiceNames.includes(name))],
+);
+
+checks.push(
+  ['docker-compose builds the MCP service from the canonical mcp-server/Dockerfile', dockerCompose.includes('dockerfile: mcp-server/Dockerfile') && !dockerCompose.includes('Dockerfile.mcp_server')],
+  ['Staging deploy guard accepts exactly the Blueprint staging API name', renderDeploy.includes('startswith("ryanai-api-staging")') && !renderDeploy.includes('startswith("ryanai-staging")') && stagingServiceNames.includes('ryanai-api-staging')],
 );
 
 for (const [name, passed] of checks) console.log((passed ? 'PASS' : 'FAIL') + ' | ' + name);
