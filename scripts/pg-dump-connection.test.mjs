@@ -38,6 +38,7 @@ test('rejects non-PostgreSQL and incomplete URLs without echoing credentials', (
   ]) {
     assert.throws(() => buildPgDumpEnvironment(value), (error) => {
       assert.match(error.message, /DATABASE_URL/);
+      assert.doesNotMatch(error.message, /private-password/);
       assert.equal(error.message.includes('private-password'), false);
       return true;
     });
