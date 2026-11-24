@@ -48,7 +48,7 @@ export async function enqueuePACommsTask(input: {
         id,
         userId: input.ownerUserId,
         objective,
-        executionScope: { eventKnown: false, snapshotFresh: false, parentRunId: input.parentRunId, paDelegationId: input.delegationId, internalCommsTask: true },
+        executionScope: { eventKnown: false, snapshotFresh: false, parentRunId: input.parentRunId, parentPaDelegationId: input.delegationId, internalCommsTask: true },
         traceContext: captureQueueTraceContextForStorage(),
         status: 'queued',
         approvalStatus: 'approved',
