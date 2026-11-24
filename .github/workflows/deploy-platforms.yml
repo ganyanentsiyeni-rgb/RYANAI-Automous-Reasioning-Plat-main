@@ -6,14 +6,6 @@ on:
   workflow_dispatch:
     inputs:
       commit_sha:
-        description: Exact reviewed main commit SHA to deploy.
-        required: true
-        type: string
-      push_deploy:
-        description: Select PUSH DEPLOY to authorize the three-platform release.
-  workflow_dispatch:
-    inputs:
-      commit_sha:
         description: Exact reviewed main SHA to release.
         required: true
         type: string
@@ -52,7 +44,6 @@ jobs:
     needs: ci_cd
     if: inputs.push_deploy == 'PUSH DEPLOY'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     timeout-minutes: 45
     outputs:
       sha: ${{ steps.sha.outputs.sha }}
@@ -238,9 +229,6 @@ jobs:
     if: ${{ always() && needs.gate.result == 'success' }}
     runs-on: ubuntu-latest
     environment: production
-    timeout-minutes: 30
-    steps:
-      - name: Trigger all configured Render services and verify each result
     timeout-minutes: 35
     steps:
       - name: Deploy and verify every configured Render service independently
@@ -358,7 +346,6 @@ jobs:
     if: ${{ always() && needs.gate.result == 'success' }}
     runs-on: ubuntu-latest
     environment: production
-    timeout-minutes: 30
     timeout-minutes: 35
     steps:
       - name: Check out exact reviewed SHA
