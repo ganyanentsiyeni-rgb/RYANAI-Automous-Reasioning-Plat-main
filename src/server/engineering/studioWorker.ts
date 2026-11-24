@@ -5,6 +5,7 @@ import { storeStudioArtifact } from './studioArtifactStorage.js';
 import { registerRyanAISpecialistTaskHandlers } from './ryanaiSpecialistTaskHandlers.js';
 import { createRyanAICiDiagnosticsTaskHandler } from './ryanaiCiDiagnosticsTask.js';
 import { inspectConnectedGitHubWorkflowEvidence } from '../routes/githubIntegration.js';
+import { generateRepositoryInventory } from '../../../scripts/repository-inventory.mjs';
 
 const workerProfileId = process.env.RYANAI_STUDIO_WORKER_PROFILE_ID?.trim() || 'coordinator';
 const workerInstanceId = process.env.RYANAI_STUDIO_WORKER_ID?.trim() || undefined;
@@ -15,6 +16,28 @@ if (workerProfileId === 'ci-diagnostics') {
     inspectConnectedGitHubWorkflowEvidence({ prisma }, ownerUserId, headSha, options));
   for (const taskType of ['ci-failure', 'test-failure', 'build-failure']) {
     unregisterHandlers.push(registerStudioTaskHandler(taskType, runCiDiagnosticsTask));
+  }
+}
+
+if (workerProfileId === 'repository-auditor') {
+  const runRepositoryInventoryTask = async ({ task, signal }: {
+    task: { id: string; objective: string; requiredCapabilities: string[] };
+    signal?: AbortSignal;
+  }) => {
+    signal?.throwIfAborted();
+    if (!task.requiredCapabilities.includes('read-repository')) {
+      throw new Error('Repository inventory requires the explicit read-repository capability.');
+    }
+    return {
+      kind: 'repository.inventory',
+      schemaVersion: 1,
+      taskId: task.id,
+      objective: task.objective,
+      inventory: await generateRepositoryInventory({ signal }),
+    };
+  };
+  for (const taskType of ['repository-audit', 'inventory']) {
+    unregisterHandlers.push(registerStudioTaskHandler(taskType, runRepositoryInventoryTask));
   }
 }
 
