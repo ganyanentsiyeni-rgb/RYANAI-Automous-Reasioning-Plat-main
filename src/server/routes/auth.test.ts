@@ -8,13 +8,15 @@ import { registerWebSocketRoutes } from '../../api/websocket.js';
 import { authPlugin, installAuthentication } from './auth.js';
 import { approvalRoutes } from './approvalRoutes.js';
 
-const { getUser, createContextClient, invoke, getState } = vi.hoisted(() => ({
+const { getUser, createContextClient, invoke, getState, findPendingAction } = vi.hoisted(() => ({
   getUser: vi.fn(),
   createContextClient: vi.fn(),
   invoke: vi.fn(),
   getState: vi.fn(),
+  findPendingAction: vi.fn(),
 }));
 vi.mock('@supabase/server/core', () => ({ createContextClient }));
+vi.mock('../../lib/prisma.js', () => ({ prisma: { pendingAction: { findFirst: findPendingAction } } }));
 vi.mock('../../shared/logger.js', () => ({
   createLogger: () => ({ info: vi.fn(), debug: vi.fn(), error: vi.fn() }),
 }));
@@ -89,6 +91,7 @@ beforeEach(() => {
   getUser.mockResolvedValue({ data: { user }, error: null });
   invoke.mockResolvedValue({ messages: [{ content: 'done' }] });
   getState.mockResolvedValue({ next: [], values: { messages: [] } });
+  findPendingAction.mockResolvedValue(null);
 });
 
 afterEach(async () => {
