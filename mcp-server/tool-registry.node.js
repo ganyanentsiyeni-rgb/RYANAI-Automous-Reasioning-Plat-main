@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { resolveToolRegistry } from './tool-registry.js';
 
 const tools = [
-  { name: 'tool_registry' }, { name: 'repository_status' },
-  { name: 'run_project_checks' }, { name: 'platform_health' },
-  { name: 'comms_policy_read' }, { name: 'comms_draft_prepare' },
+  { name: 'tool_registry', inputSchema: { type: 'object', properties: {} } }, { name: 'repository_status', inputSchema: { type: 'object', properties: {} } },
+  { name: 'run_project_checks', inputSchema: { type: 'object', properties: {} } }, { name: 'platform_health', inputSchema: { type: 'object', properties: { url: { type: 'string' } } } },
+  { name: 'comms_policy_read', inputSchema: { type: 'object', properties: { channel: { type: 'string' } }, required: ['channel'], additionalProperties: false } }, { name: 'comms_draft_prepare', inputSchema: { type: 'object', properties: { message: { type: 'string' } }, required: ['message'], additionalProperties: false } },
 ];
 
 test('only explicitly allowlisted action tools are exposed', () => {
