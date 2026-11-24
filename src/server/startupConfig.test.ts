@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { assertProductionDependencies, resolveConnectionUrls } from './startupConfig.js';
 
 const expectedLocalDatabaseUrl = () => {
-  const url = new URL('postgresql://localhost:5432/ryanai');
+  const url = new URL('http://localhost');
+  url.protocol = 'postgresql:';
   url.username = 'postgres';
   url.password = 'postgres';
+  url.port = '5432';
+  url.pathname = '/ryanai';
   return url.toString();
 };
 
@@ -13,10 +16,13 @@ const supabaseProjectUrl = `https://${supabaseProjectRef}.supabase.co`;
 const supabasePoolerHost = 'aws-1-eu-west-1.pooler.supabase.com';
 
 function supabaseDatabaseUrl(host: string, password = 'test-placeholder'): string {
-  const url = new URL('postgresql://localhost:5432/postgres');
+  const url = new URL('http://localhost');
+  url.protocol = 'postgresql:';
   url.hostname = host;
   url.username = 'postgres';
   url.password = password;
+  url.port = '5432';
+  url.pathname = '/postgres';
   return url.toString();
 }
 
