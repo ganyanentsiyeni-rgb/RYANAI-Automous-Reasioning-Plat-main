@@ -119,8 +119,8 @@ describe('Studio worker queue lifecycle', () => {
 
   it('releases a token-fenced lease when the optional authorizer fails', async () => {
     mocks.queryRawUnsafe
-      .mockResolvedValueOnce([task()])
-      .mockResolvedValueOnce([{ id: 'task-1' }]);
+      .mockResolvedValueOnce([]) // terminal-dependency sweep
+      .mockResolvedValueOnce([task()]); // task claim
     const handler = vi.fn().mockResolvedValue({ ok: true });
     const authorize = vi.fn().mockRejectedValue(new Error('authorization service unavailable'));
     const unregister = registerStudioTaskHandler('ci-failure', handler);
@@ -143,8 +143,9 @@ describe('Studio worker queue lifecycle', () => {
 
   it('does not append authorization evidence after the claimed lease has already been lost', async () => {
     mocks.queryRawUnsafe
-      .mockResolvedValueOnce([task()])
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce([]) // terminal-dependency sweep
+      .mockResolvedValueOnce([task()]) // task claim
+      .mockResolvedValueOnce([]); // lease re-check before authorization evidence
     const handler = vi.fn().mockResolvedValue({ ok: true });
     const unregister = registerStudioTaskHandler('ci-failure', handler);
     try {
@@ -505,7 +506,9 @@ describe('Studio worker queue lifecycle', () => {
       task({ attempts: 2, leaseToken: 'new-lease-token' }),
     ];
     mocks.queryRawUnsafe.mockImplementation(async (sql: string) => {
-      if (sql.trimStart().startsWith('SELECT id FROM public.studio_tasks')) return [{ id: 'task-1' }];
+      const statement = sql.trimStart();
+      if (statement.startsWith('WITH terminal AS')) return [];
+      if (statement.startsWith('SELECT id FROM public.studio_tasks')) return [{ id: 'task-1' }];
       return [claims.shift()];
     });
     mocks.taskFindMany.mockResolvedValue([{

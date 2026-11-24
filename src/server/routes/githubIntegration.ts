@@ -545,7 +545,7 @@ export async function inspectConnectedGitHubWorkflowEvidence(
           for (const excerpt of excerpts) {
             jobLogExcerpts.push({ runId: run.id, ...excerpt });
           }
-        } catch (error) {
+        } catch {
           if (signal?.aborted) signal.throwIfAborted();
           jobLogStatus = 'partial';
         }

@@ -121,6 +121,8 @@ export default defineConfig(({ mode }) => {
         'scripts/validate-stack-manifest.test.mjs',
         // Written for node:test and run explicitly with `node --test` in CI.
         'scripts/redis-probe.test.mjs',
+        // PostgreSQL dump environment contracts use node:test and run explicitly in CI.
+        'scripts/pg-dump-connection.test.mjs',
         // Migration-readiness tests use node:test and run via `npm run test:migration:audit`.
         'scripts/audit-prisma-migration-readiness.test.mjs',
       ],
