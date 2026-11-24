@@ -216,10 +216,10 @@ export async function runRyanAIRepositoryInventory(context: StudioWorkerContext)
     }
   });
   const repositoryScripts = repositoryFiles
-    .filter((file) => /(^|\\/)scripts\\//.test(file.path) && /\\.(?:cjs|js|mjs|cts|ts|mts|tsx|py|sh|ps1)$/i.test(file.path))
+    .filter((file) => /(^|\/)scripts\//.test(file.path) && /\.(?:cjs|js|mjs|cts|ts|mts|tsx|py|sh|ps1)$/i.test(file.path))
     .map((file) => ({ path: file.path, status: 'NOT_EXECUTED' }));
   const workflows = workflowFiles
-    .filter((file) => /\\.ya?ml$/i.test(file.path))
+    .filter((file) => /\.ya?ml$/i.test(file.path))
     .map((file) => ({ path: file.path, status: 'NOT_EXECUTED' }));
   return {
     schemaVersion: 1,
