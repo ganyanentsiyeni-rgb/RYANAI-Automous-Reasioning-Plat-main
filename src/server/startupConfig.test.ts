@@ -142,6 +142,17 @@ describe('production and staging connection configuration', () => {
     )).toThrow('SUPABASE_SESSION_POOLER_HOST');
   });
 
+  it('rejects a primary database URL that points outside the configured U2EB Supabase project', () => {
+    const u2ebProjectUrl = 'https://omqavyppdoniehseokvx.supabase.co';
+    expect(() => resolveConnectionUrls(
+      'staging',
+      'postgresql://ryanai:test-placeholder@postgres.internal.example:5432/ryanai',
+      'redis://u2eb-cache',
+      u2ebProjectUrl,
+      'aws-1-eu-central-1.pooler.supabase.com',
+    )).toThrow(/DATABASE_URL must target the Supabase project configured by SUPABASE_URL/);
+  });
+
   it('does not route tests to a hosted Supabase URL inherited from dotenv', () => {
     const result = resolveConnectionUrls(
       'test',
