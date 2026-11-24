@@ -65,6 +65,9 @@ The AI Inspector has a dedicated module owner, `ai-inspector-module-agent`, and 
 
 The specialist worker process registers bounded handlers per profile. Security, infrastructure, data/queue, provider, communications, frontend/accessibility, and release handlers perform read-only static inspections. Provider configuration presence is never represented as live provider health. Runtime verification remains `not_performed` unless independently supported by fresh runtime evidence. The coordinator proposes a plan only; it has no execution authority.
 
+The `ci-diagnostics` worker profile uses a shared registration function in both supported Studio worker entrypoints. It binds `ci-failure`, `test-failure`, and `build-failure` to the same task handler, which uses the persisted Studio task owner, requires explicit `read-workflow-runs` and optional `read-job-logs` capabilities, forwards cancellation, and returns provider-blocked evidence when GitHub inspection cannot be completed. Handler registration readiness is not a worker heartbeat or proof of live execution.
+
+
 The 13 module agents and 10 specialist worker profiles are registry contracts, not live-runtime assertions. A worker is live only when a real process has a fresh healthy persisted heartbeat and its task/lease execution evidence is available. CI diagnostics remains bound to connected GitHub workflow evidence. No handler can approve, merge, deploy, migrate production, mutate secrets, or send external communications.
 
 ## 8. Specialist handler integrity and report semantics
