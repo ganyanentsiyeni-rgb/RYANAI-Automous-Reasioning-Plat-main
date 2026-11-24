@@ -31,7 +31,9 @@ const taskType = {
   retry: 'worker-recovery',
   exhausted: 'infrastructure-audit',
   handlerFailure: 'build-failure',
+  handlerExhausted: 'worker-timeout',
   leaseLost: 'test-failure',
+  leaseExhausted: 'lease-timeout',
 };
 let projectId;
 
@@ -91,7 +93,9 @@ try {
       { title: 'Authorization exhaustion', objective: 'Fail at max attempts.', taskType: taskType.exhausted, priority: 15 },
       { title: 'Dependent after exhausted prerequisite', objective: 'Fail rather than remain queued.', taskType: 'dependency-after-exhaustion', dependsOnIndexes: [5], priority: 12 },
       { title: 'Handler retry', objective: 'Release lease after handler error.', taskType: taskType.handlerFailure, priority: 14 },
+      { title: 'Handler exhaustion', objective: 'Fail after the configured handler retry limit.', taskType: taskType.handlerExhausted, priority: 11 },
       { title: 'Lost lease', objective: 'Never persist completion after lease expiry.', taskType: taskType.leaseLost, priority: 13 },
+      { title: 'Expired lease exhaustion', objective: 'Fail after the configured expired-lease retry limit.', taskType: taskType.leaseExhausted, priority: 10 },
     ],
   });
   projectId = created.project.id;
@@ -206,12 +210,15 @@ try {
   await approveTaskForIntegrationTest(retryTask.id);
   const retry = await withHandler(taskType.retry, async () => { throw new Error('must not execute after auth exception'); },
     () => runWorker('studio-ci-retry-' + suffix, async () => { throw new Error('temporary authorization timeout'); }));
-  assert.equal(retry.state, 'failed');
+  assert.equal(retry.state, 'retrying', 'a requeued authorization failure must be reported as retrying');
   const retried = await taskById(retryTask.id);
   assert.equal(retried.status, 'queued');
   assert.equal(retried.attempts, 1);
   assert.ok(retried.availableAt > new Date());
-  assert.ok(await prisma.studioEvent.findFirst({ where: { taskId: retryTask.id, eventType: 'task.authorization_failed' } }));
+  const authorizationFailureEvent = await prisma.studioEvent.findFirst({ where: { taskId: retryTask.id, eventType: 'task.authorization_failed' } });
+  assert.ok(authorizationFailureEvent);
+  assert.equal(authorizationFailureEvent.payload.outcome, 'retrying');
+  assert.equal(authorizationFailureEvent.payload.maxAttempts, retried.maxAttempts);
 
   const exhaustedTask = created.tasks.find((item) => item.taskType === taskType.exhausted);
   assert.ok(exhaustedTask);
@@ -246,9 +253,31 @@ try {
   await approveTaskForIntegrationTest(handlerFailureTask.id);
   const handlerFailure = await withHandler(taskType.handlerFailure, async () => { throw new Error('temporary handler failure'); },
     () => runWorker('studio-ci-handler-failure-' + suffix));
-  assert.equal(handlerFailure.state, 'failed');
+  assert.equal(handlerFailure.state, 'retrying', 'a requeued handler failure must be reported as retrying');
   assert.equal((await taskById(handlerFailureTask.id)).status, 'queued');
-  assert.ok(await prisma.studioEvent.findFirst({ where: { taskId: handlerFailureTask.id, eventType: 'task.execution_failed' } }));
+  const handlerFailureEvent = await prisma.studioEvent.findFirst({ where: { taskId: handlerFailureTask.id, eventType: 'task.execution_failed' } });
+  assert.ok(handlerFailureEvent);
+  assert.equal(handlerFailureEvent.payload.outcome, 'retrying');
+  assert.equal(handlerFailureEvent.payload.maxAttempts, (await taskById(handlerFailureTask.id)).maxAttempts);
+
+  const handlerExhaustedTask = created.tasks.find((item) => item.taskType === taskType.handlerExhausted);
+  assert.ok(handlerExhaustedTask);
+  await approveTaskForIntegrationTest(handlerExhaustedTask.id);
+  await prisma.studioTask.update({ where: { id: handlerExhaustedTask.id }, data: { maxAttempts: 1 } });
+  const handlerExhausted = await withHandler(taskType.handlerExhausted, async () => { throw new Error('final handler failure'); },
+    () => runWorker('studio-ci-handler-exhausted-' + suffix));
+  assert.equal(handlerExhausted.state, 'failed');
+  const handlerExhaustedRow = await taskById(handlerExhaustedTask.id);
+  assert.equal(handlerExhaustedRow.status, 'failed');
+  assert.equal(handlerExhaustedRow.leaseOwner, null);
+  assert.equal(handlerExhaustedRow.leaseToken, null);
+  assert.equal(handlerExhaustedRow.leaseExpiresAt, null);
+  assert.equal(handlerExhaustedRow.heartbeatAt, null);
+  assert.ok(handlerExhaustedRow.completedAt instanceof Date);
+  const handlerExhaustedEvent = await prisma.studioEvent.findFirst({ where: { taskId: handlerExhaustedTask.id, eventType: 'task.execution_failed' } });
+  assert.ok(handlerExhaustedEvent);
+  assert.equal(handlerExhaustedEvent.payload.outcome, 'failed');
+  assert.equal(handlerExhaustedEvent.payload.maxAttempts, 1);
 
   const leaseLostTask = created.tasks.find((item) => item.taskType === taskType.leaseLost);
   assert.ok(leaseLostTask);
@@ -262,6 +291,27 @@ try {
   assert.equal(stale.status, 'running');
   assert.ok(stale.leaseExpiresAt <= new Date());
   assert.equal(await prisma.studioEvent.count({ where: { taskId: leaseLostTask.id, eventType: 'task.completed' } }), 0);
+
+  const leaseExhaustedTask = created.tasks.find((item) => item.taskType === taskType.leaseExhausted);
+  assert.ok(leaseExhaustedTask);
+  await prisma.studioTask.update({ where: { id: leaseExhaustedTask.id }, data: { maxAttempts: 1 } });
+  const expiringClaim = await claimStudioTask('studio-ci-lease-exhausted-' + suffix, [taskType.leaseExhausted], 60);
+  assert.ok(expiringClaim);
+  assert.equal(expiringClaim.id, leaseExhaustedTask.id);
+  await prisma.studioTask.update({ where: { id: leaseExhaustedTask.id }, data: { leaseExpiresAt: new Date(Date.now() - 1000) } });
+  const exhaustedLeaseRecovery = await recoverExpiredStudioLeases();
+  assert.ok(exhaustedLeaseRecovery.failed >= 1);
+  const exhaustedLeaseRow = await taskById(leaseExhaustedTask.id);
+  assert.equal(exhaustedLeaseRow.status, 'failed');
+  assert.equal(exhaustedLeaseRow.leaseOwner, null);
+  assert.equal(exhaustedLeaseRow.leaseToken, null);
+  assert.equal(exhaustedLeaseRow.leaseExpiresAt, null);
+  assert.equal(exhaustedLeaseRow.heartbeatAt, null);
+  assert.ok(exhaustedLeaseRow.completedAt instanceof Date);
+  const exhaustedLeaseEvent = await prisma.studioEvent.findFirst({ where: { taskId: leaseExhaustedTask.id, eventType: 'task.lease_exhausted' } });
+  assert.ok(exhaustedLeaseEvent);
+  assert.equal(exhaustedLeaseEvent.payload.attempts, 1);
+  assert.equal(exhaustedLeaseEvent.payload.maxAttempts, 1);
 
   console.log('Studio worker PostgreSQL integration passed: competing claims, heartbeat, recovery, completion persistence, policy denial, retry, exhaustion and lease-loss fencing.');
 } finally {
