@@ -50,6 +50,8 @@ jobs:
 
     env:
       NODE_ENV: test
+      HOST: 127.0.0.1
+      PORT: '3000'
       DATABASE_URL: postgresql://ryanai:ci_password@127.0.0.1:5432/ryanai_db
       REDIS_URL: redis://127.0.0.1:6379
       JWT_SECRET: ci_only_secret_at_least_32_characters_long
