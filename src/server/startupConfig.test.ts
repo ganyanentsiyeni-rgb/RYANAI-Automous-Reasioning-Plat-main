@@ -172,6 +172,35 @@ describe('production and staging connection configuration', () => {
     });
   });
 
+  it('allows an explicitly opted-in loopback database for disposable Supabase CI', () => {
+    expect(resolveConnectionUrls(
+      'production',
+      'postgresql://ryanai:ci-only@127.0.0.1:54322/postgres',
+      'redis://127.0.0.1:6379',
+      'https://omqavyppdoniehseokvx.supabase.co',
+      'aws-1-eu-central-1.pooler.supabase.com',
+      undefined,
+      false,
+      true,
+    )).toEqual({
+      databaseUrl: 'postgresql://ryanai:ci-only@127.0.0.1:54322/postgres',
+      redisUrl: 'redis://127.0.0.1:6379',
+    });
+  });
+
+  it('does not let disposable mode bypass a remote database host', () => {
+    expect(() => resolveConnectionUrls(
+      'staging',
+      'postgresql://ryanai:ci-only@remote-db.example:5432/ryanai',
+      'redis://u2eb-cache',
+      'https://omqavyppdoniehseokvx.supabase.co',
+      'aws-1-eu-central-1.pooler.supabase.com',
+      undefined,
+      false,
+      true,
+    )).toThrow(/DATABASE_URL must target the Supabase project configured by SUPABASE_URL/);
+  });
+
   it('does not let local Compose mode bypass a non-Compose database host', () => {
     expect(() => resolveConnectionUrls(
       'staging',
