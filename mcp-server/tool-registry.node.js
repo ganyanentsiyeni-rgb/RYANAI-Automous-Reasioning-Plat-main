@@ -50,3 +50,20 @@ test('configured tools missing from this runtime fail closed', () => {
     RYANAI_MCP_ENABLED_TOOLS: 'repository_status',
   }), /Configured MCP tool.*not available in this runtime/);
 });
+
+test('registry publishes stable versioned tool contracts and bounded execution metadata', () => {
+  const result = resolveToolRegistry(tools, { RYANAI_MCP_ENABLED_TOOLS: 'platform_health,comms_draft_prepare' });
+  const health = result.registry.find((entry) => entry.name === 'platform_health');
+  const draft = result.registry.find((entry) => entry.name === 'comms_draft_prepare');
+  assert.equal(health.toolId, 'ryanai.mcp.platform_health');
+  assert.equal(health.version, '1.0.0');
+  assert.equal(health.timeoutMs, 5000);
+  assert.equal(health.idempotency, 'safe');
+  assert.equal(health.outputContract, 'mcp-text-content');
+  assert.deepEqual(health.inputSchema, { type: 'object', properties: {} });
+  assert.equal(draft.timeoutMs, 10000);
+  assert.equal(draft.idempotency, 'safe');
+  assert.equal(draft.inputSchema.additionalProperties, false);
+  assert.ok(result.registry.every((entry) => Number.isInteger(entry.timeoutMs) && entry.timeoutMs > 0));
+  assert.ok(result.registry.every((entry) => entry.toolId.startsWith('ryanai.mcp.') && entry.version));
+});
