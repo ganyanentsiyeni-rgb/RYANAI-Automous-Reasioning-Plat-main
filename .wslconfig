@@ -1,0 +1,33 @@
+[wsl2]
+# Cap memory and CPU so WSL 2 + Docker containers cannot starve Windows.
+# Adjust memory/processors to match your host hardware (e.g., 8GB-16GB on higher-RAM workstations).
+memory=8GB
+processors=4
+
+# Swap headroom for builds (npm ci, tsc/vite, Prisma) and local services.
+swap=4GB
+swapFile=C:\\Users\\General\\AppData\\Local\\Temp\\wsl-swap.vhdx
+
+# Keep localhost port forwarding enabled for loopback bindings (127.0.0.1:3000, 5432, 6379, 8765, 9090).
+localhostForwarding=true
+
+# Keep GPU support enabled for local AI / compute workloads when available.
+gpuSupport=true
+
+# Keep default kernel modules loaded (includes tun, ip_tables, br_netfilter for Docker bridge networking).
+loadDefaultKernelModules=true
+
+# Avoid popping a separate dmesg console window on every WSL startup.
+debugConsole=false
+
+# Keep crash dump retention bounded.
+maxCrashDumpCount=5
+
+[general]
+# Keep WSL VM/instances from dropping out mid-build or mid-test during brief pauses.
+instanceIdleTimeout=60000
+
+[experimental]
+# Reclaim unused Linux page cache gradually and keep sparse VHDs compact.
+autoMemoryReclaim=gradual
+sparseVhd=true
