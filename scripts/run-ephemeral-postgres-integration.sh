@@ -223,24 +223,6 @@ log "Checking the resulting Prisma-owned public schema contract"
 PUBLIC_SCHEMA_FILE="$(mktemp)"
 sed 's/schemas  = \["public", "auth"\]/schemas  = ["public"]/' \
   prisma/schema.prisma > "$PUBLIC_SCHEMA_FILE"
-log "Checking the resulting Prisma schema contract"
-      RAISE EXCEPTION 'Expected Supabase-managed table public.% is missing', table_name;
-    END IF;
-  END LOOP;
-END
-$assert_supabase_tables$;
-
-CREATE SCHEMA IF NOT EXISTS ryanai_supabase_managed;
-ALTER TABLE public.community_beta_interest SET SCHEMA ryanai_supabase_managed;
-ALTER TABLE public.community_feedback_submissions SET SCHEMA ryanai_supabase_managed;
-ALTER TABLE public.phonelink_device_exchanges SET SCHEMA ryanai_supabase_managed;
-ALTER TABLE public.phonelink_devices SET SCHEMA ryanai_supabase_managed;
-ALTER TABLE public.phonelink_events SET SCHEMA ryanai_supabase_managed;
-ALTER TABLE public.phonelink_pairings SET SCHEMA ryanai_supabase_managed;
-ALTER TABLE public.ryanai_attachment_scans SET SCHEMA ryanai_supabase_managed;
-ALTER TABLE public.ryanai_attachment_upload_events SET SCHEMA ryanai_supabase_managed;
-SQL
-
 log "Checking the resulting Prisma-owned public schema contract"
 npx prisma migrate diff \
   --from-url "$DATABASE_URL" \
