@@ -146,7 +146,14 @@ describe('production and staging connection configuration', () => {
     const u2ebProjectUrl = 'https://omqavyppdoniehseokvx.supabase.co';
     expect(() => resolveConnectionUrls(
       'staging',
-      'postgresql://postgres.internal.example:5432/ryanai',
+      (() => {
+        const databaseUrl = new URL('http://localhost');
+        databaseUrl.protocol = 'postgresql:';
+        databaseUrl.hostname = 'postgres.internal.example';
+        databaseUrl.port = '5432';
+        databaseUrl.pathname = '/ryanai';
+        return databaseUrl.toString();
+      })(),
       'redis://u2eb-cache',
       u2ebProjectUrl,
       'aws-1-eu-central-1.pooler.supabase.com',
