@@ -84,9 +84,9 @@ const SPECS: Record<string, AuditSpec> = {
     title: 'Cross-module RyanAI source inspection',
     files: ['package.json', 'package-lock.json', '.github/workflows', 'src/agent', 'src/server', 'prisma/schema.prisma', 'Dockerfile.api', 'docker-compose.yml', 'render.yaml', 'railway.json', 'vercel.json', 'README.md', 'architecture.md', 'patches.md'],
     rules: [
-      { id: 'TLS-VERIFY-DISABLED', severity: 'high', pattern: /NODE_TLS_REJECT_UNAUTHORIZED\\s*[:=]\\s*['"]?0/i, message: 'Tracked runtime or workflow configuration appears to disable TLS certificate verification.' },
-      { id: 'RUNTIME-MIGRATION-ON-START', severity: 'review', pattern: /(?:prisma\\s+migrate\\s+deploy|db:migrate)/i, message: 'Migration commands appear in inspected source; verify they are isolated from normal API startup.' },
-      { id: 'BROAD-WORKFLOW-PERMISSIONS', severity: 'high', pattern: /permissions:\\s*write-all/i, message: 'A workflow appears to request broad write-all permissions.' },
+      { id: 'TLS-VERIFY-DISABLED', severity: 'high', pattern: /NODE_TLS_REJECT_UNAUTHORIZED\s*[:=]\s*['"]?0/i, message: 'Tracked runtime or workflow configuration appears to disable TLS certificate verification.' },
+      { id: 'RUNTIME-MIGRATION-ON-START', severity: 'review', pattern: /(?:prisma\s+migrate\s+deploy|db:migrate)/i, message: 'Migration commands appear in inspected source; verify they are isolated from normal API startup.' },
+      { id: 'BROAD-WORKFLOW-PERMISSIONS', severity: 'high', pattern: /permissions:\s*write-all/i, message: 'A workflow appears to request broad write-all permissions.' },
       { id: 'GENX-AUTHORIZATION-BOUNDARY', severity: 'review', pattern: /authorize[A-Za-z]*WithGenX|GenX[A-Za-z]*authorize/i, message: 'Gen-X authorization hooks exist; verify every privileged execution path enforces them at runtime.' },
       { id: 'DURABLE-QUEUE-LEASES', severity: 'review', pattern: /leaseToken|lease_token|leaseExpiresAt/i, message: 'Queue lease/fencing primitives exist; verify stale-worker rejection and recovery tests.' },
       { id: 'PROVIDER-ADAPTER-BOUNDARY', severity: 'review', pattern: /adapter_required|adapter_registered/i, message: 'Provider adapter lifecycle states exist; verify adapter-required providers cannot execute.' },
