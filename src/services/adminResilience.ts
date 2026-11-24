@@ -3,6 +3,24 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { resolveConnectionUrls } from '../server/startupConfig.js';
+
+function resolvedSourceDatabaseUrl(): string {
+  if (!process.env.DATABASE_URL?.trim()) {
+    throw new Error('DATABASE_URL is not configured.');
+  }
+  const { databaseUrl } = resolveConnectionUrls(
+    process.env.NODE_ENV || 'development',
+    process.env.DATABASE_URL,
+    process.env.REDIS_URL,
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SESSION_POOLER_HOST,
+    process.env.SUPABASE_SSL_ROOT_CERT_PATH,
+    process.env.RYANAI_LOCAL_COMPOSE === 'true',
+    process.env.RYANAI_DISPOSABLE_SUPABASE === '1',
+  );
+  return databaseUrl;
+}
 
 export type BackupStatus = 'ready' | 'not_configured' | 'unavailable';
 
@@ -117,9 +135,11 @@ export async function backupPreflight(): Promise<BackupPreflight> {
 
 function pgDump(file: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const databaseUrl = process.env.DATABASE_URL?.trim();
-    if (!databaseUrl) {
-      reject(new Error('DATABASE_URL is not configured.'));
+    let databaseUrl: string;
+    try {
+      databaseUrl = resolvedSourceDatabaseUrl();
+    } catch {
+      reject(new Error('Database connection configuration could not be resolved safely.'));
       return;
     }
     const child = spawn('pg_dump', [
@@ -390,8 +410,8 @@ export function recoveryPreflight(): RecoveryPreflight {
 
   try {
     const targetUrl = new URL(target);
-    const sourceValue = process.env.DATABASE_URL?.trim();
-    if (!sourceValue) {
+    const configuredSourceValue = process.env.DATABASE_URL?.trim();
+    if (!configuredSourceValue) {
       return {
         status: 'not_configured',
         targetLabel,
@@ -400,6 +420,7 @@ export function recoveryPreflight(): RecoveryPreflight {
         reason: 'The source database identity is unavailable for safe target comparison.',
       };
     }
+    const sourceValue = resolvedSourceDatabaseUrl();
     const sourceUrl = new URL(sourceValue);
     const sameHost = targetUrl.hostname.toLowerCase() === sourceUrl.hostname.toLowerCase();
     const sameDatabase = decodeURIComponent(targetUrl.pathname).replace(/^\//, '').toLowerCase() === decodeURIComponent(sourceUrl.pathname).replace(/^\//, '').toLowerCase();
