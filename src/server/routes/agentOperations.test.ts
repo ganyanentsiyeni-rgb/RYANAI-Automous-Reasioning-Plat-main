@@ -3,8 +3,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 
 const paService = vi.hoisted(() => ({
   createPADelegation: vi.fn(), listPADelegations: vi.fn(), getPADelegation: vi.fn(),
-  approvePADelegation: vi.fn(), rejectPADelegation: vi.fn(),
+  approvePADelegation: vi.fn(), rejectPADelegation: vi.fn(), linkPACommsRun: vi.fn(),
 }));
+const comms = vi.hoisted(() => ({ enqueueCommsAssistRun: vi.fn() }));
 const genx = vi.hoisted(() => ({ evaluateGenXSecurityEvent: vi.fn() }));
 const operations = vi.hoisted(() => ({
   dispatchAutonomousTask: vi.fn(),
@@ -16,6 +17,7 @@ const operations = vi.hoisted(() => ({
 }));
 vi.mock('../../agent/operations.js', () => operations);
 vi.mock('../../agent/paDelegationService.js', () => paService);
+vi.mock('../comms/agentRuns.js', () => comms);
 vi.mock('../../security/genxPolicy.js', () => genx);
 vi.mock('../../agent/knowledgeAgent.js', () => ({
   listBrainKnowledge: operations.listBrainKnowledge,
@@ -151,10 +153,27 @@ describe('agent operations routes', () => {
   it('approves a pending delegation only after Gen-X permits configured-provider reasoning', async () => {
     paService.getPADelegation.mockResolvedValue({
       id: '8b5d2f0a-3f42-4c9a-8a71-1a9e9f55b101',
+      objective: 'Inspect the API health and prepare a reviewed recommendation.',
       requestedCapabilities: ['repository.inspect', 'patch.propose'],
     });
-    paService.approvePADelegation.mockResolvedValue({
-      delegationId: '8b5d2f0a-3f42-4c9a-8a71-1a9e9f55b101', runId: 'run-1', status: 'queued', alreadyApproved: false, notification: 'sent',
+    comms.enqueueCommsAssistRun.mockResolvedValue({ runId: 'comms_assist_1', status: 'queued', replayed: false, notified: true });
+    paService.linkPACommsRun.mockResolvedValue({ commsRunId: 'comms_assist_1' });
+    paService.approvePADelegation.mockImplementation(async (...args: unknown[]) => {
+      const afterApproval = args[4] as (context: { ownerUserId: string; delegationId: string; runId: string; objective: string }) => Promise<{ commsRunId: string; commsStatus: string }>;
+      const commsLink = await afterApproval({
+        ownerUserId: 'user-1',
+        delegationId: '8b5d2f0a-3f42-4c9a-8a71-1a9e9f55b101',
+        runId: 'run-1',
+        objective: 'Inspect the API health and prepare a reviewed recommendation.',
+      });
+      return {
+        delegationId: '8b5d2f0a-3f42-4c9a-8a71-1a9e9f55b101',
+        runId: 'run-1',
+        status: 'queued',
+        alreadyApproved: false,
+        notification: 'sent',
+        ...commsLink,
+      };
     });
     const response = await app.inject({
       method: 'POST',
@@ -163,11 +182,17 @@ describe('agent operations routes', () => {
       payload: {},
     });
     expect(response.statusCode).toBe(202);
-    expect(response.json()).toMatchObject({ success: true, delegationId: '8b5d2f0a-3f42-4c9a-8a71-1a9e9f55b101', status: 'queued' });
+    expect(response.json()).toMatchObject({ success: true, delegationId: '8b5d2f0a-3f42-4c9a-8a71-1a9e9f55b101', status: 'queued', commsRunId: 'comms_assist_1', commsStatus: 'queued' });
     expect(paService.approvePADelegation).toHaveBeenCalledWith('user-1', '8b5d2f0a-3f42-4c9a-8a71-1a9e9f55b101', 'user-1', expect.arrayContaining([
       expect.objectContaining({ capability: 'repository.inspect', decision: 'ALLOW' }),
       expect.objectContaining({ capability: 'patch.propose', decision: 'REQUIRE_APPROVAL' }),
-    ]));
+    ]), expect.any(Function));
+    expect(comms.enqueueCommsAssistRun).toHaveBeenCalledWith(expect.objectContaining({
+      ownerUserId: 'user-1',
+      idempotencyKey: 'pa-delegation:8b5d2f0a-3f42-4c9a-8a71-1a9e9f55b101',
+      objective: expect.stringContaining('Inspect the API health'),
+    }));
+    expect(paService.linkPACommsRun).toHaveBeenCalledWith('user-1', '8b5d2f0a-3f42-4c9a-8a71-1a9e9f55b101', 'comms_assist_1');
   });
 
   it('lists only the authenticated user’s PA delegations', async () => {
