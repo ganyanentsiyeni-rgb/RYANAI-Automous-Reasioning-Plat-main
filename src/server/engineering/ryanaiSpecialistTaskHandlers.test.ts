@@ -19,13 +19,23 @@ describe('RyanAI specialist worker handler registration', () => {
     'frontend-accessibility',
     'release-readiness',
   ])('registers a real bounded handler for %s', (profileId) => {
+    if (profileId === 'coordinator') {
+      unregister.push(registerStudioTaskHandler('coordination', async () => ({ kind: 'ryanai.coordination.plan' })));
+    }
+    if (profileId === 'repository-auditor') {
+      unregister.push(registerStudioTaskHandler('repository-audit', async () => ({ kind: 'repository.inventory' })));
+      unregister.push(registerStudioTaskHandler('inventory', async () => ({ kind: 'repository.inventory' })));
+    }
     unregister.push(registerRyanAISpecialistTaskHandlers(profileId));
     const readiness = getStudioWorkerHandlerReadiness(profileId);
     expect(readiness.ready).toBe(true);
-    expect(readiness.registeredTaskTypes.length).toBeGreaterThan(0);
+    expect(readiness.missingTaskTypes).toEqual([]);
+    expect(readiness.registeredTaskTypes).toHaveLength(readiness.supportedTaskTypes.length);
   });
 
   it('routes the dedicated AI Inspector module to the repository-auditor handler', () => {
+    unregister.push(registerStudioTaskHandler('repository-audit', async () => ({ kind: 'repository.inventory' })));
+    unregister.push(registerStudioTaskHandler('inventory', async () => ({ kind: 'repository.inventory' })));
     unregister.push(registerRyanAISpecialistTaskHandlers('repository-auditor'));
     expect(getModuleAgentForModule('ai-inspector')?.id).toBe('ai-inspector-module-agent');
     expect(findModuleAgentForTask('ai-inspector.audit')?.id).toBe('ai-inspector-module-agent');
@@ -54,12 +64,21 @@ describe('RyanAI specialist worker handler registration', () => {
     expect(getStudioWorkerHandlerReadiness('unknown-worker').ready).toBe(false);
   });
 
-  it('keeps CI diagnostics bound to its dedicated evidence handler registration', () => {
-    const remove = registerStudioTaskHandler('ci-failure', async () => ({ kind: 'ci.diagnostics' }));
-    try {
-      expect(getStudioWorkerHandlerReadiness('ci-diagnostics').registeredTaskTypes).toContain('ci-failure');
-    } finally {
-      remove();
+  it('keeps CI diagnostics bound to all three dedicated evidence task handlers', () => {
+    for (const taskType of ['ci-failure', 'test-failure', 'build-failure']) {
+      unregister.push(registerStudioTaskHandler(taskType, async () => ({ kind: 'ci.diagnostics' })));
     }
+    const readiness = getStudioWorkerHandlerReadiness('ci-diagnostics');
+    expect(readiness.ready).toBe(true);
+    expect(readiness.missingTaskTypes).toEqual([]);
+  });
+
+  it('does not mark a partially registered worker profile as ready', () => {
+    unregister.push(registerStudioTaskHandler('security-audit', async () => ({ kind: 'security.audit' })));
+    const readiness = getStudioWorkerHandlerReadiness('security-auditor');
+    expect(readiness.ready).toBe(false);
+    expect(readiness.registeredTaskTypes).toEqual(['security-audit']);
+    expect(readiness.missingTaskTypes).toEqual(['dependency-audit', 'container-audit']);
+    expect(readiness.reason).toContain('registration is incomplete');
   });
 });
