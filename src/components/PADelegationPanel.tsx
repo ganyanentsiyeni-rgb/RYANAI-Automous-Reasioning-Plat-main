@@ -30,7 +30,8 @@ const CAPABILITIES: Array<{ id: Capability; label: string }> = [
   { id: 'diagnostics.run', label: 'Analyze diagnostics you supply' },
   { id: 'patch.propose', label: 'Draft a reviewable patch recommendation' },
   { id: 'evidence.record', label: 'Include evidence in the result' },
-  { id: 'comms.task.create', label: 'Create an internal Comms task' },\n  { id: 'deployment.execute', label: 'Push Deploy to Render, Railway and Vercel' },
+  { id: 'comms.task.create', label: 'Create an internal Comms task' },
+  { id: 'deployment.execute', label: 'Push Deploy to Render, Railway and Vercel' },
 ];
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -110,7 +111,8 @@ export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilo
       });
       createRequestRef.current = null;
       setObjective('');
-      const status = (await api<{ status?: string }>('/api/agent/ops/pa/delegations/' + encodeURIComponent(createRequestRef.current?.delegationId ?? ''))).status;\n      setNotice(status === 'approved' ? 'Gen-X functional approval recorded. PA and its internal Comms task are queued; any Push Deploy still waits for exact-SHA CI/security checks.' : 'Alex received the handoff. This scope is waiting for a functional policy decision before execution.');
+      const status = (await api<{ status?: string }>('/api/agent/ops/pa/delegations/' + encodeURIComponent(createRequestRef.current?.delegationId ?? ''))).status;
+      setNotice(status === 'approved' ? 'Gen-X functional approval recorded. PA and its internal Comms task are queued; any Push Deploy still waits for exact-SHA CI/security checks.' : 'Alex received the handoff. This scope is waiting for a functional policy decision before execution.');
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Alex could not accept this handoff.');
