@@ -55,6 +55,8 @@ No service-role key, database URL, Redis URL, MCP token, model key, GitHub token
 
 The checked-in `.env.u2eb.example` targets Supabase project `omqavyppdoniehseokvx` in `eu-central-1`, with pooler hostname `aws-1-eu-central-1.pooler.supabase.com`. The real database password and publishable/privileged keys remain private runtime values. The generic `.env.example` must not pin a user-specific Supabase project.
 
+The staging/production API startup contract now verifies that `DATABASE_URL` targets the same project named by `SUPABASE_URL`: either the project's direct `db.<project-ref>.supabase.co` host or a Session Pooler URL with the matching project-qualified username. A Render-managed PostgreSQL hostname or a pooler username for another project is rejected before Prisma or the agent worker starts. This prevents a healthy connection to the wrong database from masking a missing `public.agent_runs` table.
+
 The U2EB Render Blueprint intentionally leaves database and Supabase values as `sync: false`. A Blueprint declaration is not proof that a value is present in the Render dashboard. Verify the saved variable names and presence separately; never infer them from this file.
 
 ## Live service drift requiring dashboard reconciliation
