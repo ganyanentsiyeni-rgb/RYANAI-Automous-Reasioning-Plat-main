@@ -99,8 +99,8 @@ export function createRyanAIStudioWorkerRuntime(
   });
 
   const executeOnce = options.executeOnce ?? (async (id, profileId, seconds, signal) => {
-    const authorize = async (task: Parameters<typeof authorizeStudioTaskWithGenX>[0], workerId: string) => {
-      const decision = await authorizeStudioTaskWithGenX(task, workerId);
+    const authorize = async (task: Parameters<typeof authorizeStudioTaskWithGenX>[0]) => {
+      const decision = await authorizeStudioTaskWithGenX(task, id);
       if (!decision.allowed) throw new Error('Gen-X denied Studio task execution: ' + decision.reason);
     };
     return runStudioWorkerOnce(id, profileId, seconds, authorize, signal);
@@ -131,7 +131,7 @@ export function createRyanAIStudioWorkerRuntime(
   const poll = async () => {
     if (stopping) return;
     try {
-      const result = await executeOnce(workerId, profile.id, leaseSeconds);
+      const result = await executeOnce(workerId, profile.id, leaseSeconds, shutdownController.signal);
       lastExecutionAt = new Date().toISOString();
       lastExecutionState = result.state;
       lastError = null;
