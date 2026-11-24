@@ -82,3 +82,12 @@ This patch does **not** trigger production deployment. Production deployment sti
 - Preserved high-severity AI Inspector findings for PA with report digest/source/exit-code evidence. Exit code 1 means findings exist; it must not discard the report or falsely claim a clean audit.
 - Added a regression test for PA report delivery, alongside handler registration/routing tests.
 - No deployment, migration, secret changes, paid upgrade, auto-merge, or outbound communications.
+
+## AI Inspector module and PA report skills
+
+- Allocated the dedicated `ai-inspector-module-agent` as the 13th module identity, with bounded read/inspect/test/evidence/patch-proposal actions and no privileged execution authority.
+- Expanded its inspection path to combine `scripts/ai-inspector-audit.mjs` with bounded cross-module source inspection for agent orchestration, backend integrations, provider adapters, queue/lease contracts, infrastructure, CI workflows, and Comms safety indicators.
+- PA receives structured findings, severity/rule IDs, evidence-file references, source metadata, report text, and a digest through durable AgentRun evidence. Exit code 1 retains high-severity findings for triage; it is not misreported as a clean audit.
+- Tightened worker readiness so every declared task type must have a registered handler; added regression coverage for incomplete registration and full-profile handler coverage.
+- Kept coordinator registration unique across worker bootstraps and added repository inventory handlers to the server-managed repository-auditor bootstrap.
+- No secrets were changed, no production migration/deployment occurred, and no external communication was sent.
