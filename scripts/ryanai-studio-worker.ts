@@ -7,6 +7,7 @@ import { createRyanAICiDiagnosticsTaskHandler } from '../src/server/engineering/
 import { generateRepositoryInventory } from './repository-inventory.mjs';
 import { prisma } from '../src/lib/prisma.js';
 import { inspectConnectedGitHubWorkflowEvidence } from '../src/server/routes/githubIntegration.js';
+import { registerRyanAISpecialistTaskHandlers } from '../src/server/engineering/ryanaiSpecialistTaskHandlers.js';
 
 const profileId = process.env.RYANAI_STUDIO_WORKER_PROFILE_ID?.trim() || 'coordinator';
 const workerId = process.env.RYANAI_STUDIO_WORKER_ID?.trim();
@@ -37,18 +38,21 @@ const runCiDiagnosticsTask = createRyanAICiDiagnosticsTaskHandler(
   ),
 );
 
+const unregisterSpecialistHandlers = registerRyanAISpecialistTaskHandlers(profileId);
 const unregisterHandlers = profileId === 'repository-auditor'
   ? [
       registerStudioTaskHandler('repository-audit', runRepositoryInventoryTask),
       registerStudioTaskHandler('inventory', runRepositoryInventoryTask),
-  ]
+      unregisterSpecialistHandlers,
+    ]
   : profileId === 'ci-diagnostics'
     ? [
         registerStudioTaskHandler('ci-failure', runCiDiagnosticsTask),
         registerStudioTaskHandler('test-failure', runCiDiagnosticsTask),
         registerStudioTaskHandler('build-failure', runCiDiagnosticsTask),
+        unregisterSpecialistHandlers,
       ]
-    : [];
+    : [unregisterSpecialistHandlers];
 
 const handlerReadiness = getStudioWorkerHandlerReadiness(profileId);
 if (!handlerReadiness.ready) {
