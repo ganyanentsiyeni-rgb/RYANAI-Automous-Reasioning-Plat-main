@@ -32,7 +32,7 @@ function evaluatePADelegationCapabilities(principal: string, capabilities: PADel
     const policy = PA_CAPABILITY_POLICY[capability];
     const decision = evaluateGenXSecurityEvent({
       agentId: 'ryanai-pa', principal, toolName: policy.toolName, action: policy.action,
-      target: 'pa:' + policy.target, environment: policyEnvironment(), actorType: 'human',\n      ownerAuthorized: true, ownerConfirmed: /\\bPUSH\\s+DEPLOY\\b/i.test(objective),
+      target: 'pa:' + policy.target, environment: policyEnvironment(), actorType: 'human',\n      ownerAuthorized: true, ownerConfirmed: /\bPUSH\s+DEPLOY\b/i.test(objective),
     });
     return { capability, decision: decision.decision, ruleId: decision.ruleId, reason: decision.reason };
   });
@@ -55,7 +55,7 @@ export const agentOperationsRoutes: FastifyPluginAsync = async (fastify) => {
     const user = request.authUser;
     if (!user?.id) return reply.code(401).send({ error: 'Sign in to continue.' });
     if (request.body.objective.trim().length < 5) return reply.code(400).send({ error: 'Delegation objective must contain at least five non-whitespace characters.' });
-    if (request.body.capabilities.includes('deployment.execute') && !request.body.capabilities.includes('comms.task.create')) {\n      return reply.code(400).send({ error: 'Deployment requests must include comms.task.create so Comms can report the release result.' });\n    }\n    if (request.body.capabilities.includes('deployment.execute') && !/\\bPUSH\\s+DEPLOY\\b/i.test(request.body.objective)) {\n      return reply.code(400).send({ error: 'Deployment requests must contain the exact explicit phrase PUSH DEPLOY.' });\n    }\n    const decisions = evaluatePADelegationCapabilities(user.id, request.body.capabilities, request.body.objective);
+    if (request.body.capabilities.includes('deployment.execute') && !request.body.capabilities.includes('comms.task.create')) {\n      return reply.code(400).send({ error: 'Deployment requests must include comms.task.create so Comms can report the release result.' });\n    }\n    if (request.body.capabilities.includes('deployment.execute') && !/\bPUSH\s+DEPLOY\b/i.test(request.body.objective)) {\n      return reply.code(400).send({ error: 'Deployment requests must contain the exact explicit phrase PUSH DEPLOY.' });\n    }\n    const decisions = evaluatePADelegationCapabilities(user.id, request.body.capabilities, request.body.objective);
     const denied = decisions.find((item) => item.decision === 'DENY');
     if (denied) return reply.code(403).send({ error: 'Gen-X denied a requested PA capability.', ruleId: denied.ruleId, capability: denied.capability });
     try {
