@@ -102,6 +102,20 @@ export function evaluateGenXSecurityEvent(event: GenXSecurityEvent): GenXPolicyR
       event.environment === 'development') {
     return { decision: 'ALLOW', ruleId: 'GX-HUMAN-AERIAL-DEV-001', reason: 'Verified user requested inference through the configured development Aerial runtime.', severity: 'LOW' };
   }
+  // PA may create an internal Comms task only after the authenticated owner
+  // submits the task; this does not grant provider dispatch or message delivery.
+  if (tool === 'comms_internal_task_create' && event.action === 'CREATE' &&
+      event.target === 'pa:internal-comms-task' && event.ownerAuthorized === true &&
+      (event.actorType === 'human' || event.actorType === 'agent')) {
+    return { decision: 'ALLOW', ruleId: 'GX-PA-INTERNAL-COMMS-001', reason: 'Owner-scoped internal Comms work may be queued; outbound provider dispatch remains separately gated.', severity: 'HIGH' };
+  }
+  // A deployment dispatch is allowed only for the fixed Push Deploy workflow
+  // after the authenticated owner explicitly supplied the exact release phrase.
+  if (tool === 'github_workflow_dispatch' && event.action === 'CREATE' &&
+      event.target === 'pa:push-deploy:main' && event.ownerAuthorized === true &&
+      event.ownerConfirmed === true && (event.actorType === 'human' || event.actorType === 'agent')) {
+    return { decision: 'ALLOW', ruleId: 'GX-PA-PUSH-DEPLOY-001', reason: 'The owner explicitly requested Push Deploy for the fixed main-branch release workflow; its exact-SHA CI/security gate still decides whether provider jobs may start.', severity: 'CRITICAL' };
+  }
   if (event.action === 'CREATE' || event.action === 'UPDATE' || event.action === 'DELETE' || event.action === 'NETWORK') {
     return { decision: 'REQUIRE_APPROVAL', ruleId: 'GX-HIL-001', reason: 'Mutating or network actions require an authenticated human approval and scoped credentials.', severity: 'HIGH' };
   }
