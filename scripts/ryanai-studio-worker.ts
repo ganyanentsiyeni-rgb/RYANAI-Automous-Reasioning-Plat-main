@@ -67,25 +67,44 @@ const runtime = createRyanAIStudioWorkerRuntime({
   leaseSeconds: Number(process.env.RYANAI_STUDIO_WORKER_LEASE_SECONDS ?? 90),
 });
 
-let shuttingDown = false;
-const shutdown = async () => {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  try {
-    await runtime.stop();
-  } finally {
-    for (const unregister of unregisterHandlers) unregister();
-  }
+let shutdownPromise: Promise<void> | null = null;
+const shutdown = () => {
+  if (shutdownPromise) return shutdownPromise;
+  shutdownPromise = (async () => {
+    const errors: string[] = [];
+    try {
+      await runtime.stop();
+    } catch (error) {
+      errors.push('runtime.stop: ' + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      for (const unregister of unregisterHandlers) unregister();
+      try {
+        await prisma.$disconnect();
+      } catch (error) {
+        errors.push('prisma.$disconnect: ' + (error instanceof Error ? error.message : String(error)));
+      }
+    }
+    if (errors.length) {
+      console.error('[studio-worker] shutdown failed', errors);
+      process.exitCode = 1;
+    }
+  })();
+  return shutdownPromise;
 };
 
 process.once('SIGTERM', () => { void shutdown(); });
 process.once('SIGINT', () => { void shutdown(); });
 
-await runtime.start();
-console.log(JSON.stringify({
-  service: 'ryanai-native-studio-worker',
-  workerId: runtime.snapshot().workerId,
-  workerProfileId: profileId,
-  registeredTaskTypes: handlerReadiness.registeredTaskTypes,
-  status: runtime.snapshot().status,
-}));
+try {
+  await runtime.start();
+  console.log(JSON.stringify({
+    service: 'ryanai-native-studio-worker',
+    workerId: runtime.snapshot().workerId,
+    workerProfileId: profileId,
+    registeredTaskTypes: handlerReadiness.registeredTaskTypes,
+    status: runtime.snapshot().status,
+  }));
+} catch (error) {
+  await shutdown();
+  throw error;
+}
