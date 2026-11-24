@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { StudioWorkerContext } from './studioNativeCore.js';
 import { registerStudioTaskHandler } from './studioNativeCore.js';
@@ -81,20 +81,39 @@ const ALLOWED_FILES: Record<string, readonly string[]> = {
   'provider-verification': SPECS['provider-verification'].files,
   communications: SPECS.communications.files,
   'frontend-accessibility': SPECS['frontend-accessibility'].files,
-  'release-readiness': SPECS['release-readiness'].files,
-};
-
-async function readAllowedEvidence(relativePath: string, signal?: AbortSignal): Promise<string | null> {
+async function collectAllowedEvidence(relativePath: string, signal?: AbortSignal, depth = 0): Promise<Array<{ path: string; content: string }>> {
   signal?.throwIfAborted();
   const resolved = path.resolve(process.cwd(), relativePath);
   const root = path.resolve(process.cwd()) + path.sep;
   if (!resolved.startsWith(root)) throw new Error('Evidence path escaped the repository root.');
   try {
-    const value = await readFile(resolved, 'utf8');
-    signal?.throwIfAborted();
-    return value;
+    const entries = await readdir(resolved, { withFileTypes: true });
+    if (depth > 4) return [];
+    const output: Array<{ path: string; content: string }> = [];
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      signal?.throwIfAborted();
+      if (entry.name.startsWith('.') || /^(node_modules|dist|build|coverage|\.git|\.next)$/i.test(entry.name)) continue;
+      const child = path.join(relativePath, entry.name);
+      if (entry.isDirectory()) {
+        output.push(...await collectAllowedEvidence(child, signal, depth + 1));
+      } else if (entry.isFile() && /\.(?:[cm]?[jt]sx?|json|ya?ml|toml|prisma|md)$/i.test(entry.name)) {
+        const content = await readFile(path.resolve(process.cwd(), child), 'utf8');
+        output.push({ path: child, content });
+      }
+      if (output.length >= 100) return output.slice(0, 100);
+    }
+    return output;
   } catch (error) {
-    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return null;
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return [];
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOTDIR') {
+      try {
+        const content = await readFile(resolved, 'utf8');
+        return [{ path: relativePath, content }];
+      } catch (readError) {
+        if (readError && typeof readError === 'object' && 'code' in readError && readError.code === 'ENOENT') return [];
+        throw readError;
+      }
+    }
     throw error;
   }
 }
@@ -117,9 +136,9 @@ async function runStaticInspection(profileId: string, context: StudioWorkerConte
   const files: Array<{ path: string; content: string }> = [];
   const missing: string[] = [];
   for (const file of spec.files) {
-    const content = await readAllowedEvidence(file, context.signal);
-    if (content === null) missing.push(file);
-    else files.push({ path: file, content });
+    const evidence = await collectAllowedEvidence(file, context.signal);
+    if (evidence.length === 0) missing.push(file);
+    else files.push(...evidence);
   }
   const findings = findRuleEvidence(spec, files);
   return {
@@ -182,9 +201,7 @@ export function registerRyanAISpecialistTaskHandlers(profileId: string) {
     add('ai-inspector.audit', runAIInspector);
     add('ai-inspector.report', runAIInspector);
   } else if (SPECS[profileId]) {
-    const spec = SPECS[profileId];
     const handler = (context: StudioWorkerContext) => runStaticInspection(profileId, context);
-    for (const type of Object.keys(ALLOWED_FILES[profileId] ? { [profileId]: true } : {})) void type;
     const profileTaskTypes: Record<string, string[]> = {
       'security-auditor': ['security-audit', 'dependency-audit', 'container-audit'],
       'runtime-infrastructure': ['runtime-audit', 'infrastructure-audit', 'health-check'],
@@ -195,7 +212,6 @@ export function registerRyanAISpecialistTaskHandlers(profileId: string) {
       'release-readiness': ['release-audit', 'documentation', 'readiness-review'],
     };
     for (const type of profileTaskTypes[profileId] ?? []) add(type, handler);
-    void spec;
   }
   return () => { for (const remove of unregister.reverse()) remove(); };
 }
