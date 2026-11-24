@@ -182,22 +182,7 @@ END
 $drop_external_auth_fks$;
 SQL
 
-log "Excluding separately-owned Supabase tables from the Prisma-only drift comparison"
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-DROP TABLE
-log "Asserting and excluding Supabase-owned public tables from the Prisma-only drift comparison"
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-DO $assert_supabase_owned_tables$
-log "Excluding separately-owned Supabase tables from the Prisma-only drift comparison"
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-DROP TABLE
-log "Asserting and excluding Supabase-owned public tables from the Prisma-only drift comparison"
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-DO $assert_supabase_owned_tables$
-# Supabase SQL migrations own these public tables. Keep their rows, RLS,
-# indexes and constraints intact, but temporarily move them out of public so
-# Prisma's public-schema diff checks only Prisma-owned application models.
-# This relocation is confined to the disposable local Supabase database.
+log "Asserting and moving Supabase-owned public tables out of public for the Prisma-only drift comparison"
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
 DO $assert_supabase_tables$
 DECLARE
@@ -218,24 +203,20 @@ BEGIN
     END IF;
   END LOOP;
 END
-$assert_supabase_owned_tables$;
+$assert_supabase_tables$;
 
--- These tables are owned by the Supabase migration chain and are intentionally
--- not represented as Prisma models. Remove them only from this disposable local
--- stack after proving the migrations created them. The hosted database and all
--- committed migration definitions remain untouched.
-DROP TABLE
-  public.community_beta_interest,
-  public.community_feedback_submissions,
-  public.phonelink_device_exchanges,
-  public.phonelink_events,
-  public.phonelink_pairings,
-  public.phonelink_devices,
-  public.community_feedback_submissions,
-  public.community_beta_interest,
-  public.ryanai_attachment_scans,
-  public.ryanai_attachment_upload_events
-CASCADE;
+-- Preserve the Supabase-owned tables, rows, RLS, indexes and dependencies.
+-- Move them only inside this disposable local database while Prisma's public
+-- schema is compared; restore them before the remaining integration tests.
+CREATE SCHEMA IF NOT EXISTS ryanai_supabase_managed;
+ALTER TABLE public.community_beta_interest SET SCHEMA ryanai_supabase_managed;
+ALTER TABLE public.community_feedback_submissions SET SCHEMA ryanai_supabase_managed;
+ALTER TABLE public.phonelink_device_exchanges SET SCHEMA ryanai_supabase_managed;
+ALTER TABLE public.phonelink_devices SET SCHEMA ryanai_supabase_managed;
+ALTER TABLE public.phonelink_events SET SCHEMA ryanai_supabase_managed;
+ALTER TABLE public.phonelink_pairings SET SCHEMA ryanai_supabase_managed;
+ALTER TABLE public.ryanai_attachment_scans SET SCHEMA ryanai_supabase_managed;
+ALTER TABLE public.ryanai_attachment_upload_events SET SCHEMA ryanai_supabase_managed;
 SQL
 
 log "Checking the resulting Prisma-owned public schema contract"
