@@ -66,7 +66,7 @@ export function createRyanAIStudioWorkerRuntime(
   const inFlight = new Set<Promise<void>>();
   let startupPromise: Promise<void> | null = null;
   let stopPromise: Promise<void> | null = null;
-  const shutdownController = new AbortController();
+  let shutdownController = new AbortController();
   let heartbeatWrite: Promise<void> = Promise.resolve();
 
   const track = (operation: Promise<void>) => {
@@ -173,6 +173,7 @@ export function createRyanAIStudioWorkerRuntime(
   return {
     async start() {
       if (started) return;
+      shutdownController = new AbortController();
       started = true;
       stopping = false;
       startupPromise = (async () => {
