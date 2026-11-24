@@ -100,6 +100,7 @@ export function resolveConnectionUrls(
   sessionPoolerHost?: string,
   sslRootCertPath?: string,
   localCompose = false,
+  allowLocalDisposableDatabase = false,
 ): ConnectionUrls {
   let database = databaseUrl?.trim();
   const redis = redisUrl?.trim();
@@ -116,6 +117,16 @@ export function resolveConnectionUrls(
   const primaryStore = getDatabaseStore(manifestEnvironment, 'primary');
   const cacheStore = getDatabaseStore(manifestEnvironment, 'cache');
 
+  const isLocalDisposableSupabaseDatabase = allowLocalDisposableDatabase && (() => {
+    try {
+      const parsed = new URL(database ?? '');
+      return ['127.0.0.1', 'localhost', '::1'].includes(parsed.hostname)
+        && (parsed.port || '5432') === '5432';
+    } catch {
+      return false;
+    }
+  })();
+
   const isLocalComposeDatabase = localCompose && (() => {
     try {
       const parsed = new URL(database ?? '');
@@ -127,7 +138,7 @@ export function resolveConnectionUrls(
 
   if (strictRuntime && database) {
     parseProductionDatabaseUrl(database);
-    if (supabaseUrl?.trim() && !isLocalComposeDatabase) {
+    if (supabaseUrl?.trim() && !isLocalComposeDatabase && !isLocalDisposableSupabaseDatabase) {
       assertDatabaseUrlMatchesSupabaseProject(database, supabaseUrl);
     }
   }
