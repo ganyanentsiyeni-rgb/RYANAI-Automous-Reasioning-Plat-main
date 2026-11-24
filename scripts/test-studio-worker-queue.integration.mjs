@@ -102,7 +102,22 @@ try {
   assert.equal(claimA.status, 'running');
   assert.equal(claimB.status, 'running');
 
-  assert.equal(await heartbeatStudioTask(claimA.id, claimA.leaseOwner), true, 'the current lease owner can renew its lease');
+  assert.ok(claimA.leaseToken, 'a successful claim must return its fencing token');
+  assert.equal(
+    await heartbeatStudioTask(claimA.id, claimA.leaseOwner, claimA.leaseToken),
+    true,
+    'the current lease owner and fencing token can renew its lease',
+  );
+  assert.equal(
+    await heartbeatStudioTask(claimA.id, claimA.leaseOwner, randomUUID()),
+    false,
+    'a stale or unrelated fencing token must not renew the lease',
+  );
+  assert.equal(
+    await heartbeatStudioTask(claimA.id, 'studio-ci-impostor-' + suffix, claimA.leaseToken),
+    false,
+    'a different worker cannot renew another worker lease, even with its token',
+  );
   const heartbeated = await taskById(claimA.id);
   assert.ok(heartbeated.heartbeatAt && heartbeated.leaseExpiresAt > new Date(), 'heartbeat and lease expiry must persist');
 
@@ -115,6 +130,34 @@ try {
   const recoveredTask = await taskById(claimB.id);
   assert.equal(recoveredTask.status, 'queued');
   assert.equal(recoveredTask.leaseOwner, null);
+  assert.equal(recoveredTask.leaseToken, null);
+  assert.equal(
+    await heartbeatStudioTask(claimB.id, claimB.leaseOwner, claimB.leaseToken),
+    false,
+    'the previous worker cannot renew a recovered lease',
+  );
+  await prisma.studioTask.update({
+    where: { id: claimB.id },
+    data: { availableAt: new Date() },
+  });
+  const replacementClaim = await claimStudioTask(
+    'studio-ci-replacement-' + suffix,
+    [taskType.claimA, taskType.claimB],
+    60,
+  );
+  assert.ok(replacementClaim, 'a recovered task becomes claimable after its retry delay');
+  assert.equal(replacementClaim.id, claimB.id, 'the recovered task is claimed again');
+  assert.notEqual(replacementClaim.leaseToken, claimB.leaseToken, 'reclaim must issue a fresh fencing token');
+  assert.equal(
+    await heartbeatStudioTask(claimB.id, claimB.leaseOwner, claimB.leaseToken),
+    false,
+    'the old worker remains fenced out after a new worker reclaims the task',
+  );
+  assert.equal(
+    await heartbeatStudioTask(replacementClaim.id, replacementClaim.leaseOwner, replacementClaim.leaseToken),
+    true,
+    'the replacement worker can renew its new lease',
+  );
   assert.ok(await prisma.studioEvent.findFirst({ where: { taskId: claimB.id, eventType: 'task.lease_recovered' } }));
 
   const successTask = created.tasks.find((item) => item.taskType === taskType.success);
