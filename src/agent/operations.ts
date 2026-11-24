@@ -373,10 +373,12 @@ async function processAgentRun(
         await assertExecutionLeaseActive();
         const report = await runRyanAIInspectorAudit({ taskId: run.id, signal: cancellation.signal });
         await assertExecutionLeaseActive();
-        if (report.exitCode !== 0) {
-          throw new Error('AI Inspector reported a failed audit (exit code ' + report.exitCode + '); findings were not certified as a passed capability.');
-        }
         if (!report.report.trim()) throw new Error('AI Inspector returned an empty report.');
+        if (report.exitCode !== 0 && report.exitCode !== 1) {
+          throw new Error('AI Inspector execution failed before producing a trustworthy report.');
+        }
+        // Exit code 1 is the Inspector's documented finding signal for critical/high findings.
+        // The report is still valid evidence and must be returned to PA for triage, not discarded.
         if (report.report.length > 24_000) throw new Error('AI Inspector report exceeded the durable evidence size limit.');
         const reportText = report.report;
         const reportDigest = createHash('sha256').update(reportText, 'utf8').digest('hex');
