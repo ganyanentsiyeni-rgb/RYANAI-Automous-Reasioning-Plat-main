@@ -65,6 +65,9 @@ The AI Inspector has a dedicated module owner, `ai-inspector-module-agent`, and 
 
 The specialist worker process registers bounded handlers per profile. Security, infrastructure, data/queue, provider, communications, frontend/accessibility, and release handlers perform read-only static inspections. Provider configuration presence is never represented as live provider health. Runtime verification remains `not_performed` unless independently supported by fresh runtime evidence. The coordinator proposes a plan only; it has no execution authority.
 
+The `ci-diagnostics` worker profile uses a shared registration function in both supported Studio worker entrypoints. It binds `ci-failure`, `test-failure`, and `build-failure` to the same task handler, which uses the persisted Studio task owner, requires explicit `read-workflow-runs` and optional `read-job-logs` capabilities, forwards cancellation, and returns provider-blocked evidence when GitHub inspection cannot be completed. Handler registration readiness is not a worker heartbeat or proof of live execution.
+
+
 The 13 module agents and 10 specialist worker profiles are registry contracts, not live-runtime assertions. A worker is live only when a real process has a fresh healthy persisted heartbeat and its task/lease execution evidence is available. CI diagnostics remains bound to connected GitHub workflow evidence. No handler can approve, merge, deploy, migrate production, mutate secrets, or send external communications.
 
 ## 8. Specialist handler integrity and report semantics
@@ -72,3 +75,13 @@ The 13 module agents and 10 specialist worker profiles are registry contracts, n
 The specialist handler module is a single, syntactically valid registry of profile-specific handlers. The repository-auditor process retains ownership of repository inventory tasks; the shared specialist registrar adds only AI Inspector audit/report task types and documentation inspection, preventing duplicate registration. Evidence traversal is repository-root confined, depth/file/size bounded, cancellable, and read-only.
 
 AI Inspector exit code `1` is the audit's documented signal that critical/high findings exist. It is not an execution crash: PA receives the complete report, digest, source, exit code, and evidence reference so it can triage the findings. Empty reports, unsupported exit codes, oversized reports, failed authorization, or lost leases cannot be recorded as a successful inspection. A passed capability receipt means the inspection completed and its report was durably recorded; it does not mean the report contains no findings.
+
+## AI Inspector module contract
+
+`ai-inspector-module-agent` is the single accountable module owner for AI Inspector & Audit. The module maps `ai-inspector.audit` and `ai-inspector.report` to the repository-auditor execution worker while preserving a distinct module identity and responsibility. PA invokes the Inspector behind the Gen-X `ai-inspector.inspect` authorization boundary. The resulting report is persisted as append-only AgentRun evidence; PA receives the report text, source metadata, inspection evidence paths, findings, exit code, and SHA-256 digest.
+
+Inspection combines the dedicated audit script with bounded, repository-root-confined static checks for TLS verification, workflow permissions, migration/startup coupling, Gen-X authorization hooks, worker lease primitives, provider adapter lifecycle, and Comms safety indicators. Findings do not certify runtime health or provider authentication. High-severity findings are preserved as report evidence (exit code 1) rather than discarded. Empty output, unsupported execution failures, missing authorization, or lost leases fail closed.
+
+## Worker handler readiness invariant
+
+A worker profile is startable only when every task type declared in `RYANAI_WORKER_ROSTER` has a registered handler in that worker process. Readiness returns the complete supported, registered, and missing task-type lists; partial registration is not healthy. Worker bootstrap modules own their unique task registrations so shared specialist registration cannot double-register a task. This is process-local handler readiness only; live worker availability still requires a fresh authenticated heartbeat and durable queue evidence.

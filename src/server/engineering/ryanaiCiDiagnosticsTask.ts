@@ -1,5 +1,6 @@
 import { analyzeRyanAICiEvidence, createRyanAICiProviderBlockedReport, createRyanAIVerifiedCiReport } from './ryanaiCiDiagnostics.js';
 import type { ConnectedGitHubWorkflowEvidence } from '../routes/githubIntegration.js';
+import { registerStudioTaskHandler } from './studioNativeCore.js';
 export interface RyanAICiDiagnosticsTask { id: string; input: unknown; requiredCapabilities: string[]; ownerUserId: string; }
 export type RyanAICiEvidenceInspector = (ownerUserId: string, requestedHeadSha: string, options: { includeJobLogs: boolean; signal?: AbortSignal }) => Promise<ConnectedGitHubWorkflowEvidence>;
 /** The owner identity comes from the persisted StudioTask row, never task input. */
@@ -21,4 +22,13 @@ export function createRyanAICiDiagnosticsTaskHandler(inspectEvidence: RyanAICiEv
       return createRyanAICiProviderBlockedReport(/^[a-f0-9]{40}$/i.test(requestedHeadSha) ? requestedHeadSha.toLowerCase() : null, error);
     }
   };
+}
+
+
+/** Register the same bounded CI evidence handler in every supported Studio worker entrypoint. */
+export function registerRyanAICiDiagnosticsTaskHandlers(inspectEvidence: RyanAICiEvidenceInspector) {
+  const handler = createRyanAICiDiagnosticsTaskHandler(inspectEvidence);
+  const unregister = ['ci-failure', 'test-failure', 'build-failure']
+    .map((taskType) => registerStudioTaskHandler(taskType, handler));
+  return () => { for (const remove of unregister.reverse()) remove(); };
 }
