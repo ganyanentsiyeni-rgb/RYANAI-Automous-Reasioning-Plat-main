@@ -6,6 +6,9 @@ import path from 'node:path';
 import { resolveConnectionUrls } from '../server/startupConfig.js';
 
 function resolvedSourceDatabaseUrl(): string {
+  if (!process.env.DATABASE_URL?.trim()) {
+    throw new Error('DATABASE_URL is not configured.');
+  }
   const { databaseUrl } = resolveConnectionUrls(
     process.env.NODE_ENV || 'development',
     process.env.DATABASE_URL,
@@ -407,8 +410,8 @@ export function recoveryPreflight(): RecoveryPreflight {
 
   try {
     const targetUrl = new URL(target);
-    const sourceValue = resolvedSourceDatabaseUrl();
-    if (!sourceValue) {
+    const configuredSourceValue = process.env.DATABASE_URL?.trim();
+    if (!configuredSourceValue) {
       return {
         status: 'not_configured',
         targetLabel,
@@ -417,6 +420,7 @@ export function recoveryPreflight(): RecoveryPreflight {
         reason: 'The source database identity is unavailable for safe target comparison.',
       };
     }
+    const sourceValue = resolvedSourceDatabaseUrl();
     const sourceUrl = new URL(sourceValue);
     const sameHost = targetUrl.hostname.toLowerCase() === sourceUrl.hostname.toLowerCase();
     const sameDatabase = decodeURIComponent(targetUrl.pathname).replace(/^\//, '').toLowerCase() === decodeURIComponent(sourceUrl.pathname).replace(/^\//, '').toLowerCase();
