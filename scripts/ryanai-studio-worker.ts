@@ -38,7 +38,27 @@ const unregisterCiDiagnosticsHandlers = profileId === 'ci-diagnostics'
       options,
     ))
   : () => undefined;
-const unregisterHandlers = profileId === 'repository-auditor'
+const unregisterHandlers = profileId === 'coordinator'
+  ? [
+      registerStudioTaskHandler('coordination', async ({ task }) => ({
+        schemaVersion: 1,
+        kind: 'ryanai.coordination.plan',
+        taskId: task.id,
+        objective: task.objective.trim(),
+        assignedWorkerId: task.assignedWorkerId ?? null,
+        steps: [
+          'Confirm objective and owner scope',
+          'Identify a registered specialist and required evidence',
+          'Collect exact task and test evidence',
+          'Return findings and unresolved blockers to PA',
+        ],
+        status: 'plan_proposed',
+        executionAuthority: 'none',
+      })),
+      unregisterSpecialistHandlers,
+      unregisterCiDiagnosticsHandlers,
+    ]
+  : profileId === 'repository-auditor'
   ? [
       registerStudioTaskHandler('repository-audit', runRepositoryInventoryTask),
       registerStudioTaskHandler('inventory', runRepositoryInventoryTask),
