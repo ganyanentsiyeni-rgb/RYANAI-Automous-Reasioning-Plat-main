@@ -476,17 +476,16 @@ That command applies the Supabase-owned migration history to the local Supabase 
 
 ### Prisma application schema
 
-For a complete fresh local Supabase database, run the Supabase-owned migrations first, then initialize the Prisma migration ledger with the committed no-op platform-baseline marker, and finally apply the Prisma application migrations:
+For a complete fresh local Supabase database, run the Supabase migration chain and then let Prisma apply any migrations newer than the committed U2EB runtime bootstrap snapshot:
 
 ~~~bash
 supabase start
 supabase db reset --local
 eval "$(supabase status -o env)"
-DATABASE_URL="$DB_URL" npx prisma migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
 DATABASE_URL="$DB_URL" npx prisma migrate deploy --schema=prisma/schema.prisma
 ~~~
 
-Run the two migration stages against the **same disposable local Supabase database**. The baseline marker contains no schema DDL; it records that the Supabase platform stage has already created the Supabase-owned objects. Do not mark it applied against a database that has not completed that Supabase migration stage. The full sequence and its CI checks are documented in [supabase/README.md](supabase/README.md).
+The one-time Supabase migration `20261122000000_prisma_runtime_schema_bootstrap.sql` seeds the Prisma baseline marker and matching historical checksums. Do **not** run `prisma migrate resolve` after this reset; the marker is already recorded and a second resolve fails with P3008. The full sequence and CI checks are documented in [supabase/README.md](supabase/README.md).
 
 Other useful scripts:
 
@@ -658,6 +657,8 @@ Start the local database and cache, apply the local Compose migration profile, t
 sudo service docker start
 sudo docker compose config --quiet
 sudo docker compose up -d --build postgres redis
+sudo docker compose --profile migrations run --rm --entrypoint node migrate \
+  node_modules/prisma/build/index.js migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
 sudo docker compose --profile migrations run --rm migrate
 sudo docker compose up -d --build --wait
 sudo docker compose ps
@@ -724,7 +725,14 @@ sudo docker compose down
 
 This stops and removes the Compose containers and network but retains named data volumes. **Do not add `-v` unless you intentionally want to permanently delete the local PostgreSQL, Redis, and MCPJungle data volumes.** Never use volume-removal commands against data you need to keep.
 
-The Compose migration profile targets the isolated local Compose PostgreSQL service. The baseline-marker `prisma migrate resolve --applied 20261014000000_supabase_platform_baseline` command belongs only to the separate Supabase CLI workflow above, after `supabase db reset --local` has completed against that same database. Do not use it as a generic workaround for a failed Compose migration, and never point local Compose commands at a hosted or production database.
+The Compose migration profile targets the isolated local Compose PostgreSQL service, whose bootstrap creates only Auth compatibility objects. On a fresh local Compose database, record the Prisma baseline marker once before running the migration image:
+
+~~~bash
+docker compose --profile migrations run --rm --entrypoint node migrate node_modules/prisma/build/index.js migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
+docker compose --profile migrations run --rm migrate
+~~~
+
+This baseline-resolution step is for the fresh disposable Compose database only. The Supabase CLI combined path is different: its one-time runtime bootstrap already seeds the marker, so do not resolve it again after `supabase db reset`. Never point either local workflow at a hosted or production database.
 
 ## Containers and deployment configuration
 
@@ -772,6 +780,8 @@ docker compose up -d --build postgres redis
 Apply the one-shot local Prisma migration service explicitly, then start the default application stack:
 
 ~~~bash
+docker compose --profile migrations run --rm --entrypoint node migrate \
+  node_modules/prisma/build/index.js migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
 docker compose --profile migrations run --rm migrate
 docker compose up -d --build --wait
 docker compose ps
