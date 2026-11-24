@@ -68,6 +68,7 @@ const generatedClientCopy = read('scripts/copy-server-assets.mjs');
 const packageJson = JSON.parse(read('package.json'));
 const vercelConfig = JSON.parse(read('vercel.json'));
 const platformDeployWorkflow = read('.github/workflows/deploy-platforms.yml');
+const ciCdWorkflow = read('.github/workflows/ci-cd.yml');
 const envExample = read('.env.example');
 const envExampleVars = Object.fromEntries(
   envExample.split(/\r?\n/)
@@ -161,23 +162,34 @@ const hasVercelServicesContract =
     vercelRewrites.findIndex((rewrite) => rewrite.source === '/mcp/(.*)');
 const hasVercelBuildContract = hasVercelServicesContract;
 const hasNoAmbiguousTopLevelVercelBuildSettings = !['installCommand', 'buildCommand', 'outputDirectory'].some((key) => Object.hasOwn(vercelConfig, key));
-const hasVercelDeploymentContract =
+const hasThreePlatformPushDeployContract =
   platformDeployWorkflow.includes('workflow_dispatch:')
-  && platformDeployWorkflow.includes("inputs.vercel_confirmation == 'DEPLOY'")
-  && platformDeployWorkflow.includes('needs: [gate, railway]')
-  && platformDeployWorkflow.includes('environment: production')
-  && platformDeployWorkflow.includes('VERCEL_TOKEN')
-  && platformDeployWorkflow.includes('VERCEL_ORG_ID')
-  && platformDeployWorkflow.includes('VERCEL_PROJECT_ID')
-  && platformDeployWorkflow.includes('VERCEL_CLI_VERSION')
-  && platformDeployWorkflow.includes('vercel build --prod')
-  && platformDeployWorkflow.includes('vercel deploy --prebuilt --prod --skip-domain')
-  && platformDeployWorkflow.includes('ref: ${{ needs.gate.outputs.sha }}');
+  && platformDeployWorkflow.includes("inputs.push_deploy == 'PUSH DEPLOY'")
+  && platformDeployWorkflow.includes('uses: ./.github/workflows/ci-cd.yml')
+  && platformDeployWorkflow.includes('Exact-SHA CI and security release gate')
+  && platformDeployWorkflow.includes('needs: gate')
+  && !platformDeployWorkflow.includes('inputs.vercel_confirmation')
+  && !platformDeployWorkflow.includes('needs: [gate, railway]')
+  && platformDeployWorkflow.includes('RENDER_HEALTH_URLS')
+  && platformDeployWorkflow.includes('RAILWAY_HEALTH_URL')
+  && platformDeployWorkflow.includes('VERCEL_HEALTH_URL')
+  && platformDeployWorkflow.includes('TruffleHog secret audit')
+  && platformDeployWorkflow.includes('Analyze (javascript-typescript)')
+  && platformDeployWorkflow.includes('Trivy filesystem scan')
+  && platformDeployWorkflow.includes('ref: ${{ needs.gate.outputs.sha }}')
+  && ['railway:', 'render:', 'vercel:'].every((job) =>
+    platformDeployWorkflow.includes(job)
+  );
+const hasReusableExactShaCiCd =
+  ciCdWorkflow.includes('workflow_call:')
+  && ciCdWorkflow.includes('inputs.commit_sha')
+  && ciCdWorkflow.includes('ref: ${{ inputs.commit_sha || github.sha }}')
+  && ciCdWorkflow.includes("github.event_name == 'workflow_dispatch' && inputs.publish_images == true");
 
 const checks = [
   ['Vercel build settings are scoped to the web service, with no ambiguous top-level build properties', hasNoAmbiguousTopLevelVercelBuildSettings],
   ['Vercel installs root dependencies, builds only the web target, and publishes dist', hasVercelBuildContract],
-  ['Vercel production deploy is manual, explicit-confirmation gated, exact-SHA based, and behind Railway', hasVercelDeploymentContract],
+  ['Push Deploy requires exact-SHA CI, security, and reusable CI/CD validation before all three providers', hasThreePlatformPushDeployContract && hasReusableExactShaCiCd],
   ['Render Blueprint declares services through a supported top-level or project-environment list', Array.isArray(renderConfig.services) || renderProjects.some((project) => (project.environments ?? []).some((environment) => Array.isArray(environment.services)))],
   ['Render Blueprint declares exactly the expected API, web, Redis, and MCP resources', renderServices.length === expectedRenderServiceNames.length && expectedRenderServiceNames.every((name) => renderServiceNames.includes(name)) && new Set(renderServiceNames).size === expectedRenderServiceNames.length],
   ['U2EB MCP host allowlist contains only the canonical Render hostname', envVar(u2ebMcp, 'MCP_ALLOWED_HOSTS', renderConfig)?.value === 'ryanai-mcp-u2eb-u2eb-u2eb.onrender.com'],
