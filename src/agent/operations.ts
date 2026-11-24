@@ -473,7 +473,6 @@ async function processAgentRun(
           status: 'passed',
           evidenceReferences: ['agent-run-evidence:' + evidence.id],
           childRunId: child.runId,
-          internalOnly: true,
         });
       }
     }

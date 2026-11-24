@@ -165,12 +165,15 @@ export async function claimStudioTask(workerId: string, supportedTaskTypes: read
       SELECT * FROM updated
     `);
     for (const dependent of terminalDependents) {
+      const failedDependencyIds = Array.isArray(dependent.failed_dependency_ids)
+        ? dependent.failed_dependency_ids.map((id) => String(id))
+        : [];
       await tx.studioEvent.create({ data: {
         projectId: String(dependent.project_id),
         taskId: String(dependent.id),
         ownerUserId: String(dependent.owner_user_id),
         eventType: 'task.dependency_failed',
-        payload: { failedDependencyIds: dependent.failed_dependency_ids },
+        payload: { failedDependencyIds },
       } });
     }
 
