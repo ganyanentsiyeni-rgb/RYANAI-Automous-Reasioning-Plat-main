@@ -177,3 +177,12 @@ For each provider, complete the following in a separate, provider-scoped change:
 8. Require exact-head CI/security evidence and human review. No auto-merge, deployment, production migration, secret modification or paid resource provisioning is implied.
 
 The current implementation does not add OAuth clients, provider secrets, adapters, database schema, migrations, deployment configuration or runtime connections for these nine entries.
+
+
+## Gen-X enforcement for existing read-only provider endpoints
+
+The calendar-event and Gmail-message read endpoints now require a fresh Gen-X decision immediately before provider network access. The exception is limited to verified human requests on the authenticated owner's own connection and the exact read-only capabilities `calendar.events.read` and `gmail.messages.read` for Google Calendar, Microsoft 365 Calendar and Gmail. Agent/service callers, unowned connections, write capabilities, unknown providers and any request without the owner-authorized route context remain denied or approval-gated.
+
+A successful OAuth callback or enabled UI preference is not sufficient authorization. The route separately checks the owner-bound connection, active connection status, token expiry and exact granted read-only scope before invoking Gen-X. A Gen-X denial returns HTTP 403 and must occur before any provider request. No write, outbound, signing, infrastructure mutation or communications capability is added by this change.
+
+Tests cover the exact allowlist, negative actor/owner/capability cases, and a route-level denial proving that the external provider is not contacted when Gen-X denies. This is an incremental authorization hardening; it does not yet implement the general-purpose adapter invocation service or PA/MCP delegation path.
