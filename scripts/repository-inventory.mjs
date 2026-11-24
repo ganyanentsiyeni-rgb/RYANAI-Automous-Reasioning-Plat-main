@@ -16,21 +16,29 @@ const SCRIPT_EXTENSIONS = new Set([
   '.cjs', '.js', '.mjs', '.cts', '.ts', '.mts', '.tsx', '.py', '.sh', '.ps1',
 ]);
 
-async function walkFiles(directory, ignoredDirectories) {
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw signal.reason ?? new Error('Repository inventory cancelled.');
+}
+
+async function walkFiles(directory, ignoredDirectories, signal) {
+  throwIfAborted(signal);
   let entries;
   try {
     entries = await readdir(directory, { withFileTypes: true });
+    throwIfAborted(signal);
   } catch (error) {
+    throwIfAborted(signal);
     if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return [];
     throw error;
   }
 
   const files = [];
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    throwIfAborted(signal);
     const absolutePath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
       if (!ignoredDirectories.has(entry.name)) {
-        files.push(...await walkFiles(absolutePath, ignoredDirectories));
+        files.push(...await walkFiles(absolutePath, ignoredDirectories, signal));
       }
     } else if (entry.isFile()) {
       files.push(absolutePath);
@@ -46,17 +54,23 @@ function relative(rootDir, absolutePath) {
 export async function generateRepositoryInventory({
   rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'),
   ignoredDirectories = DEFAULT_IGNORED_DIRECTORIES,
+  signal,
 } = {}) {
+  throwIfAborted(signal);
   const root = path.resolve(rootDir);
-  const files = await walkFiles(root, ignoredDirectories);
+  const files = await walkFiles(root, ignoredDirectories, signal);
+  throwIfAborted(signal);
   const packageFiles = files.filter((file) => path.basename(file) === 'package.json');
   const packages = [];
 
   for (const manifestPath of packageFiles) {
+    throwIfAborted(signal);
     let manifest;
     try {
-      manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+      manifest = JSON.parse(await readFile(manifestPath, { encoding: 'utf8', signal }));
+      throwIfAborted(signal);
     } catch (error) {
+      throwIfAborted(signal);
       packages.push({
         path: relative(root, manifestPath),
         name: null,
@@ -85,6 +99,7 @@ export async function generateRepositoryInventory({
     });
   }
 
+  throwIfAborted(signal);
   const workflows = files
     .filter((file) => {
       const normalized = relative(root, file);
@@ -96,6 +111,7 @@ export async function generateRepositoryInventory({
       status: 'NOT_EXECUTED',
     }));
 
+  throwIfAborted(signal);
   const repositoryScripts = files
     .filter((file) => {
       const normalized = relative(root, file);
@@ -107,6 +123,7 @@ export async function generateRepositoryInventory({
       status: 'NOT_EXECUTED',
     }));
 
+  throwIfAborted(signal);
   return {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
