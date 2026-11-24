@@ -364,56 +364,43 @@ The package start command launches dist/server/server/launcher.js. Confirm the a
 
 ## NPM commands and scripts
 
-**Checked against the root `package.json` on 24 November 2026.** These are the commands declared by this repository; scripts in `mcp-server/` and `workflows-ryanai/` are separate package scopes.
+**Checked against the root `package.json` on 24 November 2026.** Run root commands from the repository root. The `mcp-server/` and `workflows-ryanai/` directories are separate package scopes.
 
 ### Common NPM commands
 
-| Command | What it does |
+| Command | Purpose |
 | --- | --- |
-| `npm install` or `npm i` | Installs dependencies declared in `package.json` and may update `package-lock.json`. |
-| `npm ci` | Removes the existing root `node_modules` and installs the exact lockfile tree. It fails when the lockfile and manifest disagree. |
+| `npm install` or `npm i` | Installs dependencies from `package.json`; may update `package-lock.json`. |
+| `npm ci` | Clean, reproducible install from `package-lock.json`; fails if the lockfile and manifest disagree. |
 | `npm install <pkg>` | Adds a runtime dependency and updates the manifest and lockfile. |
 | `npm install -D <pkg>` | Adds a development dependency (`--save-dev`). |
 | `npm uninstall <pkg>` | Removes a dependency and updates the manifest and lockfile. |
 | `npm run` | Lists the scripts available in the current package. |
-| `npm run <script>` | Runs a named script, for example `dev`, `build`, `lint`, or `test`. |
-| `npm start` | Runs the package `prestart` hook and then `start`. In this repository, `prestart` builds the server before starting it. |
+| `npm run <script>` | Runs a named script such as `dev`, `dev:api`, `dev:web`, `dev:mcp`, `build`, `lint`, or `test`. |
+| `npm start` | Runs the declared `prestart` hook and then the root `start` script. |
 | `npm test` | Runs the root package test script. |
-| `npm outdated` | Lists installed dependencies for which newer versions are available. |
-| `npm audit` | Checks the dependency tree against npm's known vulnerability advisories. |
-| `npm audit fix` | Applies compatible audit fixes where possible. Review the manifest and lockfile diff and rerun tests before committing. |
+| `npm outdated` | Lists installed dependencies with newer versions available. |
+| `npm audit` | Checks the dependency tree for known npm security advisories. |
+| `npm audit fix` | Applies compatible audit fixes where possible; review the manifest/lockfile diff and rerun tests. |
 | `npm cache verify` | Verifies the local npm cache. |
 | `npm config list` | Displays the active npm configuration. |
 
-For a reproducible root install, use the repository's tested flags and install the two nested packages as well:
+### Root development, build, and validation scripts
 
 ~~~bash
-npm ci --include=dev --legacy-peer-deps
-npm --prefix mcp-server ci --include=dev
-npm --prefix workflows-ryanai ci --include=dev
-~~~
+npm run dev
+npm run dev:api
+npm run dev:web
+npm run dev:mcp
 
-The equivalent root convenience script is `npm run install:all`.
+npm run build
+npm run build:web
+npm run build:server
+npm run db:validate && npm run build:server
 
-### RyanAI development and build scripts
+npm start
+npm run preview
 
-| Purpose | Command | Notes |
-| --- | --- | --- |
-| Start the local development stack | `npm run dev` | Starts API, web, and MCP HTTP development processes concurrently. |
-| API development | `npm run dev:api` | Runs the API watcher. |
-| Web development | `npm run dev:web` | Starts the Vite development server. |
-| MCP development | `npm run dev:mcp` | Starts the nested MCP HTTP package. |
-| Build the web application | `npm run build` | Runs the root build; its `prebuild` hook generates Prisma clients. |
-| Build the web application explicitly | `npm run build:web` | Alias for the client build. |
-| Preview a built web application | `npm run preview` | Runs Vite's preview server; build first. |
-| Validate both Prisma schemas and build the API | `npm run db:validate && npm run build:server` | Schema validation is separate from applying migrations. |
-| Build the API server | `npm run build:server` | Generates required clients through its prebuild hook, compiles the server, and copies runtime assets. |
-| Start the production-style API locally | `npm start` | Runs `prestart` and then `node dist/server/server/launcher.js`. |
-| Run the broad repository gate | `npm run validate` | Includes governance, workflow, type, lint, test, migration-audit, deployment-contract, stack, build, and Comms checks. |
-
-### RyanAI validation and audit scripts
-
-~~~bash
 npm run deploy:validate
 npm run stack:validate
 npm run test:migration:audit
@@ -426,21 +413,34 @@ npm run test:server-assets
 npm run test:quant-engine
 npm run mcp:check
 npm run mcp:health
+npm run validate
 ~~~
 
-Related database inspection and generation commands:
+**Important command corrections:** `npm run preview` is the repository's Vite preview command; `npm preview` is not the declared root command. The current root package does **not** declare `npm start:prod`; use `npm start` for the declared production-style local API start. Always run `npm run` when you need the authoritative list of scripts.
+
+### Database and migration inspection
 
 ~~~bash
-npm run db:validate
 npm run db:generate
 npm run db:migration:audit
 npm run db:status
 npm run db:audiobook:status
+npm run test:migration:audit
 ~~~
 
-`npm run test:migration:audit` tests the migration-audit contracts; `npm run db:migration:audit` runs the migration-readiness audit itself. `npm run test:readiness-audits` and `npm run test:database-config` are valid root scripts.
+Do not use database-changing commands against production. Local migration and reset commands must target a disposable local database or an explicitly approved staging target.
 
-**Command corrections:** use `npm run preview`, not `npm preview`. There is no root `start:prod` script in the current `package.json`; use `npm start` for the declared local API start command. Always run `npm run` from the package directory to see the scripts that package actually provides.
+### Nested package installs
+
+For a reproducible root install plus the two nested packages:
+
+~~~bash
+npm ci --include=dev --legacy-peer-deps
+npm --prefix mcp-server ci --include=dev
+npm --prefix workflows-ryanai ci --include=dev
+~~~
+
+The equivalent convenience script is `npm run install:all`.
 
 ## Environment configuration
 
@@ -738,16 +738,16 @@ This baseline-resolution step is for the fresh disposable Compose database only.
 
 ### Docker Build
 
-Build commands below use the repository root (`.`) as the Docker build context. The root Dockerfile contains separate API, web, migration, and Studio worker targets; its final default target is the API.
+Build from the repository root so Docker can access the root-level application, Prisma, MCP, and workflow files.
 
 ~~~bash
-# Build the default API image.
+# Build the default image from ./Dockerfile.
 docker build .
 
-# Build and tag the default API image.
+# Build and tag a local image.
 docker build -t ryanai-api:local .
 
-# Build selected targets from the root Dockerfile.
+# Build a selected target from the root Dockerfile.
 docker build -f Dockerfile --target api -t ryanai-api:local .
 docker build -f Dockerfile --target web -t ryanai-web:local .
 docker build -f Dockerfile --target migrate -t ryanai-migrate:local .
@@ -757,67 +757,101 @@ docker build -f Dockerfile --target studio-worker -t ryanai-studio-worker:local 
 docker build -f Dockerfile.api -t ryanai-api:local .
 docker build -f Dockerfile.mcp_server -t ryanai-mcp:local .
 
-# Generic examples for another Docker project:
+# Generic production Dockerfile example.
 docker build -f docker/Dockerfile.prod -t myapp:prod .
+
+# Build and push to a registry (requires registry authentication and push permission).
 docker buildx build -t ghcr.io/org/myapp:1.0.0 --push .
 ~~~
 
-The final command publishes an image to a registry and requires the correct registry login and write permission. Building or pushing an image is not the same as deploying or verifying a running service. Keep the RyanAI build context at the repository root because the Dockerfiles copy files from multiple root-level paths.
+A successful image build does not prove that a container is healthy or that a deployment occurred.
 
 ### Docker Compose
 
-The default Compose stack defines local PostgreSQL/pgvector, Redis, API, MCP HTTP server, and web. Optional profiles add the one-shot migration service, Studio worker, and MCPJungle gateway. Compose reads the repository-root `.env` file; copy `.env.example` only for local development and replace its sample values with unique local credentials before startup.
-
-Validate the Compose configuration and start the local database/cache first:
+The default Compose stack provides local PostgreSQL/pgvector, Redis, API, MCP HTTP server, and web. The migration, Studio worker, and MCPJungle services are enabled through profiles.
 
 ~~~bash
-cp .env.example .env
-# Edit .env and set unique local DB_PASSWORD, REDIS_PASSWORD, and JWT_SECRET values.
+# Validate the merged Compose configuration.
 docker compose config --quiet
-docker compose up -d --build postgres redis
+
+# Start the core local stack.
+docker compose up -d --build
+
+# Run the one-shot local Prisma migration service.
+docker compose --profile migrations run --rm migrate
+
+# Start the Studio worker after migrations complete.
+docker compose --profile workers up -d studio-worker
+
+# Start the MCPJungle gateway and private Caddy proxy.
+docker compose --profile mcp-gateway up -d --build
+
+# Inspect containers.
+docker compose ps -a
 ~~~
 
-Apply the one-shot local Prisma migration service explicitly, then start the default application stack:
+For a fresh local Compose database, use the repository's documented baseline-resolution step before the migration runner:
 
 ~~~bash
 docker compose --profile migrations run --rm --entrypoint node migrate \
   node_modules/prisma/build/index.js migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
 docker compose --profile migrations run --rm migrate
-docker compose up -d --build --wait
+~~~
+
+This baseline resolution is for the disposable local Compose database only. Do not point it at Supabase, staging, or production.
+
+### Local container health and logs
+
+~~~bash
 docker compose ps
-~~~
-
-Start optional components only when their prerequisites are ready:
-
-~~~bash
-# Studio worker: only after the local migrations complete.
-docker compose --profile workers up -d studio-worker
-
-# MCPJungle gateway: configure unique MCP_PROXY_DELEGATION_TOKEN
-# and MCPJUNGLE_DB_PASSWORD values in the local .env first.
-docker compose --profile mcp-gateway up -d --build
-~~~
-
-Useful local health checks:
-
-~~~bash
 curl -sS -o /dev/null -w "API /livez -> %{http_code}\n" http://127.0.0.1:3000/livez
 curl -sS -o /dev/null -w "API /readyz -> %{http_code}\n" http://127.0.0.1:3000/readyz
 curl -sS -o /dev/null -w "MCP /health -> %{http_code}\n" http://127.0.0.1:8765/health
 curl -sS -o /dev/null -w "Web /health -> %{http_code}\n" http://127.0.0.1:9090/health
+
 docker compose logs --tail=50 api
 docker compose logs --tail=50 mcp-server
+docker compose --profile workers logs --tail=50 studio-worker
 ~~~
 
-Stop the local stack while preserving its named volumes:
+An HTTP status code is endpoint evidence only; it does not by itself prove every provider, workspace, or end-to-end workflow is operational.
+
+### Redis host-port conflict
+
+Inspect port 6379 before changing services:
+
+~~~bash
+ss -tulpn | grep ':6379' || true
+~~~
+
+If another local process owns the host port, remap only the Compose host port with an override file:
+
+~~~yaml
+services:
+  redis:
+    ports: !reset
+      - "127.0.0.1:16379:6379"
+~~~
+
+Then validate and recreate Redis:
+
+~~~bash
+docker compose config --quiet
+docker compose up -d redis
+~~~
+
+Containers continue to use `redis:6379` internally; host tools use `127.0.0.1:16379`.
+
+### Stop local containers safely
 
 ~~~bash
 docker compose down
 ~~~
 
-Do not use `docker compose down -v` unless you intentionally want to erase the local database/cache volumes and have confirmed that the data is disposable.
+Do **not** use `docker compose down -v` unless the local database/cache volumes are intentionally disposable and you want to delete them.
 
 ### Render and Railway
+
 
 - render.yaml describes Render web/API resources and environment groups. It is a proposal/configuration file; applying a Blueprint sync is a separate infrastructure action.
 - railway.json configures a Docker build using Dockerfile.api, a /health health check, and restart policy.
