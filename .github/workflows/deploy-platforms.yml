@@ -64,8 +64,41 @@ jobs:
           set -euo pipefail
           runs="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${SHA}&per_page=100" --jq '.workflow_runs[] | select(.name=="CI - Build, Test, and Integrate") | [.status,.conclusion,.id] | @tsv')"
           echo "$runs"
-          echo "$runs" | grep -q 
+          echo "$runs" | grep -q $'completed\tsuccess\t' || {
+            echo "::error::No successful CI workflow run exists for the exact deployment SHA."
+            exit 1
+          }
 
+      - name: Require every exact-head CI and security check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          set -euo pipefail
+          required=(
+            "Validate (typecheck, lint, test, build)"
+            "MCP server and workflow worker"
+            "Issue 435 migrations and attachment security"
+            "Test agent API contracts"
+            "Dependency audit"
+            "Trivy filesystem scan"
+            "Analyze (javascript-typescript)"
+            "Analyze (python)"
+            "TruffleHog secret audit"
+            "Codacy Security Scan"
+          )
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs?per_page=100" > check-pages.json
+          jq -s '[.[].check_runs[]]' check-pages.json > checks.json
+          for name in "${required[@]}"; do
+            jq -e --arg name "$name" '
+              [.[] | select(.name == $name)] as $matches
+              | ($matches | length) > 0
+                and all($matches[]; .status == "completed" and .conclusion == "success")
+            ' checks.json >/dev/null || {
+              echo "::error::Required exact-head check is missing, queued, skipped, cancelled, or failed: $name"
+              exit 1
+            }
+          done
   railway:
     name: Railway deploy
     needs: gate
