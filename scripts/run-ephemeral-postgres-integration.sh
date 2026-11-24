@@ -91,8 +91,24 @@ SQL
 log "Generating Prisma client"
 npx prisma generate --schema=prisma/schema.prisma
 
-log "Recording the no-op Prisma marker only after the real Supabase migrations have completed"
-npx prisma migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
+log "Verifying the Supabase runtime bootstrap seeded the Prisma ledger and agent schema"
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+DO $assert$
+BEGIN
+  IF to_regclass('public."_prisma_migrations"') IS NULL
+    OR NOT EXISTS (
+      SELECT 1 FROM public."_prisma_migrations"
+      WHERE migration_name = '20261014000000_supabase_platform_baseline'
+        AND finished_at IS NOT NULL AND rolled_back_at IS NULL
+    ) THEN
+    RAISE EXCEPTION 'Supabase runtime bootstrap did not seed the Prisma baseline marker';
+  END IF;
+  IF to_regclass('public.agent_runs') IS NULL THEN
+    RAISE EXCEPTION 'Supabase runtime bootstrap did not create public.agent_runs';
+  END IF;
+END
+$assert$;
+SQL
 
 log "Applying the committed Prisma application migration chain"
 npx prisma migrate deploy --schema=prisma/schema.prisma
@@ -166,22 +182,7 @@ END
 $drop_external_auth_fks$;
 SQL
 
-log "Excluding separately-owned Supabase tables from the Prisma-only drift comparison"
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-DROP TABLE
-log "Asserting and excluding Supabase-owned public tables from the Prisma-only drift comparison"
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-DO $assert_supabase_owned_tables$
-log "Excluding separately-owned Supabase tables from the Prisma-only drift comparison"
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-DROP TABLE
-log "Asserting and excluding Supabase-owned public tables from the Prisma-only drift comparison"
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-DO $assert_supabase_owned_tables$
-# Supabase SQL migrations own these public tables. Keep their rows, RLS,
-# indexes and constraints intact, but temporarily move them out of public so
-# Prisma's public-schema diff checks only Prisma-owned application models.
-# This relocation is confined to the disposable local Supabase database.
+log "Asserting and moving Supabase-owned public tables out of public for the Prisma-only drift comparison"
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
 DO $assert_supabase_tables$
 DECLARE
@@ -202,37 +203,11 @@ BEGIN
     END IF;
   END LOOP;
 END
-$assert_supabase_owned_tables$;
-
--- These tables are owned by the Supabase migration chain and are intentionally
--- not represented as Prisma models. Remove them only from this disposable local
--- stack after proving the migrations created them. The hosted database and all
--- committed migration definitions remain untouched.
-DROP TABLE
-  public.community_beta_interest,
-  public.community_feedback_submissions,
-  public.phonelink_device_exchanges,
-  public.phonelink_events,
-  public.phonelink_pairings,
-  public.phonelink_devices,
-  public.community_feedback_submissions,
-  public.community_beta_interest,
-  public.ryanai_attachment_scans,
-  public.ryanai_attachment_upload_events
-CASCADE;
-SQL
-
-log "Checking the resulting Prisma-owned public schema contract"
-PUBLIC_SCHEMA_FILE="$(mktemp)"
-sed 's/schemas  = \["public", "auth"\]/schemas  = ["public"]/' \
-  prisma/schema.prisma > "$PUBLIC_SCHEMA_FILE"
-log "Checking the resulting Prisma schema contract"
-      RAISE EXCEPTION 'Expected Supabase-managed table public.% is missing', table_name;
-    END IF;
-  END LOOP;
-END
 $assert_supabase_tables$;
 
+-- Preserve the Supabase-owned tables, rows, RLS, indexes and dependencies.
+-- Move them only inside this disposable local database while Prisma's public
+-- schema is compared; restore them before the remaining integration tests.
 CREATE SCHEMA IF NOT EXISTS ryanai_supabase_managed;
 ALTER TABLE public.community_beta_interest SET SCHEMA ryanai_supabase_managed;
 ALTER TABLE public.community_feedback_submissions SET SCHEMA ryanai_supabase_managed;
@@ -244,6 +219,10 @@ ALTER TABLE public.ryanai_attachment_scans SET SCHEMA ryanai_supabase_managed;
 ALTER TABLE public.ryanai_attachment_upload_events SET SCHEMA ryanai_supabase_managed;
 SQL
 
+log "Checking the resulting Prisma-owned public schema contract"
+PUBLIC_SCHEMA_FILE="$(mktemp)"
+sed 's/schemas  = \["public", "auth"\]/schemas  = ["public"]/' \
+  prisma/schema.prisma > "$PUBLIC_SCHEMA_FILE"
 log "Checking the resulting Prisma-owned public schema contract"
 npx prisma migrate diff \
   --from-url "$DATABASE_URL" \
