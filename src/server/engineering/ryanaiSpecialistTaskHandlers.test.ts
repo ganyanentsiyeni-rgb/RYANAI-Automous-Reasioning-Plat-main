@@ -39,9 +39,14 @@ describe('RyanAI specialist worker handler registration', () => {
     expect(report.kind).toBe('ryanai.ai-inspector.report');
     expect(report.taskId).toBe('test-inspector-run');
     expect(report.report).toContain('# RyanAI Inspector & Audit Report');
+    expect(report.report).toContain('## Cross-module source inspection');
+    expect(report.report).toContain('src/agent');
+    expect(report.inspectionEvidenceFiles).toContain('package.json');
+    expect(report.findings).toBeInstanceOf(Array);
     expect([0, 1]).toContain(report.exitCode);
     expect(report.externalActions).toBe('none');
     expect(report.reportSource).toBe('scripts/ai-inspector-audit.mjs');
+    expect(report.sourceInspectionSource).toBe('src/server/engineering/ryanaiSpecialistTaskHandlers.ts');
   });
 
   it('does not register a handler for an unknown worker profile', () => {
