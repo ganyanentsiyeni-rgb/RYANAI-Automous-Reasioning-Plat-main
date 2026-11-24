@@ -31,6 +31,15 @@ export async function enqueuePACommsTask(input: {
     input.objective.trim(),
   ].join('\n\n');
 
+  const [parent, delegation] = await Promise.all([
+    prisma.agentRun.findFirst({ where: { id: input.parentRunId, userId: input.ownerUserId }, select: { id: true } }),
+    prisma.paDelegation.findFirst({
+      where: { id: input.delegationId, ownerUserId: input.ownerUserId, agentRunId: input.parentRunId, status: 'approved' },
+      select: { id: true },
+    }),
+  ]);
+  if (!parent || !delegation) throw new Error('PA Comms task parent or approved delegation could not be verified for this owner.');
+
   const existing = await prisma.agentRun.findUnique({
     where: { id },
     select: { id: true, userId: true, objective: true, status: true },
