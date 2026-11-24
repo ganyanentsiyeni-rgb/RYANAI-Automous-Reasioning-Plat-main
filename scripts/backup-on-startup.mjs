@@ -16,7 +16,37 @@ const warn = (message) => console.error("[startup-backup] WARNING: " + message);
 
 function pgDump(file) {
   return new Promise((resolve, reject) => {
-    const child = spawn("pg_dump", ["--format=custom", "--no-owner", "--no-acl", "--file", file], { stdio: ["ignore", "ignore", "ignore"], env: { ...process.env, PGDATABASE: process.env.DATABASE_URL } });
+    let database;
+    try {
+      database = new URL(process.env.DATABASE_URL || "");
+      if (!["postgres:", "postgresql:"].includes(database.protocol) || !database.hostname) {
+        throw new Error("Invalid PostgreSQL connection URL");
+      }
+      if (!database.pathname || database.pathname === "/") {
+        throw new Error("PostgreSQL database name is missing");
+      }
+    } catch {
+      reject(new Error("DATABASE_URL must be a valid PostgreSQL connection URL; credentials are not logged."));
+      return;
+    }
+
+    const query = database.searchParams;
+    const env = { ...process.env };
+    env.PGHOST = database.hostname;
+    env.PGPORT = database.port || "5432";
+    env.PGDATABASE = decodeURIComponent(database.pathname.slice(1));
+    env.PGUSER = decodeURIComponent(database.username);
+    if (database.password) env.PGPASSWORD = decodeURIComponent(database.password);
+    if (query.has("sslmode")) env.PGSSLMODE = query.get("sslmode");
+    if (query.has("sslrootcert")) env.PGSSLROOTCERT = query.get("sslrootcert");
+    if (query.has("sslcert")) env.PGSSLCERT = query.get("sslcert");
+    if (query.has("sslkey")) env.PGSSLKEY = query.get("sslkey");
+    if (query.has("application_name")) env.PGAPPNAME = query.get("application_name");
+
+    const child = spawn("pg_dump", ["--format=custom", "--no-owner", "--no-acl", "--file", file], {
+      stdio: ["ignore", "ignore", "ignore"],
+      env,
+    });
     child.once("error", reject);
     child.once("close", (code) => code === 0 ? resolve() : reject(new Error("pg_dump exited with status " + code)));
   });
