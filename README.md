@@ -339,6 +339,24 @@ The root development command starts the API, web client, and MCP HTTP service co
 npm run dev:api
 npm run dev:web
 npm run dev:mcp
+
+ 
+### Run `api` and `web` while `dev:mcp` holds port `3001`
+
+Keep the MCP development server running in its own terminal:
+
+~~~bash
+npm run dev:mcp
+~~~
+
+Open a **second `cmd.exe` window** in the repository directory and run the API and web development servers together:
+
+~~~cmd
+cd /d C:\Users\General\Downloads\RYANAI-Automous-Reasioning-Plat-main-main
+npx concurrently --kill-others --names api,web "npm:dev:api" "npm:dev:web"
+~~~
+
+This starts both package scripts concurrently and stops the other process if either one exits. Keep MCP in the first terminal so the second terminal does not attempt to start another process on port `3001`. If your checkout is in a different folder, adjust the `cd /d` path.
 ~~~
 
 The API development entrypoint is src/server/launcher.ts. The Vite client is served by the web development script. The MCP server has its own package and scripts under mcp-server/.
