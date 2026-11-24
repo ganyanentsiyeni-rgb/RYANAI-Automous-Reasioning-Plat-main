@@ -45,6 +45,44 @@ function isSupabaseDatabaseUrl(value: string): boolean {
   }
 }
 
+function assertDatabaseUrlMatchesSupabaseProject(databaseUrl: string, supabaseUrl: string): void {
+  let database: URL;
+  let project: URL;
+  try {
+    database = new URL(databaseUrl);
+    project = new URL(supabaseUrl);
+  } catch {
+    throw new Error('Invalid Supabase project or DATABASE_URL configuration. Credentials are not logged.');
+  }
+
+  const projectMatch = project.hostname.toLowerCase().match(/^([a-z0-9]{20})\.supabase\.co$/);
+  if (project.protocol !== 'https:' || !projectMatch) {
+    throw new Error('SUPABASE_URL must identify the configured Supabase project. Credentials are not logged.');
+  }
+
+  const projectRef = projectMatch[1];
+  const databaseHost = database.hostname.toLowerCase();
+  if (databaseHost === `db.${projectRef}.supabase.co`) return;
+
+  if (databaseHost.endsWith('.pooler.supabase.com')) {
+    let username = '';
+    try {
+      username = decodeURIComponent(database.username);
+    } catch {
+      throw new Error('DATABASE_URL has an invalid PostgreSQL username encoding. Credentials are not logged.');
+    }
+    const usernameProjectRef = username.split('.').slice(1).join('.').toLowerCase();
+    if (usernameProjectRef === projectRef) return;
+    throw new Error(
+      'DATABASE_URL must use a project-qualified Supabase Session Pooler username matching SUPABASE_URL. Credentials are not logged.',
+    );
+  }
+
+  throw new Error(
+    'DATABASE_URL must target the Supabase project configured by SUPABASE_URL; do not use a separate Render PostgreSQL resource for the RyanAI primary database. Credentials are not logged.',
+  );
+}
+
 /**
  * Resolve required service URLs without silently selecting local services in production.
  * Supabase production URLs are normalized to the explicitly configured Session Pooler
@@ -76,6 +114,9 @@ export function resolveConnectionUrls(
 
   if (strictRuntime && database) {
     parseProductionDatabaseUrl(database);
+    if (supabaseUrl?.trim()) {
+      assertDatabaseUrlMatchesSupabaseProject(database, supabaseUrl);
+    }
   }
 
   if (database && isSupabaseDatabaseUrl(database)) {
