@@ -120,11 +120,12 @@ function findRuleEvidence(spec: AuditSpec, files: Array<{ path: string; content:
   return findings;
 }
 
-async function runStaticInspection(profileId: string, context: StudioWorkerContext) {
+async function runStaticInspection(profileId: string, context: StudioWorkerContext, requiredCapability?: string) {
   const spec = SPECS[profileId];
   if (!spec) throw new Error('No static inspection specification exists for this worker.');
-  if (!context.task.requiredCapabilities.includes(spec.capability)) {
-    throw new Error(profileId + ' requires the explicit ' + spec.capability + ' capability.');
+  const capability = requiredCapability ?? spec.capability;
+  if (!context.task.requiredCapabilities.includes(capability)) {
+    throw new Error(profileId + ' requires the explicit ' + capability + ' capability.');
   }
   const files: Array<{ path: string; content: string }> = [];
   const missing: string[] = [];
@@ -190,7 +191,7 @@ export function registerRyanAISpecialistTaskHandlers(profileId: string) {
   if (profileId === 'coordinator') {
     for (const type of ['planning', 'triage', 'coordination']) add(type, runCoordinator);
   } else if (profileId === 'repository-auditor') {
-    add('documentation-audit', (context) => runStaticInspection('release-readiness', context));
+    add('documentation-audit', (context) => runStaticInspection('release-readiness', context, 'read-repository'));
     add('ai-inspector.audit', runAIInspector);
     add('ai-inspector.report', runAIInspector);
   } else if (SPECS[profileId]) {
