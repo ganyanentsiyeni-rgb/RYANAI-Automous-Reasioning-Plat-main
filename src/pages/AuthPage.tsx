@@ -14,9 +14,18 @@ const OAUTH_PROVIDER_LABELS: Record<OAuthProvider, string> = {
 
 const SUPABASE_CALLBACK_URL = (() => {
   const projectUrl = import.meta.env.VITE_SUPABASE_URL?.trim().replace(/\/+$/, '');
-  return projectUrl
-    ? `${projectUrl}/auth/v1/callback`
-    : 'the callback URL shown in Supabase Dashboard → Authentication → Sign In / Providers';
+  const fallback = 'the callback URL shown in Supabase Dashboard → Authentication → Sign In / Providers';
+  if (!projectUrl || /replace[-_ ]with|placeholder|example/i.test(projectUrl)) return fallback;
+
+  try {
+    const parsed = new URL(projectUrl);
+    if (parsed.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(parsed.hostname)) {
+      return fallback;
+    }
+    return `${parsed.origin}/auth/v1/callback`;
+  } catch {
+    return fallback;
+  }
 })();
 
 function getAuthenticationErrorMessage(cause: unknown, fallback: string): string {
