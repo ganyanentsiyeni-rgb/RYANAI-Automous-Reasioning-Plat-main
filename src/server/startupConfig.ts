@@ -65,7 +65,7 @@ function assertDatabaseUrlMatchesSupabaseProject(databaseUrl: string, supabaseUr
   if (databaseHost === `db.${projectRef}.supabase.co`) return;
 
   if (databaseHost.endsWith('.pooler.supabase.com')) {
-    let username = '';
+    let username: string;
     try {
       username = decodeURIComponent(database.username);
     } catch {
