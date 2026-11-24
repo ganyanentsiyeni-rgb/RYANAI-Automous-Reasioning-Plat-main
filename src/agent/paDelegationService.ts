@@ -271,7 +271,7 @@ export async function approvePADelegation(
   delegationId: string,
   approvedBy: string,
   policyDecisions: Array<{ capability: string; decision: string; ruleId: string }>,
-  afterApproval?: (context: { ownerUserId: string; delegationId: string; runId: string; objective: string }) => Promise<{ commsRunId: string }>,
+  afterApproval?: (context: { ownerUserId: string; delegationId: string; runId: string; objective: string }) => Promise<{ commsRunId: string; commsStatus?: string }>,
 ) {
   const result = await prisma.$transaction(async (tx) => {
     const delegation = await tx.paDelegation.findFirst({
