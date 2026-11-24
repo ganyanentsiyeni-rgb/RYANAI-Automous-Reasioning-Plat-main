@@ -167,8 +167,9 @@ describe('RyanAI native Studio worker runtime', () => {
     await runtime.start();
     const firstStop = runtime.stop();
     const secondStop = runtime.stop();
-    await Promise.resolve();
-    expect(heartbeat.mock.calls.filter((call) => call[1] === 'stopped')).toHaveLength(1);
+    await vi.waitFor(() => {
+      expect(heartbeat.mock.calls.filter((call) => call[1] === 'stopped')).toHaveLength(1);
+    });
 
     finishStopped();
     await Promise.all([firstStop, secondStop]);
@@ -176,11 +177,13 @@ describe('RyanAI native Studio worker runtime', () => {
   });
 
   it('allows shutdown retry when the terminal heartbeat write fails', async () => {
-    const heartbeat = vi.fn()
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce(undefined)
-      .mockRejectedValueOnce(new Error('terminal heartbeat unavailable'))
-      .mockResolvedValueOnce(undefined);
+    let failFirstStoppedHeartbeat = true;
+    const heartbeat = vi.fn(async (_id: string, status: string) => {
+      if (status === 'stopped' && failFirstStoppedHeartbeat) {
+        failFirstStoppedHeartbeat = false;
+        throw new Error('terminal heartbeat unavailable');
+      }
+    });
     const runtime = createRyanAIStudioWorkerRuntime({
       workerProfileId: 'coordinator',
       workerInstanceId: 'studio-worker-stop-retry',
