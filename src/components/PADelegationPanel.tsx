@@ -52,7 +52,7 @@ function displayStatus(delegation: Delegation): string {
   return delegation.status.replaceAll('_', ' ');
 }
 
-export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilot' | 'pa' }) {
+export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilot' | 'pa' | 'shared' }) {
   const [delegations, setDelegations] = useState<Delegation[]>([]);
   const [objective, setObjective] = useState('');
   const [capabilities, setCapabilities] = useState<Capability[]>(['repository.inspect', 'diagnostics.run']);
@@ -61,8 +61,8 @@ export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilo
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const createRequestRef = useRef<{ fingerprint: string; delegationId: string } | null>(null);
-  const canCreate = mode === 'copilot';
-  const canApprove = mode === 'pa';
+  const canCreate = mode === 'copilot' || mode === 'shared';
+  const canApprove = mode === 'pa' || mode === 'shared';
 
   const refresh = useCallback(async () => {
     try {
@@ -145,15 +145,15 @@ export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilo
           <span className="grid h-9 w-9 place-items-center rounded-xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-200"><ArrowRightLeft className="h-4 w-4" /></span>
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-300">Ryan ↔ Alex</p>
-            <h2 id={`pa-handoff-${mode}-title`} className="text-base font-semibold text-white">{canCreate ? 'Hand work to Alex' : 'Alex delegation desk'}</h2>
+            <h2 id={`pa-handoff-${mode}-title`} className="text-base font-semibold text-white">{mode === 'shared' ? 'Shared PA & Copilot delegation desk' : canCreate ? 'Hand work to Alex' : 'Alex delegation desk'}</h2>
           </div>
         </div>
         <button type="button" onClick={() => void refresh()} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white" aria-label="Refresh Alex handoffs"><RefreshCw className="h-4 w-4" /></button>
       </div>
       <p className="mt-3 text-xs leading-5 text-slate-400">
         {canCreate
-          ? 'Ryan can send Alex a scoped reasoning proposal. Alex records the handoff; you approve it before the three-brain reasoning workforce starts.'
-          : 'Review Ryan’s incoming reasoning handoffs and explicitly approve or reject each proposal. The current workforce analyzes the supplied objective with primary, secondary and logic brains; results return through the same handoff record.'}
+          ? 'PA Agent and Darkside Copilot share this same owner-scoped capability surface. They can create and review delegations; Gen-X and the server enforce each capability at execution time.'
+          : 'Review incoming reasoning handoffs and approve or reject each proposal. The same capability set is available in PA Agent, Darkside Copilot and the Admin Console; privileged deployment and outbound communication remain separately gated.'}
       </p>
 
       {canCreate && (
