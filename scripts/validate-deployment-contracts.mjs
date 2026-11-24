@@ -69,6 +69,12 @@ const packageJson = JSON.parse(read('package.json'));
 const vercelConfig = JSON.parse(read('vercel.json'));
 const platformDeployWorkflow = read('.github/workflows/deploy-platforms.yml');
 const envExample = read('.env.example');
+const envExampleVars = Object.fromEntries(
+  envExample.split(/\r?\n/)
+    .map((line) => line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/))
+    .filter(Boolean)
+    .map((match) => [match[1], match[2].trim()]),
+);
 const u2ebEnvExample = read('.env.u2eb.example');
 const u2ebEnvVars = Object.fromEntries(
   u2ebEnvExample.split(/\r?\n/)
@@ -195,7 +201,7 @@ const checks = [
   ['Both API runtime images execute the CA validation wrapper before the server', rootApiStage.includes('exec sh scripts/verify-node-ca.sh') && standaloneApiStage.includes('exec sh scripts/verify-node-ca.sh')],
   ['Supabase Session Pooler uses full TLS and strict certificate acceptance', poolerAdapter.includes("database.searchParams.set('sslmode', 'verify-full')") && poolerAdapter.includes("database.searchParams.set('sslaccept', 'strict')")],
   ['Server build copies and verifies the generated audiobook Prisma runtime client', packageJson.scripts['build:server'] === 'tsc -p tsconfig.server.json && node scripts/copy-server-assets.mjs' && generatedClientCopy.includes("new URL('../src/generated/audiobook-prisma/', import.meta.url)") && generatedClientCopy.includes("new URL('index.js', generatedClientSource)") && generatedClientCopy.includes("new URL('../dist/server/generated/audiobook-prisma/', import.meta.url)") && generatedClientCopy.includes('await access(generatedClientEntry)') && generatedClientCopy.includes('await cp(generatedClientSource, generatedClientDestination') && generatedClientCopy.includes('recursive: true')],
-  ['Example environment defaults keep communications and uploads disabled', envExample.includes('COMMUNICATIONS_ENABLED=false') && envExample.includes('COMMUNICATION_ATTACHMENTS_ENABLED=false') && envExample.includes('ATTACHMENT_SCANNER_ENABLED=false') && envExample.includes('ATTACHMENT_ORPHAN_CLEANUP_ENABLED=false')],
+  ['Base environment example exposes only U2EB routing values and leaves DATABASE_URL blank', Object.keys(envExampleVars).length === 3 && envExampleVars.SUPABASE_URL === 'https://omqavyppdoniehseokvx.supabase.co' && envExampleVars.SUPABASE_SESSION_POOLER_HOST === 'aws-1-eu-central-1.pooler.supabase.com' && envExampleVars.DATABASE_URL === ''],
   ['Communications and attachment switches require exact explicit opt-in', featureFlags.includes("process.env.COMMUNICATIONS_ENABLED === 'true'") && featureFlags.includes("process.env.COMMUNICATION_ATTACHMENTS_ENABLED === 'true'") && featureFlags.includes("process.env.ATTACHMENT_SCANNER_ENABLED === 'true'")],
   ['Comms, Twilio, and Slack plugins fail closed when communications are disabled', commsPlugin.includes('if (!isCommunicationsEnabled())') && twilioWebhook.includes('if (!isCommunicationsEnabled())') && slackInteractions.includes('if (!isCommunicationsEnabled())')],
   ['Comms attachment routes and storage helpers fail closed when uploads are disabled', (commsPlugin.split('areCommunicationAttachmentsEnabled()').length - 1) >= 5 && (commsAttachments.split('areCommunicationAttachmentsEnabled()').length - 1) >= 2],
