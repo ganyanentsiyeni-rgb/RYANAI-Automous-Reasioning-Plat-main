@@ -37,6 +37,7 @@ CMD ["sh", "-c", "exec sh scripts/verify-node-ca.sh node --import tsx/esm src/db
 
 # Build the server and prune development-only dependencies before runtime copy.
 FROM api-deps AS api-builder
+COPY database.yml ./database.yml
 COPY tsconfig*.json ./
 COPY src ./src
 COPY scripts/copy-server-assets.mjs ./scripts/copy-server-assets.mjs
@@ -72,6 +73,7 @@ RUN apk add --no-cache ca-certificates dumb-init libstdc++ libc6-compat postgres
     && mkdir -p /app/logs \
     && chown -R node:node /app
 COPY --from=api-builder --chown=node:node /app/package.json ./package.json
+COPY --from=api-builder --chown=node:node /app/database.yml ./database.yml
 COPY --from=api-builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=api-builder --chown=node:node /app/dist/server ./dist/server
 COPY --from=api-builder --chown=node:node /app/dist/app ./dist/app
