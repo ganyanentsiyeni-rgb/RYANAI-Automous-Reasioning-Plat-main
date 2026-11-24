@@ -100,14 +100,18 @@ async function refreshGitHubToken(config: GitHubAppConfig, refreshToken: string)
   return payload as GitHubTokenResponse;
 }
 
-async function readBoundedGitHubArchive(response: Response, maxBytes: number): Promise<Uint8Array> {
+async function readBoundedGitHubArchive(response: Response, maxBytes: number, signal?: AbortSignal): Promise<Uint8Array> {
   const reader = response.body?.getReader();
   if (!reader) throw new GitHubOAuthError('github_job_log_archive_empty');
   const chunks: Uint8Array[] = [];
   let total = 0;
+  const cancelOnAbort = () => { void reader.cancel(signal?.reason).catch(() => undefined); };
+  signal?.addEventListener('abort', cancelOnAbort, { once: true });
   try {
     while (true) {
+      signal?.throwIfAborted();
       const item = await reader.read();
+      signal?.throwIfAborted();
       if (item.done) break;
       total += item.value.byteLength;
       if (total > maxBytes) {
@@ -117,6 +121,7 @@ async function readBoundedGitHubArchive(response: Response, maxBytes: number): P
       chunks.push(item.value);
     }
   } finally {
+    signal?.removeEventListener('abort', cancelOnAbort);
     reader.releaseLock();
   }
   const result = new Uint8Array(total);
@@ -128,14 +133,20 @@ async function readBoundedGitHubArchive(response: Response, maxBytes: number): P
   return result;
 }
 
-async function githubApi<T>(path: string, accessToken: string): Promise<T> {
+function githubRequestSignal(signal?: AbortSignal): AbortSignal {
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
+async function githubApi<T>(path: string, accessToken: string, signal?: AbortSignal): Promise<T> {
+  signal?.throwIfAborted();
   const response = await fetch('https://api.github.com/' + path.replace(/^\/+/, ''), {
     headers: {
       Accept: 'application/vnd.github+json',
       Authorization: 'Bearer ' + accessToken,
       'X-GitHub-Api-Version': GITHUB_API_VERSION,
     },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: githubRequestSignal(signal),
   });
   if (!response.ok) throw new GitHubOAuthError('github_repository_verification_failed');
   return await response.json() as T;
@@ -300,8 +311,8 @@ export async function inspectConnectedGitHubRepository(
   }
 
   const [account, repository] = await Promise.all([
-    githubApi<GitHubUser>('user', accessToken),
-    githubApi<GitHubRepository>('repos/' + GITHUB_APP_REPOSITORY, accessToken),
+    githubApi<GitHubUser>('user', accessToken, signal),
+    githubApi<GitHubRepository>('repos/' + GITHUB_APP_REPOSITORY, accessToken, signal),
   ]);
   if (
     String(account.id ?? '') !== connection.githubUserId ||
@@ -364,8 +375,10 @@ export async function inspectConnectedGitHubWorkflowEvidence(
   fastify: Pick<FastifyInstance, 'prisma'>,
   userId: string,
   requestedHeadSha: string,
-  options: { includeJobLogs?: boolean } = {},
+  options: { includeJobLogs?: boolean; signal?: AbortSignal } = {},
 ): Promise<ConnectedGitHubWorkflowEvidence> {
+  const signal = options.signal;
+  signal?.throwIfAborted();
   if (!/^[a-f0-9]{40}$/i.test(requestedHeadSha)) {
     throw new GitHubOAuthError('github_workflow_head_sha_invalid');
   }
@@ -392,8 +405,10 @@ export async function inspectConnectedGitHubWorkflowEvidence(
     githubApi<{ sha?: string }>(
       'repos/' + GITHUB_APP_REPOSITORY + '/commits/' + encodeURIComponent(requestedHeadSha),
       accessToken,
+      signal,
     ),
   ]);
+  signal?.throwIfAborted();
   if (
     String(account.id ?? '') !== connection.githubUserId ||
     String(repository.id ?? '') !== connection.repositoryId ||
@@ -420,7 +435,9 @@ export async function inspectConnectedGitHubWorkflowEvidence(
       'repos/' + GITHUB_APP_REPOSITORY + '/actions/runs?head_sha=' +
         encodeURIComponent(requestedHeadSha) + '&per_page=50&page=' + page,
       accessToken,
+      signal,
     );
+    signal?.throwIfAborted();
     const pageRuns = Array.isArray(runPayload.workflow_runs) ? runPayload.workflow_runs : [];
     rawRuns.push(...pageRuns);
     const totalCount = typeof runPayload.total_count === 'number' ? runPayload.total_count : null;
@@ -493,7 +510,7 @@ export async function inspectConnectedGitHubWorkflowEvidence(
                 'X-GitHub-Api-Version': GITHUB_API_VERSION,
               },
               redirect: 'manual',
-              signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+              signal: githubRequestSignal(signal),
             },
           );
           if (![301, 302, 303, 307, 308].includes(logResponse.status)) {
@@ -513,7 +530,7 @@ export async function inspectConnectedGitHubWorkflowEvidence(
           const archiveResponse = await fetch(archiveUrl, {
             method: 'GET',
             redirect: 'manual',
-            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+            signal: githubRequestSignal(signal),
           });
           if (!archiveResponse.ok || archiveResponse.status >= 300) {
             jobLogStatus = 'partial';
@@ -521,12 +538,13 @@ export async function inspectConnectedGitHubWorkflowEvidence(
           }
           const declaredLength = Number(archiveResponse.headers.get('content-length') ?? 0);
           if (declaredLength > 2 * 1024 * 1024) { jobLogStatus = 'partial'; continue; }
-          const archive = await readBoundedGitHubArchive(archiveResponse, 2 * 1024 * 1024);
+          const archive = await readBoundedGitHubArchive(archiveResponse, 2 * 1024 * 1024, signal);
           const excerpts = extractRyanAIGitHubJobLogExcerpts(archive);
           for (const excerpt of excerpts) {
             jobLogExcerpts.push({ runId: run.id, ...excerpt });
           }
-        } catch {
+        } catch (error) {
+          if (signal?.aborted) signal.throwIfAborted();
           jobLogStatus = 'partial';
         }
       }
@@ -535,6 +553,7 @@ export async function inspectConnectedGitHubWorkflowEvidence(
     if (jobLogStatus === 'complete' && attempted === 0) jobLogStatus = 'complete';
   }
 
+  signal?.throwIfAborted();
   return {
     repositoryFullName: GITHUB_APP_REPOSITORY,
     requestedHeadSha: requestedHeadSha.toLowerCase(),
