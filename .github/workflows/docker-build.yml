@@ -194,11 +194,12 @@ jobs:
           EOF
           export RYANAI_MCP_DELEGATION_SECRET=ci_only_mcp_delegation_secret_1234567890_abcdefgh
           export RYANAI_MCP_SERVICE_TOKEN=ci_only_mcp_service_token_1234567890_abcdefgh
-          # The local Compose bootstrap creates the Supabase Auth compatibility schema/table.
-          # The repository's first Prisma migration is a no-op baseline marker for the
-          # Supabase platform schema. Let Prisma migrate deploy record/apply it normally;
-          # do not pre-resolve it, because the disposable database may already contain
-          # the ledger entry from the local Supabase bootstrap.
+          # Compose provisions only the disposable Auth compatibility objects; it does
+          # not run the Supabase migration chain that seeds the Prisma ledger. Record the
+          # no-op baseline explicitly on this fresh CI database before the migration image.
+          # This command is confined to this disposable Compose database.
+          docker compose --profile migrations run --rm --entrypoint node migrate \
+            node_modules/prisma/build/index.js migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
           # Apply the committed Prisma migrations to this disposable Compose Postgres only.
           # The API intentionally refuses startup when required Comms tables are absent.
           docker compose --profile migrations run --rm migrate
