@@ -208,7 +208,7 @@ try {
 
   const dependentTask = created.tasks.find((item) => item.taskType === 'dependency-after-exhaustion');
   assert.ok(dependentTask);
-  assert.deepEqual(dependentTask.dependsOnIds, [exhaustedTask.id]);
+  assert.deepEqual((await taskById(dependentTask.id)).dependsOnIds, [exhaustedTask.id]);
   const blockedByTerminalDependency = await claimStudioTask(
     'studio-ci-dependency-' + suffix,
     ['dependency-after-exhaustion'],
