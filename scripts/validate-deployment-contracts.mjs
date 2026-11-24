@@ -71,7 +71,7 @@ const platformDeployWorkflow = read('.github/workflows/deploy-platforms.yml');
 const envExample = read('.env.example');
 const u2ebEnvExample = read('.env.u2eb.example');
 const u2ebEnvVars = Object.fromEntries(
-  u2ebEnvExample.split(/\\r?\\n/)
+  u2ebEnvExample.split(/\r?\n/)
     .map((line) => line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/))
     .filter(Boolean)
     .map((match) => [match[1], match[2].trim()]),
