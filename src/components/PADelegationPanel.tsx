@@ -27,7 +27,8 @@ const CAPABILITIES: Array<{ id: Capability; label: string }> = [
   { id: 'repository.inspect', label: 'Analyze repository context you supply' },
   { id: 'diagnostics.run', label: 'Analyze diagnostics you supply' },
   { id: 'patch.propose', label: 'Draft a reviewable patch recommendation' },
-  { id: 'evidence.record', label: 'Include evidence in the result' },\n  { id: 'comms.task.create', label: 'Create an internal Comms task' },
+  { id: 'evidence.record', label: 'Include evidence in the result' },
+  { id: 'comms.task.create', label: 'Create an internal Comms task' },
 ];
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
