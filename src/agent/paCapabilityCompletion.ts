@@ -41,7 +41,11 @@ export function assertPACompletionCapabilityReceipts(scopeValue: unknown, receip
     if (capability === 'comms.task.create' && (typeof receipt.childRunId !== 'string' || !receipt.childRunId.startsWith('comms_assist_'))) {
       throw new Error('PA delegation cannot be finalized: comms.task.create has no durable child task reference.');
     }
-    if (capability === 'deployment.execute' && (receipt.status !== 'queued' || receipt.workflowId !== 'deploy-platforms.yml' || receipt.dispatchAccepted !== true || typeof receipt.commitSha !== 'string' || !/^[a-f0-9]{40}$/i.test(receipt.commitSha))) {\n      throw new Error('PA delegation cannot be finalized: deployment.execute lacks an exact-SHA accepted Push Deploy workflow receipt.');\n    }\n    const validStatus = receipt.status === 'passed' || capability === 'deployment.execute' && receipt.status === 'queued';\n    if (!validStatus || !Array.isArray(receipt.evidenceReferences) || receipt.evidenceReferences.length === 0 ||
+    if (capability === 'deployment.execute' && (receipt.status !== 'queued' || receipt.workflowId !== 'deploy-platforms.yml' || receipt.dispatchAccepted !== true || typeof receipt.commitSha !== 'string' || !/^[a-f0-9]{40}$/i.test(receipt.commitSha))) {
+      throw new Error('PA delegation cannot be finalized: deployment.execute lacks an exact-SHA accepted Push Deploy workflow receipt.');
+    }
+    const validStatus = receipt.status === 'passed' || capability === 'deployment.execute' && receipt.status === 'queued';
+    if (!validStatus || !Array.isArray(receipt.evidenceReferences) || receipt.evidenceReferences.length === 0 ||
         receipt.evidenceReferences.some((reference) => typeof reference !== 'string' || !reference.trim())) {
       throw new Error('PA delegation cannot be finalized: ' + capability + ' has no passed, evidence-backed receipt.');
     }
