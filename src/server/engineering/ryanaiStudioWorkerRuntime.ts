@@ -24,7 +24,7 @@ export interface RyanAIStudioWorkerRuntimeOptions {
   heartbeatIntervalMs?: number;
   recoveryIntervalMs?: number;
   leaseSeconds?: number;
-  executeOnce?: (workerInstanceId: string, workerProfileId: string, leaseSeconds: number) => Promise<{ state: string; taskId?: string; error?: string }>;
+  executeOnce?: (workerInstanceId: string, workerProfileId: string, leaseSeconds: number, signal: AbortSignal) => Promise<{ state: string; taskId?: string; error?: string }>;
   heartbeat?: (workerInstanceId: string, status: RyanAIStudioWorkerStatus, metadata: Prisma.InputJsonObject) => Promise<void>;
   recoverExpiredLeases?: () => Promise<{ inspected: number; recovered: number; failed: number }>;
 }
@@ -66,6 +66,7 @@ export function createRyanAIStudioWorkerRuntime(
   const inFlight = new Set<Promise<void>>();
   let startupPromise: Promise<void> | null = null;
   let stopPromise: Promise<void> | null = null;
+  const shutdownController = new AbortController();
   let heartbeatWrite: Promise<void> = Promise.resolve();
 
   const track = (operation: Promise<void>) => {
@@ -97,7 +98,7 @@ export function createRyanAIStudioWorkerRuntime(
   });
 
   const executeOnce = options.executeOnce ?? (async (id, profileId, seconds) => {
-    return runStudioWorkerOnce(id, profileId, seconds);
+    return runStudioWorkerOnce(id, profileId, seconds, undefined, shutdownController.signal);
   });
 
   const recover = options.recoverExpiredLeases ?? recoverExpiredStudioLeases;
@@ -202,6 +203,7 @@ export function createRyanAIStudioWorkerRuntime(
       if (stopPromise) return stopPromise;
       if (!started) return;
       stopping = true;
+      shutdownController.abort(new Error('Studio worker is shutting down.'));
       if (pollTimer) clearTimeout(pollTimer);
       if (heartbeatTimer) clearTimeout(heartbeatTimer);
       if (recoveryTimer) clearTimeout(recoveryTimer);
