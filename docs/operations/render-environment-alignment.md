@@ -10,7 +10,7 @@ This document defines the intended U2EB service topology and the checks required
 |---|---|---|
 | Application API | `ryanai-api-u2eb` | Render Docker web service; `./Dockerfile.api`; listens on configured `PORT`; health path `/health` |
 | Web application | `ryanai-web-u2eb` | Render static site; `npm ci --legacy-peer-deps && npm run build:web`; publishes `./dist`; `VITE_API_BASE_URL` resolves to the API hostname |
-| MCP HTTP server | `ryanai-mcp-u2eb` | Render Docker web service; `mcp-server/Dockerfile`; health path `/health`; binds `0.0.0.0:8765` |
+| MCP HTTP server | `ryanai-mcp-u2eb-u2eb-u2eb` | Render Docker web service; `mcp-server/Dockerfile`; health path `/health`; binds `0.0.0.0:8765` |
 | Redis | `ryanai-redis-u2eb` | Render Key Value; API obtains `REDIS_URL` through a service reference |
 
 The current live MCP resource has the Render-generated name `ryanai-mcp-u2eb-u2eb-u2eb`. Its observed hostname is therefore the deployed alias used by the API's `RYANAI_MCP_HEALTH_URL` and the MCP host allowlist. Do not rename or recreate this resource as part of a Blueprint sync until its resource identity and replacement behavior are confirmed. The Blueprint now uses the observed live resource identity `ryanai-mcp-u2eb-u2eb-u2eb`.
