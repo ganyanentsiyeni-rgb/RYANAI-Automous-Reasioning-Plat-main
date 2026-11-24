@@ -15,7 +15,12 @@ function isLoopbackUrl(value: string | undefined): boolean {
 if (process.env.CI === 'true') {
   process.env.NODE_ENV = 'test';
   if (!isLoopbackUrl(process.env.DATABASE_URL)) {
-    process.env.DATABASE_URL = 'postgresql://127.0.0.1:5432/ryanai_test';
+    const localDatabaseUrl = new URL('http://localhost');
+    localDatabaseUrl.protocol = 'postgresql:';
+    localDatabaseUrl.hostname = '127.0.0.1';
+    localDatabaseUrl.port = '5432';
+    localDatabaseUrl.pathname = '/ryanai_test';
+    process.env.DATABASE_URL = localDatabaseUrl.toString();
   }
   if (!isLoopbackUrl(process.env.REDIS_URL)) {
     process.env.REDIS_URL = 'redis://127.0.0.1:6379';
