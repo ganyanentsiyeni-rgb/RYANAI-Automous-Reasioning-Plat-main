@@ -182,7 +182,7 @@ async function runStaticInspection(profileId: string, context: StudioWorkerConte
   };
 }
 
-async function runRepositoryInventory(context: StudioWorkerContext) {
+export async function runRyanAIRepositoryInventory(context: StudioWorkerContext) {
   context.signal?.throwIfAborted();
   if (!context.task.requiredCapabilities.includes('read-repository')) {
     throw new Error('Repository inventory requires the explicit read-repository capability.');
@@ -349,7 +349,7 @@ export function registerRyanAISpecialistTaskHandlers(profileId: string) {
   if (profileId === 'coordinator') {
     for (const type of ['planning', 'triage']) add(type, runCoordinator);
   } else if (profileId === 'repository-auditor') {
-    for (const type of ['repository-audit', 'inventory']) add(type, runRepositoryInventory);
+    for (const type of ['repository-audit', 'inventory']) add(type, runRyanAIRepositoryInventory);
     for (const type of ['ai-inspector.audit', 'ai-inspector.report']) add(type, runAIInspector);
     add('documentation-audit', (context) => runStaticInspection('release-readiness', context, 'read-repository'));
   } else if (SPECS[profileId]) {
