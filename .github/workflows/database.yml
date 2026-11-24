@@ -361,26 +361,35 @@ jobs:
       - name: Replay the Supabase-owned migration chain from an empty database
         run: supabase db reset --local
 
-      - name: Initialize Prisma ledger for the Supabase platform baseline
-        run: npx prisma migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
-
-      - name: Confirm the Supabase baseline does not fabricate Prisma-owned application tables
+      - name: Verify Supabase runtime bootstrap initialized the Prisma ledger
         run: |
-          node --input-type=module <<'NODE'
-          import assert from 'node:assert/strict';
-          const { Pool } = await import('pg');
-          const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
-          try {
-            const result = await pool.query(
-              "SELECT to_regclass('public.agent_runs') IS NULL AS prisma_table_absent"
-            );
-            assert.equal(result.rows[0]?.prisma_table_absent, true,
-              'agent_runs must be created by the Prisma migration history, not an optional Supabase no-op');
-            console.log('PASS: Supabase baseline and Prisma application schema ownership are distinct.');
-          } finally {
-            await pool.end();
-          }
-          NODE
+          set -euo pipefail
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          DO $assert$
+          BEGIN
+            IF to_regclass('public."_prisma_migrations"') IS NULL THEN
+              RAISE EXCEPTION 'Supabase runtime bootstrap did not create the Prisma migration ledger';
+            END IF;
+            IF NOT EXISTS (
+              SELECT 1 FROM public."_prisma_migrations"
+              WHERE migration_name = '20261014000000_supabase_platform_baseline'
+                AND finished_at IS NOT NULL AND rolled_back_at IS NULL
+            ) THEN
+              RAISE EXCEPTION 'Supabase runtime bootstrap did not seed the Prisma baseline marker';
+            END IF;
+            IF to_regclass('public.agent_runs') IS NULL THEN
+              RAISE EXCEPTION 'Supabase runtime bootstrap did not create public.agent_runs';
+            END IF;
+            IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'agent_runs'
+                AND column_name = 'requested_model'
+            ) THEN
+              RAISE EXCEPTION 'Supabase runtime bootstrap did not create agent_runs.requested_model';
+            END IF;
+          END
+          $assert$;
+          SQL
 
       - name: Apply the Prisma-owned application schema to the same local database
         run: npx prisma migrate deploy --schema=prisma/schema.prisma
@@ -447,8 +456,10 @@ jobs:
               )
                 AND finished_at IS NOT NULL
                 AND rolled_back_at IS NULL
+              ORDER BY migration_name ASC
             `);
-            const applied = new Map(prisma.rows.map((row) => [row.migration_name, row.finished_at]));
+            const applied = new Set(prisma.rows.map((row) => row.migration_name));
+            const appliedOrder = prisma.rows.map((row) => row.migration_name);
             assert.ok(applied.has('20261014000000_supabase_platform_baseline'),
               'The Supabase platform baseline must initialize the Prisma ledger first');
             assert.ok(applied.has('20261015081513_init_reasoning_platform'),
@@ -457,11 +468,14 @@ jobs:
               'The Prisma application migration must create agent_runs');
             assert.ok(applied.has('20261107160000_agent_requested_model'),
               'The Prisma requested-model migration must be recorded as successfully applied');
-            assert.ok(applied.get('20261014000000_supabase_platform_baseline') < applied.get('20261015081513_init_reasoning_platform'),
+            assert.ok(appliedOrder.indexOf('20261014000000_supabase_platform_baseline')
+              < appliedOrder.indexOf('20261015081513_init_reasoning_platform'),
               'The Supabase platform baseline marker must precede Prisma application migrations');
-            assert.ok(applied.get('20261015081513_init_reasoning_platform') < applied.get('20261030120000_agent_operations'),
+            assert.ok(appliedOrder.indexOf('20261015081513_init_reasoning_platform')
+              < appliedOrder.indexOf('20261030120000_agent_operations'),
               'The initial Prisma schema must precede agent operations');
-            assert.ok(applied.get('20261030120000_agent_operations') < applied.get('20261107160000_agent_requested_model'),
+            assert.ok(appliedOrder.indexOf('20261030120000_agent_operations')
+              < appliedOrder.indexOf('20261107160000_agent_requested_model'),
               'The combined Supabase + Prisma install must create agent_runs before requested_model');
 
             const supabase = await pool.query(`
