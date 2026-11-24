@@ -14,10 +14,12 @@ describe('RyanAI CI diagnostics task pipeline', () => {
  });
  it('propagates cancellation instead of recording it as provider-blocked evidence', async () => {
   const controller = new AbortController();
-  controller.abort(new Error('worker shutdown'));
-  const inspect = vi.fn();
-  await expect(createRyanAICiDiagnosticsTaskHandler(inspect)({ task: task(), signal: controller.signal })).rejects.toThrow('worker shutdown');
-  expect(inspect).not.toHaveBeenCalled();
+  const inspect = vi.fn(async () => {
+   controller.abort(new Error('worker shutdown during GitHub request'));
+   throw new Error('worker shutdown during GitHub request');
+  });
+  await expect(createRyanAICiDiagnosticsTaskHandler(inspect)({ task: task(), signal: controller.signal })).rejects.toThrow('worker shutdown during GitHub request');
+  expect(inspect).toHaveBeenCalledOnce();
  });
  it('requests job logs only with explicit capability', async () => { const inspect=vi.fn().mockResolvedValue(evidence()); const handler=createRyanAICiDiagnosticsTaskHandler(inspect); await handler({task:task()}); expect(inspect).toHaveBeenLastCalledWith('persisted-owner',sha,{includeJobLogs:false}); await handler({task:task({requiredCapabilities:['read-workflow-runs','read-job-logs']})}); expect(inspect).toHaveBeenLastCalledWith('persisted-owner',sha,{includeJobLogs:true}); });
  it('fails closed when workflow-read capability is absent', async () => { const inspect=vi.fn(); await expect(createRyanAICiDiagnosticsTaskHandler(inspect)({task:task({requiredCapabilities:[]})})).rejects.toThrow('explicit read-workflow-runs capability'); expect(inspect).not.toHaveBeenCalled(); });
