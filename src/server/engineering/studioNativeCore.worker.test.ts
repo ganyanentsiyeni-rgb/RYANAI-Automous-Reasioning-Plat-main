@@ -224,6 +224,27 @@ describe('Studio worker queue lifecycle', () => {
     }
   });
 
+  it('releases the token-fenced lease when shutdown aborts before handler start', async () => {
+    const handler = vi.fn().mockResolvedValue({ ok: true });
+    const unregister = registerStudioTaskHandler('ci-failure', handler);
+    const controller = new AbortController();
+    controller.abort(new Error('worker shutting down'));
+    try {
+      const result = await runStudioWorkerOnce('worker-1', 'ci-diagnostics', 90, undefined, controller.signal);
+      expect(result).toMatchObject({ state: 'interrupted', taskId: 'task-1' });
+      expect(handler).not.toHaveBeenCalled();
+      expect(mocks.taskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ id: 'task-1', status: 'running', leaseOwner: 'worker-1', leaseToken: 'lease-token-1' }),
+        data: expect.objectContaining({ status: 'queued', leaseOwner: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null }),
+      }));
+      expect(mocks.eventCreate).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ eventType: 'task.execution_interrupted', payload: expect.objectContaining({ reason: 'worker_shutdown_before_handler_start' }) }),
+      }));
+    } finally {
+      unregister();
+    }
+  });
+
   it('runs coordinator tasks through RyanAI-native admission', async () => {
     mocks.queryRawUnsafe.mockResolvedValue([task({
       taskType: 'coordination',
