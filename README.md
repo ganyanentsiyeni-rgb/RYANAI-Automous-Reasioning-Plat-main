@@ -1344,3 +1344,9 @@ CI diagnostics use one shared registration function for `ci-failure`, `test-fail
 ## Backend specialist handler integrity
 
 The specialist handler module is a typed runtime boundary, not merely a roster. AI Inspector audit output is retained for PA even when the audit exits with its documented high-severity finding code; the report is evidence for triage, not a claim that the inspected system passed. Unexpected execution errors, empty reports, oversized reports, missing Gen-X authorization, or lost task leases fail closed. Repository inventory handlers remain owned by the existing worker bootstrap to prevent duplicate task-handler registration.
+
+## AI Inspector ownership and PA reporting
+
+The AI Inspector is a dedicated module agent (`ai-inspector-module-agent`) with the task types `ai-inspector.audit` and `ai-inspector.report`. Its read-only report combines the repository audit script with bounded cross-module source inspection across agent orchestration, server integrations, provider adapters, data/queue contracts, infrastructure descriptors, CI workflows, and release documentation. Findings include severity, rule identifier, and evidence-file references and are returned to PA as durable AgentRun evidence with a digest. Static findings are indicators for human review, not proof of live service health. The Inspector cannot approve, merge, deploy, migrate, change secrets, or send external communications.
+
+Worker processes now fail readiness when any task type declared for their profile lacks a registered handler. This is separate from live readiness: an active worker still needs a fresh authenticated heartbeat and durable task evidence.
