@@ -71,3 +71,12 @@ This patch does **not** trigger production deployment. Production deployment sti
 - Updated the AI Inspector workflow to run the audit with `--write`, creating the report path that the artifact-upload step expects.
 - Added registry and handler-readiness regression tests. These validate registration, not deployed/live heartbeats.
 - No production deployment, database migration, secret change, auto-merge, or external message delivery.
+
+## 8. Backend handler integrity repair
+
+- Repaired the malformed specialist handler module introduced by overlapping edits: removed duplicate/truncated declarations and restored one complete static inspection and AI Inspector execution path.
+- Preserved the dedicated AI Inspector module owner and PA direct inspection capability; specialist worker registration now exposes `ai-inspector.audit` and `ai-inspector.report` without replacing or double-registering repository inventory handlers.
+- Bounded repository evidence traversal by root path, depth, file count, and file size; added cancellation checks and read-only behavior.
+- Preserved high-severity AI Inspector findings for PA with report digest/source/exit-code evidence. Exit code 1 means findings exist; it must not discard the report or falsely claim a clean audit.
+- Added a regression test for PA report delivery, alongside handler registration/routing tests.
+- No deployment, migration, secret changes, paid upgrade, auto-merge, or outbound communications.
