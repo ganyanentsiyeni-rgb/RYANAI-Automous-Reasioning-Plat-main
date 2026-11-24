@@ -29,7 +29,7 @@ VALUES ('30000000-0000-4000-8000-000000000001',
         '10000000-0000-4000-8000-000000000001', 'creator message', now());
 
 -- A user cannot create a room claiming another user's identity.
-DO $
+DO $shared_rooms_rls$
 BEGIN
   BEGIN
     INSERT INTO public.rooms (id, name, created_by, created_at)
@@ -38,7 +38,7 @@ BEGIN
     RAISE EXCEPTION 'authenticated user unexpectedly created room for another user';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
-END $;
+END $shared_rooms_rls$;
 
 -- Member can read room and messages, but cannot add another member.
 SELECT set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000002', true);
