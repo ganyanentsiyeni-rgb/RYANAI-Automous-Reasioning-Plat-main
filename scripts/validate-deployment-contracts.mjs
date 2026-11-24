@@ -105,7 +105,6 @@ const hasVerifiedCaContract = (stage) =>
   && stage.includes('scripts/verify-node-ca.sh')
   && !stage.includes('NODE_TLS_REJECT_UNAUTHORIZED');
 
-
 const vercelServices = vercelConfig.services ?? {};
 const vercelRewrites = vercelConfig.rewrites ?? [];
 const hasVercelServicesContract =
@@ -197,7 +196,7 @@ const checks = [
   ['Render API config audit runs only after the core CI dependencies', ciWorkflow.includes('render-api-config-audit:') && ciWorkflow.includes('needs: [validate, subprojects, integration, issue-435-supabase]') && ciWorkflow.includes("github.event_name == 'push' && github.ref == 'refs/heads/main'")],
   ['Render CI configuration audit is read-only and checks the authorised source without deploying', ciWorkflow.includes('GET only') && ciWorkflow.includes('Report configuration drift without changing the service') && ciWorkflow.includes('https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main') && !ciWorkflow.includes('--request PATCH') && !ciWorkflow.includes('/deploys')],
   ['Render deployment requires explicit enablement and approval', renderDeploy.includes("vars.RENDER_STAGING_DEPLOY_ENABLED == 'true'") && renderDeploy.includes("vars.RENDER_STAGING_ISOLATION_CONFIRMED == 'true'")],
-  ['Render staging deploys only the exact open PR head after CI/security passes', renderDeploy.includes('commits/${TARGET_SHA}/pulls') && renderDeploy.includes('head.sha == $sha') && renderDeploy.includes('check-runs') && renderDeploy.includes('conclusion == "success"') && renderDeploy.includes('inputs.confirmation == \'STAGE\'')],
+  ['Render staging deploys only the exact open PR head after CI/security passes', renderDeploy.includes('commits/${TARGET_SHA}/pulls') && renderDeploy.includes('head.sha == $sha') && renderDeploy.includes('check-runs') && renderDeploy.includes('conclusion == "success"') && renderDeploy.includes("inputs.confirmation == 'STAGE'")],
   ['Render staging deploy refuses production service IDs and verifies staging service identity', renderDeploy.includes('RENDER_STAGING_SERVICE_ID') && renderDeploy.includes('ryanai-staging') && renderDeploy.includes('srv-dbk4giu7bikc7394a4r0')],
   ['Railway uses Dockerfile.api and the live dependency readiness endpoint /readyz', railway.build?.dockerfilePath === 'Dockerfile.api' && railway.deploy?.healthcheckPath === '/readyz'],
   ['Render is the default frontend and API delivery provider', renderWeb?.runtime === 'static' && renderApi?.runtime === 'docker'],
