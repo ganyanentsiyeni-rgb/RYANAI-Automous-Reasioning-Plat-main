@@ -9,6 +9,7 @@ export interface JarvisAgentDefinition {
 }
 
 export const JARVIS_AGENT_REGISTRY: readonly JarvisAgentDefinition[] = Object.freeze([
+  { id: 'jarvis-supervisor', role: 'supervisor', capabilities: ['repository.inspect', 'diagnostics.run', 'patch.propose', 'tests.run', 'evidence.record', 'comms.task.create'], permissions: ['read-only', 'diagnostic', 'code-change'] },
   { id: 'jarvis-supervisor', role: 'supervisor', capabilities: ['repository.inspect', 'diagnostics.run', 'patch.propose', 'tests.run', 'evidence.record', 'comms.task.create', 'deployment.execute'], permissions: ['read-only', 'diagnostic', 'code-change'] },
   { id: 'repository-inspector', role: 'repository', capabilities: ['repository.inspect', 'evidence.record'], permissions: ['read-only'] },
   { id: 'diagnostics-agent', role: 'diagnostics', capabilities: ['diagnostics.run', 'tests.run', 'evidence.record'], permissions: ['read-only', 'diagnostic'] },

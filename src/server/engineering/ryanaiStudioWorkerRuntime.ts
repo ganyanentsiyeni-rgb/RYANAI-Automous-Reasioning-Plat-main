@@ -167,8 +167,6 @@ export function createRyanAIStudioWorkerRuntime(
       lastError = error instanceof Error ? error.message : 'Studio lease recovery failed.';
       // Recovery failures must be visible in the durable worker heartbeat
       // immediately, not only after the next periodic heartbeat interval.
-      // Preserve the original recovery error if the heartbeat store is also
-      // unavailable; the next scheduled heartbeat will retry persistence.
       await persistHeartbeat('degraded').catch(() => undefined);
     } finally {
       if (!stopping) recoveryTimer = setTimeout(() => { track(recoveryLoop()); }, recoveryIntervalMs);
@@ -185,8 +183,6 @@ export function createRyanAIStudioWorkerRuntime(
         try {
           await persistHeartbeat('starting');
           await persistHeartbeat('healthy');
-          // A shutdown signal may arrive while the durable startup heartbeat
-          // is pending. Do not launch loops after shutdown has begun.
           if (stopping) return;
           track(poll());
           track(heartbeatLoop());
@@ -214,11 +210,7 @@ export function createRyanAIStudioWorkerRuntime(
       if (heartbeatTimer) clearTimeout(heartbeatTimer);
       if (recoveryTimer) clearTimeout(recoveryTimer);
       stopPromise = (async () => {
-        // Finish startup before draining loops so a late startup heartbeat
-        // cannot overwrite the terminal stopped state.
         if (startupPromise) await startupPromise.catch(() => undefined);
-        // Drain in-flight poll/heartbeat/recovery operations before publishing
-        // the terminal stopped heartbeat. Loops cannot reschedule once stopping.
         await Promise.allSettled([...inFlight]);
         await persistHeartbeat('stopped');
         started = false;
@@ -226,9 +218,6 @@ export function createRyanAIStudioWorkerRuntime(
       try {
         await stopPromise;
       } catch (error) {
-        // Keep the runtime in its stopping state, but permit a later stop()
-        // call to retry the durable terminal heartbeat after a transient store
-        // failure. Concurrent callers still share the same in-progress drain.
         stopPromise = null;
         throw error;
       }

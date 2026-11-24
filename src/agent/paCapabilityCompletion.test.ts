@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { assertPACompletionCapabilityReceipts, assertPARepositoryInspectionEvidence } from './paCapabilityCompletion.js';
 
 const scope = { paDelegationId: '123e4567-e89b-42d3-a456-426614174000', capabilities: ['repository.inspect', 'evidence.record'] };
+const passed = (capability: 'repository.inspect' | 'evidence.record' | 'comms.task.create') => ({ capability, status: 'passed' as const, evidenceReferences: ['evidence:' + capability], ...(capability === 'comms.task.create' ? { childRunId: 'pa_comms_' + 'a'.repeat(64) } : {}) });
 const passed = (capability: 'repository.inspect' | 'evidence.record' | 'comms.task.create' | 'deployment.execute') => ({ capability, status: 'passed' as const, evidenceReferences: ['evidence:' + capability], ...(capability === 'comms.task.create' ? { childRunId: 'comms_assist_' + 'a'.repeat(64) } : {}) });
 
 describe('PA finalization capability receipts', () => {

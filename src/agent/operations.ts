@@ -18,6 +18,7 @@ import { summarizeProviderError } from './providerErrors.js';
 import { assertBrainProbeResponse, BRAIN_PROBE_CHALLENGE, BRAIN_PROBE_ORDER } from './brainProbe.js';
 import { assertPAExecutionHandlersAvailable, buildAgentRunExecutionPrompt, buildPARepositoryInspectionContext, buildSharedReasoningObjective, planQueuedAgentRun } from './agentRunExecution.js';
 import { inspectConnectedGitHubRepository } from '../server/routes/githubIntegration.js';
+import { enqueuePACommsTask } from '../server/comms/paTask.js';
 import { enqueueCommsAssistRun } from '../server/comms/agentRuns.js';
 import { dispatchConnectedGitHubPushDeploy } from '../server/routes/githubIntegration.js';
 import { evaluateGenXSecurityEvent } from '../security/genxPolicy.js';
@@ -307,6 +308,8 @@ async function processAgentRun(
         throw new Error('PA delegation capability scope changed after approval.');
       }
       await recordRunEvidence({ runId: run.id, eventType: 'pa.execution.scope_revalidated', payload: { delegationId: delegation.id, capabilities: runCapabilities } });
+      // Only repository.inspect has a real handler in this increment; all other capabilities remain fail-closed.
+      assertPAExecutionHandlersAvailable(paScope, ['repository.inspect', 'comms.task.create']);
       assertPAExecutionHandlersAvailable(paScope, ['repository.inspect', 'comms.task.create', 'deployment.execute']);
       if (paScope.capabilities.includes('repository.inspect')) {
         const inspectionPolicy = evaluateGenXSecurityEvent({
@@ -433,6 +436,11 @@ async function processAgentRun(
           throw new Error('Gen-X denied comms.task.create at the worker execution boundary.');
         }
         await assertExecutionLeaseActive();
+        const child = await enqueuePACommsTask({
+          ownerUserId: run.user_id,
+          parentRunId: run.id,
+          delegationId: delegation.id,
+          objective: run.objective,
         const internalObjective = [
           'Internal Comms task created from an approved PA objective.',
           'Analyze and coordinate the objective below. Return an actionable internal Comms plan and release status summary.',

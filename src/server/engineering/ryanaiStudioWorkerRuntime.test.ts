@@ -7,11 +7,6 @@ describe('RyanAI native Studio worker runtime', () => {
     const readiness = getStudioWorkerHandlerReadiness('repository-auditor');
     expect(getStudioWorkerHandlerReadiness('coordinator').ready).toBe(false);
     expect(readiness).toMatchObject({ workerProfileId: 'repository-auditor', ready: false, registeredTaskTypes: [] });
-    expect(readiness).toMatchObject({
-      workerProfileId: 'repository-auditor',
-      ready: false,
-      registeredTaskTypes: [],
-    });
     expect(readiness.missingTaskTypes.length).toBeGreaterThan(0);
   });
 
@@ -19,7 +14,6 @@ describe('RyanAI native Studio worker runtime', () => {
     const unregister = registerStudioTaskHandler('coordination', async () => ({ accepted: true }));
     try {
       expect(getStudioWorkerHandlerReadiness('coordinator')).toMatchObject({
-        workerProfileId: 'coordinator', ready: true, registeredTaskTypes: ['coordination'],
         workerProfileId: 'coordinator',
         ready: true,
         registeredTaskTypes: ['coordination'],
@@ -28,7 +22,6 @@ describe('RyanAI native Studio worker runtime', () => {
       unregister();
     }
   });
-
 
   it('rejects an unregistered worker profile', () => {
     expect(() => createRyanAIStudioWorkerRuntime({
@@ -60,7 +53,12 @@ describe('RyanAI native Studio worker runtime', () => {
       expect.any(String),
       expect.objectContaining({ workerProfileId: 'coordinator' }),
     );
-    expect(executeOnce).toHaveBeenCalledWith('studio-worker-test-1', 'coordinator', 90);
+    expect(executeOnce).toHaveBeenCalledWith(
+      'studio-worker-test-1',
+      'coordinator',
+      90,
+      expect.any(AbortSignal),
+    );
 
     expect(runtime.snapshot()).toMatchObject({
       workerProfileId: 'coordinator',
@@ -114,7 +112,6 @@ describe('RyanAI native Studio worker runtime', () => {
       expect.objectContaining({ runtime: 'ryanai-native-studio-worker' }),
     );
   });
-
 
   it('aborts the execution signal before draining in-flight work', async () => {
     let receivedSignal: AbortSignal | undefined;
