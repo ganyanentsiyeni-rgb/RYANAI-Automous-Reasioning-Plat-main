@@ -74,6 +74,13 @@ const SPECS: Record<string, AuditSpec> = {
   },
 };
 
+const ALLOWED_FILES: Record<string, readonly string[]> = {
+  'security-auditor': SPECS['security-auditor'].files,
+  'runtime-infrastructure': SPECS['runtime-infrastructure'].files,
+  'data-queue': SPECS['data-queue'].files,
+  'provider-verification': SPECS['provider-verification'].files,
+  communications: SPECS.communications.files,
+  'frontend-accessibility': SPECS['frontend-accessibility'].files,
 async function collectAllowedEvidence(relativePath: string, signal?: AbortSignal, depth = 0): Promise<Array<{ path: string; content: string }>> {
   signal?.throwIfAborted();
   const resolved = path.resolve(process.cwd(), relativePath);
@@ -126,6 +133,11 @@ async function runStaticInspection(profileId: string, context: StudioWorkerConte
   const capability = requiredCapability ?? spec.capability;
   if (!context.task.requiredCapabilities.includes(capability)) {
     throw new Error(profileId + ' requires the explicit ' + capability + ' capability.');
+async function runStaticInspection(profileId: string, context: StudioWorkerContext) {
+  const spec = SPECS[profileId];
+  if (!spec) throw new Error('No static inspection specification exists for this worker.');
+  if (!context.task.requiredCapabilities.includes(spec.capability)) {
+    throw new Error(profileId + ' requires the explicit ' + spec.capability + ' capability.');
   }
   const files: Array<{ path: string; content: string }> = [];
   const missing: string[] = [];
@@ -178,6 +190,20 @@ export async function runRyanAIInspectorAudit(input: { taskId: string; signal?: 
     const value = error as { stdout?: unknown; stderr?: unknown; code?: unknown };
     if (typeof value.stdout === 'string' && value.stdout.trim()) {
       return { schemaVersion: 1, kind: 'ryanai.ai-inspector.report', taskId: input.taskId, report: value.stdout, stderr: typeof value.stderr === 'string' ? value.stderr : '', exitCode: typeof value.code === 'number' ? value.code : 1, reportSource: 'scripts/ai-inspector-audit.mjs', persistedBy: 'agent-run-evidence', externalActions: 'none' };
+async function runAIInspector(context: StudioWorkerContext) {
+  if (!context.task.requiredCapabilities.includes('read-repository')) throw new Error('AI Inspector requires the explicit read-repository capability.');
+  context.signal?.throwIfAborted();
+  const script = path.resolve(process.cwd(), 'scripts/ai-inspector-audit.mjs');
+  try {
+    const result = await (execFileAsync as unknown as (file: string, args: string[], options: object) => Promise<{ stdout: string; stderr: string }>)(
+      process.execPath, [script], { cwd: process.cwd(), encoding: 'utf8', maxBuffer: 2 * 1024 * 1024, signal: context.signal },
+    );
+    return { schemaVersion: 1, kind: 'ryanai.ai-inspector.report', taskId: context.task.id, report: result.stdout, stderr: result.stderr, reportSource: 'scripts/ai-inspector-audit.mjs', persistedBy: 'studio-task-output', externalActions: 'none' };
+  } catch (error) {
+    context.signal?.throwIfAborted();
+    const value = error as { stdout?: unknown; stderr?: unknown; code?: unknown; message?: unknown };
+    if (typeof value.stdout === 'string') {
+      return { schemaVersion: 1, kind: 'ryanai.ai-inspector.report', taskId: context.task.id, report: value.stdout, stderr: typeof value.stderr === 'string' ? value.stderr : '', exitCode: typeof value.code === 'number' ? value.code : 1, reportSource: 'scripts/ai-inspector-audit.mjs', persistedBy: 'studio-task-output', externalActions: 'none' };
     }
     throw error;
   }
@@ -199,6 +225,9 @@ export function registerRyanAISpecialistTaskHandlers(profileId: string) {
     add('repository-audit', runAIInspector);
     add('inventory', runAIInspector);
     add('documentation-audit', (context) => runStaticInspection('release-readiness', context, 'read-repository'));
+    for (const type of ['planning', 'triage', 'coordination']) add(type, runCoordinator);
+  } else if (profileId === 'repository-auditor') {
+    add('documentation-audit', (context) => runStaticInspection('release-readiness', context));
     add('ai-inspector.audit', runAIInspector);
     add('ai-inspector.report', runAIInspector);
   } else if (SPECS[profileId]) {
