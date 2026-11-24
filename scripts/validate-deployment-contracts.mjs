@@ -69,6 +69,13 @@ const packageJson = JSON.parse(read('package.json'));
 const vercelConfig = JSON.parse(read('vercel.json'));
 const platformDeployWorkflow = read('.github/workflows/deploy-platforms.yml');
 const envExample = read('.env.example');
+const u2ebEnvExample = read('.env.u2eb.example');
+const u2ebEnvVars = Object.fromEntries(
+  u2ebEnvExample.split(/\\r?\\n/)
+    .map((line) => line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/))
+    .filter(Boolean)
+    .map((match) => [match[1], match[2].trim()]),
+);
 const featureFlags = read('src/server/comms/featureFlags.ts');
 const commsPlugin = read('src/server/comms/index.ts');
 const commsAttachments = read('src/server/comms/attachments.ts');
@@ -224,6 +231,8 @@ checks.push(
   ['U2EB API health observer targets the dedicated MCP health endpoint', envVar(u2ebApi, 'RYANAI_MCP_HEALTH_URL', renderConfig)?.value === 'https://ryanai-mcp-u2eb-u2eb.onrender.com/health'],
   ['U2EB API adopts the existing Docker service and deploys only after CI checks pass', u2ebApi?.runtime === 'docker' && u2ebApi?.dockerfilePath === './Dockerfile.api' && u2ebApi?.healthCheckPath === '/health' && u2ebApi?.autoDeployTrigger === 'checksPass' && u2ebApi?.repo === 'https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main'],
   ['U2EB API receives PostgreSQL and Redis URLs through resource references, not hardcoded credentials', isSyncFalse(u2ebApi, 'DATABASE_URL', renderConfig) && envVar(u2ebApi, 'REDIS_URL', renderConfig)?.fromService?.name === 'ryanai-redis-u2eb' && envVar(u2ebApi, 'REDIS_URL', renderConfig)?.fromService?.property === 'connectionString'],
+  ['U2EB environment overlay matches the verified Supabase project and EU Central Session Pooler', u2ebEnvVars.SUPABASE_URL === 'https://omqavyppdoniehseokvx.supabase.co' && u2ebEnvVars.VITE_SUPABASE_URL === u2ebEnvVars.SUPABASE_URL && u2ebEnvVars.SUPABASE_SESSION_POOLER_HOST === 'aws-1-eu-central-1.pooler.supabase.com' && u2ebEnvVars.DATABASE_URL === '' && u2ebEnvVars.VITE_API_BASE_URL === 'https://ryanai-api-u2eb.onrender.com' && u2ebEnvVars.CORS_ORIGINS === 'https://ryanai-web-u2eb.onrender.com'],
+  ['U2EB environment overlay keeps scheduler, alerts, communications, and attachment automation disabled', ['SCHEDULER_ENABLED', 'ALERTS_ENABLED', 'COMMUNICATIONS_ENABLED', 'COMMUNICATION_ATTACHMENTS_ENABLED', 'ATTACHMENT_SCANNER_ENABLED', 'ATTACHMENT_ORPHAN_CLEANUP_ENABLED'].every((key) => u2ebEnvVars[key] === 'false')],
   ['U2EB API is staging-classified and keeps schedulers, alerts, and outbound communications disabled', envVar(u2ebApi, 'NODE_ENV', renderConfig)?.value === 'staging' && ['SCHEDULER_ENABLED', 'ALERTS_ENABLED', 'COMMUNICATIONS_ENABLED', 'COMMUNICATION_ATTACHMENTS_ENABLED', 'ATTACHMENT_SCANNER_ENABLED', 'ATTACHMENT_ORPHAN_CLEANUP_ENABLED'].every((key) => envVar(u2ebApi, key, renderConfig)?.value === 'false')],
   ['U2EB web uses the existing static site, CI-gated deployment, and dynamic U2EB API hostname', u2ebWeb?.runtime === 'static' && u2ebWeb?.buildCommand === 'npm ci --legacy-peer-deps && npm run build:web' && u2ebWeb?.staticPublishPath === './dist' && u2ebWeb?.autoDeployTrigger === 'checksPass' && envVar(u2ebWeb, 'VITE_API_BASE_URL', renderConfig)?.fromService?.name === 'ryanai-api-u2eb' && envVar(u2ebWeb, 'VITE_API_BASE_URL', renderConfig)?.fromService?.envVarKey === 'RENDER_EXTERNAL_HOSTNAME'],
   ['U2EB web receives the authorised Supabase project URL and requires an explicitly supplied browser key', envVar(u2ebWeb, 'VITE_SUPABASE_URL', renderConfig)?.sync === false && (isSyncFalse(u2ebWeb, 'VITE_SUPABASE_PUBLISHABLE_KEY', renderConfig) || isSyncFalse(u2ebWeb, 'VITE_SUPABASE_ANON_KEY', renderConfig))],
