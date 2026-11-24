@@ -69,12 +69,9 @@ jobs:
       - name: Configure disposable PostgreSQL connection
         run: |
           node <<'NODE' >> "$GITHUB_ENV"
-          const databaseUrl = new URL('http://localhost');
-          databaseUrl.protocol = 'postgresql:';
+          const databaseUrl = new URL('postgresql:' + '//localhost:5432/ryanai_db');
           databaseUrl.username = 'ryanai';
           databaseUrl.hostname = '127.0.0.1';
-          databaseUrl.port = '5432';
-          databaseUrl.pathname = '/ryanai_db';
           process.stdout.write(`DATABASE_URL=${databaseUrl.toString()}\n`);
           NODE
 
