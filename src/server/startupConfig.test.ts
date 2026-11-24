@@ -142,6 +142,21 @@ describe('production and staging connection configuration', () => {
     )).toThrow('SUPABASE_SESSION_POOLER_HOST');
   });
 
+  it('does not route tests to a hosted Supabase URL inherited from dotenv', () => {
+    const result = resolveConnectionUrls(
+      'test',
+      supabaseDatabaseUrl(`db.${supabaseProjectRef}.supabase.co`),
+      'redis://test-cache',
+      supabaseProjectUrl,
+      undefined,
+    );
+
+    expect(result).toEqual({
+      databaseUrl: expectedLocalDatabaseUrl(),
+      redisUrl: 'redis://test-cache',
+    });
+  });
+
   it('retains local defaults outside production', () => {
     expect(resolveConnectionUrls('development')).toEqual({
       databaseUrl: expectedLocalDatabaseUrl(),
