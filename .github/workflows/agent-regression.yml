@@ -75,7 +75,7 @@ jobs:
           databaseUrl.hostname = '127.0.0.1';
           databaseUrl.port = '5432';
           databaseUrl.pathname = '/ryanai_db';
-          process.stdout.write(`DATABASE_URL=${databaseUrl.toString()}\\n`);
+          process.stdout.write(`DATABASE_URL=${databaseUrl.toString()}\n`);
           NODE
 
       - name: Set up Node.js
