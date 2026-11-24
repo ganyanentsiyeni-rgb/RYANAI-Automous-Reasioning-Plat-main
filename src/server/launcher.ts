@@ -92,6 +92,7 @@ const connectionUrls = resolveConnectionUrls(
   process.env.SUPABASE_SESSION_POOLER_HOST,
   process.env.SUPABASE_SSL_ROOT_CERT_PATH,
   process.env.RYANAI_LOCAL_COMPOSE === 'true',
+  process.env.RYANAI_DISPOSABLE_SUPABASE === '1',
 );
 const config = {
   port: parseInt(
