@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   queryRaw: vi.fn(),
   artifactCreate: vi.fn(),
   eventCreate: vi.fn(),
+  artifactFindUnique: vi.fn(),
 }));
 
 vi.mock('../../lib/prisma.js', () => ({
@@ -22,14 +23,15 @@ describe('Studio task artifact lease fencing', () => {
       $queryRaw: mocks.queryRaw,
       studioProject: { findFirst: mocks.projectFindFirst },
       studioTask: { findFirst: mocks.taskFindFirst },
-      studioArtifact: { create: mocks.artifactCreate },
+      studioArtifact: { create: mocks.artifactCreate, findUnique: mocks.artifactFindUnique },
       studioEvent: { create: mocks.eventCreate },
     };
     mocks.transaction.mockImplementation(async (callback: (tx: typeof tx) => unknown) => callback(tx));
     mocks.projectFindFirst.mockResolvedValue({ id: 'project-1' });
     mocks.taskFindFirst.mockResolvedValue({ id: 'task-1' });
     mocks.queryRaw.mockResolvedValue([{ id: 'task-1' }]);
-    mocks.artifactCreate.mockResolvedValue({ id: 'artifact-1', kind: 'report', sha256: 'a'.repeat(64) });
+    mocks.artifactCreate.mockResolvedValue({ id: 'artifact-1', projectId: 'project-1', taskId: 'task-1', ownerUserId: 'owner-1', title: 'CI evidence report', kind: 'report', storageProvider: 'supabase', storageKey: 'private/owner-1/report.json', mimeType: null, byteSize: null, sha256: null });
+    mocks.artifactFindUnique.mockResolvedValue(null);
     mocks.eventCreate.mockResolvedValue({});
   });
 
@@ -41,6 +43,7 @@ describe('Studio task artifact lease fencing', () => {
     kind: 'report',
     storageProvider: 'supabase',
     storageKey: 'private/owner-1/report.json',
+    idempotencyKey: 'studio-task:task-1:report:v1',
     leaseFence: { workerId: 'worker-1', claimToken: '11111111-1111-4111-8111-111111111111' },
   };
 
@@ -58,6 +61,24 @@ describe('Studio task artifact lease fencing', () => {
     void leaseFence;
     await expect(createStudioArtifact(withoutLease)).rejects.toThrow(
       'Task-bound artifact registration requires the active worker lease.',
+    );
+    expect(mocks.artifactCreate).not.toHaveBeenCalled();
+    expect(mocks.eventCreate).not.toHaveBeenCalled();
+  });
+
+  it('returns an identical previously registered artifact without duplicating its event', async () => {
+    const existing = { id: 'artifact-existing', projectId: 'project-1', taskId: 'task-1', ownerUserId: 'owner-1', title: 'CI evidence report', kind: 'report', storageProvider: 'supabase', storageKey: 'private/owner-1/report.json', mimeType: null, byteSize: null, sha256: null };
+    mocks.artifactFindUnique.mockResolvedValue(existing);
+    const result = await createStudioArtifact(baseInput);
+    expect(result).toEqual(existing);
+    expect(mocks.artifactCreate).not.toHaveBeenCalled();
+    expect(mocks.eventCreate).not.toHaveBeenCalled();
+  });
+
+  it('rejects reuse of an idempotency key for different content', async () => {
+    mocks.artifactFindUnique.mockResolvedValue({ ...baseInput, id: 'artifact-existing', storageKey: 'other/key' });
+    await expect(createStudioArtifact(baseInput)).rejects.toThrow(
+      'Studio artifact idempotency key was reused with different artifact content or scope.',
     );
     expect(mocks.artifactCreate).not.toHaveBeenCalled();
     expect(mocks.eventCreate).not.toHaveBeenCalled();

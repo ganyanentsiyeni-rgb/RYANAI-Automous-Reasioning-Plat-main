@@ -1,7 +1,7 @@
 import { prisma } from '../../lib/prisma.js';
 import { createRyanAIStudioWorkerRuntime } from './ryanaiStudioWorkerRuntime.js';
 import { createStudioArtifact, registerStudioTaskHandler } from './studioNativeCore.js';
-import { removeStoredStudioArtifact, storeStudioArtifact } from './studioArtifactStorage.js';
+import { storeStudioArtifact } from './studioArtifactStorage.js';
 
 const workerProfileId = 'coordinator';
 const workerInstanceId = process.env.RYANAI_STUDIO_WORKER_ID?.trim() || undefined;
@@ -21,7 +21,8 @@ const unregister = registerStudioTaskHandler('coordination', async ({ task, work
     taskId: task.id,
     title: task.title,
     objective: task.objective,
-    generatedAt: new Date().toISOString(),
+    // Keep the plan payload stable across retries so its digest and object key
+    // remain stable for the same task.
     executionMode: 'ryanai-native-deterministic-planning-worker',
     steps: [
       { order: 1, action: 'Clarify scope and constraints', detail: 'Extract required outcome, constraints and unresolved assumptions from the task objective.' },
@@ -39,33 +40,25 @@ const unregister = registerStudioTaskHandler('coordination', async ({ task, work
     filename: 'studio-plan.json',
     bytes,
     mimeType: 'application/json',
+    idempotencyKey: 'studio-task:' + task.id + ':coordination-plan:v1',
   });
 
-  try {
-    const artifact = await createStudioArtifact({
-      projectId: task.projectId,
-      taskId: task.id,
-      ownerUserId: task.ownerUserId,
-      title: task.title + ' — execution plan',
-      kind: 'plan',
-      storageProvider: 'supabase-storage',
-      storageKey: stored.storageKey,
-      mimeType: stored.mimeType,
-      byteSize: BigInt(stored.byteSize),
-      sha256: stored.sha256,
-      provenance: { workerId, handler: 'coordination', schemaVersion: 1 },
-      leaseFence: { workerId, claimToken },
-    });
-    return { artifactId: artifact.id, sha256: stored.sha256, byteSize: stored.byteSize, state: 'plan_artifact_created' };
-  } catch (error) {
-    await removeStoredStudioArtifact(stored.storageKey).catch((cleanupError) => {
-      log('artifact-orphan-cleanup-failed', {
-        taskId: task.id,
-        error: errorMessage(cleanupError),
-      });
-    });
-    throw error;
-  }
+  const artifact = await createStudioArtifact({
+    projectId: task.projectId,
+    taskId: task.id,
+    ownerUserId: task.ownerUserId,
+    title: task.title + ' — execution plan',
+    kind: 'plan',
+    storageProvider: 'supabase-storage',
+    storageKey: stored.storageKey,
+    mimeType: stored.mimeType,
+    byteSize: BigInt(stored.byteSize),
+    sha256: stored.sha256,
+    idempotencyKey: 'studio-task:' + task.id + ':coordination-plan:v1',
+    provenance: { workerId, handler: 'coordination', schemaVersion: 1 },
+    leaseFence: { workerId, claimToken },
+  });
+  return { artifactId: artifact.id, sha256: stored.sha256, byteSize: stored.byteSize, state: 'plan_artifact_created' };
 });
 
 const runtime = createRyanAIStudioWorkerRuntime({

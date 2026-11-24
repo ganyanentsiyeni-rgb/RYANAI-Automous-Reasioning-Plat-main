@@ -34,6 +34,7 @@ export async function storeStudioArtifact(input: {
   filename: string;
   bytes: Uint8Array;
   mimeType: string;
+  idempotencyKey?: string;
 }): Promise<StoredStudioArtifact> {
   if (!input.ownerUserId || !input.projectId || !input.taskId) throw new Error('Owner, project and task scope are required.');
   if (!(input.bytes instanceof Uint8Array) || input.bytes.byteLength === 0 || input.bytes.byteLength > MAX_ARTIFACT_BYTES) {
@@ -43,12 +44,23 @@ export async function storeStudioArtifact(input: {
     throw new Error('Studio artifact MIME type is not permitted by the native worker.');
   }
   const safeName = input.filename.replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 100) || 'artifact.json';
-  const storageKey = [input.ownerUserId, input.projectId, input.taskId, randomUUID() + '-' + safeName].join('/');
   const sha256 = createHash('sha256').update(input.bytes).digest('hex');
+  const idempotencyDigest = input.idempotencyKey
+    ? createHash('sha256').update(input.idempotencyKey).digest('hex')
+    : randomUUID();
+  const storageKey = [
+    input.ownerUserId,
+    input.projectId,
+    input.taskId,
+    idempotencyDigest,
+    sha256 + '-' + safeName,
+  ].join('/');
   const { error } = await storage().storage.from(STUDIO_ARTIFACT_BUCKET).upload(storageKey, Buffer.from(input.bytes), {
     contentType: input.mimeType,
     cacheControl: '0',
-    upsert: false,
+    // The content digest is part of the deterministic path, so retries can
+    // safely reuse the exact same object without overwriting different bytes.
+    upsert: Boolean(input.idempotencyKey),
   });
   if (error) throw new Error('Studio artifact upload failed: ' + error.message);
   return { storageKey, sha256, byteSize: input.bytes.byteLength, mimeType: input.mimeType };

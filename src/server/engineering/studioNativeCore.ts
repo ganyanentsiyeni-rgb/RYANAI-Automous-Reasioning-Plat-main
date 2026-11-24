@@ -549,10 +549,14 @@ export async function executeStudioToolCapability(request: StudioToolExecutionRe
 export async function createStudioArtifact(input: {
   projectId: string; taskId?: string; ownerUserId: string; title: string; kind: string;
   storageProvider: string; storageKey: string; mimeType?: string; byteSize?: bigint; sha256?: string;
+  idempotencyKey?: string;
   provenance?: Prisma.InputJsonValue; leaseFence?: { workerId: string; claimToken: string };
 }) {
   const project = await prisma.studioProject.findFirst({ where: { id: input.projectId, ownerUserId: input.ownerUserId }, select: { id: true } });
   if (!project) throw new Error('Studio project not found for this owner.');
+  if (input.idempotencyKey && (input.idempotencyKey.length > 240 || !input.idempotencyKey.trim())) {
+    throw new Error('Studio artifact idempotency key must be non-empty and at most 240 characters.');
+  }
   if (input.leaseFence && !input.taskId) throw new Error('A fenced artifact must be associated with its Studio task.');
   if (input.taskId && !input.leaseFence) {
     throw new Error('Task-bound artifact registration requires the active worker lease.');
@@ -573,10 +577,27 @@ export async function createStudioArtifact(input: {
       const task = await tx.studioTask.findFirst({ where: { id: input.taskId, projectId: input.projectId, ownerUserId: input.ownerUserId }, select: { id: true } });
       if (!task) throw new Error('Studio task not found for this owner and project.');
     }
+    if (input.idempotencyKey) {
+      const existing = await tx.studioArtifact.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
+      if (existing) {
+        const sameArtifact = existing.projectId === input.projectId
+          && existing.taskId === input.taskId
+          && existing.ownerUserId === input.ownerUserId
+          && existing.title === input.title
+          && existing.kind === input.kind
+          && existing.storageProvider === input.storageProvider
+          && existing.storageKey === input.storageKey
+          && existing.mimeType === (input.mimeType ?? null)
+          && existing.byteSize === (input.byteSize ?? null)
+          && existing.sha256 === (input.sha256 ?? null);
+        if (!sameArtifact) throw new Error('Studio artifact idempotency key was reused with different artifact content or scope.');
+        return existing;
+      }
+    }
     const artifact = await tx.studioArtifact.create({ data: {
       projectId: input.projectId, taskId: input.taskId, ownerUserId: input.ownerUserId,
       title: input.title, kind: input.kind, storageProvider: input.storageProvider, storageKey: input.storageKey,
-      mimeType: input.mimeType, byteSize: input.byteSize, sha256: input.sha256, provenance: input.provenance ?? {},
+      idempotencyKey: input.idempotencyKey, mimeType: input.mimeType, byteSize: input.byteSize, sha256: input.sha256, provenance: input.provenance ?? {},
     } });
     await tx.studioEvent.create({ data: {
       projectId: input.projectId, taskId: input.taskId, ownerUserId: input.ownerUserId,
