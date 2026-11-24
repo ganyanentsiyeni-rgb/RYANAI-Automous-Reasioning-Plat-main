@@ -134,7 +134,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - name: Trigger Render deploy for exact SHA
+      - name: Deploy and verify every Render service at the exact SHA
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_IDS: ${{ vars.RENDER_SERVICE_IDS }}
@@ -145,17 +145,38 @@ jobs:
           [[ -n "${RENDER_SERVICE_IDS:-}" ]] || { echo "::error::RENDER_SERVICE_IDS is not configured"; exit 1; }
 
           IFS=',' read -ra services <<< "$RENDER_SERVICE_IDS"
+          deployed=0
           for service_id in "${services[@]}"; do
-            service_id="$(echo "$service_id" | xargs)"
+            service_id="$(echo "$service_id" | xargs)
             [[ -n "$service_id" ]] || continue
             echo "Triggering Render service $service_id at $DEPLOY_SHA"
-            curl --fail-with-body --silent --show-error \
+            response="$(curl --fail-with-body --silent --show-error \
               --request POST \
               --url "https://api.render.com/v1/services/${service_id}/deploys" \
               --header "Authorization: Bearer ${RENDER_API_KEY}" \
               --header "Content-Type: application/json" \
-              --data "$(jq -n --arg commitId "$DEPLOY_SHA" --arg deployMode "build_and_deploy" '{commitId:$commitId,deployMode:$deployMode}')" 
+              --data "$(jq -n --arg commitId "$DEPLOY_SHA" --arg deployMode "build_and_deploy" '{commitId:$commitId,deployMode:$deployMode}')")"
+            deploy_id="$(jq -er '.id' <<< "$response")"
+            status=""
+            for attempt in $(seq 1 40); do
+              final="$(curl --fail-with-body --silent --show-error \
+                --url "https://api.render.com/v1/services/${service_id}/deploys/${deploy_id}" \
+                --header "Authorization: Bearer ${RENDER_API_KEY}" \
+                --header "accept: application/json")"
+              status="$(jq -r '.status // empty' <<< "$final")"
+              deployed_sha="$(jq -r '.commit.id // .commitId // empty' <<< "$final")"
+              [[ -z "$deployed_sha" || "$deployed_sha" == "$DEPLOY_SHA" ]] || { echo "::error::Render service $service_id deployed unexpected SHA $deployed_sha"; exit 1; }
+              case "$status" in
+                build_failed|update_failed|canceled) echo "::error::Render deployment $deploy_id ended with $status"; exit 1 ;;
+                live) break ;;
+              esac
+              sleep 15
+            done
+            [[ "$status" == "live" ]] || { echo "::error::Render deployment $deploy_id did not become live"; exit 1; }
+            echo "Render service $service_id is live at $DEPLOY_SHA (deployment $deploy_id)"
+            deployed=$((deployed + 1))
           done
+          [[ "$deployed" -gt 0 ]] || { echo "::error::No Render services were deployed"; exit 1; }
 
   vercel:
     name: Vercel deploy
