@@ -143,3 +143,37 @@ Settings → Preferences persists a validated, account-scoped music preference o
 These are discovery and preference foundations only. VLC Android app control requires a native/mobile bridge or an explicitly supported Android intent contract; embedded playback requires a reviewed media adapter/player and owner-scoped media access. Spotify and YouTube Music require their own provider authorization and playback terms review. Until those adapters are implemented and tested, the catalogue must continue to report them as adapter-required; selecting a preference does not claim a provider is connected or playing.
 
 No credentials, OAuth tokens, provider scopes, production database schema, migrations, deployments or infrastructure settings are changed by these additions.
+
+
+## Integration ecosystem expansion — 24 November 2026
+
+The catalogue now includes discovery entries inspired by the growing agent-plugin ecosystem: Grafana Cloud, Better Stack, Arize AX, incident.io, Cloudflare, SonarQube, Tavily, ClickUp and DocuSign.
+
+These entries are **catalogue metadata only**. They do not imply an installed plugin, provider account, OAuth grant, live health probe, executable adapter, or production connection. Each remains `adapter_required` until its provider-specific implementation passes review and tests.
+
+### Capability and approval boundaries
+
+- Observability integrations begin with read-only metrics, logs, traces, evaluations and incident discovery. Workspace and personal-data classifications remain explicit.
+- Cloudflare deployment mutations require a separately approved human action; this catalogue does not grant deployment permissions.
+- Incident updates and escalations require human approval. Incident discovery remains read-only.
+- SonarQube exposes analysis and quality-gate discovery only; it does not change branch protection or CI policy.
+- Tavily is a research connector. Fetch/search inputs remain untrusted and require bounded URL, redirect, response-size and SSRF controls in any future adapter.
+- ClickUp task writes require human approval.
+- DocuSign envelope sending and signing are outbound/high-impact actions and require explicit human approval bound to the exact document and recipient payload.
+
+The Antigravity Marketplace is a discovery and distribution surface, not a runtime authorization model for RyanAI. RyanAI keeps its own server-side manifest, connection ownership, OAuth scope review, Gen-X authorization, adapter health evidence and execution-time approval. No provider may self-register executable code or inherit permissions from a catalogue entry.
+
+### Required adapter completion sequence
+
+For each provider, complete the following in a separate, provider-scoped change:
+
+1. Verify official provider API documentation, supported OAuth/app installation model, terms, data retention and webhook verification requirements.
+2. Define exact read/write scopes and a server-side connection lifecycle; do not request write scopes for read-only use cases.
+3. Implement a typed adapter with bounded timeouts, response-size limits, pagination limits, retry/backoff policy, idempotency where mutations exist, and safe error normalization.
+4. Resolve credentials only from the server-side encrypted connection vault. Never accept credentials in tool input, user metadata or browser storage.
+5. Bind every request to the verified owner/workspace and re-evaluate Gen-X at invocation time. Default-deny on missing identity, policy, connection, adapter or health evidence.
+6. Add mocked provider contract tests, auth-negative and cross-owner tests, scope/revocation tests, rate-limit and timeout tests, audit assertions, and failure/recovery tests.
+7. Keep outbound, destructive, infrastructure, signature and communication actions disabled until the exact action receives required human approval.
+8. Require exact-head CI/security evidence and human review. No auto-merge, deployment, production migration, secret modification or paid resource provisioning is implied.
+
+The current implementation does not add OAuth clients, provider secrets, adapters, database schema, migrations, deployment configuration or runtime connections for these nine entries.
