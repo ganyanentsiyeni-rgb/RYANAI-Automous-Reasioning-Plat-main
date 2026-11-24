@@ -11,6 +11,8 @@ type Delegation = {
   requestedCapabilities: string[];
   createdAt: string;
   receipt?: { status: string; result?: unknown; error?: string | null } | null;
+  commsRunId?: string | null;
+  commsRun?: { id: string; status: string; approvalStatus: string; attempts: number; result?: unknown; error?: string | null; completedAt?: string | null } | null;
   agentRun?: {
     id: string;
     status: string;
@@ -127,8 +129,8 @@ export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilo
         body: '{}',
       });
       setNotice(decision === 'approve'
-        ? 'Approved by you. Gen-X policy evidence is recorded and the three-brain reasoning task has been queued.'
-        : 'Delegation rejected. No reasoning work was queued.');
+        ? 'Approved. The PA reasoning task and its new internal Comms task are queued. External messages and provider dispatch remain disabled.'
+        : 'Delegation rejected. No reasoning or Comms work was queued.');
       await refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'The delegation decision could not be saved.');
@@ -212,6 +214,17 @@ export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilo
                   </div>
                 )}
                 {synthesis && <div className="mt-3 rounded-lg border border-emerald-300/10 bg-emerald-300/[0.04] p-3"><p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-200"><CheckCircle2 className="h-3.5 w-3.5" /> Workforce response · {((delegation.agentRun?.result as { verification?: { verified?: boolean } } | null)?.verification?.verified === true) ? 'three-brain complete' : 'verification not complete'}</p><p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-slate-300">{synthesis}</p></div>}
+                {delegation.commsRun && (
+                  <div className="mt-3 rounded-lg border border-cyan-300/15 bg-cyan-300/[0.04] p-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-200">Internal Comms task</p>
+                    <p className="mt-1 text-xs text-slate-300">Status: {delegation.commsRun.status} · Attempts: {delegation.commsRun.attempts}</p>
+                    <p className="mt-1 break-all text-[10px] text-slate-500">Task ID: {delegation.commsRun.id}</p>
+                    {delegation.commsRun.error && <p className="mt-2 text-xs text-rose-200">{delegation.commsRun.error}</p>}
+                    {typeof (delegation.commsRun.result as { synthesis?: unknown } | null)?.synthesis === 'string' && (
+                      <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-slate-300">{(delegation.commsRun.result as { synthesis: string }).synthesis}</p>
+                    )}
+                  </div>
+                )}
                 {delegation.agentRun?.error && <p className="mt-2 text-xs text-rose-200">{delegation.agentRun.error}</p>}
                 {delegation.receipt?.error && <p className="mt-2 text-xs text-rose-200">{delegation.receipt.error}</p>}
                 <p className="mt-2 flex items-center gap-1 text-[10px] text-slate-500"><Clock3 className="h-3 w-3" /> Attempts: {delegation.agentRun?.attempts ?? 0} · Receipt: {delegation.receipt?.status ?? 'not yet issued'}</p>
