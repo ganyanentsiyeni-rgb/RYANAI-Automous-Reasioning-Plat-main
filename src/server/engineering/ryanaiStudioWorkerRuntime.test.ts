@@ -11,15 +11,17 @@ describe('RyanAI native Studio worker runtime', () => {
   });
 
   it('reports a profile ready only after a matching handler is registered', () => {
-    const unregister = registerStudioTaskHandler('coordination', async () => ({ accepted: true }));
+    // Readiness requires every task type in the profile, so register the full coordinator set.
+    const coordinatorTaskTypes = ['planning', 'triage', 'coordination'];
+    const unregister = coordinatorTaskTypes.map((taskType) => registerStudioTaskHandler(taskType, async () => ({ accepted: true })));
     try {
       expect(getStudioWorkerHandlerReadiness('coordinator')).toMatchObject({
         workerProfileId: 'coordinator',
         ready: true,
-        registeredTaskTypes: ['coordination'],
+        registeredTaskTypes: coordinatorTaskTypes,
       });
     } finally {
-      unregister();
+      unregister.forEach((release) => release());
     }
   });
 
