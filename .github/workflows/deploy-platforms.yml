@@ -56,7 +56,7 @@ jobs:
           set -euo pipefail
           sha="$INPUT_SHA"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Invalid deployment SHA"; exit 1; }
-          printf 'sha=%s\\n' "$sha" >> "$GITHUB_OUTPUT"
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
 
       - name: Require the exact current main commit
         env:
@@ -264,7 +264,7 @@ jobs:
                 }
               status="$(jq -r '.status // empty' <<< "$final")"
               deployed_sha="$(jq -r '.commit.id // .commitId // empty' <<< "$final")"
-              if [[ -n "$deployed_sha" && "$deployed_sha" != "$DEPLOY_SHA" ]]; then
+              if [[ "$deployed_sha" != "$DEPLOY_SHA" ]]; then
                 status="unexpected_sha"
                 break
               fi
@@ -292,7 +292,6 @@ jobs:
     if: ${{ always() && needs.gate.result == 'success' }}
     runs-on: ubuntu-latest
     environment: production
-    timeout-minutes: 30
     timeout-minutes: 35
     steps:
       - name: Check out exact reviewed SHA
