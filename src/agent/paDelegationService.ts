@@ -225,6 +225,14 @@ export async function linkPACommsRun(ownerUserId: string, delegationId: string, 
       data: { commsRunId },
     });
     if (linked.count !== 1) throw new Error('PA-to-Comms task link changed concurrently; retry the same delegation.');
+    const activated = await tx.agentRun.updateMany({
+      where: { id: delegation.agentRunId, userId: ownerUserId, status: 'queued', approvalStatus: 'pending' },
+      data: { approvalStatus: 'approved', approvedBy: ownerUserId, approvedAt: new Date() },
+    });
+    if (activated.count !== 1) {
+      const parent = await tx.agentRun.findFirst({ where: { id: delegation.agentRunId, userId: ownerUserId }, select: { approvalStatus: true } });
+      if (parent?.approvalStatus !== 'approved') throw new Error('PA task could not be activated after its internal Comms task was linked.');
+    }
     await appendRunEvidence(tx, {
       runId: delegation.agentRunId,
       eventType: 'pa.comms_task.queued',
@@ -275,7 +283,7 @@ export async function approvePADelegation(
     }
     const approvalUpdate = await tx.agentRun.updateMany({
       where: { id: run.id, approvalStatus: 'pending', status: 'queued' },
-      data: { approvalStatus: 'approved', approvedBy, approvedAt: new Date(), status: 'queued' },
+      data: { approvedBy, approvedAt: new Date(), status: 'queued' },
     });
     if (approvalUpdate.count !== 1) {
       const latestRun = await tx.agentRun.findUnique({
