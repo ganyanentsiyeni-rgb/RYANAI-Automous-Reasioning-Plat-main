@@ -23,7 +23,12 @@ const KNOWN_CAPABILITIES = new Set<JarvisCapability>(['repository.inspect', 'dia
 export function authorizeJarvisCapability(agentId: string, capability: JarvisCapability, approved = false): { allowed: boolean; requiresApproval: boolean; reason: string } {
   const agent = JARVIS_AGENT_REGISTRY.find((candidate) => candidate.id === agentId);
   if (!agent || !KNOWN_CAPABILITIES.has(capability)) return { allowed: false, requiresApproval: false, reason: 'Unknown agent or capability.' };
-  if (capability === 'comms.task.create') {\n    return agent.capabilities.includes(capability)\n      ? { allowed: true, requiresApproval: false, reason: 'Internal owner-scoped Comms task creation is permitted; outbound delivery remains separately gated.' }\n      : { allowed: false, requiresApproval: false, reason: 'Agent is not granted this capability.' };\n  }\n  if (PRIVILEGED_CAPABILITIES.has(capability)) {
+  if (capability === 'comms.task.create') {
+    return agent.capabilities.includes(capability)
+      ? { allowed: true, requiresApproval: false, reason: 'Internal owner-scoped Comms task creation is permitted; outbound delivery remains separately gated.' }
+      : { allowed: false, requiresApproval: false, reason: 'Agent is not granted this capability.' };
+  }
+  if (PRIVILEGED_CAPABILITIES.has(capability)) {
     return approved
       ? { allowed: false, requiresApproval: true, reason: 'Approval is necessary but does not grant this runtime permission.' }
       : { allowed: false, requiresApproval: true, reason: 'Privileged actions are blocked pending a separate approved execution boundary.' };
