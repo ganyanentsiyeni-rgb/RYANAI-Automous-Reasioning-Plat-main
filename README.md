@@ -364,26 +364,26 @@ The package start command launches dist/server/server/launcher.js. Confirm the a
 
 ## NPM commands and scripts
 
-**Checked against the root \`package.json\` on 24 November 2026.** These are the commands declared by this repository; scripts in \`mcp-server/\` and \`workflows-ryanai/\` are separate package scopes.
+**Checked against the root `package.json` on 24 November 2026.** These are the commands declared by this repository; scripts in `mcp-server/` and `workflows-ryanai/` are separate package scopes.
 
 ### Common NPM commands
 
 | Command | What it does |
 | --- | --- |
-| \`npm install\` or \`npm i\` | Installs dependencies declared in \`package.json\` and may update \`package-lock.json\`. |
-| \`npm ci\` | Removes the existing root \`node_modules\` and installs the exact lockfile tree. It fails when the lockfile and manifest disagree. |
-| \`npm install <pkg>\` | Adds a runtime dependency and updates the manifest and lockfile. |
-| \`npm install -D <pkg>\` | Adds a development dependency (\`--save-dev\`). |
-| \`npm uninstall <pkg>\` | Removes a dependency and updates the manifest and lockfile. |
-| \`npm run\` | Lists the scripts available in the current package. |
-| \`npm run <script>\` | Runs a named script, for example \`dev\`, \`build\`, \`lint\`, or \`test\`. |
-| \`npm start\` | Runs the package \`prestart\` hook and then \`start\`. In this repository, \`prestart\` builds the server before starting it. |
-| \`npm test\` | Runs the root package test script. |
-| \`npm outdated\` | Lists installed dependencies for which newer versions are available. |
-| \`npm audit\` | Checks the dependency tree against npm's known vulnerability advisories. |
-| \`npm audit fix\` | Applies compatible audit fixes where possible. Review the manifest and lockfile diff and rerun tests before committing. |
-| \`npm cache verify\` | Verifies the local npm cache. |
-| \`npm config list\` | Displays the active npm configuration. |
+| `npm install` or `npm i` | Installs dependencies declared in `package.json` and may update `package-lock.json`. |
+| `npm ci` | Removes the existing root `node_modules` and installs the exact lockfile tree. It fails when the lockfile and manifest disagree. |
+| `npm install <pkg>` | Adds a runtime dependency and updates the manifest and lockfile. |
+| `npm install -D <pkg>` | Adds a development dependency (`--save-dev`). |
+| `npm uninstall <pkg>` | Removes a dependency and updates the manifest and lockfile. |
+| `npm run` | Lists the scripts available in the current package. |
+| `npm run <script>` | Runs a named script, for example `dev`, `build`, `lint`, or `test`. |
+| `npm start` | Runs the package `prestart` hook and then `start`. In this repository, `prestart` builds the server before starting it. |
+| `npm test` | Runs the root package test script. |
+| `npm outdated` | Lists installed dependencies for which newer versions are available. |
+| `npm audit` | Checks the dependency tree against npm's known vulnerability advisories. |
+| `npm audit fix` | Applies compatible audit fixes where possible. Review the manifest and lockfile diff and rerun tests before committing. |
+| `npm cache verify` | Verifies the local npm cache. |
+| `npm config list` | Displays the active npm configuration. |
 
 For a reproducible root install, use the repository's tested flags and install the two nested packages as well:
 
@@ -393,23 +393,23 @@ npm --prefix mcp-server ci --include=dev
 npm --prefix workflows-ryanai ci --include=dev
 ~~~
 
-The equivalent root convenience script is \`npm run install:all\`.
+The equivalent root convenience script is `npm run install:all`.
 
 ### RyanAI development and build scripts
 
 | Purpose | Command | Notes |
 | --- | --- | --- |
-| Start the local development stack | \`npm run dev\` | Starts API, web, and MCP HTTP development processes concurrently. |
-| API development | \`npm run dev:api\` | Runs the API watcher. |
-| Web development | \`npm run dev:web\` | Starts the Vite development server. |
-| MCP development | \`npm run dev:mcp\` | Starts the nested MCP HTTP package. |
-| Build the web application | \`npm run build\` | Runs the root build; its \`prebuild\` hook generates Prisma clients. |
-| Build the web application explicitly | \`npm run build:web\` | Alias for the client build. |
-| Preview a built web application | \`npm run preview\` | Runs Vite's preview server; build first. |
-| Validate both Prisma schemas and build the API | \`npm run db:validate && npm run build:server\` | Schema validation is separate from applying migrations. |
-| Build the API server | \`npm run build:server\` | Generates required clients through its prebuild hook, compiles the server, and copies runtime assets. |
-| Start the production-style API locally | \`npm start\` | Runs \`prestart\` and then \`node dist/server/server/launcher.js\`. |
-| Run the broad repository gate | \`npm run validate\` | Includes governance, workflow, type, lint, test, migration-audit, deployment-contract, stack, build, and Comms checks. |
+| Start the local development stack | `npm run dev` | Starts API, web, and MCP HTTP development processes concurrently. |
+| API development | `npm run dev:api` | Runs the API watcher. |
+| Web development | `npm run dev:web` | Starts the Vite development server. |
+| MCP development | `npm run dev:mcp` | Starts the nested MCP HTTP package. |
+| Build the web application | `npm run build` | Runs the root build; its `prebuild` hook generates Prisma clients. |
+| Build the web application explicitly | `npm run build:web` | Alias for the client build. |
+| Preview a built web application | `npm run preview` | Runs Vite's preview server; build first. |
+| Validate both Prisma schemas and build the API | `npm run db:validate && npm run build:server` | Schema validation is separate from applying migrations. |
+| Build the API server | `npm run build:server` | Generates required clients through its prebuild hook, compiles the server, and copies runtime assets. |
+| Start the production-style API locally | `npm start` | Runs `prestart` and then `node dist/server/server/launcher.js`. |
+| Run the broad repository gate | `npm run validate` | Includes governance, workflow, type, lint, test, migration-audit, deployment-contract, stack, build, and Comms checks. |
 
 ### RyanAI validation and audit scripts
 
@@ -438,9 +438,9 @@ npm run db:status
 npm run db:audiobook:status
 ~~~
 
-\`npm run test:migration:audit\` tests the migration-audit contracts; \`npm run db:migration:audit\` runs the migration-readiness audit itself. \`npm run test:readiness-audits\` and \`npm run test:database-config\` are valid root scripts.
+`npm run test:migration:audit` tests the migration-audit contracts; `npm run db:migration:audit` runs the migration-readiness audit itself. `npm run test:readiness-audits` and `npm run test:database-config` are valid root scripts.
 
-**Command corrections:** use \`npm run preview\`, not \`npm preview\`. There is no root \`start:prod\` script in the current \`package.json\`; use \`npm start\` for the declared local API start command. Always run \`npm run\` from the package directory to see the scripts that package actually provides.
+**Command corrections:** use `npm run preview`, not `npm preview`. There is no root `start:prod` script in the current `package.json`; use `npm start` for the declared local API start command. Always run `npm run` from the package directory to see the scripts that package actually provides.
 
 ## Environment configuration
 
@@ -536,7 +536,7 @@ A skipped, queued, or configured check is never a pass.
 
 ## WSL 2 Ubuntu and Docker Engine
 
-These instructions are for a local Windows machine using Ubuntu under WSL 2. Run the Docker installation commands inside the Ubuntu terminal. Run the \`.wslconfig\` and \`wsl\` commands from Windows PowerShell or Command Prompt.
+These instructions are for a local Windows machine using Ubuntu under WSL 2. Run the Docker installation commands inside the Ubuntu terminal. Run the `.wslconfig` and `wsl` commands from Windows PowerShell or Command Prompt.
 
 ### Install Docker Engine in Ubuntu
 
@@ -554,7 +554,7 @@ sudo chmod a+r /etc/apt/keyrings/docker.asc
 sudo tee /etc/apt/sources.list.d/docker.sources > /dev/null <<EOF
 Types: deb
 URIs: https://download.docker.com/linux/ubuntu
-Suites: $(. /etc/os-release && echo "\${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
 Components: stable
 Architectures: $(dpkg --print-architecture)
 Signed-By: /etc/apt/keyrings/docker.asc
@@ -568,9 +568,9 @@ sudo docker run hello-world
 docker compose version
 ~~~
 
-If the Docker daemon does not start with \`service\`, check whether systemd is enabled in the WSL distribution and use \`sudo systemctl start docker\` where supported.
+If the Docker daemon does not start with `service`, check whether systemd is enabled in the WSL distribution and use `sudo systemctl start docker` where supported.
 
-You can continue to use \`sudo docker ...\` commands. Adding a user to the \`docker\` group is optional; membership grants effectively root-level control over the Docker host:
+You can continue to use `sudo docker ...` commands. Adding a user to the `docker` group is optional; membership grants effectively root-level control over the Docker host:
 
 ~~~bash
 sudo usermod -aG docker "$USER"
@@ -611,7 +611,7 @@ wsl --shutdown
 wsl --list --running
 ~~~
 
-\`.wslconfig\` is stored in the Windows user profile and applies to WSL 2 distributions globally. WSL configuration keys and experimental options can change; consult [Microsoft's WSL configuration reference](https://learn.microsoft.com/en-us/windows/wsl/wsl-config) before changing advanced settings.
+`.wslconfig` is stored in the Windows user profile and applies to WSL 2 distributions globally. WSL configuration keys and experimental options can change; consult [Microsoft's WSL configuration reference](https://learn.microsoft.com/en-us/windows/wsl/wsl-config) before changing advanced settings.
 
 ### Prepare and start RyanAI from WSL
 
@@ -625,7 +625,7 @@ test -f .env || cp .env.example .env
 chmod 600 .env
 ~~~
 
-Edit \`.env\` locally before starting the stack. Replace the sample local values for \`DB_PASSWORD\`, \`REDIS_PASSWORD\`, and \`JWT_SECRET\` with unique development-only values. Generate random values with \`openssl rand -hex 32\`; do not reuse production credentials or paste secrets into Git, chat, logs, or screenshots.
+Edit `.env` locally before starting the stack. Replace the sample local values for `DB_PASSWORD`, `REDIS_PASSWORD`, and `JWT_SECRET` with unique development-only values. Generate random values with `openssl rand -hex 32`; do not reuse production credentials or paste secrets into Git, chat, logs, or screenshots.
 
 Start the local database and cache, apply the local Compose migration profile, then start the default application stack:
 
@@ -667,13 +667,13 @@ An HTTP status code is only endpoint evidence; it does not by itself prove that 
 
 ### Redis host-port conflict
 
-The Compose Redis service listens on port \`6379\` inside the Docker network and normally publishes \`127.0.0.1:6379\` on the WSL host. Inspect a conflict before changing services:
+The Compose Redis service listens on port `6379` inside the Docker network and normally publishes `127.0.0.1:6379` on the WSL host. Inspect a conflict before changing services:
 
 ~~~bash
 sudo ss -tulpn | grep ':6379' || true
 ~~~
 
-Do not indiscriminately terminate every \`redis-server\` process or stop a Redis service that may belong to another application. To remap only the host port, create \`docker-compose.override.yml\` in the repository root (Docker Compose v2.24 or later supports the \`!reset\` merge tag):
+Do not indiscriminately terminate every `redis-server` process or stop a Redis service that may belong to another application. To remap only the host port, create `docker-compose.override.yml` in the repository root (Docker Compose v2.24 or later supports the `!reset` merge tag):
 
 ~~~yaml
 services:
@@ -689,7 +689,7 @@ sudo docker compose config --quiet
 sudo docker compose up -d redis
 ~~~
 
-Containers on the RyanAI network still connect to \`redis:6379\`. Host tools should connect to \`127.0.0.1:16379\`.
+Containers on the RyanAI network still connect to `redis:6379`. Host tools should connect to `127.0.0.1:16379`.
 
 ### Stop the local stack safely
 
@@ -697,15 +697,15 @@ Containers on the RyanAI network still connect to \`redis:6379\`. Host tools sho
 sudo docker compose down
 ~~~
 
-This stops and removes the Compose containers and network but retains named data volumes. **Do not add \`-v\` unless you intentionally want to permanently delete the local PostgreSQL, Redis, and MCPJungle data volumes.** Never use volume-removal commands against data you need to keep.
+This stops and removes the Compose containers and network but retains named data volumes. **Do not add `-v` unless you intentionally want to permanently delete the local PostgreSQL, Redis, and MCPJungle data volumes.** Never use volume-removal commands against data you need to keep.
 
-The Compose migration profile targets the isolated local Compose PostgreSQL service. The baseline-marker \`prisma migrate resolve --applied 20261014000000_supabase_platform_baseline\` command belongs only to the separate Supabase CLI workflow above, after \`supabase db reset --local\` has completed against that same database. Do not use it as a generic workaround for a failed Compose migration, and never point local Compose commands at a hosted or production database.
+The Compose migration profile targets the isolated local Compose PostgreSQL service. The baseline-marker `prisma migrate resolve --applied 20261014000000_supabase_platform_baseline` command belongs only to the separate Supabase CLI workflow above, after `supabase db reset --local` has completed against that same database. Do not use it as a generic workaround for a failed Compose migration, and never point local Compose commands at a hosted or production database.
 
 ## Containers and deployment configuration
 
 ### Docker Build
 
-Build commands below use the repository root (\`.\`) as the Docker build context. The root Dockerfile contains separate API, web, migration, and Studio worker targets; its final default target is the API.
+Build commands below use the repository root (`.`) as the Docker build context. The root Dockerfile contains separate API, web, migration, and Studio worker targets; its final default target is the API.
 
 ~~~bash
 # Build the default API image.
@@ -733,7 +733,7 @@ The final command publishes an image to a registry and requires the correct regi
 
 ### Docker Compose
 
-The default Compose stack defines local PostgreSQL/pgvector, Redis, API, MCP HTTP server, and web. Optional profiles add the one-shot migration service, Studio worker, and MCPJungle gateway. Compose reads the repository-root \`.env\` file; copy \`.env.example\` only for local development and replace its sample values with unique local credentials before startup.
+The default Compose stack defines local PostgreSQL/pgvector, Redis, API, MCP HTTP server, and web. Optional profiles add the one-shot migration service, Studio worker, and MCPJungle gateway. Compose reads the repository-root `.env` file; copy `.env.example` only for local development and replace its sample values with unique local credentials before startup.
 
 Validate the Compose configuration and start the local database/cache first:
 
@@ -780,7 +780,7 @@ Stop the local stack while preserving its named volumes:
 docker compose down
 ~~~
 
-Do not use \`docker compose down -v\` unless you intentionally want to erase the local database/cache volumes and have confirmed that the data is disposable.
+Do not use `docker compose down -v` unless you intentionally want to erase the local database/cache volumes and have confirmed that the data is disposable.
 
 ### Render and Railway
 
