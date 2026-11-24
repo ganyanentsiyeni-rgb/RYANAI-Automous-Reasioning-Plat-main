@@ -184,6 +184,35 @@ describe('production and staging connection configuration', () => {
     )).toThrow(/DATABASE_URL must target the Supabase project configured by SUPABASE_URL/);
   });
 
+  it('allows an explicitly marked loopback disposable Supabase database', () => {
+    expect(resolveConnectionUrls(
+      'staging',
+      'postgresql://postgres:test-placeholder@127.0.0.1:5432/postgres',
+      'redis://u2eb-cache',
+      supabaseProjectUrl,
+      supabasePoolerHost,
+      undefined,
+      false,
+      true,
+    )).toEqual({
+      databaseUrl: 'postgresql://postgres:test-placeholder@127.0.0.1:5432/postgres',
+      redisUrl: 'redis://u2eb-cache',
+    });
+  });
+
+  it('does not let the disposable Supabase opt-in bypass a remote database host', () => {
+    expect(() => resolveConnectionUrls(
+      'staging',
+      'postgresql://postgres:test-placeholder@remote-db.example:5432/postgres',
+      'redis://u2eb-cache',
+      supabaseProjectUrl,
+      supabasePoolerHost,
+      undefined,
+      false,
+      true,
+    )).toThrow(/DATABASE_URL must target the Supabase project configured by SUPABASE_URL/);
+  });
+
   it('does not route tests to a hosted Supabase URL inherited from dotenv', () => {
     const result = resolveConnectionUrls(
       'test',
