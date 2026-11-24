@@ -1369,6 +1369,7 @@ model StudioArtifact {
   kind        String   @db.VarChar(48)
   storageProvider String @map("storage_provider") @db.VarChar(48)
   storageKey  String   @map("storage_key") @db.Text
+  idempotencyKey String? @unique(map: "studio_artifacts_idempotency_key_key") @map("idempotency_key") @db.VarChar(240)
   mimeType    String?  @map("mime_type") @db.VarChar(160)
   byteSize    BigInt?  @map("byte_size")
   sha256      String?  @db.VarChar(64)
