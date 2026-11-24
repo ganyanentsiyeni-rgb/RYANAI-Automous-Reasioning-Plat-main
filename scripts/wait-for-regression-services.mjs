@@ -54,8 +54,8 @@ async function readHealth(url, expectedStatus, expectedService) {
   return body;
 }
 
-await waitFor('API health', async () => {
-  await readHealth(new URL('/api/health', apiBase), 'online');
+await waitFor('API liveness', async () => {
+  await readHealth(new URL('/health', apiBase), 'alive', 'ryanai-api-gateway');
 });
 
 await waitFor('MCP HTTP health', async () => {
@@ -77,7 +77,7 @@ await waitFor('Web preview document', async () => {
 // The preview must proxy /health to the separately started API. Checking the
 // direct API alone would miss a Vite preview configured for the wrong target.
 await waitFor('Vite preview API proxy', async () => {
-  await readHealth(new URL('/api/health', webBase), 'online');
+  await readHealth(new URL('/health', webBase), 'alive', 'ryanai-api-gateway');
 });
 
 console.log('PASS all regression services are ready and the web API proxy is live');
