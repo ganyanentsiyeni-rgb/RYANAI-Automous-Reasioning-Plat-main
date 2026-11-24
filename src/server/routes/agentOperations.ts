@@ -4,12 +4,11 @@ import { getAgentPAStatus } from '../../skills/agentPAScript.js';
 import { buildUserAwarenessSnapshot } from '../../agent/awareness/operationalAwarenessService.js';
 import { listBrainKnowledge, publishBrainKnowledge } from '../../agent/knowledgeAgent.js';
 import { normalizeOfflineTaskBatch } from '../../agent/offlineTaskSync.js';
-import { createPADelegation, listPADelegations, getPADelegation, approvePADelegation, rejectPADelegation } from '../../agent/paDelegationService.js';
+import { createPADelegation, listPADelegations, getPADelegation, approvePADelegation, rejectPADelegation, linkPACommsRun } from '../../agent/paDelegationService.js';
 import { PA_DELEGATION_CAPABILITIES, type PADelegationCapability } from '../../agent/paJarvisHandshake.js';
 import { evaluateGenXSecurityEvent } from '../../security/genxPolicy.js';
 import { appendRunEvidence } from '../../agent/engineeringEvidence.js';
 import { enqueueCommsAssistRun } from '../comms/agentRuns.js';
-import { linkPACommsRun } from '../../agent/paDelegationService.js';
 interface DispatchBody { objective: string; taskId?: string; }
 interface OfflineSyncBody { tasks: Array<{ taskId: string; objective: string }>; }
 interface PADelegationBody { objective: string; capabilities: PADelegationCapability[]; delegationId?: string; }
