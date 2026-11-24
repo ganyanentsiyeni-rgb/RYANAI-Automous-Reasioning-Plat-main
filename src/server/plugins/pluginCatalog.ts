@@ -207,9 +207,100 @@ export const DEFAULT_PLUGIN_MANIFESTS: readonly PluginManifest[] = Object.freeze
     ],
     dataClassifications: ['public_metadata', 'user_content'],
   },
-]);
-
-export function createDefaultPluginRegistry() {
+  {
+    id: 'grafana-cloud', displayName: 'Grafana Cloud', version: '1.0.0',
+    categories: ['engineering', 'research'],
+    description: 'Read-only observability discovery for metrics, logs, traces, profiles and dashboards.',
+    capabilities: [
+      { id: 'observability.read', risk: 'read', requiresHumanApproval: false },
+      { id: 'dashboards.read', risk: 'read', requiresHumanApproval: false },
+    ],
+    dataClassifications: ['workspace_content', 'personal_data'],
+  },
+  {
+    id: 'better-stack', displayName: 'Better Stack', version: '1.0.0',
+    categories: ['engineering', 'workflows'],
+    description: 'Observability and incident investigation across logs, metrics, traces, uptime and on-call schedules.',
+    capabilities: [
+      { id: 'observability.read', risk: 'read', requiresHumanApproval: false },
+      { id: 'incidents.read', risk: 'read', requiresHumanApproval: false },
+    ],
+    dataClassifications: ['workspace_content', 'personal_data'],
+  },
+  {
+    id: 'arize-ax', displayName: 'Arize AX', version: '1.0.0',
+    categories: ['engineering', 'research'],
+    description: 'LLM observability, trace inspection, datasets and evaluation workflows.',
+    capabilities: [
+      { id: 'traces.read', risk: 'read', requiresHumanApproval: false },
+      { id: 'evaluations.read', risk: 'read', requiresHumanApproval: false },
+      { id: 'experiments.write', risk: 'write', requiresHumanApproval: true },
+    ],
+    dataClassifications: ['workspace_content', 'user_content'],
+  },
+  {
+    id: 'incident-io', displayName: 'incident.io', version: '1.0.0',
+    categories: ['engineering', 'workflows'],
+    description: 'Incident investigation, on-call schedules, escalations and runbook coordination.',
+    capabilities: [
+      { id: 'incidents.read', risk: 'read', requiresHumanApproval: false },
+      { id: 'incidents.update', risk: 'write', requiresHumanApproval: true },
+      { id: 'escalations.trigger', risk: 'outbound', requiresHumanApproval: true },
+    ],
+    dataClassifications: ['workspace_content', 'personal_data'],
+  },
+  {
+    id: 'cloudflare', displayName: 'Cloudflare', version: '1.0.0',
+    categories: ['engineering', 'workflows'],
+    description: 'Read-only visibility into edge applications, Workers and platform resources; changes remain separately approved.',
+    capabilities: [
+      { id: 'resources.read', risk: 'read', requiresHumanApproval: false },
+      { id: 'deployments.write', risk: 'write', requiresHumanApproval: true },
+    ],
+    dataClassifications: ['workspace_content', 'repository_metadata'],
+  },
+  {
+    id: 'sonarqube', displayName: 'SonarQube', version: '1.0.0',
+    categories: ['engineering'],
+    description: 'Static analysis findings, quality gates, coverage and security issue review.',
+    capabilities: [
+      { id: 'analyses.read', risk: 'read', requiresHumanApproval: false },
+      { id: 'quality_gates.read', risk: 'read', requiresHumanApproval: false },
+    ],
+    dataClassifications: ['repository_metadata', 'user_content'],
+  },
+  {
+    id: 'tavily', displayName: 'Tavily', version: '1.0.0',
+    categories: ['research', 'knowledge'],
+    description: 'User-requested web search, URL discovery, crawling and content extraction.',
+    capabilities: [
+      { id: 'search.execute', risk: 'read', requiresHumanApproval: false },
+      { id: 'pages.fetch', risk: 'read', requiresHumanApproval: false },
+    ],
+    dataClassifications: ['public_metadata', 'user_content'],
+  },
+  {
+    id: 'clickup', displayName: 'ClickUp', version: '1.0.0',
+    categories: ['workflows', 'pa_agent'],
+    description: 'Project task discovery, time tracking and team coordination.',
+    capabilities: [
+      { id: 'tasks.read', risk: 'read', requiresHumanApproval: false },
+      { id: 'tasks.write', risk: 'write', requiresHumanApproval: true },
+    ],
+    dataClassifications: ['workspace_content'],
+  },
+  {
+    id: 'docusign', displayName: 'DocuSign', version: '1.0.0',
+    categories: ['workflows', 'knowledge'],
+    description: 'Document template and envelope status discovery; sending and signing require explicit human approval.',
+    capabilities: [
+      { id: 'envelopes.read', risk: 'read', requiresHumanApproval: false },
+      { id: 'envelopes.send', risk: 'outbound', requiresHumanApproval: true },
+      { id: 'envelopes.sign', risk: 'destructive', requiresHumanApproval: true },
+    ],
+    dataClassifications: ['personal_data', 'user_content'],
+  },
+]);\n\nexport function createDefaultPluginRegistry() {
   return createPluginRegistry(DEFAULT_PLUGIN_MANIFESTS);
 }
 
