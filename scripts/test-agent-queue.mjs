@@ -159,6 +159,7 @@ try {
       userId,
       objective: 'CI queue retry backoff fixture',
       status: 'queued',
+      approvalStatus: 'approved',
       nextAttemptAt: new Date(Date.now() + 60_000),
     },
   });

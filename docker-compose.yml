@@ -94,6 +94,7 @@ services:
         required: false
     environment:
       NODE_ENV: production
+      RYANAI_LOCAL_COMPOSE: "true"
       HOST: 0.0.0.0
       PORT: 3000
       DATABASE_URL: postgresql://ryanai:${DB_PASSWORD:?Set DB_PASSWORD in .env}@postgres:5432/ryanai_db

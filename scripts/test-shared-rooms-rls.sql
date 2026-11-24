@@ -1,6 +1,7 @@
 \set ON_ERROR_STOP on
 -- Disposable local Supabase stack only. All fixtures are rolled back.
 BEGIN;
+
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.role', 'authenticated', true);
 SELECT set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
@@ -29,7 +30,7 @@ VALUES ('30000000-0000-4000-8000-000000000001',
         '10000000-0000-4000-8000-000000000001', 'creator message', now());
 
 -- A user cannot create a room claiming another user's identity.
-DO $
+DO $shared_rooms_rls$
 BEGIN
   BEGIN
     INSERT INTO public.rooms (id, name, created_by, created_at)
@@ -38,14 +39,22 @@ BEGIN
     RAISE EXCEPTION 'authenticated user unexpectedly created room for another user';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
-END $;
+END $shared_rooms_rls$;
 
 -- Member can read room and messages, but cannot add another member.
 SELECT set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000002', true);
 SELECT set_config('request.jwt.claims',
   '{"sub":"10000000-0000-4000-8000-000000000002","role":"authenticated"}', true);
-DO $$
+DO $member_access$
+DECLARE
+  affected_rows integer;
 BEGIN
+  IF auth.uid() IS DISTINCT FROM '10000000-0000-4000-8000-000000000002'::uuid THEN
+    RAISE EXCEPTION 'member JWT subject did not switch to the expected user';
+  END IF;
+  IF private.is_room_creator('20000000-0000-4000-8000-000000000001') THEN
+    RAISE EXCEPTION 'room member was incorrectly identified as the creator';
+  END IF;
   IF (SELECT count(*) FROM public.rooms
       WHERE id = '20000000-0000-4000-8000-000000000001') <> 1 THEN
     RAISE EXCEPTION 'room member cannot read their room';
@@ -58,12 +67,20 @@ BEGIN
       WHERE room_id = '20000000-0000-4000-8000-000000000001') <> 2 THEN
     RAISE EXCEPTION 'room member cannot read the complete room roster';
   END IF;
-  BEGIN
-    UPDATE public.rooms SET name = 'member changed name'
-    WHERE id = '20000000-0000-4000-8000-000000000001';
+
+  -- RLS USING filters non-owned rows; a denied UPDATE affects zero rows
+  -- rather than raising insufficient_privilege.
+  UPDATE public.rooms SET name = 'member changed name'
+  WHERE id = '20000000-0000-4000-8000-000000000001';
+  GET DIAGNOSTICS affected_rows = ROW_COUNT;
+  IF affected_rows <> 0 THEN
     RAISE EXCEPTION 'member unexpectedly updated room';
-  EXCEPTION WHEN insufficient_privilege THEN NULL;
-  END;
+  END IF;
+  IF (SELECT name FROM public.rooms
+      WHERE id = '20000000-0000-4000-8000-000000000001') <> 'RLS CI fixture' THEN
+    RAISE EXCEPTION 'member changed the room name despite creator-only update policy';
+  END IF;
+
   BEGIN
     INSERT INTO public.room_messages (id, room_id, sender_id, body, created_at)
     VALUES ('30000000-0000-4000-8000-000000000003',
@@ -79,7 +96,7 @@ BEGIN
     RAISE EXCEPTION 'member unexpectedly added another member';
   EXCEPTION WHEN insufficient_privilege THEN NULL;
   END;
-END $$;
+END $member_access$;
 
 -- An unrelated user sees no room data and cannot post into the room.
 SELECT set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000003', true);

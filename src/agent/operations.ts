@@ -595,7 +595,7 @@ export async function dispatchAutonomousTask(
     run = existing;
   }
   const notified = await publishAgentTaskNotification(run.id, async (id) => {
-    await prisma.$queryRaw`SELECT pg_notify('agent_task_queue', ${id})`;
+    await prisma.$queryRaw`SELECT pg_notify('agent_task_queue', ${id})::text`;
   });
   if (!notified) {
     // The durable row is already committed. The worker's periodic sweep will
@@ -636,7 +636,7 @@ export async function dispatchJarvisTask(actorId: string, objective: string, exe
   });
 
   const notified = await publishAgentTaskNotification(run.id, async (id) => {
-    await prisma.$queryRaw`SELECT pg_notify('agent_task_queue', ${id})`;
+    await prisma.$queryRaw`SELECT pg_notify('agent_task_queue', ${id})::text`;
   });
   if (!notified) {
     // The task and audit are committed; the worker's recovery sweep will find it.

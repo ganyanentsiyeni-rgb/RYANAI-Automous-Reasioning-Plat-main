@@ -28,7 +28,7 @@ export interface EnqueueInboundCommunicationInput {
 
 function notifyRun(runId: string): Promise<boolean> {
   return publishAgentTaskNotification(runId, async (id) => {
-    await prisma.$queryRaw`SELECT pg_notify('agent_task_queue', ${id})`;
+    await prisma.$queryRaw`SELECT pg_notify('agent_task_queue', ${id})::text`;
   });
 }
 

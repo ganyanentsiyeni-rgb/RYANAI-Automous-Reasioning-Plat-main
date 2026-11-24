@@ -10,10 +10,10 @@ This document defines the intended U2EB service topology and the checks required
 |---|---|---|
 | Application API | `ryanai-api-u2eb` | Render Docker web service; `./Dockerfile.api`; listens on configured `PORT`; health path `/health` |
 | Web application | `ryanai-web-u2eb` | Render static site; `npm ci --legacy-peer-deps && npm run build:web`; publishes `./dist`; `VITE_API_BASE_URL` resolves to the API hostname |
-| MCP HTTP server | `ryanai-mcp-u2eb` | Render Docker web service; `mcp-server/Dockerfile`; health path `/health`; binds `0.0.0.0:8765` |
+| MCP HTTP server | `ryanai-mcp-u2eb-u2eb-u2eb` | Render Docker web service; `mcp-server/Dockerfile`; health path `/health`; binds `0.0.0.0:8765` |
 | Redis | `ryanai-redis-u2eb` | Render Key Value; API obtains `REDIS_URL` through a service reference |
 
-The current live MCP resource has the Render-generated name `ryanai-mcp-u2eb-u2eb`. Its observed hostname is therefore the deployed alias used by the API's `RYANAI_MCP_HEALTH_URL` and the MCP host allowlist. Do not rename or recreate this resource as part of a Blueprint sync until its resource identity and replacement behavior are confirmed. The intended canonical Blueprint name remains `ryanai-mcp-u2eb`.
+The current live MCP resource has the Render-generated name `ryanai-mcp-u2eb-u2eb-u2eb`. Its observed hostname is therefore the deployed alias used by the API's `RYANAI_MCP_HEALTH_URL` and the MCP host allowlist. Do not rename or recreate this resource as part of a Blueprint sync until its resource identity and replacement behavior are confirmed. The Blueprint now uses the observed live resource identity `ryanai-mcp-u2eb-u2eb-u2eb`.
 
 ## Environment ownership
 
@@ -53,7 +53,9 @@ No service-role key, database URL, Redis URL, MCP token, model key, GitHub token
 
 ## U2EB project mapping
 
-The checked-in `.env.u2eb.example` targets Supabase project `omqavyppdoniehseokvx` in `eu-central-1`, with pooler hostname `aws-1-eu-central-1.pooler.supabase.com`. The real database password and publishable/privileged keys remain private runtime values. The generic `.env.example` must not pin a user-specific Supabase project.
+The root `.env.example` intentionally pins the canonical U2EB public project URL and EU Central Session Pooler hostname while leaving `DATABASE_URL` blank. The full `.env.u2eb.example` adds the U2EB API/web origins, Redis placeholder and disabled automation defaults. Both templates contain no database password or privileged key; the ignored local `.env` and sealed Render values are the only places for credentials.
+
+The staging/production API startup contract now verifies that `DATABASE_URL` targets the same project named by `SUPABASE_URL`: either the project's direct `db.<project-ref>.supabase.co` host or a Session Pooler URL with the matching project-qualified username. A Render-managed PostgreSQL hostname or a pooler username for another project is rejected before Prisma or the agent worker starts. This prevents a healthy connection to the wrong database from masking a missing `public.agent_runs` table.
 
 The U2EB Render Blueprint intentionally leaves database and Supabase values as `sync: false`. A Blueprint declaration is not proof that a value is present in the Render dashboard. Verify the saved variable names and presence separately; never infer them from this file.
 
@@ -63,7 +65,7 @@ The 18 November 2026 Render inventory contained seven resources:
 
 - `ryanai-api-u2eb`
 - `ryanai-web-u2eb`
-- `ryanai-mcp-u2eb-u2eb`
+- `ryanai-mcp-u2eb-u2eb-u2eb`
 - `RyanAI_API_Repair`
 - `ryanai-web-authfix`
 - `RyanAi_API`

@@ -55,7 +55,7 @@ projects:
               - key: RYANAI_MCP_SERVICE_TOKEN
                 sync: false
               - key: RYANAI_MCP_HEALTH_URL
-                value: https://ryanai-mcp-u2eb-u2eb.onrender.com/health
+                value: https://ryanai-mcp-u2eb-u2eb-u2eb.onrender.com/health
               - key: CORS_ORIGINS
                 value: https://ryanai-web-u2eb.onrender.com
               - key: SCHEDULER_ENABLED
@@ -71,7 +71,7 @@ projects:
               - key: ATTACHMENT_ORPHAN_CLEANUP_ENABLED
                 value: "false"
           - type: web
-            name: ryanai-mcp-u2eb-u2eb
+            name: ryanai-mcp-u2eb-u2eb-u2eb
             runtime: docker
             repo: https://github.com/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main
             branch: main
@@ -87,7 +87,7 @@ projects:
               - key: MCP_HOST
                 value: 0.0.0.0
               - key: MCP_ALLOWED_HOSTS
-                value: ryanai-mcp-u2eb-u2eb.onrender.com
+                value: ryanai-mcp-u2eb-u2eb-u2eb.onrender.com
               - key: MCP_ALLOWED_ORIGINS
                 value: https://ryanai-web-u2eb.onrender.com
               - key: RYANAI_API_BASE_URL

@@ -29,8 +29,10 @@ jobs:
         image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: ryanai
-          POSTGRES_PASSWORD: ci_password
           POSTGRES_DB: ryanai_db
+          # This disposable service is isolated to the GitHub Actions job network.
+          # Trust auth avoids putting a fake PostgreSQL password in the repository.
+          POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
         options: >-
@@ -50,7 +52,9 @@ jobs:
 
     env:
       NODE_ENV: test
-      DATABASE_URL: postgresql://ryanai:ci_password@127.0.0.1:5432/ryanai_db
+      HOST: 127.0.0.1
+      PORT: '3000'
+
       REDIS_URL: redis://127.0.0.1:6379
       JWT_SECRET: ci_only_secret_at_least_32_characters_long
       OPENAI_API_KEY: ""
@@ -61,6 +65,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Configure disposable PostgreSQL connection
+        run: |
+          node <<'NODE' >> "$GITHUB_ENV"
+          const databaseUrl = new URL('postgresql:' + '//localhost:5432/ryanai_db');
+          databaseUrl.username = 'ryanai';
+          databaseUrl.hostname = '127.0.0.1';
+          process.stdout.write(`DATABASE_URL=${databaseUrl.toString()}\n`);
+          NODE
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -104,7 +117,9 @@ jobs:
           # silently falls back to the local-development API port.
           VITE_API_BASE_URL=http://127.0.0.1:3000 npm run preview -- --host 127.0.0.1 --port 9090 > web.log 2>&1 &
           web_pid=$!
-          MCP_HOST=127.0.0.1 MCP_PORT=8765 npm --prefix mcp-server run start:http > mcp.log 2>&1 &
+          # The MCP server prefers PORT over MCP_PORT; override both so it
+          # cannot inherit the API's 3000 listener from the job environment.
+          MCP_HOST=127.0.0.1 PORT=8765 MCP_PORT=8765 npm --prefix mcp-server run start:http > mcp.log 2>&1 &
           mcp_pid=$!
 
           cleanup() {

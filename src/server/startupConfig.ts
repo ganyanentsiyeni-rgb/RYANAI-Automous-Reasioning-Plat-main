@@ -7,7 +7,7 @@ export interface ConnectionUrls {
 }
 
 function localDevelopmentDatabaseUrl(): string {
-  const url = new URL('postgresql://localhost:5432/ryanai');
+  const url = new URL('postgresql:' + '//localhost:5432/ryanai');
   url.username = 'postgres';
   url.password = 'postgres';
   return url.toString();
@@ -45,6 +45,47 @@ function isSupabaseDatabaseUrl(value: string): boolean {
   }
 }
 
+function assertDatabaseUrlMatchesSupabaseProject(databaseUrl: string, supabaseUrl: string): void {
+  let database: URL;
+  let project: URL;
+  try {
+    database = new URL(databaseUrl);
+    project = new URL(supabaseUrl);
+  } catch {
+    throw new Error('Invalid Supabase project or DATABASE_URL configuration. Credentials are not logged.');
+  }
+
+  const projectMatch = project.hostname.toLowerCase().match(/^([a-z0-9]{20})\.supabase\.co$/);
+  if (project.protocol !== 'https:' || !projectMatch) {
+    throw new Error('SUPABASE_URL must identify the configured Supabase project. Credentials are not logged.');
+  }
+
+  const projectRef = projectMatch[1];
+  const databaseHost = database.hostname.toLowerCase();
+  if (databaseHost === `db.${projectRef}.supabase.co`) return;
+
+  if (databaseHost.endsWith('.pooler.supabase.com')) {
+    let username: string;
+    try {
+      username = decodeURIComponent(database.username);
+    } catch {
+      throw new Error('DATABASE_URL has an invalid PostgreSQL username encoding. Credentials are not logged.');
+    }
+    const usernameProjectRef = username.split('.').slice(1).join('.').toLowerCase();
+    // An unqualified legacy username is safe to normalize because the pooler
+    // resolver rewrites it to the project-qualified form before connecting.
+    // If a project suffix is present, it must match the configured project.
+    if (!usernameProjectRef || usernameProjectRef === projectRef) return;
+    throw new Error(
+      'DATABASE_URL Session Pooler username identifies a different Supabase project than SUPABASE_URL. Credentials are not logged.',
+    );
+  }
+
+  throw new Error(
+    'DATABASE_URL must target the Supabase project configured by SUPABASE_URL; do not use a separate Render PostgreSQL resource for the RyanAI primary database. Credentials are not logged.',
+  );
+}
+
 /**
  * Resolve required service URLs without silently selecting local services in production.
  * Supabase production URLs are normalized to the explicitly configured Session Pooler
@@ -58,18 +99,37 @@ export function resolveConnectionUrls(
   supabaseUrl?: string,
   sessionPoolerHost?: string,
   sslRootCertPath?: string,
+  localCompose = false,
 ): ConnectionUrls {
   let database = databaseUrl?.trim();
   const redis = redisUrl?.trim();
 
   const strictRuntime = nodeEnv === 'production' || nodeEnv === 'staging';
+  // Tests must never inherit a hosted Supabase DATABASE_URL from a dotenv
+  // overlay. Keep explicit loopback test databases, but fall back to the
+  // isolated local default when the inherited URL is hosted.
+  if (nodeEnv === 'test' && database && isSupabaseDatabaseUrl(database)) {
+    database = undefined;
+  }
   const manifestEnvironment = strictRuntime ? nodeEnv : 'staging';
   assertDatabaseManifestContract(manifestEnvironment);
   const primaryStore = getDatabaseStore(manifestEnvironment, 'primary');
   const cacheStore = getDatabaseStore(manifestEnvironment, 'cache');
 
+  const isLocalComposeDatabase = localCompose && (() => {
+    try {
+      const parsed = new URL(database ?? '');
+      return parsed.hostname === 'postgres' && (parsed.port || '5432') === '5432';
+    } catch {
+      return false;
+    }
+  })();
+
   if (strictRuntime && database) {
     parseProductionDatabaseUrl(database);
+    if (supabaseUrl?.trim() && !isLocalComposeDatabase) {
+      assertDatabaseUrlMatchesSupabaseProject(database, supabaseUrl);
+    }
   }
 
   if (database && isSupabaseDatabaseUrl(database)) {

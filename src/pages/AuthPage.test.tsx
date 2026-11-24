@@ -116,9 +116,10 @@ it.each([
     expect(container.querySelector('[role=alert]')?.textContent).toContain(
       `${label} sign-in is not enabled for this Supabase project`,
     );
-    expect(container.querySelector('[role=alert]')?.textContent).toContain(
-      'the callback URL shown in Supabase Dashboard',
-    );
+    const alertText = container.querySelector('[role=alert]')?.textContent ?? '';
+    // The UI shows the configured project callback URL when available, otherwise
+    // it points the operator to the Supabase Dashboard location for that URL.
+    expect(alertText).toMatch(/(?:callback URL shown in Supabase Dashboard|\/auth\/v1\/callback)/);
   },
 );
 it('authenticates with normalized email and password', async () => {

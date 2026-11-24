@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { assertProductionDependencies, resolveConnectionUrls } from './startupConfig.js';
 
 const expectedLocalDatabaseUrl = () => {
-  const url = new URL('postgresql://localhost:5432/ryanai');
+  const url = new URL('postgresql:' + '//localhost:5432/ryanai');
   url.username = 'postgres';
   url.password = 'postgres';
   return url.toString();
@@ -13,7 +13,7 @@ const supabaseProjectUrl = `https://${supabaseProjectRef}.supabase.co`;
 const supabasePoolerHost = 'aws-1-eu-west-1.pooler.supabase.com';
 
 function supabaseDatabaseUrl(host: string, password = 'test-placeholder'): string {
-  const url = new URL('postgresql://localhost:5432/postgres');
+  const url = new URL('postgresql:' + '//localhost:5432/postgres');
   url.hostname = host;
   url.username = 'postgres';
   url.password = password;
@@ -140,6 +140,63 @@ describe('production and staging connection configuration', () => {
       'redis://cache',
       supabaseProjectUrl,
     )).toThrow('SUPABASE_SESSION_POOLER_HOST');
+  });
+
+  it('rejects a primary database URL that points outside the configured U2EB Supabase project', () => {
+    const u2ebProjectUrl = 'https://omqavyppdoniehseokvx.supabase.co';
+    expect(() => resolveConnectionUrls(
+      'staging',
+      (() => {
+        const databaseUrl = new URL('postgresql:' + '//localhost:5432/ryanai');
+        databaseUrl.hostname = 'postgres.internal.example';
+        return databaseUrl.toString();
+      })(),
+      'redis://u2eb-cache',
+      u2ebProjectUrl,
+      'aws-1-eu-central-1.pooler.supabase.com',
+    )).toThrow(/DATABASE_URL must target the Supabase project configured by SUPABASE_URL/);
+  });
+
+  it('allows the explicit local Compose Postgres service alongside Supabase Auth', () => {
+    expect(resolveConnectionUrls(
+      'production',
+      'postgresql://ryanai:local-only@postgres:5432/ryanai_db',
+      'redis://redis:6379',
+      supabaseProjectUrl,
+      supabasePoolerHost,
+      undefined,
+      true,
+    )).toEqual({
+      databaseUrl: 'postgresql://ryanai:local-only@postgres:5432/ryanai_db',
+      redisUrl: 'redis://redis:6379',
+    });
+  });
+
+  it('does not let local Compose mode bypass a non-Compose database host', () => {
+    expect(() => resolveConnectionUrls(
+      'staging',
+      'postgresql://ryanai:local-only@remote-db.example:5432/ryanai_db',
+      'redis://u2eb-cache',
+      'https://omqavyppdoniehseokvx.supabase.co',
+      'aws-1-eu-central-1.pooler.supabase.com',
+      undefined,
+      true,
+    )).toThrow(/DATABASE_URL must target the Supabase project configured by SUPABASE_URL/);
+  });
+
+  it('does not route tests to a hosted Supabase URL inherited from dotenv', () => {
+    const result = resolveConnectionUrls(
+      'test',
+      supabaseDatabaseUrl(`db.${supabaseProjectRef}.supabase.co`),
+      'redis://test-cache',
+      supabaseProjectUrl,
+      undefined,
+    );
+
+    expect(result).toEqual({
+      databaseUrl: expectedLocalDatabaseUrl(),
+      redisUrl: 'redis://test-cache',
+    });
   });
 
   it('retains local defaults outside production', () => {

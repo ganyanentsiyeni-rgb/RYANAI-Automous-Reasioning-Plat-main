@@ -68,7 +68,7 @@ export async function enqueueApprovedCodingTask(prisma, input) {
     });
   });
   try {
-    await prisma.$queryRawUnsafe('SELECT pg_notify($1, $2)', 'coding_task_queue', task.id);
+    await prisma.$queryRawUnsafe('SELECT pg_notify($1, $2)::text', 'coding_task_queue', task.id);
   } catch {
     // The committed task remains durable and will be found by the worker recovery sweep.
   }
