@@ -3,7 +3,6 @@ import { appendRunEvidence } from '../../agent/engineeringEvidence.js';
 import { captureQueueTraceContextForStorage } from '../../telemetry/queueContext.js';
 import { publishAgentTaskNotification } from '../../agent/queueNotifications.js';
 import { waitForAutonomousTask } from '../../agent/operations.js';
-import { dispatchAutonomousTask } from '../../agent/operations.js';
 import { createHash } from 'node:crypto';
 
 export class CommunicationRunOwnershipError extends Error {
@@ -183,8 +182,8 @@ export async function enqueueCommsAssistRun(input: {
   ownerUserId: string;
   idempotencyKey: string;
   objective: string;
-}): Promise<{ runId: string; status: string }> {
-  if (!input.ownerUserId || !input.idempotencyKey || !input.objective) {
+}): Promise<{ runId: string; status: string; replayed: boolean; notified: boolean }> {
+  if (!input.ownerUserId || !input.idempotencyKey || !input.objective.trim()) {
     throw new Error('A verified owner, request idempotency key, and objective are required.');
   }
   const digest = createHash('sha256')
@@ -193,12 +192,69 @@ export async function enqueueCommsAssistRun(input: {
     .update(input.idempotencyKey)
     .digest('hex');
   const runId = `comms_assist_${digest}`;
-  const run = await dispatchAutonomousTask(
-    input.ownerUserId,
-    input.objective,
-    { eventKnown: false, snapshotFresh: false },
-    null,
-    runId,
-  );
-  return { runId: run.id, status: run.status };
+  let run: { id: string; userId: string; objective: string; status: string };
+  let replayed = false;
+  try {
+    run = await prisma.$transaction(async (tx) => {
+      const created = await tx.agentRun.create({
+        data: {
+          id: runId,
+          userId: input.ownerUserId,
+          objective: input.objective.trim(),
+          executionScope: { eventKnown: false, snapshotFresh: false, source: 'internal-comms-assist' },
+          traceContext: captureQueueTraceContextForStorage(),
+          status: 'queued',
+          approvalStatus: 'approved',
+          approvedBy: input.ownerUserId,
+          approvedAt: new Date(),
+          queueType: 'reasoning',
+        },
+        select: { id: true, userId: true, objective: true, status: true },
+      });
+      await tx.agentHandoff.createMany({ data: [
+        { runId: created.id, fromAgent: 'comms', toAgent: 'primary', input: 'Analyze the internal Comms task objective', status: 'pending' },
+        { runId: created.id, fromAgent: 'comms', toAgent: 'secondary', input: 'Independently analyze the internal Comms task objective', status: 'pending' },
+        { runId: created.id, fromAgent: 'primary', toAgent: 'logic', input: 'Awaiting primary Comms analysis', status: 'pending' },
+        { runId: created.id, fromAgent: 'secondary', toAgent: 'logic', input: 'Awaiting secondary Comms analysis', status: 'pending' },
+      ] });
+      await appendRunEvidence(tx, {
+        runId: created.id,
+        eventType: 'comms.assist.queued',
+        actorId: input.ownerUserId,
+        payload: { idempotencyKeyDigest: digest, source: 'internal-comms-assist', objectiveLength: input.objective.length, outboundDispatchAllowed: false },
+      });
+      return created;
+    });
+  } catch (error) {
+    const existing = await prisma.agentRun.findUnique({
+      where: { id: runId },
+      select: { id: true, userId: true, objective: true, status: true, approvalStatus: true },
+    });
+    if (!existing || existing.userId !== input.ownerUserId || existing.objective !== input.objective.trim()) {
+      throw new Error('Comms task idempotency conflict: the existing task does not match this owner and objective.', { cause: error });
+    }
+    run = existing;
+    replayed = true;
+    if (existing.status === 'queued' && existing.approvalStatus === 'pending') {
+      const approved = await prisma.agentRun.updateMany({
+        where: { id: runId, userId: input.ownerUserId, status: 'queued', approvalStatus: 'pending' },
+        data: { approvalStatus: 'approved', approvedBy: input.ownerUserId, approvedAt: new Date() },
+      });
+      if (approved.count === 1) {
+        await prisma.$transaction((tx) => appendRunEvidence(tx, {
+          runId,
+          eventType: 'comms.assist.approved',
+          actorId: input.ownerUserId,
+          payload: { source: 'authenticated-owner-request', outboundDispatchAllowed: false },
+        }));
+      }
+    }
+  }
+  const notified = await publishAgentTaskNotification(run.id, async (id) => {
+    await prisma.$queryRaw`SELECT pg_notify('agent_task_queue', ${id})::text`;
+  });
+  if (!notified) {
+    console.warn('[comms] Internal Comms task is durable; worker recovery polling remains authoritative.');
+  }
+  return { runId: run.id, status: run.status, replayed, notified };
 }

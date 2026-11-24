@@ -1,40 +1,56 @@
-name: Deploy Platforms via CI
+name: Push Deploy - Render, Railway, and Vercel
 
 on:
-  # Production deployment is deliberately manual; workflow_run must never
-  # start production jobs automatically after a main-branch CI completion.
+  # The Push Deploy choice is the explicit release command. CI completion alone
+  # never starts production deployment.
   workflow_dispatch:
     inputs:
       commit_sha:
-        description: "Exact reviewed commit SHA to deploy"
+        description: Exact reviewed main commit SHA to deploy.
         required: true
         type: string
       confirmation:
         description: "Type PUSH_DEPLOY only to authorize the exact-main deployment to Railway, Render, and Vercel after every required CI/security check passes."
+      push_deploy:
+        description: Select PUSH DEPLOY to authorize the three-platform release.
         required: true
         type: choice
         options:
           - NO
           - PUSH_DEPLOY
+          - PUSH DEPLOY
         default: NO
 
 permissions:
   contents: read
   actions: read
+  checks: read
 
 concurrency:
   group: platform-deploy-${{ github.ref_name }}
+  group: platform-push-deploy-${{ inputs.commit_sha || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
+  ci_cd:
+    name: Re-run exact-SHA CI/CD validation
+    if: inputs.push_deploy == 'PUSH DEPLOY'
+    uses: ./.github/workflows/ci-cd.yml
+    with:
+      commit_sha: ${{ inputs.commit_sha }}
+
   gate:
     name: Verify exact-head CI and security gate
     if: github.event_name == 'workflow_dispatch' && inputs.confirmation == 'PUSH_DEPLOY'
+    name: Exact-SHA CI and security release gate
+    needs: ci_cd
+    if: inputs.push_deploy == 'PUSH DEPLOY'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       sha: ${{ steps.sha.outputs.sha }}
     steps:
-      - name: Resolve exact deployment SHA
+      - name: Validate deployment SHA
         id: sha
         env:
           INPUT_SHA: ${{ inputs.commit_sha }}
@@ -42,9 +58,9 @@ jobs:
           set -euo pipefail
           sha="$INPUT_SHA"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Invalid deployment SHA"; exit 1; }
-          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+          printf 'sha=%s\\n' "$sha" >> "$GITHUB_OUTPUT"
 
-      - name: Confirm exact commit is main
+      - name: Require the exact current main commit
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ steps.sha.outputs.sha }}
@@ -52,11 +68,11 @@ jobs:
           set -euo pipefail
           main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
           [[ "$SHA" == "$main_sha" ]] || {
-            echo "::error::Deployment SHA is not the current main SHA; refusing deployment."
+            echo "::error::The requested SHA is not current main; refusing the release."
             exit 1
           }
 
-      - name: Require CI workflow success for exact SHA
+      - name: Require every CI and security check to pass on this SHA
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ steps.sha.outputs.sha }}
@@ -68,6 +84,38 @@ jobs:
             echo "::error::No successful CI workflow run exists for the exact deployment SHA."
             exit 1
           }
+          required=(
+            "Validate (typecheck, lint, test, build)"
+            "MCP server and workflow worker"
+            "Issue 435 migrations and attachment security"
+            "validate-database"
+            "Upgrade legacy pgvector database safely (quoted)"
+            "Upgrade legacy pgvector database safely (unquoted)"
+            "Test agent API contracts"
+            "Dependency audit"
+            "Trivy filesystem scan"
+            "Analyze (javascript-typescript)"
+            "Analyze (python)"
+            "TruffleHog secret audit"
+            "Codacy Security Scan"
+            "Scan api image"
+            "Scan web image"
+            "Generate & Upload SBOMs"
+          )
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs?per_page=100" > check-pages.json
+          jq -s '[.[].check_runs[]]' check-pages.json > checks.json
+          for name in "${required[@]}"; do
+            jq -e --arg name "$name" '
+              [.[] | select(.name == $name)]
+              | sort_by(.started_at // .completed_at // "")
+              | last
+              | .status == "completed" and .conclusion == "success"
+            ' checks.json >/dev/null || {
+              echo "::error::Required exact-SHA check is missing, queued, skipped, cancelled, or failed: $name"
+              exit 1
+            }
+          done
+          echo "All required CI and security checks passed for $SHA."
 
       - name: Require every exact-head CI and security check
         env:
@@ -100,50 +148,88 @@ jobs:
             }
           done
   railway:
-    name: Railway deploy
+    name: Railway deploy and health verification
     needs: gate
+    if: ${{ always() && needs.gate.result == 'success' }}
     runs-on: ubuntu-latest
     environment: production
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out exact reviewed SHA
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.gate.outputs.sha }}
           persist-credentials: false
 
-      - name: Install Railway CLI
-        run: npm install --global @railway/cli
-
-      - name: Deploy exact SHA to Railway
+      - name: Validate Railway target and pinned CLI
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
           RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
           RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
+          RAILWAY_HEALTH_URL: ${{ vars.RAILWAY_HEALTH_URL }}
+          RAILWAY_CLI_VERSION: ${{ vars.RAILWAY_CLI_VERSION }}
+        run: |
+          set -euo pipefail
+          for key in RAILWAY_TOKEN RAILWAY_PROJECT_ID RAILWAY_ENVIRONMENT_ID RAILWAY_SERVICE_ID RAILWAY_HEALTH_URL RAILWAY_CLI_VERSION; do
+            [[ -n "${!key:-}" ]] || { echo "::error::Missing required Railway configuration: $key"; exit 1; }
+          done
+          npm install --global "@railway/cli@${RAILWAY_CLI_VERSION}"
+
+      - name: Deploy, capture deployment ID, and verify runtime
+        id: railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
+          RAILWAY_HEALTH_URL: ${{ vars.RAILWAY_HEALTH_URL }}
           DEPLOY_SHA: ${{ needs.gate.outputs.sha }}
         run: |
           set -euo pipefail
-          [[ -n "${RAILWAY_TOKEN:-}" ]] || { echo "::error::RAILWAY_TOKEN is not configured"; exit 1; }
-          [[ -n "${RAILWAY_PROJECT_ID:-}" ]] || { echo "::error::RAILWAY_PROJECT_ID is not configured"; exit 1; }
-          [[ -n "${RAILWAY_ENVIRONMENT_ID:-}" ]] || { echo "::error::RAILWAY_ENVIRONMENT_ID is not configured"; exit 1; }
-          [[ -n "${RAILWAY_SERVICE_ID:-}" ]] || { echo "::error::RAILWAY_SERVICE_ID is not configured"; exit 1; }
-          railway up --ci --service "$RAILWAY_SERVICE_ID" --environment "$RAILWAY_ENVIRONMENT_ID" --project "$RAILWAY_PROJECT_ID"
+          before="$(railway deployment list --json --limit 1 --service "$RAILWAY_SERVICE_ID" --environment "$RAILWAY_ENVIRONMENT_ID" 2>/dev/null | jq -r '.[0].id // empty' || true)"
+          railway up --ci --service "$RAILWAY_SERVICE_ID" --environment "$RAILWAY_ENVIRONMENT_ID" --project "$RAILWAY_PROJECT_ID" --message "RyanAI Push Deploy $DEPLOY_SHA"
+          deployment_id=""
+          for attempt in $(seq 1 60); do
+            deployments="$(railway deployment list --json --limit 10 --service "$RAILWAY_SERVICE_ID" --environment "$RAILWAY_ENVIRONMENT_ID")"
+            deployment_id="$(echo "$deployments" | jq -r --arg before "$before" '[.[] | select(.id != $before)][0].id // empty')"
+            status="$(echo "$deployments" | jq -r --arg id "$deployment_id" '.[] | select(.id == $id) | .status' | head -n1)"
+            if [[ -n "$deployment_id" && "$status" == "SUCCESS" ]]; then break; fi
+            if [[ "$status" == "FAILED" || "$status" == "CRASHED" || "$status" == "REMOVED" ]]; then
+              echo "::error::Railway deployment $deployment_id reached $status"
+              exit 1
+            fi
+            sleep 10
+          done
+          [[ -n "$deployment_id" && "$status" == "SUCCESS" ]] || { echo "::error::Railway deployment did not reach SUCCESS"; exit 1; }
+          echo "deployment_id=$deployment_id" >> "$GITHUB_OUTPUT"
+          echo "### Railway" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Deployment ID: $deployment_id" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Deployment status: $status" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Source SHA: $DEPLOY_SHA" >> "$GITHUB_STEP_SUMMARY"
+          curl --fail --silent --show-error --retry 18 --retry-all-errors --retry-delay 10 --retry-max-time 180 "$RAILWAY_HEALTH_URL" >/dev/null
+          echo "- Runtime health: passed" >> "$GITHUB_STEP_SUMMARY"
 
   render:
-    name: Render deploy
-    needs: [gate, railway]
+    name: Render deploy and health verification
+    needs: gate
+    if: ${{ always() && needs.gate.result == 'success' }}
     runs-on: ubuntu-latest
     environment: production
+    timeout-minutes: 30
     steps:
       - name: Deploy and verify every Render service at the exact SHA
+      - name: Trigger all configured Render services and verify each result
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_IDS: ${{ vars.RENDER_SERVICE_IDS }}
+          RENDER_HEALTH_URLS: ${{ vars.RENDER_HEALTH_URLS }}
           DEPLOY_SHA: ${{ needs.gate.outputs.sha }}
         run: |
           set -euo pipefail
           [[ -n "${RENDER_API_KEY:-}" ]] || { echo "::error::RENDER_API_KEY is not configured"; exit 1; }
           [[ -n "${RENDER_SERVICE_IDS:-}" ]] || { echo "::error::RENDER_SERVICE_IDS is not configured"; exit 1; }
-
+          [[ -n "${RENDER_HEALTH_URLS:-}" ]] || { echo "::error::RENDER_HEALTH_URLS is not configured"; exit 1; }
           IFS=',' read -ra services <<< "$RENDER_SERVICE_IDS"
           deployed=0
           for service_id in "${services[@]}"; do
@@ -181,10 +267,58 @@ jobs:
   vercel:
     name: Vercel deploy
     needs: [gate, railway]
+          IFS=',' read -ra health_urls <<< "$RENDER_HEALTH_URLS"
+          [[ "${#services[@]}" -gt 0 && "${#services[@]}" -eq "${#health_urls[@]}" ]] || {
+            echo "::error::RENDER_SERVICE_IDS and RENDER_HEALTH_URLS must contain the same non-zero number of comma-separated entries."
+            exit 1
+          }
+          overall=0
+          echo "### Render" >> "$GITHUB_STEP_SUMMARY"
+          for index in "${!services[@]}"; do
+            service_id="$(echo "${services[$index]}" | xargs)"
+            health_url="$(echo "${health_urls[$index]}" | xargs)"
+            [[ -n "$service_id" && -n "$health_url" ]] || { echo "::error::Empty Render service/health entry at index $index"; overall=1; continue; }
+            response="$(curl --silent --show-error --fail-with-body --request POST \
+              --url "https://api.render.com/v1/services/${service_id}/deploys" \
+              --header "Authorization: Bearer ${RENDER_API_KEY}" \
+              --header "Content-Type: application/json" \
+              --data "$(jq -n --arg commitId "$DEPLOY_SHA" --arg deployMode "build_and_deploy" '{commitId:$commitId,deployMode:$deployMode}')")" || {
+                echo "- $service_id: deploy request failed" >> "$GITHUB_STEP_SUMMARY"; overall=1; continue;
+              }
+            deployment_id="$(echo "$response" | jq -r '.id // empty')"
+            if [[ -z "$deployment_id" ]]; then
+              echo "- $service_id: provider response missing deployment ID" >> "$GITHUB_STEP_SUMMARY"; overall=1; continue
+            fi
+            status=""
+            for attempt in $(seq 1 60); do
+              status="$(curl --silent --show-error --fail \
+                --header "Authorization: Bearer ${RENDER_API_KEY}" \
+                "https://api.render.com/v1/services/${service_id}/deploys/${deployment_id}" | jq -r '.status // empty' || true)"
+              [[ "$status" == "live" ]] && break
+              [[ "$status" == "build_failed" || "$status" == "pre_deploy_failed" || "$status" == "update_failed" || "$status" == "deactivated" ]] && break
+              sleep 10
+            done
+            if [[ "$status" != "live" ]]; then
+              echo "- $service_id · $deployment_id: deployment status ${status:-unknown}" >> "$GITHUB_STEP_SUMMARY"; overall=1; continue
+            fi
+            if curl --fail --silent --show-error --retry 18 --retry-all-errors --retry-delay 10 --retry-max-time 180 "$health_url" >/dev/null; then
+              echo "- $service_id · $deployment_id: live; health passed" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "- $service_id · $deployment_id: live; health failed" >> "$GITHUB_STEP_SUMMARY"; overall=1
+            fi
+          done
+          exit "$overall"
+
+  vercel:
+    name: Vercel deploy and health verification
+    needs: gate
+    if: ${{ always() && needs.gate.result == 'success' }}
     runs-on: ubuntu-latest
     environment: production
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out exact reviewed SHA
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.gate.outputs.sha }}
           persist-credentials: false
@@ -195,32 +329,32 @@ jobs:
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
           VERCEL_CLI_VERSION: ${{ vars.VERCEL_CLI_VERSION }}
+          VERCEL_HEALTH_URL: ${{ vars.VERCEL_HEALTH_URL }}
         run: |
           set -euo pipefail
-          [[ -n "${VERCEL_TOKEN:-}" ]] || { echo "::error::VERCEL_TOKEN is not configured"; exit 1; }
-          [[ -n "${VERCEL_ORG_ID:-}" ]] || { echo "::error::VERCEL_ORG_ID is not configured"; exit 1; }
-          [[ -n "${VERCEL_PROJECT_ID:-}" ]] || { echo "::error::VERCEL_PROJECT_ID is not configured"; exit 1; }
-          [[ -n "${VERCEL_CLI_VERSION:-}" ]] || { echo "::error::VERCEL_CLI_VERSION is not configured"; exit 1; }
+          for key in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID VERCEL_CLI_VERSION VERCEL_HEALTH_URL; do
+            [[ -n "${!key:-}" ]] || { echo "::error::Missing required Vercel configuration: $key"; exit 1; }
+          done
           npm install --global "vercel@${VERCEL_CLI_VERSION}"
 
-      - name: Link the explicitly configured Vercel project
+      - name: Build and deploy exact SHA, capture URL, and verify runtime
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
-        run: vercel link --yes --project "$VERCEL_PROJECT_ID" --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN"
-
-      - name: Pull Vercel production environment
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
-
-      - name: Build exact reviewed commit
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: vercel build --prod --token "$VERCEL_TOKEN"
-
-      - name: Deploy prebuilt artifact without changing domain aliases
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: vercel deploy --prebuilt --prod --skip-domain --token "$VERCEL_TOKEN"
+          VERCEL_HEALTH_URL: ${{ vars.VERCEL_HEALTH_URL }}
+          DEPLOY_SHA: ${{ needs.gate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          vercel link --yes --project "$VERCEL_PROJECT_ID" --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN"
+          vercel pull --yes --environment=production --token "$VERCEL_TOKEN"
+          vercel build --prod --token "$VERCEL_TOKEN"
+          deploy_output="$(vercel deploy --prebuilt --prod --skip-domain --token "$VERCEL_TOKEN" 2>&1)"
+          echo "$deploy_output"
+          deployment_url="$(printf '%s\\n' "$deploy_output" | grep -Eo 'https://[^[:space:]]+' | tail -n1 | sed 's/[),]$//')"
+          [[ "$deployment_url" == https://* ]] || { echo "::error::Vercel did not return a deployment URL"; exit 1; }
+          echo "### Vercel" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Deployment URL: $deployment_url" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Source SHA: $DEPLOY_SHA" >> "$GITHUB_STEP_SUMMARY"
+          curl --fail --silent --show-error --retry 18 --retry-all-errors --retry-delay 10 --retry-max-time 180 "$VERCEL_HEALTH_URL" >/dev/null
+          echo "- Runtime health: passed" >> "$GITHUB_STEP_SUMMARY"

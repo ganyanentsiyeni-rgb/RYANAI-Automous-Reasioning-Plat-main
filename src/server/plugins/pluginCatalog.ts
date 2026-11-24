@@ -300,7 +300,9 @@ export const DEFAULT_PLUGIN_MANIFESTS: readonly PluginManifest[] = Object.freeze
     ],
     dataClassifications: ['personal_data', 'user_content'],
   },
-]);\n\nexport function createDefaultPluginRegistry() {
+]);
+
+export function createDefaultPluginRegistry() {
   return createPluginRegistry(DEFAULT_PLUGIN_MANIFESTS);
 }
 

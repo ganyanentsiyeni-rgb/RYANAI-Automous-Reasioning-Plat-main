@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { assertPACompletionCapabilityReceipts, assertPARepositoryInspectionEvidence } from './paCapabilityCompletion.js';
 
 const scope = { paDelegationId: '123e4567-e89b-42d3-a456-426614174000', capabilities: ['repository.inspect', 'evidence.record'] };
-const passed = (capability: 'repository.inspect' | 'evidence.record') => ({ capability, status: 'passed' as const, evidenceReferences: ['evidence:' + capability] });
+const passed = (capability: 'repository.inspect' | 'evidence.record' | 'comms.task.create') => ({ capability, status: 'passed' as const, evidenceReferences: ['evidence:' + capability], ...(capability === 'comms.task.create' ? { childRunId: 'pa_comms_' + 'a'.repeat(64) } : {}) });
 
 describe('PA finalization capability receipts', () => {
   it('does not allow reasoning-only completion without capability receipts', () => {
@@ -59,5 +59,18 @@ describe('PA repository inspection evidence linkage', () => {
       [{ ...receipt, repositoryInspection: undefined }],
       [event],
     )).toThrow(/metadata or evidence reference is missing/);
+  });
+});
+
+
+describe('PA internal Comms child-task receipts', () => {
+  const commsScope = { paDelegationId: '123e4567-e89b-42d3-a456-426614174000', capabilities: ['comms.task.create'] };
+  it('requires a durable child task ID for Comms task creation', () => {
+    expect(() => assertPACompletionCapabilityReceipts(commsScope, [{
+      capability: 'comms.task.create', status: 'passed', evidenceReferences: ['agent-run-evidence:evidence-1'],
+    }])).toThrow(/durable child task reference/);
+  });
+  it('accepts a passed, evidence-backed internal Comms child task', () => {
+    expect(() => assertPACompletionCapabilityReceipts(commsScope, [passed('comms.task.create')])).not.toThrow();
   });
 });
