@@ -85,3 +85,7 @@ Inspection combines the dedicated audit script with bounded, repository-root-con
 ## Worker handler readiness invariant
 
 A worker profile is startable only when every task type declared in `RYANAI_WORKER_ROSTER` has a registered handler in that worker process. Readiness returns the complete supported, registered, and missing task-type lists; partial registration is not healthy. Worker bootstrap modules own their unique task registrations so shared specialist registration cannot double-register a task. This is process-local handler readiness only; live worker availability still requires a fresh authenticated heartbeat and durable queue evidence.
+
+## Repository inventory execution boundary
+
+Repository inventory task handlers are registered by the typed specialist handler module and are available to both server-managed and CLI worker bootstraps. Inventory is bounded by repository-root confinement, maximum recursion depth, file count, and per-file size; it does not execute discovered scripts or read environment values. The standalone Node inventory command remains an independent read-only utility. Server TypeScript modules must not import the `.mjs` command entrypoint, which can cause TypeScript to emit over an input file (`TS5055`).

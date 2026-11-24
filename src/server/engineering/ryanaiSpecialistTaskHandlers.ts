@@ -182,6 +182,74 @@ async function runStaticInspection(profileId: string, context: StudioWorkerConte
   };
 }
 
+export async function runRyanAIRepositoryInventory(context: StudioWorkerContext) {
+  context.signal?.throwIfAborted();
+  if (!context.task.requiredCapabilities.includes('read-repository')) {
+    throw new Error('Repository inventory requires the explicit read-repository capability.');
+  }
+  const [repositoryFiles, workflowFiles] = await Promise.all([
+    collectAllowedEvidence('.', context.signal),
+    collectAllowedEvidence('.github/workflows', context.signal),
+  ]);
+  context.signal?.throwIfAborted();
+
+  const packageFiles = repositoryFiles.filter((file) => path.posix.basename(file.path) === 'package.json');
+  const packages = packageFiles.map((file) => {
+    try {
+      const manifest = JSON.parse(file.content) as {
+        name?: unknown;
+        packageManager?: unknown;
+        engines?: { node?: unknown };
+        scripts?: Record<string, unknown>;
+      };
+      return {
+        path: file.path,
+        name: typeof manifest.name === 'string' ? manifest.name : null,
+        packageManager: manifest.packageManager ?? null,
+        nodeEngine: manifest.engines?.node ?? null,
+        scripts: Object.entries(manifest.scripts ?? {})
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([name, command]) => ({ name, command: String(command), status: 'NOT_EXECUTED' })),
+      };
+    } catch {
+      return { path: file.path, name: null, status: 'INVALID_MANIFEST', scripts: [] };
+    }
+  });
+  const repositoryScripts = repositoryFiles
+    .filter((file) => /(^|\\/)scripts\\//.test(file.path) && /\\.(?:cjs|js|mjs|cts|ts|mts|tsx|py|sh|ps1)$/i.test(file.path))
+    .map((file) => ({ path: file.path, status: 'NOT_EXECUTED' }));
+  const workflows = workflowFiles
+    .filter((file) => /\\.ya?ml$/i.test(file.path))
+    .map((file) => ({ path: file.path, status: 'NOT_EXECUTED' }));
+  return {
+    schemaVersion: 1,
+    kind: 'repository.inventory',
+    taskId: context.task.id,
+    objective: context.task.objective,
+    generatedAt: new Date().toISOString(),
+    mode: 'READ_ONLY_STATIC_INVENTORY',
+    commandsExecuted: false,
+    environmentValuesRead: false,
+    coverage: {
+      maximumFilesPerRoot: MAX_FILES_PER_ROOT,
+      maximumDepth: 4,
+      repositoryFilesInspected: repositoryFiles.length,
+      workflowFilesInspected: workflowFiles.length,
+      repositoryInventoryMayBeTruncated: repositoryFiles.length >= MAX_FILES_PER_ROOT,
+      workflowInventoryMayBeTruncated: workflowFiles.length >= MAX_FILES_PER_ROOT,
+    },
+    packages,
+    packageScriptCount: packages.reduce((total, item) => total + item.scripts.length, 0),
+    repositoryScripts,
+    workflows,
+    notes: [
+      'NOT_EXECUTED means inventory only; it is not a test result.',
+      'Commands are listed for review and are never executed by inventory.',
+      'Generated build output, dependencies, caches, VCS internals, and hidden files are excluded.',
+    ],
+  };
+}
+
 async function runCoordinator(context: StudioWorkerContext) {
   if (!context.task.requiredCapabilities.includes('read-task')) {
     throw new Error('Coordinator requires the explicit read-task capability.');
@@ -281,6 +349,7 @@ export function registerRyanAISpecialistTaskHandlers(profileId: string) {
   if (profileId === 'coordinator') {
     for (const type of ['planning', 'triage']) add(type, runCoordinator);
   } else if (profileId === 'repository-auditor') {
+    for (const type of ['repository-audit', 'inventory']) add(type, runRyanAIRepositoryInventory);
     for (const type of ['ai-inspector.audit', 'ai-inspector.report']) add(type, runAIInspector);
     add('documentation-audit', (context) => runStaticInspection('release-readiness', context, 'read-repository'));
   } else if (SPECS[profileId]) {
