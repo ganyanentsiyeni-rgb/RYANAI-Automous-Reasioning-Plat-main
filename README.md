@@ -24,6 +24,24 @@ This README describes the application and contracts present in this repository. 
 
 ## Maintained RyanAI document set
 
+## Current PA / Darkside / Comms release control plane
+
+PA Agent and Darkside Copilot are two operator surfaces over the same governed capability model. The Admin Console exposes the same PA control plane for administrative operation; the UI is not an authorization boundary. Server-side scope checks and Gen-X policy remain authoritative.
+
+The shared control plane covers internal Comms work as well as deployment orchestration. A PA objective can create a durable, owner-scoped internal Comms child task without requiring an existing Comms conversation. The child task is for internal coordination/reporting only and does not send WhatsApp, SMS, voice, or email.
+
+### Push Deploy
+
+`PUSH DEPLOY` is the explicit release trigger. The release workflow requires an exact 40-character candidate SHA and first requires the exact-SHA CI/CD and security gate to pass. Missing, queued, skipped, cancelled, stale, provider-blocked, or failed checks do not count as passed.
+
+After the gate passes, **Render, Railway, and Vercel run as independent deployment jobs**. One provider failure must not silently prevent the other two from being attempted. Each provider records its own deployment identifier/status, source SHA, and runtime health result. The release is successful only when all three providers independently verify successfully.
+
+PA may be governed to trigger and monitor this workflow. The deployment receipt records workflow dispatch acceptance separately from completed provider deployment; a queued PA receipt is not a deployment success. The durable internal Comms task receives the release outcome. No documentation or UI action alone authorizes production deployment.
+
+Future Comms routing for `@RyanAI`, `@PA Agents`, `@Comms`, `@Security`, `@updates`, and `@self-patches` is treated as routing metadata only. Those conversations must still resolve to an authenticated owner-scoped request and the explicit `PUSH DEPLOY` release command before the exact-SHA release gate can run. This tagged-message trigger is a separate adapter and must remain idempotent and auditable.
+
+
+
 - [Agent operating guide](agent.md)
 - [Agent skills and boundaries](RyanAI.agent.skills.md)
 - [Test and release verification plan](test.md)
