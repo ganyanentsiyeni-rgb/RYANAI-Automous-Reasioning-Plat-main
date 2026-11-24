@@ -219,7 +219,7 @@ export async function runRyanAIInspectorAudit(input: { taskId: string; signal?: 
       ? sourceInspection.findings.map((finding) => '- [' + finding.severity.toUpperCase() + '] ' + finding.id + ': ' + finding.message + ' Evidence: ' + finding.evidenceFiles.join(', '))
       : ['- No configured static indicators matched.']),
     '',
-  ].join('\\n');
+  ].join('\n');
   const sourceHasHighFindings = sourceInspection.findings.some((finding) => finding.severity === 'high');
   try {
     const result = await (execFileAsync as unknown as (file: string, args: string[], options: object) => Promise<{ stdout: string; stderr: string }>)(
@@ -253,7 +253,8 @@ export async function runRyanAIInspectorAudit(input: { taskId: string; signal?: 
         report: appendSourceInspection(value.stdout),
         stderr: typeof value.stderr === 'string' ? value.stderr : '',
         exitCode: sourceHasHighFindings || typeof value.code === 'number' ? Math.max(1, value.code) : 1,
-        reportSource: 'scripts/ai-inspector-audit.mjs + src/server/engineering/ryanaiSpecialistTaskHandlers.ts',
+        reportSource: 'scripts/ai-inspector-audit.mjs',
+        sourceInspectionSource: 'src/server/engineering/ryanaiSpecialistTaskHandlers.ts',
         persistedBy: 'agent-run-evidence',
         inspectionEvidenceFiles: sourceInspection.evidenceFiles,
         findings: sourceInspection.findings,
