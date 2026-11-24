@@ -138,6 +138,35 @@ describe('RyanAI native Studio worker runtime', () => {
     await runtime.stop();
   });
 
+  it('persists recovery failures as degraded worker heartbeats immediately', async () => {
+    const heartbeat = vi.fn().mockResolvedValue(undefined);
+    const runtime = createRyanAIStudioWorkerRuntime({
+      workerProfileId: 'coordinator',
+      workerInstanceId: 'studio-worker-recovery-failure',
+      pollIntervalMs: 60_000,
+      heartbeatIntervalMs: 60_000,
+      recoveryIntervalMs: 60_000,
+      executeOnce: vi.fn().mockResolvedValue({ state: 'idle' }),
+      heartbeat,
+      recoverExpiredLeases: vi.fn().mockRejectedValue(new Error('recovery store unavailable')),
+    });
+
+    await runtime.start();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(runtime.snapshot()).toMatchObject({
+      status: 'degraded',
+      lastError: 'recovery store unavailable',
+    });
+    expect(heartbeat).toHaveBeenCalledWith(
+      'studio-worker-recovery-failure',
+      'degraded',
+      expect.objectContaining({ runtime: 'ryanai-native-studio-worker' }),
+    );
+
+    await runtime.stop();
+  });
+
   it('marks the worker degraded when the execution boundary fails', async () => {
     const heartbeat = vi.fn().mockResolvedValue(undefined);
     const executeOnce = vi.fn().mockRejectedValue(new Error('queue unavailable'));
