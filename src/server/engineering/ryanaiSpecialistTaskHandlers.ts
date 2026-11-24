@@ -74,13 +74,6 @@ const SPECS: Record<string, AuditSpec> = {
   },
 };
 
-const ALLOWED_FILES: Record<string, readonly string[]> = {
-  'security-auditor': SPECS['security-auditor'].files,
-  'runtime-infrastructure': SPECS['runtime-infrastructure'].files,
-  'data-queue': SPECS['data-queue'].files,
-  'provider-verification': SPECS['provider-verification'].files,
-  communications: SPECS.communications.files,
-  'frontend-accessibility': SPECS['frontend-accessibility'].files,
 async function collectAllowedEvidence(relativePath: string, signal?: AbortSignal, depth = 0): Promise<Array<{ path: string; content: string }>> {
   signal?.throwIfAborted();
   const resolved = path.resolve(process.cwd(), relativePath);
