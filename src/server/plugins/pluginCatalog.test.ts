@@ -27,7 +27,34 @@ describe('default server plugin catalogue', () => {
       'trello',
       'zapier',
       'firecrawl',
+      'grafana-cloud',
+      'better-stack',
+      'arize-ax',
+      'incident-io',
+      'cloudflare',
+      'sonarqube',
+      'tavily',
+      'clickup',
+      'docusign',
     ]));
+  });
+
+  it('keeps newly catalogued ecosystem integrations discoverable but non-executable', () => {
+    const registry = createDefaultPluginRegistry();
+    const ids = ['grafana-cloud', 'better-stack', 'arize-ax', 'incident-io', 'cloudflare', 'sonarqube', 'tavily', 'clickup', 'docusign'];
+    for (const id of ids) {
+      expect(registry.get(id)?.adapterStatus, id).toBe('adapter_required');
+    }
+  });
+
+  it('requires explicit human approval for infrastructure, incident and signature actions', () => {
+    const registry = createDefaultPluginRegistry();
+    expect(registry.get('cloudflare')?.capabilities.find((item) => item.id === 'deployments.write'))
+      .toMatchObject({ risk: 'write', requiresHumanApproval: true });
+    expect(registry.get('incident-io')?.capabilities.find((item) => item.id === 'escalations.trigger'))
+      .toMatchObject({ risk: 'outbound', requiresHumanApproval: true });
+    expect(registry.get('docusign')?.capabilities.find((item) => item.id === 'envelopes.sign'))
+      .toMatchObject({ risk: 'destructive', requiresHumanApproval: true });
   });
 
   it('preserves the PhoneLink mobile category in the canonical registry', () => {
