@@ -1,10 +1,22 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createRyanAICiDiagnosticsTaskHandler } from './ryanaiCiDiagnosticsTask.js';
+import { createRyanAICiDiagnosticsTaskHandler, registerRyanAICiDiagnosticsTaskHandlers } from './ryanaiCiDiagnosticsTask.js';
+import { getStudioWorkerHandlerReadiness } from './studioNativeCore.js';
 import type { ConnectedGitHubWorkflowEvidence } from '../routes/githubIntegration.js';
 const sha = 'a'.repeat(40);
 const task = (overrides: Record<string, unknown> = {}) => ({ id: 'task-1', ownerUserId: 'persisted-owner', input: { headSha: sha, ownerUserId: 'untrusted-input-owner' }, requiredCapabilities: ['read-workflow-runs'], ...overrides });
 const evidence = (overrides: Partial<ConnectedGitHubWorkflowEvidence> = {}): ConnectedGitHubWorkflowEvidence => ({ repositoryFullName: 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main', requestedHeadSha: sha, verifiedHeadSha: sha, source: 'github-oauth-read-only', inspectedAt: '2026-11-19T18:00:00.000Z', complete: true, jobLogStatus: 'not_requested', workflowRuns: [{ id: 10, name: 'CI', headSha: sha, status: 'completed', conclusion: 'success', url: null, jobs: [] }], jobLogExcerpts: [], ...overrides });
 describe('RyanAI CI diagnostics task pipeline', () => {
+ it('registers all CI task aliases through the shared worker handler boundary', () => {
+  const unregister = registerRyanAICiDiagnosticsTaskHandlers(async () => evidence());
+  try {
+   const readiness = getStudioWorkerHandlerReadiness('ci-diagnostics');
+   expect(readiness.ready).toBe(true);
+   expect(readiness.registeredTaskTypes).toEqual(expect.arrayContaining(['ci-failure', 'test-failure', 'build-failure']));
+  } finally {
+   unregister();
+  }
+ });
+
  it('uses persisted task owner and verified exact SHA', async () => { const inspect=vi.fn().mockResolvedValue(evidence()); const output=await createRyanAICiDiagnosticsTaskHandler(inspect)({task:task()}); expect(inspect).toHaveBeenCalledWith('persisted-owner',sha,{includeJobLogs:false}); expect(output).toMatchObject({evidenceTrust:'github_verified_exact_sha',requestedHeadSha:sha,verifiedHeadSha:sha}); expect(output.counts.passed).toBe(1); });
  it('forwards worker cancellation to the evidence inspector', async () => {
   const controller = new AbortController();

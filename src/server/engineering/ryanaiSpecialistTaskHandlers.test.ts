@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { getStudioWorkerHandlerReadiness, registerStudioTaskHandler } from './studioNativeCore.js';
+import { getStudioWorkerHandlerReadiness } from './studioNativeCore.js';
 import { registerRyanAISpecialistTaskHandlers, runRyanAIInspectorAudit } from './ryanaiSpecialistTaskHandlers.js';
 import { findModuleAgentForTask, getModuleAgentForModule } from '../../agent/moduleAgentRegistry.js';
 import { findWorkerForTask } from '../../agent/workerRegistry.js';
+import { registerRyanAICiDiagnosticsTaskHandlers } from './ryanaiCiDiagnosticsTask.js';
 
 const unregister: Array<() => void> = [];
 afterEach(() => { while (unregister.length) unregister.pop()?.(); });
@@ -11,6 +12,7 @@ describe('RyanAI specialist worker handler registration', () => {
   it.each([
     'coordinator',
     'repository-auditor',
+    'ci-diagnostics',
     'security-auditor',
     'runtime-infrastructure',
     'data-queue',
@@ -19,7 +21,11 @@ describe('RyanAI specialist worker handler registration', () => {
     'frontend-accessibility',
     'release-readiness',
   ])('registers a real bounded handler for %s', (profileId) => {
-    unregister.push(registerRyanAISpecialistTaskHandlers(profileId));
+    if (profileId === 'ci-diagnostics') {
+      unregister.push(registerRyanAICiDiagnosticsTaskHandlers(async () => { throw new Error('GitHub evidence fixture is not connected.'); }));
+    } else {
+      unregister.push(registerRyanAISpecialistTaskHandlers(profileId));
+    }
     const readiness = getStudioWorkerHandlerReadiness(profileId);
     expect(readiness.ready).toBe(true);
     expect(readiness.registeredTaskTypes.length).toBeGreaterThan(0);
@@ -49,12 +55,4 @@ describe('RyanAI specialist worker handler registration', () => {
     expect(getStudioWorkerHandlerReadiness('unknown-worker').ready).toBe(false);
   });
 
-  it('keeps CI diagnostics bound to its dedicated evidence handler registration', () => {
-    const remove = registerStudioTaskHandler('ci-failure', async () => ({ kind: 'ci.diagnostics' }));
-    try {
-      expect(getStudioWorkerHandlerReadiness('ci-diagnostics').registeredTaskTypes).toContain('ci-failure');
-    } finally {
-      remove();
-    }
-  });
 });
