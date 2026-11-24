@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { getStudioWorkerHandlerReadiness, registerStudioTaskHandler } from './studioNativeCore.js';
+import { getStudioWorkerHandlerReadiness } from './studioNativeCore.js';
 import { registerRyanAISpecialistTaskHandlers, runRyanAIInspectorAudit } from './ryanaiSpecialistTaskHandlers.js';
 import { findModuleAgentForTask, getModuleAgentForModule } from '../../agent/moduleAgentRegistry.js';
 import { findWorkerForTask } from '../../agent/workerRegistry.js';
+import { registerRyanAICiDiagnosticsTaskHandlers } from './ryanaiCiDiagnosticsTask.js';
 
 const unregister: Array<() => void> = [];
 afterEach(() => { while (unregister.length) unregister.pop()?.(); });
@@ -11,6 +12,7 @@ describe('RyanAI specialist worker handler registration', () => {
   it.each([
     'coordinator',
     'repository-auditor',
+    'ci-diagnostics',
     'security-auditor',
     'runtime-infrastructure',
     'data-queue',
@@ -27,6 +29,11 @@ describe('RyanAI specialist worker handler registration', () => {
       unregister.push(registerStudioTaskHandler('inventory', async () => ({ kind: 'repository.inventory' })));
     }
     unregister.push(registerRyanAISpecialistTaskHandlers(profileId));
+    if (profileId === 'ci-diagnostics') {
+      unregister.push(registerRyanAICiDiagnosticsTaskHandlers(async () => { throw new Error('GitHub evidence fixture is not connected.'); }));
+    } else {
+      unregister.push(registerRyanAISpecialistTaskHandlers(profileId));
+    }
     const readiness = getStudioWorkerHandlerReadiness(profileId);
     expect(readiness.ready).toBe(true);
     expect(readiness.missingTaskTypes).toEqual([]);

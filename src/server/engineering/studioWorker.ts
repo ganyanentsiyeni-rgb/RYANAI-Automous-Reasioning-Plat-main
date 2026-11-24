@@ -3,7 +3,7 @@ import { createRyanAIStudioWorkerRuntime } from './ryanaiStudioWorkerRuntime.js'
 import { createStudioArtifact, getStudioWorkerHandlerReadiness, registerStudioTaskHandler } from './studioNativeCore.js';
 import { storeStudioArtifact } from './studioArtifactStorage.js';
 import { registerRyanAISpecialistTaskHandlers } from './ryanaiSpecialistTaskHandlers.js';
-import { createRyanAICiDiagnosticsTaskHandler } from './ryanaiCiDiagnosticsTask.js';
+import { registerRyanAICiDiagnosticsTaskHandlers } from './ryanaiCiDiagnosticsTask.js';
 import { inspectConnectedGitHubWorkflowEvidence } from '../routes/githubIntegration.js';
 import { generateRepositoryInventory } from '../../../scripts/repository-inventory.mjs';
 
@@ -12,11 +12,8 @@ const workerInstanceId = process.env.RYANAI_STUDIO_WORKER_ID?.trim() || undefine
 const unregisterSpecialistHandlers = registerRyanAISpecialistTaskHandlers(workerProfileId);
 const unregisterHandlers: Array<() => void> = [unregisterSpecialistHandlers];
 if (workerProfileId === 'ci-diagnostics') {
-  const runCiDiagnosticsTask = createRyanAICiDiagnosticsTaskHandler((ownerUserId, headSha, options) =>
-    inspectConnectedGitHubWorkflowEvidence({ prisma }, ownerUserId, headSha, options));
-  for (const taskType of ['ci-failure', 'test-failure', 'build-failure']) {
-    unregisterHandlers.push(registerStudioTaskHandler(taskType, runCiDiagnosticsTask));
-  }
+  unregisterHandlers.push(registerRyanAICiDiagnosticsTaskHandlers((ownerUserId, headSha, options) =>
+    inspectConnectedGitHubWorkflowEvidence({ prisma }, ownerUserId, headSha, options)));
 }
 
 if (workerProfileId === 'repository-auditor') {
