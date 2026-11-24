@@ -149,9 +149,14 @@ describe('RyanAI native Studio worker runtime', () => {
 
   it('shares one shutdown drain across concurrent stop calls', async () => {
     let finishStopped!: () => void;
+    let markStoppedStarted!: () => void;
     const stoppedHeartbeat = new Promise<void>((resolve) => { finishStopped = resolve; });
+    const stoppedStarted = new Promise<void>((resolve) => { markStoppedStarted = resolve; });
     const heartbeat = vi.fn(async (_id: string, status: string) => {
-      if (status === 'stopped') await stoppedHeartbeat;
+      if (status === 'stopped') {
+        markStoppedStarted();
+        await stoppedHeartbeat;
+      }
     });
     const runtime = createRyanAIStudioWorkerRuntime({
       workerProfileId: 'coordinator',
@@ -167,7 +172,7 @@ describe('RyanAI native Studio worker runtime', () => {
     await runtime.start();
     const firstStop = runtime.stop();
     const secondStop = runtime.stop();
-    await Promise.resolve();
+    await stoppedStarted;
     expect(heartbeat.mock.calls.filter((call) => call[1] === 'stopped')).toHaveLength(1);
 
     finishStopped();
@@ -176,11 +181,13 @@ describe('RyanAI native Studio worker runtime', () => {
   });
 
   it('allows shutdown retry when the terminal heartbeat write fails', async () => {
-    const heartbeat = vi.fn()
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce(undefined)
-      .mockRejectedValueOnce(new Error('terminal heartbeat unavailable'))
-      .mockResolvedValueOnce(undefined);
+    let failFirstStoppedHeartbeat = true;
+    const heartbeat = vi.fn(async (_id: string, status: string) => {
+      if (status === 'stopped' && failFirstStoppedHeartbeat) {
+        failFirstStoppedHeartbeat = false;
+        throw new Error('terminal heartbeat unavailable');
+      }
+    });
     const runtime = createRyanAIStudioWorkerRuntime({
       workerProfileId: 'coordinator',
       workerInstanceId: 'studio-worker-stop-retry',
