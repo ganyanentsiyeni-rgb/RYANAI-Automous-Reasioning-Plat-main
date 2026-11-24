@@ -65,6 +65,7 @@ export function createRyanAIStudioWorkerRuntime(
   let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
   const inFlight = new Set<Promise<void>>();
   let startupPromise: Promise<void> | null = null;
+  let stopPromise: Promise<void> | null = null;
   let heartbeatWrite: Promise<void> = Promise.resolve();
 
   const track = (operation: Promise<void>) => {
@@ -198,19 +199,31 @@ export function createRyanAIStudioWorkerRuntime(
     },
 
     async stop() {
-      if (!started || stopping) return;
+      if (stopPromise) return stopPromise;
+      if (!started) return;
       stopping = true;
       if (pollTimer) clearTimeout(pollTimer);
       if (heartbeatTimer) clearTimeout(heartbeatTimer);
       if (recoveryTimer) clearTimeout(recoveryTimer);
-      // Finish startup before draining loops so a late startup heartbeat
-      // cannot overwrite the terminal stopped state.
-      if (startupPromise) await startupPromise.catch(() => undefined);
-      // Drain in-flight poll/heartbeat/recovery operations before publishing
-      // the terminal stopped heartbeat. Loops cannot reschedule once stopping.
-      await Promise.allSettled([...inFlight]);
-      await persistHeartbeat('stopped');
-      started = false;
+      stopPromise = (async () => {
+        // Finish startup before draining loops so a late startup heartbeat
+        // cannot overwrite the terminal stopped state.
+        if (startupPromise) await startupPromise.catch(() => undefined);
+        // Drain in-flight poll/heartbeat/recovery operations before publishing
+        // the terminal stopped heartbeat. Loops cannot reschedule once stopping.
+        await Promise.allSettled([...inFlight]);
+        await persistHeartbeat('stopped');
+        started = false;
+      })();
+      try {
+        await stopPromise;
+      } catch (error) {
+        // Keep the runtime in its stopping state, but permit a later stop()
+        // call to retry the durable terminal heartbeat after a transient store
+        // failure. Concurrent callers still share the same in-progress drain.
+        stopPromise = null;
+        throw error;
+      }
     },
 
     snapshot() {
