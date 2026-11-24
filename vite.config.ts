@@ -111,6 +111,7 @@ export default defineConfig(({ mode }) => {
     test: {
       globals: true,
       environment: 'node',
+      setupFiles: ['./scripts/vitest-ci-env.setup.ts'],
       // This test needs a live database and imports ../server.js, which no longer
       // exists. It cannot pass until it is rewritten against src/server/launcher.ts.
       exclude: [
