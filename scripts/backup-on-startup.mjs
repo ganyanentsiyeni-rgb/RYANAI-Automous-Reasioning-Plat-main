@@ -9,6 +9,7 @@ import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { buildPgDumpEnvironment } from "./pg-dump-connection.mjs";
 import { createHash, randomUUID } from "node:crypto";
 
 const log = (message) => console.log("[startup-backup] " + message);
@@ -16,7 +17,18 @@ const warn = (message) => console.error("[startup-backup] WARNING: " + message);
 
 function pgDump(file) {
   return new Promise((resolve, reject) => {
-    const child = spawn("pg_dump", ["--format=custom", "--no-owner", "--no-acl", "--file", file], { stdio: ["ignore", "ignore", "ignore"], env: { ...process.env, PGDATABASE: process.env.DATABASE_URL } });
+    let env;
+    try {
+      env = buildPgDumpEnvironment(process.env.DATABASE_URL);
+    } catch (error) {
+      reject(error);
+      return;
+    }
+
+    const child = spawn("pg_dump", ["--format=custom", "--no-owner", "--no-acl", "--file", file], {
+      stdio: ["ignore", "ignore", "ignore"],
+      env,
+    });
     child.once("error", reject);
     child.once("close", (code) => code === 0 ? resolve() : reject(new Error("pg_dump exited with status " + code)));
   });
