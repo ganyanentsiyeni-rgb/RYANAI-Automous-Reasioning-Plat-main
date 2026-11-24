@@ -103,7 +103,7 @@ export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilo
       if (!createRequestRef.current || createRequestRef.current.fingerprint !== fingerprint) {
         createRequestRef.current = { fingerprint, delegationId: crypto.randomUUID() };
       }
-      await api('/api/agent/ops/pa/delegations', {
+      const created = await api<{ status?: string }>('/api/agent/ops/pa/delegations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ objective: objective.trim(), capabilities, delegationId: createRequestRef.current.delegationId }),
