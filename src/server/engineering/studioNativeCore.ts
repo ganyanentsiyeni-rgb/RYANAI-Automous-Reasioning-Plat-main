@@ -213,14 +213,14 @@ export async function recoverExpiredStudioLeases() {
     const now = new Date();
     const expired = await tx.studioTask.findMany({
       where: { status: 'running', leaseExpiresAt: { lte: now } },
-      select: { id: true, projectId: true, ownerUserId: true, attempts: true, maxAttempts: true, leaseToken: true }, take: 250,
+      select: { id: true, projectId: true, ownerUserId: true, leaseOwner: true, attempts: true, maxAttempts: true, leaseToken: true }, take: 250,
     });
     let recovered = 0;
     let failed = 0;
     for (const task of expired) {
       const exhausted = task.attempts >= task.maxAttempts;
       const updated = await tx.studioTask.updateMany({
-        where: { id: task.id, status: 'running', leaseToken: task.leaseToken, attempts: task.attempts, leaseExpiresAt: { lte: now } },
+        where: { id: task.id, status: 'running', leaseOwner: task.leaseOwner, leaseToken: task.leaseToken, attempts: task.attempts, leaseExpiresAt: { lte: now } },
         data: { status: exhausted ? 'failed' : 'queued', leaseOwner: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null,
           availableAt: exhausted ? now : new Date(Date.now() + Math.min(300000, 1000 * 2 ** task.attempts)),
           completedAt: exhausted ? now : null },
@@ -279,12 +279,12 @@ async function releaseStudioTaskAfterAuthorizationFailure(task: StudioTask, work
       projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
       actorId: workerId,
       eventType: exhausted ? 'task.authorization_exhausted' : 'task.authorization_failed',
-      payload: { attempt: task.attempts, maxAttempts: task.maxAttempts, error: message.slice(0, 1000) },
+      payload: { attempt: task.attempts, maxAttempts: task.maxAttempts, outcome: exhausted ? 'failed' : 'retrying', error: message.slice(0, 1000) },
     } });
     return true;
   });
   return released
-    ? { state: 'failed' as const, taskId: task.id, error: message }
+    ? { state: exhausted ? 'failed' as const : 'retrying' as const, taskId: task.id, error: message }
     : { state: 'lease_lost' as const, taskId: task.id };
 }
 
@@ -456,12 +456,12 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId: str
       if (result.count === 1) await tx.studioEvent.create({ data: {
         projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId,
         actorId: workerId, eventType: 'task.execution_failed',
-        payload: { attempt: task.attempts, error: message.slice(0, 1000) },
+        payload: { attempt: task.attempts, maxAttempts: task.maxAttempts, outcome: exhausted ? 'failed' : 'retrying', error: message.slice(0, 1000) },
       } });
       return result.count === 1;
     });
     return released
-      ? { state: 'failed' as const, taskId: task.id, error: message }
+      ? { state: exhausted ? 'failed' as const : 'retrying' as const, taskId: task.id, error: message }
       : { state: 'lease_lost' as const, taskId: task.id };
   }
 
