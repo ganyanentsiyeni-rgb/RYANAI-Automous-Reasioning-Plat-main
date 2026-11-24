@@ -488,6 +488,7 @@ model AgentRun {
   evidence AgentRunEvidence[]
   codingTasks CodingTask[]
   paDelegation PaDelegation?
+  paCommsDelegation PaDelegation? @relation("PaCommsRun")
   communicationMessage CommunicationMessage?
   outboundDispatches OutboundCommsDispatch[]
   queueType String @default("reasoning") @map("queue_type")
@@ -522,6 +523,8 @@ model PaDelegation {
   traceId String @map("trace_id")
   agentRunId String? @unique @map("agent_run_id")
   agentRun AgentRun? @relation(fields: [agentRunId], references: [id], onDelete: SetNull)
+  commsRunId String? @unique @map("comms_run_id")
+  commsRun AgentRun? @relation("PaCommsRun", fields: [commsRunId], references: [id], onDelete: SetNull)
   receipt PaExecutionReceipt?
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
