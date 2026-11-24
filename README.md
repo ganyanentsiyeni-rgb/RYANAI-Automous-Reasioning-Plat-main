@@ -659,9 +659,7 @@ sudo docker compose config --quiet
 sudo docker compose up -d --build postgres redis
 sudo docker compose --profile migrations run --rm --entrypoint node migrate \
   node_modules/prisma/build/index.js migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
-sudo docker compose --profile migrations run --rm --entrypoint node migrate \
-  node_modules/prisma/build/index.js migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
-docker compose --profile migrations run --rm migrate
+sudo docker compose --profile migrations run --rm migrate
 sudo docker compose up -d --build --wait
 sudo docker compose ps
 ~~~
@@ -782,6 +780,8 @@ docker compose up -d --build postgres redis
 Apply the one-shot local Prisma migration service explicitly, then start the default application stack:
 
 ~~~bash
+docker compose --profile migrations run --rm --entrypoint node migrate \
+  node_modules/prisma/build/index.js migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
 docker compose --profile migrations run --rm migrate
 docker compose up -d --build --wait
 docker compose ps
