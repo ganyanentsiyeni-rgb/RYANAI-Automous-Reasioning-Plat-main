@@ -37,10 +37,10 @@ test('benchmark: shared worker roster has ten unique, accountable workers', () =
 });
 
 test('benchmark: module workforce has twelve unique owners and safe bounded actions', () => {
-  assert.equal(RYANAI_MODULE_AGENT_COUNT, 12);
+  assert.equal(RYANAI_MODULE_AGENT_COUNT, 13);
   assert.equal(RYANAI_MODULE_AGENT_ROSTER.length, RYANAI_MODULE_AGENT_COUNT);
   assert.equal(new Set(RYANAI_MODULE_AGENT_ROSTER.map((agent) => agent.id)).size, 12);
-  assert.equal(new Set(RYANAI_MODULE_AGENT_ROSTER.map((agent) => agent.moduleId)).size, 12);
+  assert.equal(new Set(RYANAI_MODULE_AGENT_ROSTER.map((agent) => agent.moduleId)).size, 13);
   for (const agent of RYANAI_MODULE_AGENT_ROSTER) {
     assert.ok(agent.name.trim());
     assert.ok(agent.responsibility.trim());
@@ -63,6 +63,8 @@ test('benchmark: task routing is deterministic and unknown tasks fail closed', (
   assert.equal(findWorkerForTask('ci-failure')?.id, 'ci-diagnostics');
   assert.equal(findModuleAgentForTask('comms-readiness-audit')?.id, 'comms-module-agent');
   assert.equal(findModuleAgentForTask('model-benchmark')?.id, 'inference-module-agent');
+  assert.equal(findModuleAgentForTask('ai-inspector.audit')?.id, 'ai-inspector-module-agent');
+  assert.equal(findWorkerForTask('ai-inspector.audit')?.id, 'repository-auditor');
   assert.equal(getWorkerProfile('unknown-worker'), null);
   assert.equal(getModuleAgentProfile('unknown-agent'), null);
   assert.equal(getModuleAgentForModule('unknown-module'), null);
