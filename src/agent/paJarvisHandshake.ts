@@ -10,6 +10,7 @@ export const PA_DELEGATION_CAPABILITIES = [
   'tests.run',
   'evidence.record',
   'comms.task.create',
+  'deployment.execute',
 ] as const satisfies readonly JarvisCapability[];
 
 export type PADelegationCapability = (typeof PA_DELEGATION_CAPABILITIES)[number];
