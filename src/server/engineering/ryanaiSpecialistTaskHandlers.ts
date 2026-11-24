@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { StudioWorkerContext } from './studioNativeCore.js';
 import { registerStudioTaskHandler } from './studioNativeCore.js';
@@ -106,8 +106,8 @@ async function collectAllowedEvidence(relativePath: string, signal?: AbortSignal
         output.push(...await collectAllowedEvidence(child, signal, depth + 1));
       } else if (entry.isFile() && INSPECTABLE_EXTENSION.test(entry.name)) {
         const childPath = path.resolve(repositoryRoot, child);
-        const stat = await import('node:fs/promises').then(({ stat }) => stat(childPath));
-        if (stat.size > MAX_FILE_BYTES) continue;
+        const fileStat = await stat(childPath);
+        if (fileStat.size > MAX_FILE_BYTES) continue;
         output.push({ path: child, content: await readFile(childPath, 'utf8') });
       }
       if (output.length >= MAX_FILES_PER_ROOT) return output.slice(0, MAX_FILES_PER_ROOT);
@@ -116,8 +116,8 @@ async function collectAllowedEvidence(relativePath: string, signal?: AbortSignal
   } catch (error) {
     if (error && typeof error === 'object' && 'code' in error && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) {
       try {
-        const stat = await import('node:fs/promises').then(({ stat }) => stat(resolved));
-        if (!stat.isFile() || stat.size > MAX_FILE_BYTES) return [];
+        const fileStat = await stat(resolved);
+        if (!fileStat.isFile() || fileStat.size > MAX_FILE_BYTES) return [];
         return [{ path: relativePath, content: await readFile(resolved, 'utf8') }];
       } catch (readError) {
         if (readError && typeof readError === 'object' && 'code' in readError && readError.code === 'ENOENT') return [];
@@ -241,7 +241,7 @@ export function registerRyanAISpecialistTaskHandlers(profileId: string) {
   if (profileId === 'coordinator') {
     for (const type of ['planning', 'triage', 'coordination']) add(type, runCoordinator);
   } else if (profileId === 'repository-auditor') {
-    for (const type of ['repository-audit', 'inventory', 'ai-inspector.audit', 'ai-inspector.report']) add(type, runAIInspector);
+    for (const type of ['ai-inspector.audit', 'ai-inspector.report']) add(type, runAIInspector);
     add('documentation-audit', (context) => runStaticInspection('release-readiness', context, 'read-repository'));
   } else if (SPECS[profileId]) {
     const handler = (context: StudioWorkerContext) => runStaticInspection(profileId, context);
