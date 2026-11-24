@@ -111,7 +111,8 @@ async function collectAllowedEvidence(relativePath: string, signal?: AbortSignal
   try {
     const entries = await readdir(resolved, { withFileTypes: true });
     const output: Array<{ path: string; content: string }> = [];
-    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    // Files before directories at each level, so depth-first recursion cannot starve top-level manifests under the per-root cap.
+    for (const entry of entries.sort((a, b) => Number(a.isDirectory()) - Number(b.isDirectory()) || a.name.localeCompare(b.name))) {
       signal?.throwIfAborted();
       if (entry.name.startsWith('.') && relativePath !== '.github/workflows') continue;
       if (IGNORED_DIRECTORY.test(entry.name)) continue;
