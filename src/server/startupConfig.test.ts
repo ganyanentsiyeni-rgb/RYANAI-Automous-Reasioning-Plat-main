@@ -199,6 +199,19 @@ describe('production and staging connection configuration', () => {
     });
   });
 
+  it('allows the shared database callers to use the explicit loopback disposable policy', () => {
+    expect(resolveConnectionUrls(
+      'staging',
+      'postgresql://postgres:test-placeholder@localhost:5432/postgres',
+      'redis://u2eb-cache',
+      supabaseProjectUrl,
+      supabasePoolerHost,
+      undefined,
+      false,
+      true,
+    ).databaseUrl).toBe('postgresql://postgres:test-placeholder@localhost:5432/postgres');
+  });
+
   it('retains local defaults outside production', () => {
     expect(resolveConnectionUrls('development')).toEqual({
       databaseUrl: expectedLocalDatabaseUrl(),
