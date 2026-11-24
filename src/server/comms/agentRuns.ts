@@ -241,12 +241,12 @@ export async function enqueueCommsAssistRun(input: {
         data: { approvalStatus: 'approved', approvedBy: input.ownerUserId, approvedAt: new Date() },
       });
       if (approved.count === 1) {
-        await appendRunEvidence(prisma, {
+        await prisma.$transaction((tx) => appendRunEvidence(tx, {
           runId,
           eventType: 'comms.assist.approved',
           actorId: input.ownerUserId,
           payload: { source: 'authenticated-owner-request', outboundDispatchAllowed: false },
-        });
+        }));
       }
     }
   }
