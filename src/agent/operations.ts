@@ -373,8 +373,9 @@ async function processAgentRun(
         await assertExecutionLeaseActive();
         const report = await runRyanAIInspectorAudit({ taskId: run.id, signal: cancellation.signal });
         await assertExecutionLeaseActive();
-        const reportText = report.report.slice(0, 24_000);
-        const reportDigest = createHash('sha256').update(report.report, 'utf8').digest('hex');
+        if (report.report.length > 24_000) throw new Error('AI Inspector report exceeded the durable evidence size limit.');
+        const reportText = report.report;
+        const reportDigest = createHash('sha256').update(reportText, 'utf8').digest('hex');
         verifiedCapabilityContext = [verifiedCapabilityContext, 'AI INSPECTOR AUDIT REPORT:\\n' + reportText]
           .filter((part): part is string => Boolean(part))
           .join('\\n\\n');
@@ -387,7 +388,7 @@ async function processAgentRun(
             reportSource: report.reportSource,
             reportDigest,
             reportExitCode: report.exitCode,
-            reportTruncated: report.report.length > reportText.length,
+            reportTruncated: false,
             report: reportText,
             readOnly: true,
             externalActions: 'none',
