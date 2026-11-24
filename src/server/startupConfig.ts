@@ -99,6 +99,7 @@ export function resolveConnectionUrls(
   supabaseUrl?: string,
   sessionPoolerHost?: string,
   sslRootCertPath?: string,
+  localCompose = false,
 ): ConnectionUrls {
   let database = databaseUrl?.trim();
   const redis = redisUrl?.trim();
@@ -115,9 +116,18 @@ export function resolveConnectionUrls(
   const primaryStore = getDatabaseStore(manifestEnvironment, 'primary');
   const cacheStore = getDatabaseStore(manifestEnvironment, 'cache');
 
+  const isLocalComposeDatabase = localCompose && (() => {
+    try {
+      const parsed = new URL(database ?? '');
+      return parsed.hostname === 'postgres' && (parsed.port || '5432') === '5432';
+    } catch {
+      return false;
+    }
+  })();
+
   if (strictRuntime && database) {
     parseProductionDatabaseUrl(database);
-    if (supabaseUrl?.trim()) {
+    if (supabaseUrl?.trim() && !isLocalComposeDatabase) {
       assertDatabaseUrlMatchesSupabaseProject(database, supabaseUrl);
     }
   }
