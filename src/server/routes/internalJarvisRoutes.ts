@@ -3,6 +3,9 @@ import { dispatchJarvisTask, listAgentRuns } from '../../agent/operations.js';
 import { authorizeJarvisCapability, getJarvisAgentRegistry, type JarvisCapability } from '../../agent/jarvisRegistry.js';
 import { prisma } from '../../lib/prisma.js';
 import { createJarvisIdentityProof, createPADelegation, getPADelegation, verifyPAHandshake } from '../../agent/paDelegationService.js';
+import { getAgentTaskWorkerStatus, listBrainHealth } from '../../agent/operations.js';
+import { RYANAI_MODULE_AGENT_ROSTER, RYANAI_MODULE_AGENT_COUNT } from '../../agent/moduleAgentRegistry.js';
+import { RYANAI_WORKER_ROSTER, RYANAI_WORKER_COUNT } from '../../agent/workerRegistry.js';
 import type { PADelegationCapability } from '../../agent/paJarvisHandshake.js';
 
 interface CreateTaskBody { objective: string; }
@@ -21,6 +24,50 @@ export const internalJarvisRoutes: FastifyPluginAsync = async (fastify) => {
     } catch {
       return reply.code(503).send({ service: 'ryanai-internal-jarvis', status: 'degraded', persistence: 'unavailable', externalJarvisRequired: false });
     }
+  });
+
+  fastify.get('/api/jarvis/internal/workforce', async (request, reply) => {
+    if (!request.authUser) return reply.code(401).send({ error: 'Sign in to continue.' });
+    if (!isAdmin(request)) return reply.code(403).send({ error: 'Administrator access is required.' });
+
+    const [brainHealth, taskWorker] = await Promise.all([
+      listBrainHealth(),
+      Promise.resolve(getAgentTaskWorkerStatus()),
+    ]);
+
+    const moduleAgents = RYANAI_MODULE_AGENT_ROSTER.map((agent) => ({
+      id: agent.id,
+      moduleId: agent.moduleId,
+      moduleName: agent.moduleName,
+      name: agent.name,
+      state: 'registered' as const,
+      taskTypes: agent.taskTypes,
+      allowedActions: agent.allowedActions,
+    }));
+
+    const workers = RYANAI_WORKER_ROSTER.map((worker) => ({
+      id: worker.id,
+      name: worker.name,
+      state: 'registered' as const,
+      taskTypes: worker.taskTypes,
+      allowedActions: worker.allowedActions,
+    }));
+
+    const liveVerified = false;
+    reply.code(liveVerified ? 200 : 503);
+    return {
+      status: liveVerified ? 'live' : 'not_live_verified',
+      liveVerified,
+      activationPolicy: 'registered roster and configuration never count as live runtime evidence',
+      moduleAgents: { expected: RYANAI_MODULE_AGENT_COUNT, registered: moduleAgents.length, items: moduleAgents },
+      workers: { expected: RYANAI_WORKER_COUNT, registered: workers.length, items: workers },
+      reasoningQueueWorker: taskWorker,
+      brains: brainHealth,
+      blockers: [
+        'Live runtime evidence must prove authenticated queue connectivity, worker heartbeats, task assignment, execution and completion for the required workforce.',
+        'Provider/model configuration or registry presence is not proof of provider health or production activation.',
+      ],
+    };
   });
 
   fastify.get('/api/jarvis/internal/agents', async (request, reply) => {
