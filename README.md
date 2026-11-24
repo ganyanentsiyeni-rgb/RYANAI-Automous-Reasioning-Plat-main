@@ -44,9 +44,11 @@ This README describes the application and contracts present in this repository. 
 - [Security and governance](#security-and-governance)
 - [Technology stack and requirements](#technology-stack-and-requirements)
 - [Local development](#local-development)
+- [NPM commands and scripts](#npm-commands-and-scripts)
 - [Environment configuration](#environment-configuration)
 - [Database setup and migrations](#database-setup-and-migrations)
 - [Testing and validation](#testing-and-validation)
+- [WSL 2 Ubuntu and Docker Engine](#wsl-2-ubuntu-and-docker-engine)
 - [Containers and deployment configuration](#containers-and-deployment-configuration)
 - [Operational readiness and troubleshooting](#operational-readiness-and-troubleshooting)
 - [Repository map](#repository-map)
@@ -360,6 +362,86 @@ npm start
 
 The package start command launches dist/server/server/launcher.js. Confirm the actual configured port and health route for the selected environment.
 
+## NPM commands and scripts
+
+**Checked against the root \`package.json\` on 24 November 2026.** These are the commands declared by this repository; scripts in \`mcp-server/\` and \`workflows-ryanai/\` are separate package scopes.
+
+### Common NPM commands
+
+| Command | What it does |
+| --- | --- |
+| \`npm install\` or \`npm i\` | Installs dependencies declared in \`package.json\` and may update \`package-lock.json\`. |
+| \`npm ci\` | Removes the existing root \`node_modules\` and installs the exact lockfile tree. It fails when the lockfile and manifest disagree. |
+| \`npm install <pkg>\` | Adds a runtime dependency and updates the manifest and lockfile. |
+| \`npm install -D <pkg>\` | Adds a development dependency (\`--save-dev\`). |
+| \`npm uninstall <pkg>\` | Removes a dependency and updates the manifest and lockfile. |
+| \`npm run\` | Lists the scripts available in the current package. |
+| \`npm run <script>\` | Runs a named script, for example \`dev\`, \`build\`, \`lint\`, or \`test\`. |
+| \`npm start\` | Runs the package \`prestart\` hook and then \`start\`. In this repository, \`prestart\` builds the server before starting it. |
+| \`npm test\` | Runs the root package test script. |
+| \`npm outdated\` | Lists installed dependencies for which newer versions are available. |
+| \`npm audit\` | Checks the dependency tree against npm's known vulnerability advisories. |
+| \`npm audit fix\` | Applies compatible audit fixes where possible. Review the manifest and lockfile diff and rerun tests before committing. |
+| \`npm cache verify\` | Verifies the local npm cache. |
+| \`npm config list\` | Displays the active npm configuration. |
+
+For a reproducible root install, use the repository's tested flags and install the two nested packages as well:
+
+~~~bash
+npm ci --include=dev --legacy-peer-deps
+npm --prefix mcp-server ci --include=dev
+npm --prefix workflows-ryanai ci --include=dev
+~~~
+
+The equivalent root convenience script is \`npm run install:all\`.
+
+### RyanAI development and build scripts
+
+| Purpose | Command | Notes |
+| --- | --- | --- |
+| Start the local development stack | \`npm run dev\` | Starts API, web, and MCP HTTP development processes concurrently. |
+| API development | \`npm run dev:api\` | Runs the API watcher. |
+| Web development | \`npm run dev:web\` | Starts the Vite development server. |
+| MCP development | \`npm run dev:mcp\` | Starts the nested MCP HTTP package. |
+| Build the web application | \`npm run build\` | Runs the root build; its \`prebuild\` hook generates Prisma clients. |
+| Build the web application explicitly | \`npm run build:web\` | Alias for the client build. |
+| Preview a built web application | \`npm run preview\` | Runs Vite's preview server; build first. |
+| Validate both Prisma schemas and build the API | \`npm run db:validate && npm run build:server\` | Schema validation is separate from applying migrations. |
+| Build the API server | \`npm run build:server\` | Generates required clients through its prebuild hook, compiles the server, and copies runtime assets. |
+| Start the production-style API locally | \`npm start\` | Runs \`prestart\` and then \`node dist/server/server/launcher.js\`. |
+| Run the broad repository gate | \`npm run validate\` | Includes governance, workflow, type, lint, test, migration-audit, deployment-contract, stack, build, and Comms checks. |
+
+### RyanAI validation and audit scripts
+
+~~~bash
+npm run deploy:validate
+npm run stack:validate
+npm run test:migration:audit
+npm run test:readiness-audits
+npm run test:model-governance
+npm run test:database-config
+npm run test:agent-governance
+npm run test:legacy-server-entrypoints
+npm run test:server-assets
+npm run test:quant-engine
+npm run mcp:check
+npm run mcp:health
+~~~
+
+Related database inspection and generation commands:
+
+~~~bash
+npm run db:validate
+npm run db:generate
+npm run db:migration:audit
+npm run db:status
+npm run db:audiobook:status
+~~~
+
+\`npm run test:migration:audit\` tests the migration-audit contracts; \`npm run db:migration:audit\` runs the migration-readiness audit itself. \`npm run test:readiness-audits\` and \`npm run test:database-config\` are valid root scripts.
+
+**Command corrections:** use \`npm run preview\`, not \`npm preview\`. There is no root \`start:prod\` script in the current \`package.json\`; use \`npm start\` for the declared local API start command. Always run \`npm run\` from the package directory to see the scripts that package actually provides.
+
 ## Environment configuration
 
 Use `.env.example` as the canonical local variable template. `env.frontend.example` is a legacy frontend-focused template; keep it aligned when frontend-only setup instructions are needed. It includes these groups:
@@ -394,9 +476,19 @@ That command applies the Supabase-owned migration history to the local Supabase 
 
 ### Prisma application schema
 
-For a complete fresh local database, follow the exact two-stage sequence in [supabase/README.md](supabase/README.md). It first applies Supabase migrations, records the committed no-op platform-baseline marker in the Prisma migration ledger, then applies Prisma application migrations.
+For a complete fresh local Supabase database, run the Supabase-owned migrations first, then initialize the Prisma migration ledger with the committed no-op platform-baseline marker, and finally apply the Prisma application migrations:
 
-Useful scripts:
+~~~bash
+supabase start
+supabase db reset --local
+eval "$(supabase status -o env)"
+DATABASE_URL="$DB_URL" npx prisma migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
+DATABASE_URL="$DB_URL" npx prisma migrate deploy --schema=prisma/schema.prisma
+~~~
+
+Run the two migration stages against the **same disposable local Supabase database**. The baseline marker contains no schema DDL; it records that the Supabase platform stage has already created the Supabase-owned objects. Do not mark it applied against a database that has not completed that Supabase migration stage. The full sequence and its CI checks are documented in [supabase/README.md](supabase/README.md).
+
+Other useful scripts:
 
 ~~~bash
 npm run db:generate
@@ -442,31 +534,253 @@ Report results accurately:
 
 A skipped, queued, or configured check is never a pass.
 
+## WSL 2 Ubuntu and Docker Engine
+
+These instructions are for a local Windows machine using Ubuntu under WSL 2. Run the Docker installation commands inside the Ubuntu terminal. Run the \`.wslconfig\` and \`wsl\` commands from Windows PowerShell or Command Prompt.
+
+### Install Docker Engine in Ubuntu
+
+Use either Docker Desktop's WSL integration **or** an Engine installed inside Ubuntu. Avoid running two competing Docker daemons for the same development environment.
+
+For an Ubuntu distribution supported by Docker's official repository:
+
+~~~bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+sudo tee /etc/apt/sources.list.d/docker.sources > /dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "\${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo service docker start
+
+sudo docker run hello-world
+docker compose version
+~~~
+
+If the Docker daemon does not start with \`service\`, check whether systemd is enabled in the WSL distribution and use \`sudo systemctl start docker\` where supported.
+
+You can continue to use \`sudo docker ...\` commands. Adding a user to the \`docker\` group is optional; membership grants effectively root-level control over the Docker host:
+
+~~~bash
+sudo usermod -aG docker "$USER"
+newgrp docker
+~~~
+
+### Optional WSL 2 resource configuration
+
+In Windows PowerShell, open the global WSL configuration file:
+
+~~~powershell
+notepad "$env:USERPROFILE\.wslconfig"
+~~~
+
+Example values (adjust memory and processor counts to the Windows machine's available resources):
+
+~~~ini
+[wsl2]
+memory=8GB
+processors=6
+swap=4GB
+localhostForwarding=true
+gpuSupport=true
+loadDefaultKernelModules=true
+
+[general]
+instanceIdleTimeout=60000
+
+[experimental]
+autoMemoryReclaim=gradual
+sparseVhd=true
+~~~
+
+Save the file, then apply the configuration from Windows PowerShell or Command Prompt:
+
+~~~powershell
+wsl --shutdown
+wsl --list --running
+~~~
+
+\`.wslconfig\` is stored in the Windows user profile and applies to WSL 2 distributions globally. WSL configuration keys and experimental options can change; consult [Microsoft's WSL configuration reference](https://learn.microsoft.com/en-us/windows/wsl/wsl-config) before changing advanced settings.
+
+### Prepare and start RyanAI from WSL
+
+From the Ubuntu shell, change to the repository root. The following example assumes the repository has already been cloned:
+
+~~~bash
+cd ~/RYANAI-Automous-Reasioning-Plat-main
+pwd
+test -f docker-compose.yml
+test -f .env || cp .env.example .env
+chmod 600 .env
+~~~
+
+Edit \`.env\` locally before starting the stack. Replace the sample local values for \`DB_PASSWORD\`, \`REDIS_PASSWORD\`, and \`JWT_SECRET\` with unique development-only values. Generate random values with \`openssl rand -hex 32\`; do not reuse production credentials or paste secrets into Git, chat, logs, or screenshots.
+
+Start the local database and cache, apply the local Compose migration profile, then start the default application stack:
+
+~~~bash
+sudo service docker start
+sudo docker compose config --quiet
+sudo docker compose up -d --build postgres redis
+sudo docker compose --profile migrations run --rm migrate
+sudo docker compose up -d --build --wait
+sudo docker compose ps
+~~~
+
+The default Compose stack includes PostgreSQL/pgvector, Redis, API, MCP HTTP server, and web. The migration and worker services are opt-in profiles:
+
+~~~bash
+# Start the Studio worker only after the local migration step completed.
+sudo docker compose --profile workers up -d studio-worker
+
+# Optional MCPJungle gateway; set unique local MCP_PROXY_DELEGATION_TOKEN
+# and MCPJUNGLE_DB_PASSWORD values in .env before enabling this profile.
+sudo docker compose --profile mcp-gateway up -d --build
+~~~
+
+### Local container health and logs
+
+~~~bash
+sudo docker compose ps
+curl -sS -o /dev/null -w "API /livez -> %{http_code}\n" http://127.0.0.1:3000/livez
+curl -sS -o /dev/null -w "API /readyz -> %{http_code}\n" http://127.0.0.1:3000/readyz
+curl -sS -o /dev/null -w "MCP /health -> %{http_code}\n" http://127.0.0.1:8765/health
+curl -sS -o /dev/null -w "Web /health -> %{http_code}\n" http://127.0.0.1:9090/health
+
+sudo docker compose logs --tail=50 api
+sudo docker compose logs --tail=50 mcp-server
+sudo docker compose --profile workers logs --tail=50 studio-worker
+~~~
+
+An HTTP status code is only endpoint evidence; it does not by itself prove that every provider, workspace, or end-to-end workflow is operational.
+
+### Redis host-port conflict
+
+The Compose Redis service listens on port \`6379\` inside the Docker network and normally publishes \`127.0.0.1:6379\` on the WSL host. Inspect a conflict before changing services:
+
+~~~bash
+sudo ss -tulpn | grep ':6379' || true
+~~~
+
+Do not indiscriminately terminate every \`redis-server\` process or stop a Redis service that may belong to another application. To remap only the host port, create \`docker-compose.override.yml\` in the repository root (Docker Compose v2.24 or later supports the \`!reset\` merge tag):
+
+~~~yaml
+services:
+  redis:
+    ports: !reset
+      - "127.0.0.1:16379:6379"
+~~~
+
+Validate the merged configuration and recreate Redis:
+
+~~~bash
+sudo docker compose config --quiet
+sudo docker compose up -d redis
+~~~
+
+Containers on the RyanAI network still connect to \`redis:6379\`. Host tools should connect to \`127.0.0.1:16379\`.
+
+### Stop the local stack safely
+
+~~~bash
+sudo docker compose down
+~~~
+
+This stops and removes the Compose containers and network but retains named data volumes. **Do not add \`-v\` unless you intentionally want to permanently delete the local PostgreSQL, Redis, and MCPJungle data volumes.** Never use volume-removal commands against data you need to keep.
+
+The Compose migration profile targets the isolated local Compose PostgreSQL service. The baseline-marker \`prisma migrate resolve --applied 20261014000000_supabase_platform_baseline\` command belongs only to the separate Supabase CLI workflow above, after \`supabase db reset --local\` has completed against that same database. Do not use it as a generic workaround for a failed Compose migration, and never point local Compose commands at a hosted or production database.
+
 ## Containers and deployment configuration
+
+### Docker Build
+
+Build commands below use the repository root (\`.\`) as the Docker build context. The root Dockerfile contains separate API, web, migration, and Studio worker targets; its final default target is the API.
+
+~~~bash
+# Build the default API image.
+docker build .
+
+# Build and tag the default API image.
+docker build -t ryanai-api:local .
+
+# Build selected targets from the root Dockerfile.
+docker build -f Dockerfile --target api -t ryanai-api:local .
+docker build -f Dockerfile --target web -t ryanai-web:local .
+docker build -f Dockerfile --target migrate -t ryanai-migrate:local .
+docker build -f Dockerfile --target studio-worker -t ryanai-studio-worker:local .
+
+# Build the standalone API and MCP images.
+docker build -f Dockerfile.api -t ryanai-api:local .
+docker build -f Dockerfile.mcp_server -t ryanai-mcp:local .
+
+# Generic examples for another Docker project:
+docker build -f docker/Dockerfile.prod -t myapp:prod .
+docker buildx build -t ghcr.io/<owner>/<image>:<tag> --push .
+~~~
+
+The final command publishes an image to a registry and requires the correct registry login and write permission. Building or pushing an image is not the same as deploying or verifying a running service. Keep the RyanAI build context at the repository root because the Dockerfiles copy files from multiple root-level paths.
 
 ### Docker Compose
 
-The Compose stack defines local PostgreSQL/pgvector, Redis, API, MCP, and an opt-in one-shot migration profile. It expects a local .env file with required development variables.
+The default Compose stack defines local PostgreSQL/pgvector, Redis, API, MCP HTTP server, and web. Optional profiles add the one-shot migration service, Studio worker, and MCPJungle gateway. Compose reads the repository-root \`.env\` file; copy \`.env.example\` only for local development and replace its sample values with unique local credentials before startup.
+
+Validate the Compose configuration and start the local database/cache first:
 
 ~~~bash
-docker compose up --build --detach --wait
+cp .env.example .env
+# Edit .env and set unique local DB_PASSWORD, REDIS_PASSWORD, and JWT_SECRET values.
+docker compose config --quiet
+docker compose up -d --build postgres redis
+~~~
+
+Apply the one-shot local Prisma migration service explicitly, then start the default application stack:
+
+~~~bash
+docker compose --profile migrations run --rm migrate
+docker compose up -d --build --wait
 docker compose ps
-docker compose logs -f
 ~~~
 
-Check API health:
+Start optional components only when their prerequisites are ready:
 
 ~~~bash
-docker compose exec -T api wget -q -O - http://127.0.0.1:3000/health
+# Studio worker: only after the local migrations complete.
+docker compose --profile workers up -d studio-worker
+
+# MCPJungle gateway: configure unique MCP_PROXY_DELEGATION_TOKEN
+# and MCPJUNGLE_DB_PASSWORD values in the local .env first.
+docker compose --profile mcp-gateway up -d --build
 ~~~
 
-Stop the stack:
+Useful local health checks:
+
+~~~bash
+curl -sS -o /dev/null -w "API /livez -> %{http_code}\n" http://127.0.0.1:3000/livez
+curl -sS -o /dev/null -w "API /readyz -> %{http_code}\n" http://127.0.0.1:3000/readyz
+curl -sS -o /dev/null -w "MCP /health -> %{http_code}\n" http://127.0.0.1:8765/health
+curl -sS -o /dev/null -w "Web /health -> %{http_code}\n" http://127.0.0.1:9090/health
+docker compose logs --tail=50 api
+docker compose logs --tail=50 mcp-server
+~~~
+
+Stop the local stack while preserving its named volumes:
 
 ~~~bash
 docker compose down
 ~~~
 
-The migration service is opt-in and targets the local Compose database. Do not run destructive volume-removal commands unless the local data is known to be disposable.
+Do not use \`docker compose down -v\` unless you intentionally want to erase the local database/cache volumes and have confirmed that the data is disposable.
 
 ### Render and Railway
 
