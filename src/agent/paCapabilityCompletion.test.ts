@@ -2,8 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { assertPACompletionCapabilityReceipts, assertPARepositoryInspectionEvidence } from './paCapabilityCompletion.js';
 
 const scope = { paDelegationId: '123e4567-e89b-42d3-a456-426614174000', capabilities: ['repository.inspect', 'evidence.record'] };
-const passed = (capability: 'repository.inspect' | 'evidence.record' | 'comms.task.create') => ({ capability, status: 'passed' as const, evidenceReferences: ['evidence:' + capability], ...(capability === 'comms.task.create' ? { childRunId: 'pa_comms_' + 'a'.repeat(64) } : {}) });
-const passed = (capability: 'repository.inspect' | 'evidence.record' | 'comms.task.create' | 'deployment.execute') => ({ capability, status: 'passed' as const, evidenceReferences: ['evidence:' + capability], ...(capability === 'comms.task.create' ? { childRunId: 'comms_assist_' + 'a'.repeat(64) } : {}) });
+type PassableCapability = 'repository.inspect' | 'evidence.record' | 'comms.task.create' | 'deployment.execute' | 'ai-inspector.inspect';
+const passed = (capability: PassableCapability) => ({
+  capability,
+  status: 'passed' as const,
+  evidenceReferences: ['agent-run-evidence:' + capability],
+  ...(capability === 'comms.task.create' ? { childRunId: 'comms_assist_' + 'a'.repeat(64) } : {}),
+  ...(capability === 'ai-inspector.inspect' ? { reportDigest: 'b'.repeat(64), reportSource: 'scripts/ai-inspector-audit.mjs' } : {}),
+});
 
 describe('PA finalization capability receipts', () => {
   it('does not allow reasoning-only completion without capability receipts', () => {
@@ -73,6 +79,18 @@ describe('PA internal Comms child-task receipts', () => {
   });
   it('accepts a passed, evidence-backed internal Comms child task', () => {
     expect(() => assertPACompletionCapabilityReceipts(commsScope, [passed('comms.task.create')])).not.toThrow();
+  });
+});
+
+describe('PA AI Inspector report receipts', () => {
+  const inspectorScope = { paDelegationId: '123e4567-e89b-42d3-a456-426614174000', capabilities: ['ai-inspector.inspect'] };
+  it('requires a report digest and known source before completion', () => {
+    expect(() => assertPACompletionCapabilityReceipts(inspectorScope, [{
+      capability: 'ai-inspector.inspect', status: 'passed', evidenceReferences: ['agent-run-evidence:inspector-1'],
+    }])).toThrow(/verifiable report digest and source/);
+  });
+  it('accepts a completed read-only Inspector report with evidence', () => {
+    expect(() => assertPACompletionCapabilityReceipts(inspectorScope, [passed('ai-inspector.inspect')])).not.toThrow();
   });
 });
 
