@@ -133,6 +133,47 @@ export async function claimStudioTask(workerId: string, supportedTaskTypes: read
   if (!workerId.trim() || supportedTaskTypes.length === 0) return null;
   const safeLease = Math.max(15, Math.min(leaseSeconds, 600));
   return prisma.$transaction(async (tx) => {
+    // A queued task cannot run when any prerequisite is missing, failed or
+    // cancelled. Persist the terminal outcome before selecting claimable work.
+    const terminalDependents = await tx.$queryRawUnsafe<Record<string, unknown>[]>(`
+      WITH terminal AS (
+        SELECT task.id,
+          ARRAY(
+            SELECT dep.dependency_id
+            FROM unnest(task.depends_on_ids) AS dep(dependency_id)
+            LEFT JOIN studio_tasks AS dependency ON dependency.id = dep.dependency_id
+            WHERE dependency.id IS NULL OR dependency.status IN ('failed', 'cancelled')
+          ) AS failed_dependency_ids
+        FROM studio_tasks AS task
+        WHERE task.status = 'queued'
+          AND EXISTS (
+            SELECT 1
+            FROM unnest(task.depends_on_ids) AS dep(dependency_id)
+            LEFT JOIN studio_tasks AS dependency ON dependency.id = dep.dependency_id
+            WHERE dependency.id IS NULL OR dependency.status IN ('failed', 'cancelled')
+          )
+      ),
+      updated AS (
+        UPDATE studio_tasks AS task
+        SET status = 'failed', lease_owner = NULL, lease_token = NULL,
+            lease_expires_at = NULL, heartbeat_at = NULL,
+            completed_at = NOW(), updated_at = NOW()
+        FROM terminal
+        WHERE task.id = terminal.id AND task.status = 'queued'
+        RETURNING task.id, task.project_id, task.owner_user_id, terminal.failed_dependency_ids
+      )
+      SELECT * FROM updated
+    `);
+    for (const dependent of terminalDependents) {
+      await tx.studioEvent.create({ data: {
+        projectId: String(dependent.project_id),
+        taskId: String(dependent.id),
+        ownerUserId: String(dependent.owner_user_id),
+        eventType: 'task.dependency_failed',
+        payload: { failedDependencyIds: dependent.failed_dependency_ids },
+      } });
+    }
+
     const claimToken = randomUUID();
     // RETURNING task.* includes the fields needed for the event; map PostgreSQL snake_case once.
     const rows = await tx.$queryRawUnsafe<Record<string, unknown>[]>(

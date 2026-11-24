@@ -89,6 +89,7 @@ try {
       { title: 'Policy denial', objective: 'Remain blocked without executing handler.', taskType: taskType.denied, requiredCapabilities: ['production.deploy'], priority: 17 },
       { title: 'Authorization retry', objective: 'Release lease for retry.', taskType: taskType.retry, priority: 16 },
       { title: 'Authorization exhaustion', objective: 'Fail at max attempts.', taskType: taskType.exhausted, priority: 15 },
+      { title: 'Dependent after exhausted prerequisite', objective: 'Fail rather than remain queued.', taskType: 'dependency-after-exhaustion', dependsOnIndexes: [5], priority: 12 },
       { title: 'Handler retry', objective: 'Release lease after handler error.', taskType: taskType.handlerFailure, priority: 14 },
       { title: 'Lost lease', objective: 'Never persist completion after lease expiry.', taskType: taskType.leaseLost, priority: 13 },
     ],
@@ -221,6 +222,24 @@ try {
   assert.equal(exhausted.state, 'failed');
   assert.equal((await taskById(exhaustedTask.id)).status, 'failed');
   assert.ok(await prisma.studioEvent.findFirst({ where: { taskId: exhaustedTask.id, eventType: 'task.authorization_exhausted' } }));
+
+  const dependentTask = created.tasks.find((item) => item.taskType === 'dependency-after-exhaustion');
+  assert.ok(dependentTask);
+  assert.deepEqual((await taskById(dependentTask.id)).dependsOnIds, [exhaustedTask.id]);
+  const blockedByTerminalDependency = await claimStudioTask(
+    'studio-ci-dependency-' + suffix,
+    ['dependency-after-exhaustion'],
+    60,
+  );
+  assert.equal(blockedByTerminalDependency, null, 'a task with a failed prerequisite must never be claimed');
+  const failedDependent = await taskById(dependentTask.id);
+  assert.equal(failedDependent.status, 'failed', 'a dependent task must not remain queued forever');
+  assert.equal(failedDependent.completedAt instanceof Date, true);
+  const dependencyFailureEvent = await prisma.studioEvent.findFirst({
+    where: { taskId: dependentTask.id, eventType: 'task.dependency_failed' },
+  });
+  assert.ok(dependencyFailureEvent, 'terminal dependency propagation must be auditable');
+  assert.deepEqual(dependencyFailureEvent.payload.failedDependencyIds, [exhaustedTask.id]);
 
   const handlerFailureTask = created.tasks.find((item) => item.taskType === taskType.handlerFailure);
   assert.ok(handlerFailureTask);
