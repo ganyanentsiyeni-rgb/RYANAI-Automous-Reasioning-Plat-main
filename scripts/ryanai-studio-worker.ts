@@ -33,8 +33,6 @@ const runCiDiagnosticsTask = createRyanAICiDiagnosticsTaskHandler(
     headSha,
     options,
   ),
-  (ownerUserId, headSha, options) =>
-    inspectConnectedGitHubWorkflowEvidence({ prisma }, ownerUserId, headSha, options),
 );
 
 const unregisterHandlers = profileId === 'repository-auditor'
