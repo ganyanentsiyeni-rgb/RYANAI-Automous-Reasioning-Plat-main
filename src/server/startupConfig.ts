@@ -63,6 +63,12 @@ export function resolveConnectionUrls(
   const redis = redisUrl?.trim();
 
   const strictRuntime = nodeEnv === 'production' || nodeEnv === 'staging';
+  // Tests must never inherit a hosted Supabase DATABASE_URL from a dotenv
+  // overlay. Keep explicit loopback test databases, but fall back to the
+  // isolated local default when the inherited URL is hosted.
+  if (nodeEnv === 'test' && database && isSupabaseDatabaseUrl(database)) {
+    database = undefined;
+  }
   const manifestEnvironment = strictRuntime ? nodeEnv : 'staging';
   assertDatabaseManifestContract(manifestEnvironment);
   const primaryStore = getDatabaseStore(manifestEnvironment, 'primary');
