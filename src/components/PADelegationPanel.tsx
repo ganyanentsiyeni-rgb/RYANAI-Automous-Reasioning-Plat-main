@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Activity, ArrowRightLeft, CheckCircle2, Clock3, LoaderCircle, RefreshCw, Send, ShieldCheck, XCircle } from 'lucide-react';
 import { authenticatedFetch } from '@/lib/authenticatedFetch';
 
-type Capability = 'repository.inspect' | 'diagnostics.run' | 'patch.propose' | 'evidence.record' | 'comms.task.create';
 type Capability = 'repository.inspect' | 'diagnostics.run' | 'patch.propose' | 'evidence.record' | 'comms.task.create' | 'deployment.execute';
 type Handoff = { fromAgent: string; toAgent: string; status: string; output?: string | null; error?: string | null };
 type Delegation = {
