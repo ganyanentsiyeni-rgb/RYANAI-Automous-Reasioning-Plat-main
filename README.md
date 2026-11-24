@@ -570,6 +570,8 @@ docker compose version
 
 If the Docker daemon does not start with `service`, check whether systemd is enabled in the WSL distribution and use `sudo systemctl start docker` where supported.
 
+Official references: [Docker Engine installation on Ubuntu](https://docs.docker.com/engine/install/ubuntu/) and [Docker Compose plugin installation](https://docs.docker.com/compose/install/linux/).
+
 You can continue to use `sudo docker ...` commands. Adding a user to the `docker` group is optional; membership grants effectively root-level control over the Docker host:
 
 ~~~bash
@@ -726,7 +728,7 @@ docker build -f Dockerfile.mcp_server -t ryanai-mcp:local .
 
 # Generic examples for another Docker project:
 docker build -f docker/Dockerfile.prod -t myapp:prod .
-docker buildx build -t ghcr.io/<owner>/<image>:<tag> --push .
+docker buildx build -t ghcr.io/org/myapp:1.0.0 --push .
 ~~~
 
 The final command publishes an image to a registry and requires the correct registry login and write permission. Building or pushing an image is not the same as deploying or verifying a running service. Keep the RyanAI build context at the repository root because the Dockerfiles copy files from multiple root-level paths.
