@@ -102,6 +102,17 @@ export function evaluateGenXSecurityEvent(event: GenXSecurityEvent): GenXPolicyR
       event.environment === 'development') {
     return { decision: 'ALLOW', ruleId: 'GX-HUMAN-AERIAL-DEV-001', reason: 'Verified user requested inference through the configured development Aerial runtime.', severity: 'LOW' };
   }
+  // Provider reads are allowed only for a verified human acting on their own
+  // owner-bound connection, and only for the explicitly enumerated read-only
+  // capabilities. This does not authorize agent/service network calls or writes.
+  if (event.actorType === 'human' && event.ownerAuthorized === true &&
+      event.toolName === 'plugin_provider_read' && event.action === 'NETWORK' &&
+      /^plugin-provider:(google-calendar|microsoft-365-calendar):(calendar\\.events\\.read)$/.test(event.target ?? '') ||
+      (event.actorType === 'human' && event.ownerAuthorized === true &&
+       event.toolName === 'plugin_provider_read' && event.action === 'NETWORK' &&
+       /^plugin-provider:gmail:gmail\\.messages\\.read$/.test(event.target ?? ''))) {
+    return { decision: 'ALLOW', ruleId: 'GX-OWNER-PLUGIN-READ-001', reason: 'Verified owner may read data through an explicitly approved, owner-bound, read-only provider connection.', severity: 'LOW' };
+  }
   // PA may create an internal Comms task only after the authenticated owner
   // submits the task; this does not grant provider dispatch or message delivery.
   if (tool === 'comms_internal_task_create' && event.action === 'CREATE' &&
