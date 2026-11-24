@@ -15,7 +15,7 @@ Run both migration stages against the same disposable local Supabase database:
 ```sh
 supabase start
 supabase db reset --local
-eval "$(supabase status -o env)"
+eval "$(supabase status --env)"
 DATABASE_URL="$DB_URL" npx prisma migrate deploy --schema=prisma/schema.prisma
 ```
 
