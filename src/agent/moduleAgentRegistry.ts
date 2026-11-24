@@ -1,5 +1,5 @@
 /**
- * Dedicated module ownership for RyanAI's 12-module agent workforce.
+ * Dedicated module ownership for RyanAI's 13-module agent workforce.
  *
  * This registry defines accountable specialist identities and bounded work
  * types. It does not start workers, schedule runs, grant credentials, or
@@ -37,7 +37,7 @@ const SAFE_MODULE_ACTIONS: readonly ModuleAgentAction[] = Object.freeze([
 ]);
 
 /**
- * One accountable primary agent for each of the 12 operational modules.
+ * One accountable primary agent for each operational module, including the dedicated AI Inspector.
  * Cross-module specialists in workerRegistry.ts remain available for
  * shared engineering, security, CI, data, and release work.
  */
