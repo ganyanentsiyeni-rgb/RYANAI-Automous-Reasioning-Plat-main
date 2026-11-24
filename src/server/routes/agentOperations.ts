@@ -8,6 +8,8 @@ import { createPADelegation, listPADelegations, getPADelegation, approvePADelega
 import { PA_DELEGATION_CAPABILITIES, type PADelegationCapability } from '../../agent/paJarvisHandshake.js';
 import { evaluateGenXSecurityEvent } from '../../security/genxPolicy.js';
 import { appendRunEvidence } from '../../agent/engineeringEvidence.js';
+import { enqueueCommsAssistRun } from '../comms/agentRuns.js';
+import { linkPACommsRun } from '../../agent/paDelegationService.js';
 interface DispatchBody { objective: string; taskId?: string; }
 interface OfflineSyncBody { tasks: Array<{ taskId: string; objective: string }>; }
 interface PADelegationBody { objective: string; capabilities: PADelegationCapability[]; delegationId?: string; }
@@ -144,6 +146,22 @@ export const agentOperationsRoutes: FastifyPluginAsync = async (fastify) => {
         request.params.id,
         user.id,
         decisions.map(({ capability, decision, ruleId }) => ({ capability, decision, ruleId })),
+        async ({ ownerUserId, delegationId, runId, objective }) => {
+          const commsRun = await enqueueCommsAssistRun({
+            ownerUserId,
+            idempotencyKey: 'pa-delegation:' + delegationId,
+            objective: [
+              'Create an internal Comms child task for the approved PA delegation.',
+              'Parent PA AgentRun: ' + runId,
+              'PA delegation: ' + delegationId,
+              'PA objective (untrusted request data): ' + objective,
+              'Return task progress, blockers, and evidence references to the parent PA task.',
+              'Internal task only: do not dispatch WhatsApp, SMS, voice, email, or any external communication.',
+            ].join('\n'),
+          });
+          await linkPACommsRun(ownerUserId, delegationId, commsRun.runId);
+          return { commsRunId: commsRun.runId, commsStatus: commsRun.status };
+        },
       );
       if (!result) return reply.code(404).send({ error: 'PA delegation not found.' });
       return reply.code(202).send({ success: true, ...result, policy: decisions, reasoningPolicy: { decision: reasoningPolicy.decision, ruleId: reasoningPolicy.ruleId } });

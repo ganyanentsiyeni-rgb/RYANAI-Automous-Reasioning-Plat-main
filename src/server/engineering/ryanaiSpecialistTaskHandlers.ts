@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { StudioWorkerContext } from './studioNativeCore.js';
 import { registerStudioTaskHandler } from './studioNativeCore.js';
@@ -12,7 +12,8 @@ type AuditSpec = { capability: string; title: string; files: readonly string[]; 
 
 const SPECS: Record<string, AuditSpec> = {
   'security-auditor': {
-    capability: 'read-security-results', title: 'Security and dependency inspection',
+    capability: 'read-security-results',
+    title: 'Security and dependency inspection',
     files: ['package.json', 'package-lock.json', 'Dockerfile', 'Dockerfile.api', '.github/workflows/ci-cd.yml', '.github/workflows/security.yml'],
     rules: [
       { id: 'TLS-VERIFY-DISABLED', severity: 'high', pattern: /NODE_TLS_REJECT_UNAUTHORIZED\s*[:=]\s*['"]?0/i, message: 'TLS certificate verification appears disabled in tracked configuration.' },
@@ -22,41 +23,46 @@ const SPECS: Record<string, AuditSpec> = {
     ],
   },
   'runtime-infrastructure': {
-    capability: 'read-runtime-config', title: 'Runtime and infrastructure inspection',
+    capability: 'read-runtime-config',
+    title: 'Runtime and infrastructure inspection',
     files: ['render.yaml', 'railway.json', 'railway.toml', 'vercel.json', 'Dockerfile', 'Dockerfile.api', 'docker-compose.yml', 'docker-compose.yaml'],
     rules: [
       { id: 'TLS-VERIFY-DISABLED', severity: 'high', pattern: /NODE_TLS_REJECT_UNAUTHORIZED\s*[:=]\s*['"]?0/i, message: 'TLS verification disablement detected.' },
       { id: 'RUNTIME-MIGRATION-ON-START', severity: 'review', pattern: /(?:prisma\s+migrate\s+deploy|db:migrate)/i, message: 'A runtime startup descriptor may run schema migrations; verify migration separation.' },
-      { id: 'MISSING-HEALTH-CHECK', severity: 'review', pattern: /healthCheckPath|healthcheck|health_check/i, message: 'A health-check declaration is present; validate its target and runtime behavior.' },
+      { id: 'HEALTH-CHECK-DECLARATION', severity: 'review', pattern: /healthCheckPath|healthcheck|health_check/i, message: 'A health-check declaration exists; verify its endpoint against live runtime evidence.' },
     ],
   },
   'data-queue': {
-    capability: 'read-schema', title: 'Database and queue contract inspection',
+    capability: 'read-schema',
+    title: 'Database and queue contract inspection',
     files: ['prisma/schema.prisma', 'prisma/audiobook/schema.prisma', 'src/server/engineering/studioNativeCore.ts', 'src/server/engineering/ryanaiStudioWorkerRuntime.ts'],
     rules: [
-      { id: 'LEASE-FENCING', severity: 'review', pattern: /leaseToken|lease_token/i, message: 'Lease-token fencing is represented in the inspected source; confirm integration tests exercise stale-lease rejection.' },
-      { id: 'IDEMPOTENCY', severity: 'review', pattern: /idempotency/i, message: 'Idempotency controls are represented in the inspected source; confirm collision and retry tests.' },
+      { id: 'LEASE-FENCING', severity: 'review', pattern: /leaseToken|lease_token/i, message: 'Lease-token fencing is represented in inspected source; confirm tests reject stale leases.' },
+      { id: 'IDEMPOTENCY', severity: 'review', pattern: /idempotency/i, message: 'Idempotency controls are represented in inspected source; confirm collision and retry tests.' },
       { id: 'QUEUE-RETRY', severity: 'review', pattern: /maxAttempts|availableAt|recoverExpired/i, message: 'Queue retry or recovery logic is present; confirm bounded backoff and recovery evidence.' },
     ],
   },
   'provider-verification': {
-    capability: 'read-provider-config-presence', title: 'Inference provider configuration inspection',
+    capability: 'read-provider-config-presence',
+    title: 'Inference provider configuration inspection',
     files: ['src/server', 'src/agent'],
     rules: [
-      { id: 'PROVIDER-PROBE-REQUIRED', severity: 'review', pattern: /HEALTHY|healthCheck|probe/i, message: 'Provider health probe logic is present in inspected code; static presence does not prove live authentication or availability.' },
+      { id: 'PROVIDER-PROBE-REQUIRED', severity: 'review', pattern: /HEALTHY|healthCheck|probe/i, message: 'Provider health probe logic exists; static presence does not prove live authentication or availability.' },
     ],
   },
   communications: {
-    capability: 'read-integration-config', title: 'Communications and identity inspection',
+    capability: 'read-integration-config',
+    title: 'Communications and identity inspection',
     files: ['src/server/comms', 'src/server/routes', 'src/agent'],
     rules: [
-      { id: 'CONSENT-CONTROL', severity: 'review', pattern: /consent|opt.?in|opt.?out/i, message: 'Consent-related controls are present; verify owner scope and channel-specific enforcement.' },
-      { id: 'CALLBACK-VERIFICATION', severity: 'review', pattern: /callback|webhook|signature/i, message: 'Callback or webhook handling is present; verify provider signature and destination ownership checks.' },
-      { id: 'OUTBOUND-CHANNEL', severity: 'review', pattern: /sendMessage|messages\.create|\.messages\.create|sendMail|sendEmail/i, message: 'Outbound communication code is present; verify explicit authorization and provider callback evidence.' },
+      { id: 'CONSENT-CONTROL', severity: 'review', pattern: /consent|opt.?in|opt.?out/i, message: 'Consent-related controls exist; verify owner scope and channel-specific enforcement.' },
+      { id: 'CALLBACK-VERIFICATION', severity: 'review', pattern: /callback|webhook|signature/i, message: 'Callback or webhook handling exists; verify provider signature and destination ownership checks.' },
+      { id: 'OUTBOUND-CHANNEL', severity: 'review', pattern: /sendMessage|messages\.create|\.messages\.create|sendMail|sendEmail/i, message: 'Outbound communication code exists; verify explicit authorization and provider callback evidence.' },
     ],
   },
   'frontend-accessibility': {
-    capability: 'read-frontend-source', title: 'Frontend and accessibility inspection',
+    capability: 'read-frontend-source',
+    title: 'Frontend and accessibility inspection',
     files: ['src/components', 'src/pages', 'src/app'],
     rules: [
       { id: 'IMAGE-ALT', severity: 'review', pattern: /<img\b(?![^>]*\balt=)/i, message: 'An image element may be missing alternative text.' },
@@ -65,7 +71,8 @@ const SPECS: Record<string, AuditSpec> = {
     ],
   },
   'release-readiness': {
-    capability: 'read-readiness-evidence', title: 'Documentation and release readiness inspection',
+    capability: 'read-readiness-evidence',
+    title: 'Documentation and release readiness inspection',
     files: ['README.md', 'patches.md', 'architecture.md', 'docs/ARCHITECTURE.md', '.github/workflows'],
     rules: [
       { id: 'DEPLOYMENT-GATE-DOCS', severity: 'review', pattern: /PUSH DEPLOY|exact.SHA|exact.head/i, message: 'Deployment gating is documented; verify implementation and current workflow evidence.' },
@@ -74,41 +81,44 @@ const SPECS: Record<string, AuditSpec> = {
   },
 };
 
-const ALLOWED_FILES: Record<string, readonly string[]> = {
-  'security-auditor': SPECS['security-auditor'].files,
-  'runtime-infrastructure': SPECS['runtime-infrastructure'].files,
-  'data-queue': SPECS['data-queue'].files,
-  'provider-verification': SPECS['provider-verification'].files,
-  communications: SPECS.communications.files,
-  'frontend-accessibility': SPECS['frontend-accessibility'].files,
+const IGNORED_DIRECTORY = /^(node_modules|dist|build|coverage|\.git|\.next|\.turbo)$/i;
+const INSPECTABLE_EXTENSION = /\.(?:[cm]?[jt]sx?|json|ya?ml|toml|prisma|md)$/i;
+const MAX_FILES_PER_ROOT = 100;
+const MAX_FILE_BYTES = 512 * 1024;
+
 async function collectAllowedEvidence(relativePath: string, signal?: AbortSignal, depth = 0): Promise<Array<{ path: string; content: string }>> {
   signal?.throwIfAborted();
-  const resolved = path.resolve(process.cwd(), relativePath);
-  const root = path.resolve(process.cwd()) + path.sep;
-  if (!resolved.startsWith(root)) throw new Error('Evidence path escaped the repository root.');
+  const repositoryRoot = path.resolve(process.cwd());
+  const resolved = path.resolve(repositoryRoot, relativePath);
+  if (resolved !== repositoryRoot && !resolved.startsWith(repositoryRoot + path.sep)) {
+    throw new Error('Evidence path escaped the repository root.');
+  }
+  if (depth > 4) return [];
   try {
     const entries = await readdir(resolved, { withFileTypes: true });
-    if (depth > 4) return [];
     const output: Array<{ path: string; content: string }> = [];
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       signal?.throwIfAborted();
-      if (entry.name.startsWith('.') || /^(node_modules|dist|build|coverage|\.git|\.next)$/i.test(entry.name)) continue;
+      if (entry.name.startsWith('.') && relativePath !== '.github/workflows') continue;
+      if (IGNORED_DIRECTORY.test(entry.name)) continue;
       const child = path.join(relativePath, entry.name);
       if (entry.isDirectory()) {
         output.push(...await collectAllowedEvidence(child, signal, depth + 1));
-      } else if (entry.isFile() && /\.(?:[cm]?[jt]sx?|json|ya?ml|toml|prisma|md)$/i.test(entry.name)) {
-        const content = await readFile(path.resolve(process.cwd(), child), 'utf8');
-        output.push({ path: child, content });
+      } else if (entry.isFile() && INSPECTABLE_EXTENSION.test(entry.name)) {
+        const childPath = path.resolve(repositoryRoot, child);
+        const fileStat = await stat(childPath);
+        if (fileStat.size > MAX_FILE_BYTES) continue;
+        output.push({ path: child, content: await readFile(childPath, 'utf8') });
       }
-      if (output.length >= 100) return output.slice(0, 100);
+      if (output.length >= MAX_FILES_PER_ROOT) return output.slice(0, MAX_FILES_PER_ROOT);
     }
     return output;
   } catch (error) {
-    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return [];
-    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOTDIR') {
+    if (error && typeof error === 'object' && 'code' in error && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) {
       try {
-        const content = await readFile(resolved, 'utf8');
-        return [{ path: relativePath, content }];
+        const fileStat = await stat(resolved);
+        if (!fileStat.isFile() || fileStat.size > MAX_FILE_BYTES) return [];
+        return [{ path: relativePath, content: await readFile(resolved, 'utf8') }];
       } catch (readError) {
         if (readError && typeof readError === 'object' && 'code' in readError && readError.code === 'ENOENT') return [];
         throw readError;
@@ -119,12 +129,10 @@ async function collectAllowedEvidence(relativePath: string, signal?: AbortSignal
 }
 
 function findRuleEvidence(spec: AuditSpec, files: Array<{ path: string; content: string }>) {
-  const findings: Array<{ id: string; severity: string; message: string; evidenceFiles: string[] }> = [];
-  for (const rule of spec.rules) {
-    const matched = files.filter((file) => rule.pattern.test(file.content)).map((file) => file.path);
-    if (matched.length) findings.push({ id: rule.id, severity: rule.severity, message: rule.message, evidenceFiles: matched });
-  }
-  return findings;
+  return spec.rules.flatMap((rule) => {
+    const evidenceFiles = files.filter((file) => rule.pattern.test(file.content)).map((file) => file.path);
+    return evidenceFiles.length ? [{ id: rule.id, severity: rule.severity, message: rule.message, evidenceFiles }] : [];
+  });
 }
 
 async function runStaticInspection(profileId: string, context: StudioWorkerContext, requiredCapability?: string) {
@@ -133,11 +141,6 @@ async function runStaticInspection(profileId: string, context: StudioWorkerConte
   const capability = requiredCapability ?? spec.capability;
   if (!context.task.requiredCapabilities.includes(capability)) {
     throw new Error(profileId + ' requires the explicit ' + capability + ' capability.');
-async function runStaticInspection(profileId: string, context: StudioWorkerContext) {
-  const spec = SPECS[profileId];
-  if (!spec) throw new Error('No static inspection specification exists for this worker.');
-  if (!context.task.requiredCapabilities.includes(spec.capability)) {
-    throw new Error(profileId + ' requires the explicit ' + spec.capability + ' capability.');
   }
   const files: Array<{ path: string; content: string }> = [];
   const missing: string[] = [];
@@ -166,13 +169,18 @@ async function runStaticInspection(profileId: string, context: StudioWorkerConte
 }
 
 async function runCoordinator(context: StudioWorkerContext) {
-  if (!context.task.requiredCapabilities.includes('read-task')) throw new Error('Coordinator requires the explicit read-task capability.');
-  const objective = context.task.objective.trim();
+  if (!context.task.requiredCapabilities.includes('read-task')) {
+    throw new Error('Coordinator requires the explicit read-task capability.');
+  }
   return {
-    schemaVersion: 1, kind: 'ryanai.coordination.plan', taskId: context.task.id,
-    objective, assignedWorkerId: context.task.assignedWorkerId ?? null,
+    schemaVersion: 1,
+    kind: 'ryanai.coordination.plan',
+    taskId: context.task.id,
+    objective: context.task.objective.trim(),
+    assignedWorkerId: context.task.assignedWorkerId ?? null,
     steps: ['Confirm objective and owner scope', 'Identify a registered specialist and required evidence', 'Collect exact task and test evidence', 'Return findings and unresolved blockers to PA'],
-    status: 'plan_proposed', executionAuthority: 'none',
+    status: 'plan_proposed',
+    executionAuthority: 'none',
   };
 }
 
@@ -181,36 +189,46 @@ export async function runRyanAIInspectorAudit(input: { taskId: string; signal?: 
   const script = path.resolve(process.cwd(), 'scripts/ai-inspector-audit.mjs');
   try {
     const result = await (execFileAsync as unknown as (file: string, args: string[], options: object) => Promise<{ stdout: string; stderr: string }>)(
-      process.execPath, [script], { cwd: process.cwd(), encoding: 'utf8', maxBuffer: 2 * 1024 * 1024, signal: input.signal },
+      process.execPath,
+      [script],
+      { cwd: process.cwd(), encoding: 'utf8', maxBuffer: 2 * 1024 * 1024, signal: input.signal },
     );
     if (!result.stdout.trim()) throw new Error('AI Inspector returned an empty report.');
-    return { schemaVersion: 1, kind: 'ryanai.ai-inspector.report', taskId: input.taskId, report: result.stdout, stderr: result.stderr, exitCode: 0, reportSource: 'scripts/ai-inspector-audit.mjs', persistedBy: 'agent-run-evidence', externalActions: 'none' };
+    return {
+      schemaVersion: 1,
+      kind: 'ryanai.ai-inspector.report',
+      taskId: input.taskId,
+      report: result.stdout,
+      stderr: result.stderr,
+      exitCode: 0,
+      reportSource: 'scripts/ai-inspector-audit.mjs',
+      persistedBy: 'agent-run-evidence',
+      externalActions: 'none',
+    };
   } catch (error) {
     input.signal?.throwIfAborted();
     const value = error as { stdout?: unknown; stderr?: unknown; code?: unknown };
     if (typeof value.stdout === 'string' && value.stdout.trim()) {
-      return { schemaVersion: 1, kind: 'ryanai.ai-inspector.report', taskId: input.taskId, report: value.stdout, stderr: typeof value.stderr === 'string' ? value.stderr : '', exitCode: typeof value.code === 'number' ? value.code : 1, reportSource: 'scripts/ai-inspector-audit.mjs', persistedBy: 'agent-run-evidence', externalActions: 'none' };
-async function runAIInspector(context: StudioWorkerContext) {
-  if (!context.task.requiredCapabilities.includes('read-repository')) throw new Error('AI Inspector requires the explicit read-repository capability.');
-  context.signal?.throwIfAborted();
-  const script = path.resolve(process.cwd(), 'scripts/ai-inspector-audit.mjs');
-  try {
-    const result = await (execFileAsync as unknown as (file: string, args: string[], options: object) => Promise<{ stdout: string; stderr: string }>)(
-      process.execPath, [script], { cwd: process.cwd(), encoding: 'utf8', maxBuffer: 2 * 1024 * 1024, signal: context.signal },
-    );
-    return { schemaVersion: 1, kind: 'ryanai.ai-inspector.report', taskId: context.task.id, report: result.stdout, stderr: result.stderr, reportSource: 'scripts/ai-inspector-audit.mjs', persistedBy: 'studio-task-output', externalActions: 'none' };
-  } catch (error) {
-    context.signal?.throwIfAborted();
-    const value = error as { stdout?: unknown; stderr?: unknown; code?: unknown; message?: unknown };
-    if (typeof value.stdout === 'string') {
-      return { schemaVersion: 1, kind: 'ryanai.ai-inspector.report', taskId: context.task.id, report: value.stdout, stderr: typeof value.stderr === 'string' ? value.stderr : '', exitCode: typeof value.code === 'number' ? value.code : 1, reportSource: 'scripts/ai-inspector-audit.mjs', persistedBy: 'studio-task-output', externalActions: 'none' };
+      return {
+        schemaVersion: 1,
+        kind: 'ryanai.ai-inspector.report',
+        taskId: input.taskId,
+        report: value.stdout,
+        stderr: typeof value.stderr === 'string' ? value.stderr : '',
+        exitCode: typeof value.code === 'number' ? value.code : 1,
+        reportSource: 'scripts/ai-inspector-audit.mjs',
+        persistedBy: 'agent-run-evidence',
+        externalActions: 'none',
+      };
     }
     throw error;
   }
 }
 
 async function runAIInspector(context: StudioWorkerContext) {
-  if (!context.task.requiredCapabilities.includes('read-repository')) throw new Error('AI Inspector requires the explicit read-repository capability.');
+  if (!context.task.requiredCapabilities.includes('read-repository')) {
+    throw new Error('AI Inspector requires the explicit read-repository capability.');
+  }
   return runRyanAIInspectorAudit({ taskId: context.task.id, signal: context.signal });
 }
 
@@ -219,17 +237,12 @@ export function registerRyanAISpecialistTaskHandlers(profileId: string) {
   const add = (taskType: string, handler: (context: StudioWorkerContext) => Promise<unknown>) => {
     unregister.push(registerStudioTaskHandler(taskType, handler));
   };
+
   if (profileId === 'coordinator') {
-    for (const type of ['planning', 'triage']) add(type, runCoordinator);
-  } else if (profileId === 'repository-auditor') {
-    add('repository-audit', runAIInspector);
-    add('inventory', runAIInspector);
-    add('documentation-audit', (context) => runStaticInspection('release-readiness', context, 'read-repository'));
     for (const type of ['planning', 'triage', 'coordination']) add(type, runCoordinator);
   } else if (profileId === 'repository-auditor') {
-    add('documentation-audit', (context) => runStaticInspection('release-readiness', context));
-    add('ai-inspector.audit', runAIInspector);
-    add('ai-inspector.report', runAIInspector);
+    for (const type of ['ai-inspector.audit', 'ai-inspector.report']) add(type, runAIInspector);
+    add('documentation-audit', (context) => runStaticInspection('release-readiness', context, 'read-repository'));
   } else if (SPECS[profileId]) {
     const handler = (context: StudioWorkerContext) => runStaticInspection(profileId, context);
     const profileTaskTypes: Record<string, string[]> = {

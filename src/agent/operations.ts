@@ -373,12 +373,18 @@ async function processAgentRun(
         await assertExecutionLeaseActive();
         const report = await runRyanAIInspectorAudit({ taskId: run.id, signal: cancellation.signal });
         await assertExecutionLeaseActive();
+        if (!report.report.trim()) throw new Error('AI Inspector returned an empty report.');
+        if (report.exitCode !== 0 && report.exitCode !== 1) {
+          throw new Error('AI Inspector execution failed before producing a trustworthy report.');
+        }
+        // Exit code 1 is the Inspector's documented finding signal for critical/high findings.
+        // The report is still valid evidence and must be returned to PA for triage, not discarded.
         if (report.report.length > 24_000) throw new Error('AI Inspector report exceeded the durable evidence size limit.');
         const reportText = report.report;
         const reportDigest = createHash('sha256').update(reportText, 'utf8').digest('hex');
-        verifiedCapabilityContext = [verifiedCapabilityContext, 'AI INSPECTOR AUDIT REPORT:\\n' + reportText]
+        verifiedCapabilityContext = [verifiedCapabilityContext, 'AI INSPECTOR AUDIT REPORT:\n' + reportText]
           .filter((part): part is string => Boolean(part))
-          .join('\\n\\n');
+          .join('\n\n');
         const evidence = await recordRunEvidence({
           runId: run.id,
           eventType: 'pa.capability.executed',

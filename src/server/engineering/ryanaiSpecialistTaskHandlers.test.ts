@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { getStudioWorkerHandlerReadiness, registerStudioTaskHandler } from './studioNativeCore.js';
-import { registerRyanAISpecialistTaskHandlers } from './ryanaiSpecialistTaskHandlers.js';
+import { registerRyanAISpecialistTaskHandlers, runRyanAIInspectorAudit } from './ryanaiSpecialistTaskHandlers.js';
 import { findModuleAgentForTask, getModuleAgentForModule } from '../../agent/moduleAgentRegistry.js';
 import { findWorkerForTask } from '../../agent/workerRegistry.js';
 
@@ -32,6 +32,16 @@ describe('RyanAI specialist worker handler registration', () => {
     expect(findWorkerForTask('ai-inspector.audit')?.id).toBe('repository-auditor');
     expect(getStudioWorkerHandlerReadiness('repository-auditor').registeredTaskTypes).toContain('ai-inspector.audit');
     expect(getStudioWorkerHandlerReadiness('repository-auditor').registeredTaskTypes).toContain('ai-inspector.report');
+  });
+
+  it('returns the read-only Inspector report to PA even when findings set exit code 1', async () => {
+    const report = await runRyanAIInspectorAudit({ taskId: 'test-inspector-run' });
+    expect(report.kind).toBe('ryanai.ai-inspector.report');
+    expect(report.taskId).toBe('test-inspector-run');
+    expect(report.report).toContain('# RyanAI Inspector & Audit Report');
+    expect([0, 1]).toContain(report.exitCode);
+    expect(report.externalActions).toBe('none');
+    expect(report.reportSource).toBe('scripts/ai-inspector-audit.mjs');
   });
 
   it('does not register a handler for an unknown worker profile', () => {

@@ -1337,3 +1337,7 @@ See [LICENSE](LICENSE). Check the license terms before redistributing or incorpo
 The AI Inspector is a dedicated module agent (`ai-inspector-module-agent`) with repository inspection and PA-ready reporting task types. Its bounded work is read-only: inspect source and CI evidence, produce structured findings, and return the report as durable task output. It cannot approve, merge, deploy, migrate, change secrets, or send external communications.
 
 The specialist worker runtime registers profile-specific handlers for coordination, repository and AI Inspector audits, CI diagnostics, security, infrastructure, data/queue, provider configuration, communications, frontend accessibility, and release readiness. A registered handler is not proof that a worker process is running; live status still requires fresh persisted heartbeats and task execution evidence. See [architecture.md](architecture.md) and [patches.md](patches.md).
+
+## Backend specialist handler integrity
+
+The specialist handler module is a typed runtime boundary, not merely a roster. AI Inspector audit output is retained for PA even when the audit exits with its documented high-severity finding code; the report is evidence for triage, not a claim that the inspected system passed. Unexpected execution errors, empty reports, oversized reports, missing Gen-X authorization, or lost task leases fail closed. Repository inventory handlers remain owned by the existing worker bootstrap to prevent duplicate task-handler registration.

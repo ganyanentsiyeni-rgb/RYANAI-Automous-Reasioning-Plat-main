@@ -4,10 +4,10 @@ import { canStartMissionWork, evaluateMissionResult, planMissionSwarm } from './
 const budget = { maxConcurrentWorkers: 8, maxModelCalls: 20, maxTokens: 100_000, maxRuntimeMs: 600_000, maxInfrastructureCostUsd: 2 };
 
 describe('RyanAI module workforce', () => {
-  it('contains exactly twelve unique module identities', () => {
-    expect(RYANAI_MODULE_AGENT_COUNT).toBe(12);
-    expect(new Set(RYANAI_MODULE_AGENT_ROSTER.map((agent) => agent.id)).size).toBe(12);
-    expect(new Set(RYANAI_MODULE_AGENT_ROSTER.map((agent) => agent.moduleId)).size).toBe(12);
+  it('contains exactly thirteen unique module identities', () => {
+    expect(RYANAI_MODULE_AGENT_COUNT).toBe(13);
+    expect(new Set(RYANAI_MODULE_AGENT_ROSTER.map((agent) => agent.id)).size).toBe(13);
+    expect(new Set(RYANAI_MODULE_AGENT_ROSTER.map((agent) => agent.moduleId)).size).toBe(13);
   });
   it('resolves accountable owners and rejects unknown task types', () => {
     expect(findModuleAgentForTask('ci-diagnostics')?.id).toBe('github-module-agent');

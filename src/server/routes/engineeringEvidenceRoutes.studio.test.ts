@@ -210,7 +210,7 @@ describe('RyanAI Studio overview API', () => {
     expect(mocks.codingTaskFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: 'owner-1' } }));
     expect(mocks.providerConnectionFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { ownerUserId: 'owner-1' } }));
     const body = response.json();
-    expect(body.workforce.moduleAgents).toHaveLength(12);
+    expect(body.workforce.moduleAgents).toHaveLength(13);
     expect(body.workforce.sharedWorkers).toHaveLength(10);
     expect(body.runtime).toMatchObject({ state: 'unknown', source: 'studio_worker_heartbeats', workers: [] });
     expect(body.execution).toMatchObject({ adapterId: 'ryanai-native-studio-worker', independentRuntime: true, lifecycleOwner: 'RyanAI Studio', authorizationAuthority: 'RyanAI platform policy' });
