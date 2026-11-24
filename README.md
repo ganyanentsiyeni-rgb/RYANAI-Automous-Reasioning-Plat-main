@@ -481,7 +481,7 @@ For a complete fresh local Supabase database, run the Supabase migration chain a
 ~~~bash
 supabase start
 supabase db reset --local
-eval "$(supabase status -o env)"
+eval "$(supabase status --env)"
 DATABASE_URL="$DB_URL" npx prisma migrate deploy --schema=prisma/schema.prisma
 ~~~
 
