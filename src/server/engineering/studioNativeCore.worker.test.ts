@@ -126,7 +126,7 @@ describe('Studio worker queue lifecycle', () => {
     const unregister = registerStudioTaskHandler('ci-failure', handler);
     try {
       const result = await runStudioWorkerOnce('worker-1', 'ci-diagnostics', 90, authorize);
-      expect(result).toMatchObject({ state: 'failed', taskId: 'task-1', error: 'authorization service unavailable' });
+      expect(result).toMatchObject({ state: 'retrying', taskId: 'task-1', error: 'authorization service unavailable' });
       expect(authorize).toHaveBeenCalledTimes(1);
       expect(handler).not.toHaveBeenCalled();
       expect(mocks.taskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
@@ -212,12 +212,12 @@ describe('Studio worker queue lifecycle', () => {
     const unregister = registerStudioTaskHandler('ci-failure', handler);
     try {
       const result = await runStudioWorkerOnce('worker-1', 'ci-diagnostics');
-      expect(result).toMatchObject({ state: 'failed', taskId: 'task-1', error: 'temporary handler fault' });
+      expect(result).toMatchObject({ state: 'retrying', taskId: 'task-1', error: 'temporary handler fault' });
       expect(mocks.taskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
         data: expect.objectContaining({ status: 'queued', leaseOwner: null, leaseExpiresAt: null }),
       }));
       expect(mocks.eventCreate).toHaveBeenCalledWith(expect.objectContaining({
-        data: expect.objectContaining({ eventType: 'task.execution_failed' }),
+        data: expect.objectContaining({ eventType: 'task.execution_failed', payload: expect.objectContaining({ attempt: 1, maxAttempts: 3, outcome: 'retrying' }) }),
       }));
     } finally {
       unregister();
@@ -466,10 +466,10 @@ describe('Studio worker queue lifecycle', () => {
   });
 
   it('includes the observed attempt and lease owner in recovery compare-and-set', async () => {
-    mocks.taskFindMany.mockResolvedValue([{ id: 'task-a', projectId: 'project-1', ownerUserId: 'owner-1', leaseToken: 'expired-token', attempts: 2, maxAttempts: 3 }]);
+    mocks.taskFindMany.mockResolvedValue([{ id: 'task-a', projectId: 'project-1', ownerUserId: 'owner-1', leaseOwner: 'worker-1', leaseToken: 'expired-token', attempts: 2, maxAttempts: 3 }]);
     await recoverExpiredStudioLeases();
     expect(mocks.taskUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ id: 'task-a', status: 'running', leaseToken: 'expired-token', attempts: 2 }),
+      where: expect.objectContaining({ id: 'task-a', status: 'running', leaseOwner: 'worker-1', leaseToken: 'expired-token', attempts: 2 }),
     }));
   });
 
