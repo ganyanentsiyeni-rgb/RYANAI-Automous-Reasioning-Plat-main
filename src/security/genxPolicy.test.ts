@@ -4,8 +4,10 @@ import { evaluateGenXSecurityEvent, isGenXOffensiveTool } from './genxPolicy';
 const base = { agentId: 'agent-test', principal: 'user-test', toolName: 'system_diagnostics', action: 'READ' as const };
 
 describe('Gen-X deterministic security enforcement', () => {
-  it('allows known read-only diagnostics', () => {
+  it('allows known read-only diagnostics and the PA AI Inspector report target', () => {
     expect(evaluateGenXSecurityEvent(base).decision).toBe('ALLOW');
+    expect(evaluateGenXSecurityEvent({ ...base, target: 'pa:ai-inspector-audit-report', actorType: 'agent' }))
+      .toMatchObject({ decision: 'ALLOW', ruleId: 'GX-READ-001' });
   });
   it.each(['nmap', 'sqlmap', 'metasploit', 'hydra', 'mimikatz', 'masscan'])('blocks offensive tool %s', (toolName) => {
     expect(isGenXOffensiveTool(toolName)).toBe(true);
