@@ -159,6 +159,7 @@ const hasVercelServicesContract =
   && vercelRewrites.findIndex((rewrite) => rewrite.source === '/mcp/health') <
     vercelRewrites.findIndex((rewrite) => rewrite.source === '/mcp/(.*)');
 const hasVercelBuildContract = hasVercelServicesContract;
+const hasNoAmbiguousTopLevelVercelBuildSettings = !['installCommand', 'buildCommand', 'outputDirectory'].some((key) => Object.hasOwn(vercelConfig, key));
 const hasVercelDeploymentContract =
   platformDeployWorkflow.includes('workflow_dispatch:')
   && platformDeployWorkflow.includes("inputs.vercel_confirmation == 'DEPLOY'")
@@ -173,6 +174,7 @@ const hasVercelDeploymentContract =
   && platformDeployWorkflow.includes('ref: ${{ needs.gate.outputs.sha }}');
 
 const checks = [
+  ['Vercel build settings are scoped to the web service, with no ambiguous top-level build properties', hasNoAmbiguousTopLevelVercelBuildSettings],
   ['Vercel installs root dependencies, builds only the web target, and publishes dist', hasVercelBuildContract],
   ['Vercel production deploy is manual, explicit-confirmation gated, exact-SHA based, and behind Railway', hasVercelDeploymentContract],
   ['Render Blueprint declares services through a supported top-level or project-environment list', Array.isArray(renderConfig.services) || renderProjects.some((project) => (project.environments ?? []).some((environment) => Array.isArray(environment.services)))],
