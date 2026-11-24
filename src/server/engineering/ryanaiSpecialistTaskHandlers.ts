@@ -204,7 +204,7 @@ export async function runRyanAIInspectorAudit(input: { taskId: string; signal?: 
   const inspectionContext = {
     task: { id: input.taskId, requiredCapabilities: ['read-repository'] },
     signal: input.signal,
-  } as StudioWorkerContext;
+  } as unknown as StudioWorkerContext;
   const sourceInspection = await runStaticInspection('ai-inspector', inspectionContext, 'read-repository');
   const appendSourceInspection = (baseReport: string) => [
     baseReport.trim(),
