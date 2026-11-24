@@ -400,8 +400,8 @@ export async function inspectConnectedGitHubWorkflowEvidence(
   }
 
   const [account, repository, commit] = await Promise.all([
-    githubApi<GitHubUser>('user', accessToken),
-    githubApi<GitHubRepository>('repos/' + GITHUB_APP_REPOSITORY, accessToken),
+    githubApi<GitHubUser>('user', accessToken, signal),
+    githubApi<GitHubRepository>('repos/' + GITHUB_APP_REPOSITORY, accessToken, signal),
     githubApi<{ sha?: string }>(
       'repos/' + GITHUB_APP_REPOSITORY + '/commits/' + encodeURIComponent(requestedHeadSha),
       accessToken,
@@ -465,7 +465,9 @@ export async function inspectConnectedGitHubWorkflowEvidence(
         'repos/' + GITHUB_APP_REPOSITORY + '/actions/runs/' +
           encodeURIComponent(String(run.id)) + '/jobs?per_page=100&page=' + page,
         accessToken,
+        signal,
       );
+      signal?.throwIfAborted();
       const pageJobs = Array.isArray(jobsPayload.jobs) ? jobsPayload.jobs : [];
       rawJobs.push(...pageJobs);
       const totalCount = typeof jobsPayload.total_count === 'number' ? jobsPayload.total_count : null;
