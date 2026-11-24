@@ -18,7 +18,7 @@ export const JARVIS_AGENT_REGISTRY: readonly JarvisAgentDefinition[] = Object.fr
 ]);
 
 const PRIVILEGED_CAPABILITIES = new Set<JarvisCapability>(['secrets.read', 'production.change', 'deployment.execute', 'comms.task.create']);
-const KNOWN_CAPABILITIES = new Set<JarvisCapability>(['repository.inspect', 'diagnostics.run', 'patch.propose', 'tests.run', 'evidence.record', 'secrets.read', 'production.change', 'deployment.execute']);
+const KNOWN_CAPABILITIES = new Set<JarvisCapability>(['repository.inspect', 'diagnostics.run', 'patch.propose', 'tests.run', 'evidence.record', 'secrets.read', 'production.change', 'deployment.execute', 'comms.task.create']);
 
 export function authorizeJarvisCapability(agentId: string, capability: JarvisCapability, approved = false): { allowed: boolean; requiresApproval: boolean; reason: string } {
   const agent = JARVIS_AGENT_REGISTRY.find((candidate) => candidate.id === agentId);
