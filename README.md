@@ -717,6 +717,105 @@ sudo docker compose up -d redis
 
 Containers on the RyanAI network still connect to `redis:6379`. Host tools should connect to `127.0.0.1:16379`.
 
+### Additional WSL diagnostics and optional services
+
+Create the repository-root `.env` from the tracked template and replace local-development placeholders before starting containers. Never put production credentials in this file or commit it.
+
+~~~bash
+test -f .env || cp .env.example .env
+chmod 600 .env
+
+# Example: generate local-only random values when the template requires them.
+openssl rand -hex 32
+~~~
+
+Start Docker and verify the core stack:
+
+~~~bash
+sudo service docker start
+sudo docker compose config --quiet
+sudo docker compose up --build --detach --wait
+sudo docker compose ps
+~~~
+
+Start the MCP HTTP server directly for development:
+
+~~~bash
+npm run dev:mcp
+~~~
+
+Start the optional Studio worker and inspect its logs:
+
+~~~bash
+sudo docker compose --profile workers up -d studio-worker
+sudo docker compose ps
+sudo docker compose --profile workers logs --tail=40 studio-worker
+~~~
+
+If the worker repeatedly exits, inspect container state and host/VM pressure before changing configuration:
+
+~~~bash
+sudo docker ps -a --filter "name=ryanai-studio-worker"
+free -h
+uptime
+sudo docker compose --profile workers logs --tail=60 studio-worker
+~~~
+
+For a one-shot rebuild/recreate:
+
+~~~bash
+sudo docker compose --profile workers up -d --force-recreate studio-worker
+sudo docker compose --profile workers logs --tail=30 studio-worker
+~~~
+
+Optional MCPJungle gateway:
+
+~~~bash
+# Set unique local MCP_PROXY_DELEGATION_TOKEN and MCPJUNGLE_DB_PASSWORD
+# values in .env before enabling this profile.
+sudo docker compose --profile mcp-gateway up -d --build
+sudo docker compose ps
+sudo docker compose logs --tail=40 mcp-proxy mcpjungle-db mcpjungle
+~~~
+
+Inspect the MCP service contract without exposing secret values:
+
+~~~bash
+grep -E '^MCP_PROXY_DELEGATION_TOKEN=|^MCPJUNGLE_DB_PASSWORD=' .env || true
+sudo docker compose logs --tail=60 mcp-server
+~~~
+
+If the repository contains a root `database.yml` and the local services require it, verify the file before adding it as a read-only bind mount:
+
+~~~bash
+ls -la database.yml 2>/dev/null || find . -maxdepth 3 -type f \( -name 'database.yml' -o -name '*database*.yaml' \)
+~~~
+
+Only when that file is actually required by the checked-in Compose services, use an override such as:
+
+~~~yaml
+services:
+  api:
+    volumes:
+      - ./database.yml:/app/database.yml:ro
+  studio-worker:
+    volumes:
+      - ./database.yml:/app/database.yml:ro
+  migrate:
+    volumes:
+      - ./database.yml:/app/database.yml:ro
+~~~
+
+For migration-history diagnostics, inspect the committed migration files before resolving anything:
+
+~~~bash
+ls -1 prisma/migrations
+cat scripts/docker-init/01-supabase-auth-compat.sql
+head -n 40 prisma/migrations/20261014000000_supabase_platform_baseline/migration.sql
+~~~
+
+A `prisma migrate resolve --applied ...` operation changes migration history and is appropriate only for the documented disposable local baseline case. Do not use it to conceal drift or against staging/production.
+
 ### Stop the local stack safely
 
 ~~~bash
