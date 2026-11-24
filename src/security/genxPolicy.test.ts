@@ -115,6 +115,30 @@ describe('Gen-X deterministic security enforcement', () => {
     }).decision).toBe('REQUIRE_APPROVAL');
   });
 
+  it('allows only owner-bound read-only plugin provider network requests', () => {
+    const read = {
+      ...base, agentId: 'ryanai-api', principal: 'verified-user-id',
+      toolName: 'plugin_provider_read', action: 'NETWORK' as const,
+      target: 'plugin-provider:google-calendar:calendar.events.read',
+      actorType: 'human' as const, ownerAuthorized: true,
+    };
+    expect(evaluateGenXSecurityEvent(read))
+      .toMatchObject({ decision: 'ALLOW', ruleId: 'GX-OWNER-PLUGIN-READ-001' });
+    expect(evaluateGenXSecurityEvent({
+      ...read, target: 'plugin-provider:gmail:gmail.messages.read',
+    })).toMatchObject({ decision: 'ALLOW', ruleId: 'GX-OWNER-PLUGIN-READ-001' });
+    for (const denied of [
+      { ...read, actorType: 'agent' as const },
+      { ...read, ownerAuthorized: false },
+      { ...read, target: 'plugin-provider:cloudflare:deployments.write' },
+      { ...read, target: 'plugin-provider:google-calendar:events.write' },
+      { ...read, toolName: 'unknown_plugin_tool' },
+      { ...read, action: 'UPDATE' as const },
+    ]) {
+      expect(evaluateGenXSecurityEvent(denied).decision).not.toBe('ALLOW');
+    }
+  });
+
   it('allows only the explicitly user-initiated configured reasoning network action', () => {
     expect(evaluateGenXSecurityEvent({
       ...base, agentId: 'ryanai-api', toolName: 'api_reasoning_request',
