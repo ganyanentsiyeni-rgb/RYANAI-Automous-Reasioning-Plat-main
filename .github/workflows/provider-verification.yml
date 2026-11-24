@@ -60,7 +60,8 @@ jobs:
       OPENROUTER_API_KEY: ${{ matrix.provider == 'secondary' && secrets.OPENROUTER_API_KEY || '' }}
       DASHSCOPE_API_KEY: ${{ matrix.provider == 'secondary' && secrets.DASHSCOPE_API_KEY || '' }}
       SILICONFLOW_API_KEY: ${{ matrix.provider == 'secondary' && secrets.SILICONFLOW_API_KEY || '' }}
-      LOGIC_API_KEY: ${{ matrix.provider == 'logic' && secrets.LOGIC_API_KEY || '' }}
+      # Prefer the dedicated Logic key, falling back to the OpenAI-compatible Logic credential.
+      LOGIC_API_KEY: ${{ matrix.provider == 'logic' && (secrets.LOGIC_API_KEY || secrets.OPENAI_API_KEY) || '' }}
       OPENAI_API_KEY: ${{ matrix.provider == 'logic' && secrets.OPENAI_API_KEY || '' }}
       GROK_API_KEY: ${{ matrix.provider == 'logic' && secrets.GROK_API_KEY || '' }}
       # No generic provider aliases or unconditional credentials: each matrix
