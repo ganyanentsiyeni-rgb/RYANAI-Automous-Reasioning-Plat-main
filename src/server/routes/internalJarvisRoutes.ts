@@ -3,6 +3,9 @@ import { dispatchJarvisTask, listAgentRuns } from '../../agent/operations.js';
 import { authorizeJarvisCapability, getJarvisAgentRegistry, type JarvisCapability } from '../../agent/jarvisRegistry.js';
 import { prisma } from '../../lib/prisma.js';
 import { createJarvisIdentityProof, createPADelegation, getPADelegation, verifyPAHandshake } from '../../agent/paDelegationService.js';
+import { getAgentTaskWorkerStatus, listBrainHealth } from '../../agent/operations.js';
+import { RYANAI_MODULE_AGENT_ROSTER, RYANAI_MODULE_AGENT_COUNT } from '../../agent/moduleAgentRegistry.js';
+import { RYANAI_WORKER_ROSTER, RYANAI_WORKER_COUNT } from '../../agent/workerRegistry.js';
 import type { PADelegationCapability } from '../../agent/paJarvisHandshake.js';
 
 interface CreateTaskBody { objective: string; }
@@ -21,6 +24,79 @@ export const internalJarvisRoutes: FastifyPluginAsync = async (fastify) => {
     } catch {
       return reply.code(503).send({ service: 'ryanai-internal-jarvis', status: 'degraded', persistence: 'unavailable', externalJarvisRequired: false });
     }
+  });
+
+  fastify.get('/api/jarvis/internal/workforce', async (request, reply) => {
+    if (!request.authUser) return reply.code(401).send({ error: 'Sign in to continue.' });
+    if (!isAdmin(request)) return reply.code(403).send({ error: 'Administrator access is required.' });
+
+    const [brainHealth, taskWorker, studioHeartbeats] = await Promise.all([
+      listBrainHealth(),
+      Promise.resolve(getAgentTaskWorkerStatus()),
+      prisma.studioWorkerHeartbeat.findMany({
+        orderBy: { lastSeenAt: 'desc' },
+        take: 100,
+        select: { workerId: true, status: true, lastSeenAt: true },
+      }),
+    ]);
+
+    const moduleAgents = RYANAI_MODULE_AGENT_ROSTER.map((agent) => ({
+      id: agent.id,
+      moduleId: agent.moduleId,
+      moduleName: agent.moduleName,
+      name: agent.name,
+      state: 'registered' as const,
+      taskTypes: agent.taskTypes,
+      allowedActions: agent.allowedActions,
+    }));
+
+    const workers = RYANAI_WORKER_ROSTER.map((worker) => ({
+      id: worker.id,
+      name: worker.name,
+      state: 'registered' as const,
+      taskTypes: worker.taskTypes,
+      allowedActions: worker.allowedActions,
+    }));
+
+    const now = Date.now();
+    const workerRuntime = RYANAI_WORKER_ROSTER.map((worker) => {
+      const heartbeat = studioHeartbeats.find((item) => item.workerId.startsWith('studio-worker-' + worker.id + '-'));
+      const ageMs = heartbeat ? Math.max(0, now - heartbeat.lastSeenAt.getTime()) : null;
+      return {
+        id: worker.id,
+        name: worker.name,
+        status: heartbeat?.status ?? 'missing',
+        lastSeenAt: heartbeat?.lastSeenAt?.toISOString() ?? null,
+        ageMs,
+        live: heartbeat?.status === 'healthy' && ageMs !== null && ageMs <= 30_000,
+      };
+    });
+    const coreBrainsHealthy = ['primary', 'secondary', 'logic'].every((brain) =>
+      brainHealth.some((item) => item.brain === brain && item.status === 'HEALTHY' && item.lastSuccessAt && now - item.lastSuccessAt.getTime() <= 600_000),
+    );
+    const liveVerified =
+      taskWorker.state === 'running' &&
+      taskWorker.queueClaimState === 'ready' &&
+      workerRuntime.every((worker) => worker.live) &&
+      coreBrainsHealthy;
+    reply.code(liveVerified ? 200 : 503);
+    return {
+      status: liveVerified ? 'live' : 'not_live_verified',
+      liveVerified,
+      activationPolicy: 'registered roster and configuration never count as live runtime evidence',
+      moduleAgents: { expected: RYANAI_MODULE_AGENT_COUNT, registered: moduleAgents.length, items: moduleAgents },
+      workers: { expected: RYANAI_WORKER_COUNT, registered: workers.length, items: workers, runtime: workerRuntime },
+      reasoningQueueWorker: taskWorker,
+      brains: brainHealth,
+      blockers: liveVerified ? [] : [
+        ...(taskWorker.state !== 'running' || taskWorker.queueClaimState !== 'ready'
+          ? ['The reasoning queue worker is not currently verified as running and ready.']
+          : []),
+        ...(workerRuntime.filter((worker) => !worker.live).map((worker) => 'Worker ' + worker.id + ' lacks a fresh healthy heartbeat.')),
+        ...(coreBrainsHealthy ? [] : ['One or more core reasoning brains lacks a fresh HEALTHY probe.']),
+        'Provider/model configuration or registry presence is not proof of provider health or production activation.',
+      ],
+    };
   });
 
   fastify.get('/api/jarvis/internal/agents', async (request, reply) => {
