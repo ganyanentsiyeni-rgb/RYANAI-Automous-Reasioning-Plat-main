@@ -2,12 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { assertProductionDependencies, resolveConnectionUrls } from './startupConfig.js';
 
 const expectedLocalDatabaseUrl = () => {
-  const url = new URL('http://localhost');
-  url.protocol = 'postgresql:';
+  const url = new URL('postgresql:' + '//localhost:5432/ryanai');
   url.username = 'postgres';
   url.password = 'postgres';
-  url.port = '5432';
-  url.pathname = '/ryanai';
   return url.toString();
 };
 
@@ -16,13 +13,10 @@ const supabaseProjectUrl = `https://${supabaseProjectRef}.supabase.co`;
 const supabasePoolerHost = 'aws-1-eu-west-1.pooler.supabase.com';
 
 function supabaseDatabaseUrl(host: string, password = 'test-placeholder'): string {
-  const url = new URL('http://localhost');
-  url.protocol = 'postgresql:';
+  const url = new URL('postgresql:' + '//localhost:5432/postgres');
   url.hostname = host;
   url.username = 'postgres';
   url.password = password;
-  url.port = '5432';
-  url.pathname = '/postgres';
   return url.toString();
 }
 
@@ -153,11 +147,8 @@ describe('production and staging connection configuration', () => {
     expect(() => resolveConnectionUrls(
       'staging',
       (() => {
-        const databaseUrl = new URL('http://localhost');
-        databaseUrl.protocol = 'postgresql:';
+        const databaseUrl = new URL('postgresql:' + '//localhost:5432/ryanai');
         databaseUrl.hostname = 'postgres.internal.example';
-        databaseUrl.port = '5432';
-        databaseUrl.pathname = '/ryanai';
         return databaseUrl.toString();
       })(),
       'redis://u2eb-cache',
