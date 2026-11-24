@@ -227,8 +227,18 @@ try {
   const exhausted = await withHandler(taskType.exhausted, async () => ({}),
     () => runWorker('studio-ci-exhausted-' + suffix, async () => { throw new Error('final authorization timeout'); }));
   assert.equal(exhausted.state, 'failed');
-  assert.equal((await taskById(exhaustedTask.id)).status, 'failed');
-  assert.ok(await prisma.studioEvent.findFirst({ where: { taskId: exhaustedTask.id, eventType: 'task.authorization_exhausted' } }));
+  const exhaustedAuthorizationRow = await taskById(exhaustedTask.id);
+  assert.equal(exhaustedAuthorizationRow.status, 'failed');
+  assert.equal(exhaustedAuthorizationRow.attempts, 1);
+  assert.equal(exhaustedAuthorizationRow.leaseOwner, null);
+  assert.equal(exhaustedAuthorizationRow.leaseToken, null);
+  assert.equal(exhaustedAuthorizationRow.leaseExpiresAt, null);
+  assert.equal(exhaustedAuthorizationRow.heartbeatAt, null);
+  assert.ok(exhaustedAuthorizationRow.completedAt instanceof Date);
+  const authorizationExhaustionEvent = await prisma.studioEvent.findFirst({ where: { taskId: exhaustedTask.id, eventType: 'task.authorization_exhausted' } });
+  assert.ok(authorizationExhaustionEvent);
+  assert.equal(authorizationExhaustionEvent.payload.outcome, 'failed');
+  assert.equal(authorizationExhaustionEvent.payload.maxAttempts, 1);
 
   const dependentTask = created.tasks.find((item) => item.taskType === 'dependency-after-exhaustion');
   assert.ok(dependentTask);
