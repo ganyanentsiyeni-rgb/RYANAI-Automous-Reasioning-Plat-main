@@ -1,6 +1,14 @@
 \set ON_ERROR_STOP on
 -- Disposable local Supabase stack only. All fixtures are rolled back.
 BEGIN;
+
+-- Emit the effective room policies in CI so an unexpected permissive policy
+-- can be distinguished from a JWT-subject or helper-function regression.
+SELECT policyname, permissive, roles, cmd, qual, with_check
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'rooms'
+ORDER BY policyname;
+
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.role', 'authenticated', true);
 SELECT set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000001', true);
@@ -44,7 +52,9 @@ END $shared_rooms_rls$;
 SELECT set_config('request.jwt.claim.sub', '10000000-0000-4000-8000-000000000002', true);
 SELECT set_config('request.jwt.claims',
   '{"sub":"10000000-0000-4000-8000-000000000002","role":"authenticated"}', true);
-DO $$
+SELECT auth.uid() AS member_jwt_subject;
+SELECT private.is_room_creator('20000000-0000-4000-8000-000000000001') AS member_is_creator;
+DO $
 BEGIN
   IF (SELECT count(*) FROM public.rooms
       WHERE id = '20000000-0000-4000-8000-000000000001') <> 1 THEN
