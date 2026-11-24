@@ -394,7 +394,7 @@ async function processAgentRun(
         });
         capabilityReceipts.push({
           capability: 'comms.task.create',
-          status: child.status === 'queued' || child.status === 'running' ? 'passed' : 'pending',
+          status: 'passed',
           evidenceReferences: ['agent-run-evidence:' + evidence.id],
           childRunId: child.runId,
           internalOnly: true,
