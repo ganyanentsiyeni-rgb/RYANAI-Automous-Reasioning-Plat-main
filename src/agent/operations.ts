@@ -218,7 +218,7 @@ interface ClaimedAgentRun {
 /** Atomically claim one queued run; stale leases are recoverable after worker restarts. */
 export async function claimNextAgentRun(workerId: string, leaseMs = 30_000): Promise<ClaimedAgentRun | null> {
   const exhausted = await prisma.$queryRaw<Array<{ id: string; status: string }>>`
-    UPDATE "agent_runs"
+    UPDATE "public"."agent_runs"
     SET "status" = CASE WHEN "cancel_requested_at" IS NOT NULL THEN 'cancelled' ELSE 'failed' END,
         "error" = CASE WHEN "cancel_requested_at" IS NOT NULL THEN 'Cancellation finalized after the worker lease expired.' ELSE 'Worker lease expired after the maximum number of attempts.' END,
         "completed_at" = NOW(),
@@ -240,8 +240,8 @@ export async function claimNextAgentRun(workerId: string, leaseMs = 30_000): Pro
     });
   }
   const rows = await prisma.$queryRawUnsafe<ClaimedAgentRun[]>(
-    'UPDATE "agent_runs" SET "status" = \'running\', "worker_id" = $1, "locked_at" = NOW(), "lease_expires_at" = NOW() + ($2 * INTERVAL \'1 millisecond\'), "heartbeat_at" = NOW(), "attempts" = "attempts" + 1 ' +
-    'WHERE "id" = (SELECT "id" FROM "agent_runs" WHERE "queue_type" = \'reasoning\' AND "approval_status" = \'approved\' AND ("plan_snapshot" IS NULL OR ("approved_plan_hash" = "plan_hash" AND "approved_commit_sha" = "base_commit_sha" AND "approved_diff_hash" = "proposed_diff_hash")) AND "cancel_requested_at" IS NULL AND (("status" = \'queued\' AND "next_attempt_at" <= NOW()) OR ("status" = \'running\' AND "lease_expires_at" <= NOW() AND "attempts" < "max_attempts" AND "next_attempt_at" <= NOW())) ' +
+    'UPDATE "public"."agent_runs" SET "status" = \'running\', "worker_id" = $1, "locked_at" = NOW(), "lease_expires_at" = NOW() + ($2 * INTERVAL \'1 millisecond\'), "heartbeat_at" = NOW(), "attempts" = "attempts" + 1 ' +
+    'WHERE "id" = (SELECT "id" FROM "public"."agent_runs" WHERE "queue_type" = \'reasoning\' AND "approval_status" = \'approved\' AND ("plan_snapshot" IS NULL OR ("approved_plan_hash" = "plan_hash" AND "approved_commit_sha" = "base_commit_sha" AND "approved_diff_hash" = "proposed_diff_hash")) AND "cancel_requested_at" IS NULL AND (("status" = \'queued\' AND "next_attempt_at" <= NOW()) OR ("status" = \'running\' AND "lease_expires_at" <= NOW() AND "attempts" < "max_attempts" AND "next_attempt_at" <= NOW())) ' +
     'ORDER BY "created_at" ASC LIMIT 1 FOR UPDATE SKIP LOCKED) ' +
     'RETURNING "id", "user_id", "objective", "requested_model", "trace_context", "attempts", "max_attempts", "worker_id", "execution_scope", "approval_status", "steering_notes", "cancel_requested_at", "plan_snapshot", "plan_hash", "base_commit_sha", "proposed_diff_hash", "approved_plan_hash", "approved_commit_sha", "approved_diff_hash", "lease_expires_at", "heartbeat_at"',
     workerId, leaseMs,
