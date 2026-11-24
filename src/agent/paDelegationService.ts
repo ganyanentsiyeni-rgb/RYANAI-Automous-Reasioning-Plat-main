@@ -342,15 +342,3 @@ export async function rejectPADelegation(ownerUserId: string, delegationId: stri
     return true;
   });
 }
-
-export async function getPADelegation(ownerUserId: string, delegationId: string) {
-  return prisma.paDelegation.findFirst({
-    where: { id: delegationId, ownerUserId },
-    include: {
-      receipt: true,
-      agentRun: {
-        select: { id: true, status: true, approvalStatus: true, attempts: true, result: true, error: true, createdAt: true, completedAt: true, handoffs: { orderBy: { startedAt: 'asc' } } },
-      },
-    },
-  });
-}
