@@ -184,13 +184,10 @@ const hasReusableExactShaCiCd =
   ciCdWorkflow.includes('workflow_call:')
   && ciCdWorkflow.includes('inputs.commit_sha')
   && ciCdWorkflow.includes('ref: ${{ inputs.commit_sha || github.sha }}')
+  && ciCdWorkflow.includes('inputs.commit_sha || github.sha')
+  && ciCdWorkflow.includes("github.event_name == 'workflow_dispatch' && inputs.publish_images == true")
   && platformDeployWorkflow.includes('needs.gate.outputs.sha')
   && (platformDeployWorkflow.match(/needs: gate/g) ?? []).length === 3;
-const hasReusableExactShaCiCd =
-  ciCdWorkflow.includes('workflow_call:')
-  && ciCdWorkflow.includes('inputs.commit_sha')
-  && ciCdWorkflow.includes('inputs.commit_sha || github.sha')
-  && ciCdWorkflow.includes("github.event_name == 'workflow_dispatch' && inputs.publish_images == true");
 
 const checks = [
   ['Vercel build settings are scoped to the web service, with no ambiguous top-level build properties', hasNoAmbiguousTopLevelVercelBuildSettings],

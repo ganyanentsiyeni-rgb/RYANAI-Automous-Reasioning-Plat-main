@@ -19,7 +19,7 @@ const SPECS: Record<string, AuditSpec> = {
       { id: 'TLS-VERIFY-DISABLED', severity: 'high', pattern: /NODE_TLS_REJECT_UNAUTHORIZED\s*[:=]\s*['"]?0/i, message: 'TLS certificate verification appears disabled in tracked configuration.' },
       { id: 'SHELL-CURL-PIPE', severity: 'review', pattern: /curl[^\n|]*\|\s*(?:sh|bash)/i, message: 'A network-fetched script may be piped directly to a shell.' },
       { id: 'PERMISSIVE-WORKFLOW-PERMISSIONS', severity: 'review', pattern: /permissions:\s*write-all/i, message: 'A workflow requests broad write-all permissions.' },
-      { id: 'TRACKED-SECRET-LIKE-VALUE', severity: 'high', pattern: /(?:api[_-]?key|client[_-]?secret|password)\s*[:=]\s*['"][A-Za-z0-9_\-]{20,}['"]/i, message: 'A tracked file contains a secret-like literal; value intentionally withheld.' },
+      { id: 'TRACKED-SECRET-LIKE-VALUE', severity: 'high', pattern: /(?:api[_-]?key|client[_-]?secret|password)\s*[:=]\s*['"][A-Za-z0-9_-]{20,}['"]/i, message: 'A tracked file contains a secret-like literal; value intentionally withheld.' },
     ],
   },
   'runtime-infrastructure': {
