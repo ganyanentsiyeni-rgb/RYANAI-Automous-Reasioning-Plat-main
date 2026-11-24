@@ -291,7 +291,7 @@ async function releaseStudioTaskAfterAuthorizationFailure(task: StudioTask, work
     : { state: 'lease_lost' as const, taskId: task.id };
 }
 
-/** Reports whether this worker profile has at least one real task handler registered in this process. */
+/** Reports readiness only when every task type declared for this worker profile has a handler in this process. */
 export function getStudioWorkerHandlerReadiness(workerProfileId: string) {
   const profile = RYANAI_WORKER_ROSTER.find((worker) => worker.id === workerProfileId);
   if (!profile) return {
@@ -304,15 +304,16 @@ export function getStudioWorkerHandlerReadiness(workerProfileId: string) {
   };
   const registeredTaskTypes = profile.taskTypes.filter((taskType) => taskHandlers.has(taskType));
   const missingTaskTypes = profile.taskTypes.filter((taskType) => !taskHandlers.has(taskType));
+  const ready = profile.taskTypes.length > 0 && missingTaskTypes.length === 0;
   return {
     workerProfileId,
-    ready: registeredTaskTypes.length > 0,
+    ready,
     supportedTaskTypes: [...profile.taskTypes],
     registeredTaskTypes,
     missingTaskTypes,
-    reason: registeredTaskTypes.length
+    reason: ready
       ? null
-      : 'No native Studio task handler is registered for this worker profile in this process.',
+      : 'Worker handler registration is incomplete in this process. Missing task types: ' + missingTaskTypes.join(', '),
   };
 }
 
