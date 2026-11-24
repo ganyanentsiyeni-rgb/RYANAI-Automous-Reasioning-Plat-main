@@ -118,9 +118,9 @@ separately scoped audiobook storage/database connections.
 
 ### Hosting and deployment boundaries
 
-The repository contains Render and Railway configuration. The checked-in Render Blueprint describes web and API services; railway.json describes a Docker API service and health check. These files are configuration contracts, not proof that a deployment is active or healthy.
+The repository contains Render, Railway, and Vercel deployment configuration. The checked-in Render Blueprint describes web and API services; railway.json describes a Docker API service and health check; the Vercel project is a required third deployment target. These files are configuration contracts, not proof that a deployment is active or healthy.
 
-The current deployment model must be verified against the live service source and exact commit before any release. Do not infer that a successful image build triggered a deployment: inspect the deployment workflow and commit-based trigger. Vercel is not part of the current RyanAI hosting architecture.
+RyanAI releases target all three platforms: Railway, Render, and Vercel. The protected `Deploy Platforms via CI` workflow requires an explicit `PUSH_DEPLOY` dispatch, the exact current `main` SHA, and successful exact-head CI/security checks. All three provider jobs are mandatory; a missing credential or failed provider job fails the release. A successful image build is not proof that any platform deployed or passed runtime health.
 
 ### RyanAI Hybrid OS v1
 
@@ -280,7 +280,7 @@ The repository includes the following technologies; actual use depends on the se
 | Agent / model integrations | Provider adapters, LangGraph examples and MCP |
 | Python research | Python 3 and Quant Engine |
 | Containers | Docker and Docker Compose |
-| Deployment configuration | Render and Railway |
+| Deployment configuration | Railway, Render, and Vercel |
 | Mobile / desktop | Android PhoneLink and Tauri-related workspace |
 
 For the main application:
@@ -967,7 +967,7 @@ docker compose down
 
 Do **not** use `docker compose down -v` unless the local database/cache volumes are intentionally disposable and you want to delete them.
 
-### Render and Railway
+### Railway, Render and Vercel
 
 
 - render.yaml describes Render web/API resources and environment groups. It is a proposal/configuration file; applying a Blueprint sync is a separate infrastructure action.
@@ -976,7 +976,7 @@ Do **not** use `docker compose down -v` unless the local database/cache volumes 
 - Dockerfile.api defines a standalone API image.
 - docker-compose.yml defines the local multi-service stack.
 
-Before any deployment, verify the live service repository, branch, commit SHA, build/start commands, environment references, health-check result, and deployment workflow. The deployment trigger is commit/workflow based; a local Docker build or image build alone is not evidence of a release.
+Before any deployment, verify the live service repository, branch, commit SHA, build/start commands, environment references, health-check result, and deployment workflow. Production release uses the single `Deploy Platforms via CI` workflow with `PUSH_DEPLOY`; it gates all three targets on exact-head CI/security evidence. A local Docker build or image build alone is not evidence of a release.
 
 No deployment, Blueprint sync, production migration, secret change, paid upgrade, or infrastructure mutation is authorized by these README instructions.
 
@@ -1101,8 +1101,7 @@ The current mainline contains substantial additional resilience, recovery, maint
 - **Self-patching and maintenance:** self-patch proposals and maintenance lifecycle controls are owner-authorized and audited. They do not grant an agent autonomous authority to modify production infrastructure, secrets, databases, or deployments.
 - **Realtime:** durable audience-scoped events and authenticated replay are implemented in mainline. Production readiness still requires runtime verification of persistence, replay ordering, reconnect behavior, channel isolation, failure handling, and operational observability.
 - **Communications:** Comms can remain available with outbound dispatch disabled. Provider credentials, callback verification, owner/destination verification, explicit test authorization, approval, and delivery callbacks remain separate gates.
-- **Deployment:** Render and Railway configuration remain repository contracts. No README statement authorizes a deployment, Blueprint sync, production migration, infrastructure mutation, secret change, paid upgrade, or live external communication.
-- **Vercel:** Vercel is not part of the current RyanAI hosting architecture described by this README.
+- **Deployment:** Railway, Render, and Vercel are all required production deployment targets. The `PUSH_DEPLOY` workflow is manual and exact-main/CI/security gated. This does not authorize a production database migration, secret change, paid upgrade, or unrelated infrastructure mutation.
 - **Governance:** focused repair PRs may proceed only as scoped branches with required CI/security evidence and human review. Do not enable automatic merge or bypass required checks.
 
 The following limitations are important when interpreting repository state:

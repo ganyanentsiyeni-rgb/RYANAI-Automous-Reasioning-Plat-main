@@ -184,6 +184,20 @@ const hasReusableExactShaCiCd =
   && ciCdWorkflow.includes('inputs.commit_sha')
   && ciCdWorkflow.includes('ref: ${{ inputs.commit_sha || github.sha }}')
   && ciCdWorkflow.includes("github.event_name == 'workflow_dispatch' && inputs.publish_images == true");
+  && platformDeployWorkflow.includes("inputs.confirmation == 'PUSH_DEPLOY'")
+  && platformDeployWorkflow.includes('Require every exact-head CI and security check')
+  && !platformDeployWorkflow.includes("inputs.vercel_confirmation == 'DEPLOY'")
+  && platformDeployWorkflow.includes('name: Vercel deploy')
+  && !/vercel:\s+[\s\S]{0,120}?if:/.test(platformDeployWorkflow)
+  && platformDeployWorkflow.includes('needs: [gate, railway]')
+  && platformDeployWorkflow.includes('environment: production')
+  && platformDeployWorkflow.includes('VERCEL_TOKEN')
+  && platformDeployWorkflow.includes('VERCEL_ORG_ID')
+  && platformDeployWorkflow.includes('VERCEL_PROJECT_ID')
+  && platformDeployWorkflow.includes('VERCEL_CLI_VERSION')
+  && platformDeployWorkflow.includes('vercel build --prod')
+  && platformDeployWorkflow.includes('vercel deploy --prebuilt --prod --skip-domain')
+  && platformDeployWorkflow.includes('ref: ${{ needs.gate.outputs.sha }}');
 
 const checks = [
   ['Vercel build settings are scoped to the web service, with no ambiguous top-level build properties', hasNoAmbiguousTopLevelVercelBuildSettings],
