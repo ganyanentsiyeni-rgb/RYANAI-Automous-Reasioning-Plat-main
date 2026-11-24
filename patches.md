@@ -68,6 +68,8 @@ This patch does **not** trigger production deployment. Production deployment sti
 - Added a dedicated `ai-inspector-module-agent` module owner with `ai-inspector.audit` and `ai-inspector.report` routing.
 - Routed those task types to the repository-auditor profile, with read-repository capability checks and report output persisted through the Studio task completion boundary.
 - Added bounded read-only specialist handlers for coordinator, security, runtime/infrastructure, data/queue, provider configuration, communications/identity, frontend/accessibility, and release readiness. The existing repository inventory and CI diagnostics handlers remain distinct.
+- Unified CI diagnostics task-handler registration across both Studio worker entrypoints; `ci-failure`, `test-failure`, and `build-failure` now share the same tested registration boundary. Replaced a fake handler-registration test with real readiness coverage for all ten worker profiles.
+
 - Updated the AI Inspector workflow to run the audit with `--write`, creating the report path that the artifact-upload step expects.
 - Added registry and handler-readiness regression tests. These validate registration, not deployed/live heartbeats.
 - No production deployment, database migration, secret change, auto-merge, or external message delivery.
@@ -87,3 +89,16 @@ This patch does **not** trigger production deployment. Production deployment sti
 - Made terminal-heartbeat failure injection conditional on the `stopped` status, so background healthy heartbeats cannot consume the intended shutdown failure.
 - Aligned queue test query fixtures with the current terminal-dependency sweep, claim query, and token-fenced authorization re-check.
 - Kept the production lease/authorization logic unchanged; these changes repair stale test assumptions and preserve the existing Gen-X and lease-token fences.
+## AI Inspector module and PA report skills
+
+- Allocated the dedicated `ai-inspector-module-agent` as the 13th module identity, with bounded read/inspect/test/evidence/patch-proposal actions and no privileged execution authority.
+- Expanded its inspection path to combine `scripts/ai-inspector-audit.mjs` with bounded cross-module source inspection for agent orchestration, backend integrations, provider adapters, queue/lease contracts, infrastructure, CI workflows, and release documentation.
+- PA receives structured findings, severity/rule IDs, evidence-file references, source metadata, report text, and a digest through durable AgentRun evidence. Exit code 1 retains high-severity findings for triage; it is not misreported as a clean audit.
+- Corrected the pg-dump connection test contract to use Node's native test runner and excluded that file from Vitest discovery; CI continues to execute it explicitly with `node --test`.
+- No secrets were changed, no production migration/deployment occurred, and no external communication was sent.
+
+## Complete worker handler readiness
+
+- Tightened worker readiness: a profile is ready only when every task type in its roster has a registered handler in that process; partial registration is now reported with the exact missing task types.
+- Kept coordinator task ownership singular: the shared specialist registrar owns planning/triage, while each worker bootstrap owns its coordination task implementation, avoiding duplicate registration in the server worker path.
+- Added bootstrap contract coverage for the repository inventory and CI diagnostic task handlers and a regression test proving partial registration cannot be marked ready.

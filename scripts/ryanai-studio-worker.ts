@@ -3,7 +3,7 @@ import {
   getStudioWorkerHandlerReadiness,
   registerStudioTaskHandler,
 } from '../src/server/engineering/studioNativeCore.js';
-import { createRyanAICiDiagnosticsTaskHandler } from '../src/server/engineering/ryanaiCiDiagnosticsTask.js';
+import { registerRyanAICiDiagnosticsTaskHandlers } from '../src/server/engineering/ryanaiCiDiagnosticsTask.js';
 import { generateRepositoryInventory } from './repository-inventory.mjs';
 import { prisma } from '../src/lib/prisma.js';
 import { inspectConnectedGitHubWorkflowEvidence } from '../src/server/routes/githubIntegration.js';
@@ -29,30 +29,43 @@ const runRepositoryInventoryTask = async ({ task, signal }: {
   };
 };
 
-const runCiDiagnosticsTask = createRyanAICiDiagnosticsTaskHandler(
-  (ownerUserId, headSha, options) => inspectConnectedGitHubWorkflowEvidence(
-    { prisma },
-    ownerUserId,
-    headSha,
-    options,
-  ),
-);
-
 const unregisterSpecialistHandlers = registerRyanAISpecialistTaskHandlers(profileId);
+const unregisterHandlers = profileId === 'coordinator'
+  ? [
+      registerStudioTaskHandler('coordination', async ({ task }) => ({
+        schemaVersion: 1,
+        kind: 'ryanai.coordination.plan',
+        taskId: task.id,
+        objective: task.objective.trim(),
+        assignedWorkerId: task.assignedWorkerId ?? null,
+        steps: [
+          'Confirm objective and owner scope',
+          'Identify a registered specialist and required evidence',
+          'Collect exact task and test evidence',
+          'Return findings and unresolved blockers to PA',
+        ],
+        status: 'plan_proposed',
+        executionAuthority: 'none',
+      })),
+      unregisterSpecialistHandlers,
+    ]
+  : profileId === 'repository-auditor'
+const unregisterCiDiagnosticsHandlers = profileId === 'ci-diagnostics'
+  ? registerRyanAICiDiagnosticsTaskHandlers((ownerUserId, headSha, options) => inspectConnectedGitHubWorkflowEvidence(
+      { prisma },
+      ownerUserId,
+      headSha,
+      options,
+    ))
+  : () => undefined;
 const unregisterHandlers = profileId === 'repository-auditor'
   ? [
       registerStudioTaskHandler('repository-audit', runRepositoryInventoryTask),
       registerStudioTaskHandler('inventory', runRepositoryInventoryTask),
       unregisterSpecialistHandlers,
+      unregisterCiDiagnosticsHandlers,
     ]
-  : profileId === 'ci-diagnostics'
-    ? [
-        registerStudioTaskHandler('ci-failure', runCiDiagnosticsTask),
-        registerStudioTaskHandler('test-failure', runCiDiagnosticsTask),
-        registerStudioTaskHandler('build-failure', runCiDiagnosticsTask),
-        unregisterSpecialistHandlers,
-      ]
-    : [unregisterSpecialistHandlers];
+  : [unregisterSpecialistHandlers, unregisterCiDiagnosticsHandlers];
 
 const handlerReadiness = getStudioWorkerHandlerReadiness(profileId);
 if (!handlerReadiness.ready) {
