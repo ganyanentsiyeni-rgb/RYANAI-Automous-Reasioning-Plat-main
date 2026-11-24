@@ -162,9 +162,19 @@ export const RYANAI_MODULE_AGENT_ROSTER: readonly ModuleAgentDefinition[] = Obje
     allowedActions: SAFE_MODULE_ACTIONS,
     kpis: ['incident triage accuracy', 'recovery evidence completeness', 'repeat incident reduction'],
   },
+  {
+    id: 'ai-inspector-module-agent',
+    moduleId: 'ai-inspector',
+    moduleName: 'AI Inspector & Audit',
+    name: 'AI Inspector',
+    responsibility: 'Perform read-only repository, CI, security, runtime, integration, and release inspections; produce structured, evidence-linked findings and PA-ready reports. Never approve, merge, change secrets, deploy, migrate, or send external communications.',
+    taskTypes: ['ai-inspector.audit', 'ai-inspector.report'],
+    allowedActions: SAFE_MODULE_ACTIONS,
+    kpis: ['findings with reproducible evidence', 'report completeness and artifact availability', 'false-positive rate and unresolved blocker clarity'],
+  },
 ]);
 
-export const RYANAI_MODULE_AGENT_COUNT = 12;
+export const RYANAI_MODULE_AGENT_COUNT = 13;
 
 export function getModuleAgentProfile(agentId: string): ModuleAgentDefinition | null {
   return RYANAI_MODULE_AGENT_ROSTER.find((agent) => agent.id === agentId) ?? null;
