@@ -1332,3 +1332,8 @@ Do not publish exploitable vulnerabilities, credentials, customer data, or destr
 
 See [LICENSE](LICENSE). Check the license terms before redistributing or incorporating this project into another product.
 
+## AI Inspector and specialist workforce
+
+The AI Inspector is a dedicated module agent (`ai-inspector-module-agent`) with repository inspection and PA-ready reporting task types. Its bounded work is read-only: inspect source and CI evidence, produce structured findings, and return the report as durable task output. It cannot approve, merge, deploy, migrate, change secrets, or send external communications.
+
+The specialist worker runtime registers profile-specific handlers for coordination, repository and AI Inspector audits, CI diagnostics, security, infrastructure, data/queue, provider configuration, communications, frontend accessibility, and release readiness. A registered handler is not proof that a worker process is running; live status still requires fresh persisted heartbeats and task execution evidence. See [architecture.md](architecture.md) and [patches.md](patches.md).
