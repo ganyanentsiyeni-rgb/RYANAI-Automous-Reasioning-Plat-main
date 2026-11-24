@@ -91,3 +91,5 @@ This patch does **not** trigger production deployment. Production deployment sti
 - Tightened worker readiness so every declared task type must have a registered handler; added regression coverage for incomplete registration and full-profile handler coverage.
 - Kept coordinator registration unique across worker bootstraps and added repository inventory handlers to the server-managed repository-auditor bootstrap.
 - No secrets were changed, no production migration/deployment occurred, and no external communication was sent.
+
+- Normalized AI Inspector failure exit codes to finite positive integers and corrected cross-module report line breaks; regression tests cover missing/non-finite exit codes and newline formatting.
