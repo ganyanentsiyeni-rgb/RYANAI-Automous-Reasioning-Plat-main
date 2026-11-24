@@ -431,7 +431,23 @@ export async function runStudioWorkerOnce(workerId: string, workerProfileId: str
 
   let output: unknown;
   try {
-    if (signal?.aborted) return { state: 'interrupted' as const, taskId: task.id };
+    if (signal?.aborted) {
+      // No handler has started, so releasing the claim cannot duplicate a
+      // handler-side effect. Fence the release with the original lease token.
+      const released = await prisma.$transaction(async (tx) => {
+        const result = await tx.studioTask.updateMany({
+          where: { id: task.id, status: 'running', leaseOwner: workerId, leaseToken: task.leaseToken, leaseExpiresAt: { gt: new Date() } },
+          data: { status: 'queued', leaseOwner: null, leaseToken: null, leaseExpiresAt: null, heartbeatAt: null, availableAt: new Date(), completedAt: null },
+        });
+        if (result.count === 1) await tx.studioEvent.create({ data: {
+          projectId: task.projectId, taskId: task.id, ownerUserId: task.ownerUserId, actorId: workerId,
+          eventType: 'task.execution_interrupted',
+          payload: { attempt: task.attempts, reason: 'worker_shutdown_before_handler_start' },
+        } });
+        return result.count === 1;
+      });
+      return { state: released ? 'interrupted' as const : 'lease_lost' as const, taskId: task.id };
+    }
     output = await handler({
       workerId,
       claimToken: task.leaseToken ?? '',
