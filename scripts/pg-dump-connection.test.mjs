@@ -36,8 +36,14 @@ describe('PostgreSQL dump connection environment', () => {
       'postgresql://user:private-password@db.example.test/',
       'not-a-url',
     ]) {
-      expect(() => buildPgDumpEnvironment(value)).toThrow(/DATABASE_URL/);
-      expect(() => buildPgDumpEnvironment(value)).toThrowError(expect.not.stringContaining('private-password'));
+      let message = '';
+      try {
+        buildPgDumpEnvironment(value);
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error);
+      }
+      expect(message).toMatch(/DATABASE_URL/);
+      expect(message).not.toContain('private-password');
     }
   });
 });
