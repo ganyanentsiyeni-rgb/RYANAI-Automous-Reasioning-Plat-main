@@ -61,7 +61,7 @@ export class RyanMCPServer {
       try {
         const canonicalTool = assertCanonicalMcpTool(name);
         const knownTool = canonicalTool && canonicalTools.some((tool) => tool.name === name);
-        if (!knownTool) throw new Error(`Unknown or unimplemented canonical MCP tool requested: ${name}`);
+        if (!knownTool) throw new Error(`Unknown MCP tool requested: ${name}`);
         const policy = evaluateGenXSecurityEvent({
           agentId: "external-mcp-client",
           principal: "mcp-client",

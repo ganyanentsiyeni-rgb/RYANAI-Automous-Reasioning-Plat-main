@@ -5,11 +5,13 @@
  * Internal plugin implementation files may depend on one another directly.
  */
 export { pluginRegistry, createDefaultPluginRegistry } from './pluginCatalog.js';
+export { normalizePluginPreferences, type PluginPreferences, type PluginPreference } from './pluginPreference.js';
 export { pluginRegistryRoutes } from './routes.js';
 export { providerAuthorizationRoutes } from './providerAuthorizationRoutes.js';
 export {
   providerHealthRoutes,
 } from './providerHealthRoutes.js';
+export { describeCapabilityState, type CapabilityState } from './capabilityState.js';
 export {
   resolveProviderCapabilityState,
   type ProviderCapabilityState,

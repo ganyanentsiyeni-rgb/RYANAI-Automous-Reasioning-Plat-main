@@ -6,7 +6,7 @@ import type {
 } from 'fastify';
 import { createContextClient } from '@supabase/server/core';
 import type { PrismaClient } from '@prisma/client';
-import { normalizePluginPreferences, type PluginPreferences } from '../plugins/pluginPreference.js';
+import { normalizePluginPreferences, type PluginPreferences } from '../plugins/index.js';
 import { normalizeResponsePreferences, type ResponsePreferences } from '../../shared/responsePreferences.js';
 
 // --- Interfaces & Types ---

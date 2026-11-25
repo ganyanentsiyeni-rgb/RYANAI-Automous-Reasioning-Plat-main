@@ -5,7 +5,7 @@ import { providerHealthRoutes } from './providerHealthRoutes.js';
 import { encryptProviderCredential } from './providerAuthorization.js';
 import * as genxPolicy from '../../security/genxPolicy.js';
 
-const owner = { id: 'health-owner', role: 'user' as const, isOwner: false, pluginPreferences: {} };
+const owner = { id: 'health-owner', role: 'user' as const, isOwner: false, actorType: 'human' as const, pluginPreferences: {} };
 const key = '5a'.repeat(32);
 
 function fixture() {

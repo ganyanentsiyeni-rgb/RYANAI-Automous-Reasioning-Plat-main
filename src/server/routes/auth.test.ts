@@ -240,6 +240,7 @@ describe('Supabase API authentication', () => {
           collaboration: 'collaborative',
         },
         sessionAssurance: 'aal2',
+        actorType: 'human',
       },
     });
     expect(getUser).toHaveBeenCalledExactlyOnceWith('synthetic-access-token');

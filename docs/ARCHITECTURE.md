@@ -440,3 +440,11 @@ Railway and Vercel source-upload contexts explicitly exclude `.env`, `.env.*`, a
 ### CI static-analysis integrity — 2026-11-25
 
 The backend module-boundary scanner must use JavaScript regex escapes (`\s`, `\.`) rather than over-escaped literal backslashes, and normalize Windows path separators correctly. The MCP delegation contract test imports `assertCanonicalMcpTool` from the canonical registry and iterates only the tuple values it asserts. These repairs address lint failures without changing authorization policy, runtime capabilities, or deployment behavior. Full exact-SHA CI and human review remain mandatory.
+
+
+## 2026-11-25 — exact-SHA CI contract repair
+
+- Reconciled backend module-boundary imports with the plugin public API and preserved a stable MCP unknown-tool error contract.
+- Updated Redis readiness tests to assert the reliability options actually used by `connectRedis`; the configured initial readiness deadline is now honored without an artificial 250 ms floor.
+- Updated provider/auth test fixtures to include the trusted `human` actor classification introduced by the provider Gen-X network gate, and corrected the environment-contract test to use a supported error assertion pattern.
+- These changes target the exact failures observed on main CI. They do not change provider deployment, production database migration, secrets, or production infrastructure.

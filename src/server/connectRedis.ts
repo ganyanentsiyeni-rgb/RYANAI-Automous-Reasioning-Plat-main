@@ -103,7 +103,7 @@ export async function connectRedis(
   options: RedisReliabilityOptions = {},
 ): Promise<Redis> {
   const target = inspectRedisConnectionUrl(url);
-  const connectTimeoutMs = Math.max(250, options.connectTimeoutMs ?? timeoutMs);
+  const connectTimeoutMs = Math.max(1, options.connectTimeoutMs ?? timeoutMs);
   const commandTimeoutMs = Math.max(250, options.commandTimeoutMs ?? 2500);
   const retryBaseDelayMs = Math.max(25, options.retryBaseDelayMs ?? 250);
   const retryMaxDelayMs = Math.max(retryBaseDelayMs, options.retryMaxDelayMs ?? 5000);
