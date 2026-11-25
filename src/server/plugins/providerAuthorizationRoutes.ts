@@ -260,8 +260,8 @@ export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) =
       // connection identified by `ownerUserId`; it is not the RyanAI global-owner flag.
       // `requireUser` is the trust boundary for this route, so service/agent identities
       // do not enter this human provider-read path.
-      actorType: 'human',
-      ownerAuthorized: true,
+      actorType: request.authUser?.actorType ?? 'human',
+      ownerAuthorized: request.authUser?.actorType === 'human',
     });
     if (policy.decision === 'ALLOW') return true;
     fastify.log.warn({ ruleId: policy.ruleId, providerId, capabilityId, principal: ownerUserId },

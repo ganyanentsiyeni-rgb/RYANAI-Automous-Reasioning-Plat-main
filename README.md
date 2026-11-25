@@ -1369,3 +1369,8 @@ Redis/Valkey is treated as ephemeral cache/coordination infrastructure, never th
 ## Backend module boundaries
 
 The backend now treats `src/server/plugins/` as a modular subsystem with an explicit public API at `src/server/plugins/index.ts`. Server consumers outside that subsystem must import plugin capabilities through the public API rather than reaching into implementation files. The boundary is enforced by `scripts/backend-module-boundaries.mjs` and covered by `scripts/backend-module-boundaries.test.ts`. This preserves the plugin execution, MCP, provider-health and authorization contracts while allowing internal plugin implementation to evolve without route-level coupling.
+
+
+## Backend security boundary
+
+Authenticated actor identity is now carried as a trusted `actorType` derived from Supabase app metadata (`human`, `agent`, or `service`). Provider health and provider-read Gen-X decisions no longer hard-code every authenticated request as human. Explicit agent/service identities therefore cannot inherit the human owner authorization exception. Existing sessions without an explicit actor type remain human-compatible; no credentials, secrets, migrations, or deployment settings were changed.

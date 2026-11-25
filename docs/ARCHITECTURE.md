@@ -385,3 +385,8 @@ Liveness and readiness are deliberately separate: `/health` and `/livez` prove t
 The server plugin subsystem is now explicitly bounded by `src/server/plugins/index.ts`. This file is the public API for consumers outside `src/server/plugins/`; implementation modules remain free to compose internally. The boundary is intentionally narrow: it does not require a broad rewrite of the existing server, but it prevents route and bootstrap code from coupling to provider/plugin implementation files directly.
 
 The enforced dependency direction is: server consumers → plugin public API → plugin implementations. The boundary check is repository-level and deterministic, so a future module can be refactored internally without changing every route import. Authorization, provider health, MCP registry and plugin execution remain separate contracts inside the subsystem.
+
+
+## Backend security boundary
+
+Authenticated actor identity is now carried as a trusted `actorType` derived from Supabase app metadata (`human`, `agent`, or `service`). Provider health and provider-read Gen-X decisions no longer hard-code every authenticated request as human. Explicit agent/service identities therefore cannot inherit the human owner authorization exception. Existing sessions without an explicit actor type remain human-compatible; no credentials, secrets, migrations, or deployment settings were changed.
