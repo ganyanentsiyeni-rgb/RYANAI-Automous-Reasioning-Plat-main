@@ -28,3 +28,7 @@ This is an observability boundary repair only. It does not add a telemetry expor
 4. deterministic handling of repeated header values.
 
 Exact-head CI/security status must be checked on the repair branch before merge. Provider-blocked Vercel checks do not count as passing CI.
+
+## HTTP tracing
+
+Fastify now creates a privacy-bounded `http.server.request` span for each request. Only the HTTP method and response status are recorded as span attributes. Request paths, query strings, headers, bodies, authorization data and provider content are excluded. The response log records the bounded request ID plus trace/span identifiers so an operator can correlate request logs with exported traces without treating telemetry as execution evidence.
