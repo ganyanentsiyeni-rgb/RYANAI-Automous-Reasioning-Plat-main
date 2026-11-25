@@ -162,7 +162,6 @@ installHttpTelemetry(fastify);
 fastify.addHook('onRequest', async (request) => {
   httpBoundarySpans.set(request, startHttpBoundarySpan(request));
   httpRequestStarts.set(request, Date.now());
-  incrementMetric('http.request', 'unknown');
 });
 fastify.addHook('onResponse', async (request, reply) => {
   const boundary = httpBoundarySpans.get(request);
