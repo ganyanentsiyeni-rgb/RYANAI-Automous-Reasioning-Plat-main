@@ -816,6 +816,25 @@ sudo docker compose up -d redis
 
 Containers on the RyanAI network still connect to `redis:6379`. Host tools should connect to `127.0.0.1:16379`.
 
+
+### Compose Redis collision recovery and startup verification
+
+If `docker compose up -d` reports that the fixed container name `ryanai-redis` is already in use, inspect the existing container's Compose project labels, network, and volume mounts before changing it. A healthy Redis container may belong to another RyanAI checkout and may hold persistent local data. Do not remove the container or prune volumes just to clear the name conflict.
+
+If the existing Redis belongs to another checkout, preserve it and remove the fixed `container_name: ryanai-redis` declaration from the current checkout's `redis` service so Compose can assign a project-scoped name. Keep the service key `redis`, its network, health check, password, and data-volume configuration intact. Validate the merged configuration, start Redis for this Compose project, and inspect its state and logs:
+
+~~~bash
+docker compose config --quiet && docker compose up -d redis && docker compose ps -a && docker compose logs --tail 50 redis
+~~~
+
+After the Redis service is running and healthy, start the default stack and verify PostgreSQL readiness and Redis connectivity:
+
+~~~bash
+docker compose up -d && docker compose ps -a && docker compose exec postgres pg_isready -U ryanai -d ryanai_db && docker compose exec redis redis-cli -a redis_local_dev_password ping
+~~~
+
+Expected checks are PostgreSQL reporting that it is accepting connections and Redis returning `PONG`. The Redis password shown above is the repository's local-development example; use the password configured in the local Compose environment if it differs. Avoid sharing terminal output that contains real credentials. If either service is not running or healthy, inspect `docker compose logs --tail 50 postgres` or `docker compose logs --tail 50 redis` before proceeding. These commands start and inspect local containers only; they do not run migrations or deploy to a hosted environment.
+
 ### Additional WSL diagnostics and optional services
 
 Create the repository-root `.env` from the tracked template and replace local-development placeholders before starting containers. Never put production credentials in this file or commit it.
