@@ -416,3 +416,8 @@ Every tool in `src/mcp/canonical-tool-registry.json` must have a matching `tool_
 The disposable `public.memory_entries` migration regression test intentionally seeds duplicate `(user_id, key)` pairs and verifies that the migration refuses to create the unique index. This is expected test behavior, not a reported production-data defect. Production memory must not be changed as part of this repair.
 
 The previous mainline repair PR (#860) was merged even though its exact-head CI and single-owner release gate had failed; the formal GitHub review listing returned no submitted review records at inspection time. A comment stating approval is not equivalent to a formal independent review or a successful release gate. Preserve this as a governance incident for separate ruleset/workflow enforcement review.
+
+
+### Main-branch independent review requirement
+
+The `main` ruleset must require at least one independent approving review in GitHub itself. The `Single-owner release gate` is an additional exact-head review check, not a replacement for the branch ruleset's required approval count. Required CI/security contexts must also pass on the exact candidate SHA, stale approvals must be dismissed after pushes, review threads must be resolved, and bypass actors must remain empty. The reviewed-protection workflow is intentionally manual: it requires the exact `ENFORCE-REVIEWED-PROTECTION` confirmation and an administrator credential before applying ruleset `27357206`, then reads the live ruleset back and verifies the resulting settings. A code change to this workflow is only a proposal; it is not evidence that the live ruleset has changed.
