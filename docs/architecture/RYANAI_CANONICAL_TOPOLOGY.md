@@ -221,6 +221,17 @@ The MCP public schema and router must use the same role enum. OpenAI, Nemotron, 
 
 All adapters require typed request/response contracts, explicit timeout and cancellation, model/version provenance, token/cost budgets, safe error classification, no provider-side tool execution, and tested abstention/fallback. Provider availability does not imply permission to route data to that provider.
 
+
+### 11.5.1 MCP unified registry implementation — 25 November 2026
+
+The canonical MCP tool contract is now represented by `src/mcp/canonical-tool-registry.json`. It is the authoritative metadata source for tool identity, owner, risk, capability, execution class, approval requirement, audit requirement, timeout, idempotency, production access, secret access, description, and input schema.
+
+The TypeScript MCP servers consume this contract through `src/mcp/canonicalToolRegistry.ts`. The standalone MCP HTTP/stdio runtime consumes the same JSON contract; its Docker images package that exact file rather than maintaining a second tool-policy definition.
+
+Runtime implementations may expose only a subset of canonical tools when a capability is unavailable, but they may not add a tool, widen a capability, change its approval requirement, or silently redefine its schema outside the canonical registry. Availability and enablement remain separate states: present in the registry does not mean executable, and operator enablement does not bypass Gen-X authorization.
+
+The registry contract is covered by tests for duplicate identity, policy parity, runtime schema sourcing, and Docker packaging. This is a code-level completion of the first part of PR C; delegated identity, per-user authorization and live gateway evidence remain separate gates.
+
 ### 11.5 One tool registry and legacy-server disposition
 
 The canonical registry is the single source of truth for tool identity, owner, risk, input/output schema, capability, availability, enablement, approval requirement, timeout, and audit policy. MCP Manager, RyanMCPServer, SystemMcpServer, MCPJungle and Jarvis client groups must consume generated views/adapters of that registry; they must not independently define or widen permissions.

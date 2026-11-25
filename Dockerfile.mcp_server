@@ -23,6 +23,7 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
     && rm -f /usr/local/bin/npm /usr/local/bin/npx
 
 COPY mcp-server/index.js mcp-server/http.js mcp-server/provider-router.js mcp-server/stdio.js mcp-server/health-url.js mcp-server/tool-registry.js mcp-server/delegation.js ./
+COPY src/mcp/canonical-tool-registry.json /app/src/mcp/canonical-tool-registry.json
 COPY stacks/ryanai.stack.json /app/stacks/ryanai.stack.json
 
 RUN node --check index.js \
