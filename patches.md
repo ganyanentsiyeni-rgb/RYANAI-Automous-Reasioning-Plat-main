@@ -246,3 +246,11 @@ Authenticated actor identity is now carried as a trusted `actorType` derived fro
 - Removed an accidental duplicate 30-second sleep from the release-gate polling loop so its stated 45-minute timeout and 90 polling attempts align.
 - Consolidated contradictory release-gate descriptions in README and architecture documentation.
 - No workflow dispatch, deployment, provider call, production change, or credential change was performed. Static edits remain unvalidated by GitHub Actions tooling and require review after main governance is restored.
+
+
+## 2026-11-25 — Resolve release-check producers through Actions run metadata
+
+- Corrected producer identity mapping: the observed GitHub CheckRun.check_suite payload contains a suite ID but not a workflow ID. The gate now extracts the Actions run ID from each check's details URL and maps it to the workflow ID returned by the exact-SHA Actions-runs API.
+- Distinct workflow producers sharing a context remain separate. Within each mapped producer, only the newest check attempt is authoritative.
+- Unmapped Actions runs are conservatively separated by run ID; this may keep an old failure blocking, but cannot allow another producer to hide it. External providers use external ID or details URL identity.
+- No PR, merge, workflow dispatch, deployment, provider call, production change, or credential change was performed. The revised workflow remains unvalidated by actionlint/YAML parsing and GitHub Actions execution.
