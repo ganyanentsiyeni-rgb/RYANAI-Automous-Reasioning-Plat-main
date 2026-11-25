@@ -1390,3 +1390,7 @@ The follow-up CI repair removes a duplicate AI Inspector result property, evalua
 Admin diagnostics now expose a bounded in-process runtime metric snapshot for HTTP request outcomes and durations. Metrics are outcome-bucketed and duration aggregates are capped; raw URLs, headers, bodies, prompts, authentication data and provider payloads are not stored. This is a diagnostic primitive only and does not add an exporter or paid telemetry backend.\n\n## Runtime metrics cardinality guard — 2026-11-25
 
 The in-process metrics registry caps distinct counter series and duration series independently at 100 each. Existing series continue to update after the cap; new series are dropped rather than allocating more memory. The admin snapshot reports the configured cap and aggregate dropped-series observation count. Metric keys remain truncated to 80 characters and duration observations remain capped at 300,000 ms.\n
+
+### Canonical MCP governance completeness
+
+Every canonical MCP tool must have an explicit entry in `governance/agent-governance-policy.json`. A registry entry is not an execution grant. The six reconciled tools for workspace file reads, sandbox scripts, system diagnostics, container logs, pipeline execution, and process health are explicitly `DENY` for delegated agents until each capability receives a separate least-privilege review and runtime evidence. Pipeline execution remains subject to explicit **Push Deploy**, exact-SHA CI/security, and human release approval.
