@@ -114,8 +114,9 @@ required = json.loads(os.environ["REQUIRED_CHECKS_JSON"])
 with open("checks.json", encoding="utf-8") as source:
     runs = json.load(source)
 
-# Group by required context and GitHub App. For each producer, only its newest
-# attempt is authoritative, so an obsolete failed attempt cannot mask a rerun.
+# Keep independent workflows separate even when they publish the same context
+# through the same GitHub App. Within each producer, only its newest attempt is
+# authoritative, so an obsolete failed attempt cannot mask a successful rerun.
 grouped = defaultdict(list)
 for run in runs:
     name = run.get("name")
@@ -123,7 +124,9 @@ for run in runs:
         continue
     app = run.get("app") or {}
     app_id = str(app.get("id") or app.get("slug") or "unknown-app")
-    grouped[(name, app_id)].append(run)
+    suite = run.get("check_suite") or {}
+    workflow_id = str(suite.get("workflow_id") or "unknown-workflow")
+    grouped[(name, app_id, workflow_id)].append(run)
 
 pending = []
 failed = []
@@ -133,7 +136,7 @@ for name in required:
     if not producers:
         missing.append(name)
         continue
-    for (_, app_id), values in producers:
+    for (_, app_id, workflow_id), values in producers:
         latest = max(
             values,
             key=lambda item: (
@@ -144,9 +147,9 @@ for name in required:
         status = latest.get("status") or "missing"
         conclusion = latest.get("conclusion") or ""
         if status != "completed":
-            pending.append(f"{name} [{app_id}]")
+            pending.append(f"{name} [{app_id}; workflow {workflow_id}]")
         elif conclusion != "success":
-            failed.append(f"{name} [{app_id}]: {conclusion or 'no conclusion'}")
+            failed.append(f"{name} [{app_id}; workflow {workflow_id}]: {conclusion or 'no conclusion'}")
 
 print(json.dumps({"pending": pending, "failed": failed, "missing": missing}))
 PY
@@ -165,7 +168,6 @@ PY
             fi
             echo "Waiting for required checks (attempt $attempt/90)."
             jq -r '(.pending[]?, .missing[]? | "Waiting: " + .)' <<< "$evaluation"
-            sleep 30
             sleep 30
           done
           echo "::error::Required exact-SHA CI/security checks did not all pass within 45 minutes"
