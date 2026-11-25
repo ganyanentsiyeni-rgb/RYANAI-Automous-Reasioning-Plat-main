@@ -445,7 +445,15 @@ npm run validate
 
 This is the broad root validation script. It includes governance, workflow, type-check, lint, tests, repository and migration audits, deployment/stack validation, application/server builds, and Comms orchestration checks. It may take substantially longer than the focused commands above. A failed or blocked prerequisite must be reported accurately; do not treat skipped checks as passing.
 
-**6. Start the local development stack when ready to work interactively:**
+**6. Start the local Docker infrastructure stack when Docker is running and the repository-root environment is configured:**
+
+~~~bash
+npm run infra:up
+~~~
+
+The root `infra:up` script runs `docker compose up -d`, starting the default Docker Compose services in detached mode. Check service state and health separately with `docker compose ps` and the documented health/readiness checks. This command starts local infrastructure; it does not run production deployment or authorize production migrations.
+
+**7. Start the local development application when ready to work interactively:**
 
 ~~~bash
 npm run dev
@@ -477,6 +485,7 @@ These commands are local development and verification steps only. They do not au
 ### Root development, build, and validation scripts
 
 ~~~bash
+npm run infra:up
 npm run dev
 npm run dev:api
 npm run dev:web
