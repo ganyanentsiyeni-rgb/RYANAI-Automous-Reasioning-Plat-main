@@ -1453,3 +1453,8 @@ Every canonical MCP tool must have an explicit entry in `governance/agent-govern
 ### Main-branch review protection
 
 The reviewed-main ruleset must require at least **one independent approving review** for every pull request targeting `main`, alongside exact-head CI/security status checks, resolved review threads, stale-review dismissal, and no bypass actors. The Single-owner release gate is an additional exact-head approval check; it is not a substitute for the ruleset's required review count. The workflow in `.github/workflows/enforce-main-protection.yml` only applies the live ruleset after its explicit `workflow_dispatch` confirmation and administrator credential are supplied. Editing that workflow does not change the live ruleset.
+
+
+## Governed provider deployment
+
+Production deployment is manual and requires the PUSH DEPLOY workflow-dispatch choice, the exact reviewed main commit SHA, and successful exact-SHA CI/security checks. Render (priority 1) and Railway (priority 2) are independent jobs after the shared release gate: a failure at either provider does not prevent the other provider from being attempted. Vercel is priority 3 and remains an explicit opt-in; when selected, it also runs independently after the gate. Each provider reports its own deployment and health outcome. A skipped Vercel job is not a pass. No deployment is started by an ordinary push or by CI completion alone.
