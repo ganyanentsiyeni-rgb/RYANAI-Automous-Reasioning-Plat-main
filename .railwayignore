@@ -1,0 +1,10 @@
+# Never upload runtime environment files or credentials.
+.env
+.env.*
+**/.env
+**/.env.*
+# Keep credential-free example templates available.
+!.env.example
+!.env.*.example
+!**/.env.example
+!**/.env.*.example

@@ -1463,3 +1463,6 @@ Production deployment is manual and requires the PUSH DEPLOY workflow-dispatch c
 ### Release-gate duplicate-check and Vercel verification safeguards
 
 The Push Deploy exact-SHA gate evaluates **every** check run matching each required check name; a duplicate failed or pending run cannot be hidden by a newer successful run. Vercel health verification targets the newly returned deployment URL (preserving the configured health-path suffix), rather than a potentially stale production domain. These safeguards are awaiting review and merge; they do not authorize or trigger a deployment.
+### Deployment source-file exclusions
+
+The deployment contexts explicitly exclude runtime environment files (`.env`, `.env.*`, and nested variants) from Railway and Vercel uploads while retaining credential-free example templates. This is a deployment-artifact safeguard; it does not remove previously committed environment files from Git history or remediate any already-exposed credentials.

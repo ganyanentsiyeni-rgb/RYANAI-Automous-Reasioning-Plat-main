@@ -431,3 +431,6 @@ The release workflow is manually dispatched and requires the exact reviewed main
 ### Release evidence integrity
 
 The Push Deploy gate must evaluate all matching check runs for each required check name. Duplicate check contexts are not collapsed to the latest result: any completed non-success result fails the gate, and any incomplete result keeps it pending. Vercel post-deploy health checks must address the newly created deployment URL, retaining the configured health path, so a previously routed production domain cannot provide a false-positive health result. These controls are source changes only until reviewed and merged; they do not initiate a release.
+## Deployment artifact secret exclusions
+
+Railway and Vercel source-upload contexts explicitly exclude `.env`, `.env.*`, and nested environment files. Credential-free `.env.example` templates may remain included. Keep `.railwayignore` and `.vercelignore` tracked in the repository (including explicit `.gitignore` allowlist entries). These exclusions prevent accidental inclusion in new CLI deployment artifacts; they do not purge Git history or revoke credentials that may already have been exposed.
