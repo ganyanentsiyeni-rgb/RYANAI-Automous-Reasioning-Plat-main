@@ -59,6 +59,7 @@ import { providerGatewayRoutes } from './routes/providerGateway.js';
 import { registerPatchRoutes } from './routes/patchRoutes.js';
 import { adminResilienceRoutes } from './routes/adminResilience.js';
 import { resolveRequestCorrelationId } from './requestCorrelation.js';
+import { installHttpTelemetry } from './httpTelemetry.js';
 import { inspectDatabaseSchema } from './databaseSchema.js';
 import { agentOperationsRoutes } from './routes/agentOperations.js';
 import { memoryRoutes } from './routes/memory.js';
@@ -149,6 +150,8 @@ const fastify = Fastify({
 fastify.addHook('onSend', async (request, reply) => {
   reply.header('X-Request-ID', request.id);
 });
+
+installHttpTelemetry(fastify);
 
 // Initialize the core platform Prisma client and the separate optional Neon audiobook client.
 fastify.decorate('prisma', prisma);
