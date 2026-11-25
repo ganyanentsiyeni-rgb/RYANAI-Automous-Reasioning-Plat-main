@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { describeProviderConnectionState } from './providerConnectionState.js';
 import { createHash } from 'node:crypto';
 import { requireUser } from '../routes/auth.js';
+import { evaluateGenXSecurityEvent } from '../../security/genxPolicy.js';
 import {
   buildProviderAuthorizationUrl,
   createProviderOAuthTransaction,
@@ -242,6 +243,31 @@ function connectionEncryptionContext(providerId: string, ownerUserId: string) {
 }
 
 export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) => {
+  const authorizeAuthenticatedConnectionOwnerRead = (
+    ownerUserId: string,
+    providerId: 'google-calendar' | 'microsoft-365-calendar' | 'gmail',
+    capabilityId: 'calendar.events.read' | 'gmail.messages.read',
+  ): boolean => {
+    const policy = evaluateGenXSecurityEvent({
+      agentId: 'ryanai-api',
+      principal: ownerUserId,
+      toolName: 'plugin_provider_read',
+      action: 'NETWORK',
+      target: `plugin-provider:${providerId}:${capabilityId}`,
+      environment: process.env.NODE_ENV === 'production' ? 'production'
+        : process.env.NODE_ENV === 'staging' ? 'staging' : 'development',
+      // `ownerAuthorized` here means the authenticated user owns the provider
+      // connection identified by `ownerUserId`; it is not the RyanAI global-owner flag.
+      // `requireUser` is the trust boundary for this route, so service/agent identities
+      // do not enter this human provider-read path.
+      actorType: 'human',
+      ownerAuthorized: true,
+    });
+    if (policy.decision === 'ALLOW') return true;
+    fastify.log.warn({ ruleId: policy.ruleId, providerId, capabilityId, principal: ownerUserId },
+      'Gen-X denied provider read request');
+    return false;
+  };
   fastify.post<{ Params: { provider: string } }>(
     '/api/plugins/:provider/connect',
     { preHandler: requireUser },
@@ -601,6 +627,9 @@ export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) =
       if (!granted.includes(required)) {
         return reply.code(403).send({ error: 'The connected account has not granted the required read-only calendar scope.' });
       }
+      if (!authorizeAuthenticatedConnectionOwnerRead(ownerUserId, config.id, 'calendar.events.read')) {
+        return reply.code(403).send({ error: 'Gen-X denied this provider read request.' });
+      }
 
       try {
         const token = decryptProviderCredential(
@@ -700,6 +729,9 @@ export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) =
       const granted = Array.isArray(connection.grantedScopes) ? connection.grantedScopes : [];
       if (!granted.includes(requiredScope)) {
         return reply.code(403).send({ error: 'The connected account has not granted the required read-only Gmail scope.' });
+      }
+      if (!authorizeOwnerProviderRead(ownerUserId, config.id, 'gmail.messages.read')) {
+        return reply.code(403).send({ error: 'Gen-X denied this provider read request.' });
       }
 
       try {

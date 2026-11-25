@@ -186,6 +186,14 @@ For each provider, complete the following in a separate, provider-scoped change:
 
 The current implementation does not add OAuth clients, provider secrets, adapters, database schema, migrations, deployment configuration or runtime connections for these nine entries.
 
+
+## Gen-X enforcement for existing read-only provider endpoints
+
+The calendar-event and Gmail-message read endpoints now require a fresh Gen-X decision immediately before provider network access. The exception is limited to a verified human request acting on the authenticated user's own connection and the exact read-only capabilities `calendar.events.read` and `gmail.messages.read` for Google Calendar, Microsoft 365 Calendar and Gmail. Here, `ownerAuthorized` means connection ownership by the authenticated user; it does not mean the RyanAI global-owner flag. Agent/service callers, unowned connections, write capabilities, unknown providers and any request without the owner-authorized route context remain denied or approval-gated.
+
+A successful OAuth callback or enabled UI preference is not sufficient authorization. The route separately checks the owner-bound connection, active connection status, token expiry and exact granted read-only scope before invoking Gen-X. A Gen-X denial returns HTTP 403 and must occur before any provider request. No write, outbound, signing, infrastructure mutation or communications capability is added by this change.
+
+Tests cover the exact allowlist, negative actor/owner/capability cases, the distinction between connection ownership and the RyanAI global-owner flag, and a route-level denial proving that the external provider is not contacted when Gen-X denies. This is an incremental authorization hardening; it does not yet implement the general-purpose adapter invocation service or PA/MCP delegation path.
 ## Governed adapter execution boundary — 25 November 2026
 
 The first runtime wiring increment now adds a server-only execution boundary without enabling any provider by itself.
