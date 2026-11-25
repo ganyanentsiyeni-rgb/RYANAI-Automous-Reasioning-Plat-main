@@ -52,6 +52,23 @@ function safeRedisErrorCode(error: unknown): string | undefined {
   return typeof code === 'string' && /^[A-Z0-9_]{2,64}$/.test(code) ? code : undefined;
 }
 
+export interface RedisReliabilityOptions {
+  connectTimeoutMs?: number;
+  commandTimeoutMs?: number;
+  retryBaseDelayMs?: number;
+  retryMaxDelayMs?: number;
+  maxRetriesPerRequest?: number;
+}
+
+export function calculateRedisRetryDelay(
+  attempt: number,
+  baseDelayMs = 250,
+  maxDelayMs = 5_000,
+): number {
+  const boundedAttempt = Math.max(0, Math.min(attempt, 10));
+  return Math.min(maxDelayMs, baseDelayMs * 2 ** boundedAttempt);
+}
+
 function redisFailureHint(code?: string): string {
   switch (code) {
     case 'ECONNREFUSED':
@@ -79,9 +96,27 @@ function redisFailureHint(code?: string): string {
  * Bound initial readiness while retaining Redis reconnection after startup.
  * ioredis interprets rediss:// as TLS and redis:// as plain TCP.
  */
-export async function connectRedis(url: string, timeoutMs = 5000, allowDegraded = false): Promise<Redis> {
+export async function connectRedis(
+  url: string,
+  timeoutMs = 5000,
+  allowDegraded = false,
+  options: RedisReliabilityOptions = {},
+): Promise<Redis> {
   const target = inspectRedisConnectionUrl(url);
-  const client = new Redis(url, { lazyConnect: true, connectTimeout: timeoutMs });
+  const connectTimeoutMs = Math.max(250, options.connectTimeoutMs ?? timeoutMs);
+  const commandTimeoutMs = Math.max(250, options.commandTimeoutMs ?? 2500);
+  const retryBaseDelayMs = Math.max(25, options.retryBaseDelayMs ?? 250);
+  const retryMaxDelayMs = Math.max(retryBaseDelayMs, options.retryMaxDelayMs ?? 5000);
+  const maxRetriesPerRequest = Math.max(0, options.maxRetriesPerRequest ?? 2);
+
+  const client = new Redis(url, {
+    lazyConnect: true,
+    connectTimeout: connectTimeoutMs,
+    commandTimeout: commandTimeoutMs,
+    maxRetriesPerRequest,
+    enableReadyCheck: true,
+    retryStrategy: (attempt) => calculateRedisRetryDelay(attempt, retryBaseDelayMs, retryMaxDelayMs),
+  });
   let lastErrorCode: string | undefined;
   client.on('error', (error: unknown) => {
     lastErrorCode ??= safeRedisErrorCode(error);
@@ -91,7 +126,7 @@ export async function connectRedis(url: string, timeoutMs = 5000, allowDegraded 
     await Promise.race([
       client.connect(),
       new Promise<never>((_resolve, reject) => {
-        timeout = setTimeout(() => reject(new Error('Redis readiness timeout')), timeoutMs);
+        timeout = setTimeout(() => reject(new Error('Redis readiness timeout')), connectTimeoutMs);
       }),
     ]);
     return client;
@@ -106,7 +141,7 @@ export async function connectRedis(url: string, timeoutMs = 5000, allowDegraded 
     const detail = code
       ? ` (${code})`
       : error instanceof Error && error.message === 'Redis readiness timeout'
-        ? ` (initial connection exceeded ${timeoutMs}ms)`
+        ? ` (initial connection exceeded ${connectTimeoutMs}ms)`
         : '';
     throw new Error(
       `Redis is unavailable${detail}. ${redisFailureHint(code)} ` +
