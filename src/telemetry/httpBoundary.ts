@@ -1,4 +1,5 @@
 import { SpanStatusCode, trace, type Span } from '@opentelemetry/api';
+import { safeTelemetryAttributes } from './core.js';
 
 export interface HttpBoundaryRequest {
   method?: string;
@@ -19,7 +20,7 @@ export function buildHttpBoundaryAttributes(request: HttpBoundaryRequest): Recor
   const method = typeof request.method === 'string' ? request.method.slice(0, 16).toUpperCase() : 'UNKNOWN';
   const rawRoute = typeof request.routeOptions?.url === 'string' ? request.routeOptions.url : 'unknown';
   const route = rawRoute.split(/[?#]/, 1)[0].slice(0, 160) || 'unknown';
-  return { 'http.method': method, 'http.route': route };
+  return safeTelemetryAttributes({ 'http.method': method, 'http.route': route }) as Record<string, string>;
 }
 
 export function startHttpBoundarySpan(request: HttpBoundaryRequest, now = Date.now()): HttpBoundarySpan {
@@ -35,8 +36,9 @@ export function finishHttpBoundarySpan(boundary: HttpBoundarySpan, reply: HttpBo
     ? Math.trunc(reply.statusCode)
     : 0;
   const durationMs = Math.max(0, now - boundary.startedAt);
-  boundary.span.setAttribute('http.status_code', statusCode);
-  boundary.span.setAttribute('http.duration_ms', durationMs);
+  const safe = safeTelemetryAttributes({ 'http.status_code': statusCode, 'http.duration_ms': durationMs });
+  if (typeof safe['http.status_code'] === 'number') boundary.span.setAttribute('http.status_code', safe['http.status_code']);
+  if (typeof safe['http.duration_ms'] === 'number') boundary.span.setAttribute('http.duration_ms', safe['http.duration_ms']);
   if (statusCode >= 500) boundary.span.setStatus({ code: SpanStatusCode.ERROR });
   boundary.span.end();
 }
