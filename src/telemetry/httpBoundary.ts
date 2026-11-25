@@ -17,9 +17,8 @@ export interface HttpBoundarySpan {
 /** Keep HTTP telemetry bounded: method and registered route only, never URL/query/body/header content. */
 export function buildHttpBoundaryAttributes(request: HttpBoundaryRequest): Record<string, string> {
   const method = typeof request.method === 'string' ? request.method.slice(0, 16).toUpperCase() : 'UNKNOWN';
-  const route = typeof request.routeOptions?.url === 'string'
-    ? request.routeOptions.url.slice(0, 160)
-    : 'unknown';
+  const rawRoute = typeof request.routeOptions?.url === 'string' ? request.routeOptions.url : 'unknown';
+  const route = rawRoute.split(/[?#]/, 1)[0].slice(0, 160) || 'unknown';
   return { 'http.method': method, 'http.route': route };
 }
 
