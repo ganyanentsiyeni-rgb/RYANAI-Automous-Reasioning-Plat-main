@@ -1354,3 +1354,8 @@ Worker processes now fail readiness when any task type declared for their profil
 ## Worker inventory build boundary
 
 The repository-auditor worker registers its read-only inventory handlers from the typed specialist registry. The server TypeScript build must not import the standalone `.mjs` inventory entrypoint as a source dependency; the typed handler performs bounded inventory collection directly and reports that discovered commands were not executed.
+
+
+## Authenticated provider health
+
+The plugin integration layer now distinguishes OAuth authorization from live provider health. The owner-scoped `GET /api/plugins/:provider/health` route performs a bounded, read-only authenticated probe for Google Calendar, Gmail, or Microsoft 365 Calendar using the server-side stored credential. Health evidence is persisted in `connectionMetadata.health`; tokens are never returned or logged. `healthy` is required in addition to an active owner connection and registered adapter before execution can become ready. This route does not schedule polling or deploy infrastructure.
