@@ -390,3 +390,8 @@ The enforced dependency direction is: server consumers → plugin public API →
 ## Backend security boundary
 
 Authenticated actor identity is now carried as a trusted `actorType` derived from Supabase app metadata (`human`, `agent`, or `service`). Provider health and provider-read Gen-X decisions no longer hard-code every authenticated request as human. Explicit agent/service identities therefore cannot inherit the human owner authorization exception. Existing sessions without an explicit actor type remain human-compatible; no credentials, secrets, migrations, or deployment settings were changed.
+
+
+### Observability boundary
+
+The API launcher owns a single request boundary span for each HTTP request. The span uses the registered Fastify route template rather than the raw URL, and records only bounded method, status code and duration metadata. Query strings, headers, request/response bodies, authentication material, prompts and arbitrary baggage are not telemetry attributes. The boundary uses the existing canonical OpenTelemetry SDK and shared privacy allowlist; it does not create another observability stack or enable an exporter.

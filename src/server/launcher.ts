@@ -4,6 +4,7 @@ import '../loadEnv.js';
 // Tracing must precede application imports.
 import '../instrument.js';
 import { shutdownTelemetry } from '../telemetry.js';
+import { finishHttpBoundarySpan, startHttpBoundarySpan, type HttpBoundarySpan } from '../telemetry/httpBoundary.js';
 
 import Fastify, { FastifyReply, FastifyRequest } from 'fastify';
 import { parseCorsOrigins } from './corsOrigins.js';
@@ -124,6 +125,8 @@ console.log(
 const isDevelopment = config.nodeEnv === 'development';
 
 // Initialize Fastify instance with trustProxy and telemetry-aware logger
+const httpBoundarySpans = new WeakMap<object, HttpBoundarySpan>();
+
 const fastify = Fastify({
   trustProxy: true,
   logger: {
@@ -137,6 +140,16 @@ const fastify = Fastify({
       },
     }),
   },
+});
+
+// Start one privacy-safe HTTP boundary span per request. Route templates are used instead of
+// raw URLs, and no headers, query values, bodies, auth data or response content are recorded.
+fastify.addHook('onRequest', async (request) => {
+  httpBoundarySpans.set(request, startHttpBoundarySpan(request));
+});
+fastify.addHook('onResponse', async (request, reply) => {
+  const boundary = httpBoundarySpans.get(request);
+  if (boundary) finishHttpBoundarySpan(boundary, reply);
 });
 
 // Initialize the core platform Prisma client and the separate optional Neon audiobook client.
