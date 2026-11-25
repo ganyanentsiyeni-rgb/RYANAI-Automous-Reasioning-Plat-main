@@ -104,34 +104,68 @@ jobs:
           for attempt in $(seq 1 90); do
             gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs?per_page=100" --jq '.check_runs[]' > check-runs.ndjson
             jq -s --arg suite "$current_suite" '[.[] | select((.check_suite.id | tostring) != $suite)]' check-runs.ndjson > checks.json
-            pending=0
-            failed=0
-            missing=()
-            for name in "${required[@]}"; do
-              count="$(jq --arg name "$name" '[.[] | select(.name == $name)] | length' checks.json)"
-              if [[ "$count" == "0" ]]; then
-                missing+=("$name")
-                pending=1
-                continue
-              fi
-              states="$(jq -r --arg name "$name" '[.[] | select(.name == $name)] | map([.status // "missing", .conclusion // ""] | join("|")) | .[]' checks.json)"
-              while IFS='|' read -r status conclusion; do
-                if [[ "$status" == "completed" && "$conclusion" == "success" ]]; then
-                  continue
-                elif [[ "$status" == "completed" ]]; then
-                  echo "::error::Required check $name has a non-success result: $conclusion"
-                  failed=1
-                else
-                  pending=1
-                fi
-              done <<< "$states"
-            done
-            [[ "$failed" == "0" ]] || exit 1
-            if [[ "$pending" == "0" ]]; then
-              echo "All required checks passed for exact SHA $SHA"
+            REQUIRED_CHECKS_JSON="$(printf '%s\n' "${required[@]}" | jq -R . | jq -s .)"
+            evaluation="$(REQUIRED_CHECKS_JSON="$REQUIRED_CHECKS_JSON" python3 <<'PY'
+import json
+import os
+from collections import defaultdict
+
+required = json.loads(os.environ["REQUIRED_CHECKS_JSON"])
+with open("checks.json", encoding="utf-8") as source:
+    runs = json.load(source)
+
+# Group by required context and GitHub App. For each producer, only its newest
+# attempt is authoritative, so an obsolete failed attempt cannot mask a rerun.
+grouped = defaultdict(list)
+for run in runs:
+    name = run.get("name")
+    if name not in required:
+        continue
+    app = run.get("app") or {}
+    app_id = str(app.get("id") or app.get("slug") or "unknown-app")
+    grouped[(name, app_id)].append(run)
+
+pending = []
+failed = []
+missing = []
+for name in required:
+    producers = [(key, values) for key, values in grouped.items() if key[0] == name]
+    if not producers:
+        missing.append(name)
+        continue
+    for (_, app_id), values in producers:
+        latest = max(
+            values,
+            key=lambda item: (
+                item.get("started_at") or item.get("completed_at") or item.get("created_at") or "",
+                item.get("id") or 0,
+            ),
+        )
+        status = latest.get("status") or "missing"
+        conclusion = latest.get("conclusion") or ""
+        if status != "completed":
+            pending.append(f"{name} [{app_id}]")
+        elif conclusion != "success":
+            failed.append(f"{name} [{app_id}]: {conclusion or 'no conclusion'}")
+
+print(json.dumps({"pending": pending, "failed": failed, "missing": missing}))
+PY
+            )"
+            printf '%s\n' "$evaluation" | jq .
+            failed="$(jq '.failed | length' <<< "$evaluation")"
+            pending="$(jq '.pending | length' <<< "$evaluation")"
+            missing="$(jq '.missing | length' <<< "$evaluation")"
+            if [[ "$failed" -gt 0 ]]; then
+              jq -r '.failed[] | "::error::Latest required check attempt failed: " + .' <<< "$evaluation"
+              exit 1
+            fi
+            if [[ "$pending" -eq 0 && "$missing" -eq 0 ]]; then
+              echo "Latest attempt for every required check context passed for exact SHA $SHA"
               exit 0
             fi
-            echo "Waiting for checks (attempt $attempt/90). Missing: ${missing[*]:-none}"
+            echo "Waiting for required checks (attempt $attempt/90)."
+            jq -r '(.pending[]?, .missing[]? | "Waiting: " + .)' <<< "$evaluation"
+            sleep 30
             sleep 30
           done
           echo "::error::Required exact-SHA CI/security checks did not all pass within 45 minutes"
