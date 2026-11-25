@@ -9,6 +9,7 @@ const owner = {
   id: 'owner-user-1',
   role: 'user' as const,
   isOwner: true,
+  actorType: 'human' as const,
   pluginPreferences: {
     'google-calendar': { enabled: true, scopes: [] },
     'microsoft-365-calendar': { enabled: true, scopes: [] },
