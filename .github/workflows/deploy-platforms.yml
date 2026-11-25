@@ -1,6 +1,8 @@
 name: Push Deploy - Render, Railway, and Vercel
 
 on:
+  # The Push Deploy choice is the explicit release command. CI completion alone
+  # never starts production deployment.
   workflow_dispatch:
     inputs:
       commit_sha:
@@ -248,12 +250,130 @@ jobs:
           echo "- Source SHA: $DEPLOY_SHA" >> "$GITHUB_STEP_SUMMARY"
           echo "- Runtime health: passed" >> "$GITHUB_STEP_SUMMARY"
 
+  render:
+    name: Render deploy and health verification
+    needs: gate
+    if: ${{ always() && needs.gate.result == 'success' }}
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 35
+    steps:
+      - name: Deploy and verify every configured Render service independently
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_IDS: ${{ vars.RENDER_SERVICE_IDS }}
+          RENDER_HEALTH_URLS: ${{ vars.RENDER_HEALTH_URLS }}
+          DEPLOY_SHA: ${{ needs.gate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          [[ -n "${RENDER_API_KEY:-}" ]] || { echo "::error::RENDER_API_KEY is not configured"; exit 1; }
+          [[ -n "${RENDER_SERVICE_IDS:-}" ]] || { echo "::error::RENDER_SERVICE_IDS is not configured"; exit 1; }
+          [[ -n "${RENDER_HEALTH_URLS:-}" ]] || { echo "::error::RENDER_HEALTH_URLS is not configured"; exit 1; }
+          IFS=',' read -ra services <<< "$RENDER_SERVICE_IDS"
+          IFS=',' read -ra health_urls <<< "$RENDER_HEALTH_URLS"
+          [[ "${#services[@]}" -gt 0 && "${#services[@]}" -eq "${#health_urls[@]}" ]] || {
+            echo "::error::RENDER_SERVICE_IDS and RENDER_HEALTH_URLS must contain the same non-zero number of comma-separated entries."
+            exit 1
+          }
+          overall=0
+          echo "### Render" >> "$GITHUB_STEP_SUMMARY"
+          for index in "${!services[@]}"; do
+            service_id="$(echo "${services[$index]}" | xargs)"
+            health_url="$(echo "${health_urls[$index]}" | xargs)"
+            [[ -n "$service_id" && -n "$health_url" ]] || { echo "::error::Empty Render service/health entry at index $index"; overall=1; continue; }
+            response="$(curl --silent --show-error --fail-with-body --request POST \
+              --url "https://api.render.com/v1/services/${service_id}/deploys" \
+              --header "Authorization: Bearer ${RENDER_API_KEY}" \
+              --header "Content-Type: application/json" \
+              --data "$(jq -n --arg commitId "$DEPLOY_SHA" --arg deployMode "build_and_deploy" '{commitId:$commitId,deployMode:$deployMode}')")" || {
+                echo "- $service_id: deploy request failed" >> "$GITHUB_STEP_SUMMARY"; overall=1; continue;
+              }
+            deployment_id="$(echo "$response" | jq -r '.id // empty')"
+            if [[ -z "$deployment_id" ]]; then
+              echo "- $service_id: provider response missing deployment ID" >> "$GITHUB_STEP_SUMMARY"; overall=1; continue
+            fi
+            status=""
+            for attempt in $(seq 1 60); do
+              status="$(curl --silent --show-error --fail \
+                --header "Authorization: Bearer ${RENDER_API_KEY}" \
+                "https://api.render.com/v1/services/${service_id}/deploys/${deployment_id}" | jq -r '.status // empty' || true)"
+              [[ "$status" == "live" ]] && break
+              [[ "$status" == "build_failed" || "$status" == "pre_deploy_failed" || "$status" == "update_failed" || "$status" == "deactivated" ]] && break
+              sleep 10
+            done
+            if [[ "$status" != "live" ]]; then
+              echo "- $service_id · $deployment_id: deployment status ${status:-unknown}" >> "$GITHUB_STEP_SUMMARY"; overall=1; continue
+            fi
+            if curl --fail --silent --show-error --retry 18 --retry-all-errors --retry-delay 10 --retry-max-time 180 "$health_url" >/dev/null; then
+              echo "- $service_id · $deployment_id: live; health passed" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "- $service_id · $deployment_id: live; health failed" >> "$GITHUB_STEP_SUMMARY"; overall=1
+          set -uo pipefail
+          overall=0
+          echo "### Render" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -z "${RENDER_API_KEY:-}" || -z "${RENDER_SERVICE_IDS:-}" || -z "${RENDER_HEALTH_URLS:-}" ]]; then
+            echo "::error::Render credentials or service/health configuration is missing."
+            exit 1
+          fi
+          IFS=',' read -ra services <<< "$RENDER_SERVICE_IDS"
+          IFS=',' read -ra health_urls <<< "$RENDER_HEALTH_URLS"
+          if [[ "${#services[@]}" -eq 0 || "${#services[@]}" -ne "${#health_urls[@]}" ]]; then
+            echo "::error::Render service IDs and health URLs must have the same non-zero number of entries."
+            exit 1
+          fi
+          for index in "${!services[@]}"; do
+            service_id="$(echo "${services[$index]}" | xargs)"
+            health_url="$(echo "${health_urls[$index]}" | xargs)"
+            if [[ -z "$service_id" || -z "$health_url" ]]; then
+              echo "- Entry $index: missing service ID or health URL" >> "$GITHUB_STEP_SUMMARY"
+              overall=1
+              continue
+            fi
+            response="$(curl --silent --show-error --fail-with-body --request POST               --url "https://api.render.com/v1/services/${service_id}/deploys"               --header "Authorization: Bearer ${RENDER_API_KEY}"               --header "Content-Type: application/json"               --data "$(jq -n --arg commitId "$DEPLOY_SHA" --arg deployMode "build_and_deploy" '{commitId:$commitId,deployMode:$deployMode}')")" || {
+                echo "- $service_id: deploy request failed" >> "$GITHUB_STEP_SUMMARY"
+                overall=1
+                continue
+              }
+            deployment_id="$(jq -r '.id // empty' <<< "$response")"
+            if [[ -z "$deployment_id" ]]; then
+              echo "- $service_id: provider response omitted deployment ID" >> "$GITHUB_STEP_SUMMARY"
+              overall=1
+              continue
+            fi
+            status=""
+            for attempt in $(seq 1 60); do
+              final="$(curl --silent --show-error --fail-with-body                 --url "https://api.render.com/v1/services/${service_id}/deploys/${deployment_id}"                 --header "Authorization: Bearer ${RENDER_API_KEY}"                 --header "accept: application/json")" || { status="provider_error"; break; }
+              status="$(jq -r '.status // empty' <<< "$final")"
+              deployed_sha="$(jq -r '.commit.id // .commitId // empty' <<< "$final")"
+              if [[ -n "$deployed_sha" && "$deployed_sha" != "$DEPLOY_SHA" ]]; then
+                status="unexpected_sha"
+                break
+              fi
+              [[ "$status" == "live" ]] && break
+              [[ "$status" == "build_failed" || "$status" == "pre_deploy_failed" || "$status" == "update_failed" || "$status" == "deactivated" || "$status" == "canceled" ]] && break
+              sleep 10
+            done
+            if [[ "$status" != "live" ]]; then
+              echo "- $service_id · $deployment_id: deployment failed or not live (${status:-unknown})" >> "$GITHUB_STEP_SUMMARY"
+              overall=1
+              continue
+            fi
+            if curl --fail --silent --show-error --retry 18 --retry-all-errors --retry-delay 10 --retry-max-time 180 "$health_url" >/dev/null; then
+              echo "- $service_id · $deployment_id: live at $DEPLOY_SHA; health passed" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "- $service_id · $deployment_id: live; health failed" >> "$GITHUB_STEP_SUMMARY"
+              overall=1
+            fi
+          done
+          exit "$overall"
+
   vercel:
     name: Priority 3 — Minimum Vercel deployment (opt-in)
     needs: [gate, render, railway]
     if: ${{ needs.gate.result == 'success' && needs.render.result == 'success' && needs.railway.result == 'success' && inputs.deploy_vercel == true }}
     runs-on: ubuntu-latest
     environment: production
+    timeout-minutes: 35
     timeout-minutes: 15
     steps:
       - name: Check out exact reviewed SHA
