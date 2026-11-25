@@ -23,6 +23,23 @@ function normalizeImport(fromFile, specifier) {
   return posix.normalize(absolute.replaceAll('\\', '/'));
 }
 
+export function isPluginImplementationImport(fromFile, specifier, serverRoot = ROOT) {
+  const normalizedRoot = posix.normalize(serverRoot.replaceAll('\\', '/'));
+  const pluginRoot = posix.join(normalizedRoot, 'plugins');
+  let resolved = normalizeImport(fromFile, specifier);
+
+  // TypeScript server aliases resolve to src/server/*; they must obey the
+  // same boundary as relative imports.
+  if (specifier.startsWith('@/server/plugins/')) {
+    resolved = posix.join(normalizedRoot, 'plugins', specifier.slice('@/server/plugins/'.length));
+  } else if (specifier === '@/server/plugins') {
+    resolved = pluginRoot;
+  }
+
+  if (!resolved || !resolved.startsWith(pluginRoot + '/')) return false;
+  return !/\/index(?:\.(?:[cm]?[jt]sx?))?$/.test(resolved);
+}
+
 export async function findPluginBoundaryViolations() {
   const files = await collectTsFiles(ROOT);
   const violations = [];
@@ -32,11 +49,7 @@ export async function findPluginBoundaryViolations() {
     const importPattern = /(?:from\s+|import\s*\(\s*)['"]([^'"]+)['"]/g;
     for (const match of source.matchAll(importPattern)) {
       const specifier = match[1];
-      if (!specifier.startsWith('.')) continue;
-      const resolved = normalizeImport(file, specifier);
-      if (!resolved) continue;
-      const pluginPath = posix.normalize(PLUGIN_DIR.replaceAll('\\', '/') + '/');
-      if (resolved.startsWith(pluginPath) && !resolved.endsWith('/index.js')) {
+      if (isPluginImplementationImport(file, specifier)) {
         violations.push({
           file: relative(ROOT, file).replaceAll('\\', '/'),
           import: specifier,
