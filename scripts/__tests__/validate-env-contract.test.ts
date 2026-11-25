@@ -27,11 +27,15 @@ describe('names-only environment contract', () => {
     const file = path.join(dir, '.env.example');
     const secret = 'super-secret-token-99999';
     fs.writeFileSync(file, `TWILIO_AUTH_TOKEN=${secret}\n`);
-    expect(() => parseContractKeys(file)).toThrowError((err: Error) => {
-      expect(err.message).toContain('TWILIO_AUTH_TOKEN');
-      expect(err.message).not.toContain(secret);
-      return true;
-    });
+    try {
+      parseContractKeys(file);
+      throw new Error('Expected names-only contract validation to reject populated values.');
+    } catch (err) {
+      expect(err).toBeInstanceOf(Error);
+      const message = (err as Error).message;
+      expect(message).toContain('TWILIO_AUTH_TOKEN');
+      expect(message).not.toContain(secret);
+    }
   });
 
   it('rejects duplicate keys', () => {
