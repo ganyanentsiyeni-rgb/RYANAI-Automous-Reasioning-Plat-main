@@ -271,3 +271,14 @@ Authenticated actor identity is now carried as a trusted `actorType` derived fro
 - Updated Redis readiness tests to assert the reliability options actually used by `connectRedis`; the configured initial readiness deadline is now honored without an artificial 250 ms floor.
 - Updated provider/auth test fixtures to include the trusted `human` actor classification introduced by the provider Gen-X network gate, and corrected the environment-contract test to use a supported error assertion pattern.
 - These changes target the exact failures observed on main CI. They do not change provider deployment, production database migration, secrets, or production infrastructure.
+
+
+## 2026-11-25 — Expand PA Agent sourced skills
+
+- Added a governed PA sourced-skill registry covering live research/source verification, synthetic observability and post-change verification, correction-to-guardrail proposals, Supabase database governance, edge security advisories, incident evidence/recovery, and provider/model routing review.
+- The registry records provenance, capability scope, execution mode, risk, and enabled state for every skill.
+- The OpenRouter/provider-model-routing skill is deliberately disabled because that proposal remains paused.
+- Active sourced skills are read-only or proposal-only and cannot change credentials, schemas, provider configuration, deployments, or external communications.
+- PA runtime status now reports the adopted sourced-skill IDs alongside Task Awareness.
+- Added regression coverage for registry completeness, paused-provider state, evidence recording, and bounded execution modes.
+- No external vendor connection, credential change, database migration, deployment, merge, or paid upgrade was performed by this patch.
