@@ -421,3 +421,8 @@ The previous mainline repair PR (#860) was merged even though its exact-head CI 
 ### Main-branch independent review requirement
 
 The `main` ruleset must require at least one independent approving review in GitHub itself. The `Single-owner release gate` is an additional exact-head review check, not a replacement for the branch ruleset's required approval count. Required CI/security contexts must also pass on the exact candidate SHA, stale approvals must be dismissed after pushes, review threads must be resolved, and bypass actors must remain empty. The reviewed-protection workflow is intentionally manual: it requires the exact `ENFORCE-REVIEWED-PROTECTION` confirmation and an administrator credential before applying ruleset `27357206`, then reads the live ruleset back and verifies the resulting settings. A code change to this workflow is only a proposal; it is not evidence that the live ruleset has changed.
+
+
+## Provider release orchestration
+
+The release workflow is manually dispatched and requires the exact reviewed main SHA plus the explicit PUSH DEPLOY choice. A shared gate validates the SHA and waits for the required CI/security checks. Once that gate succeeds, Render and Railway are independent provider jobs, ordered by operational priority (Render first, Railway second) but not chained by needs; one provider's failure must not block the other's attempt. Vercel is minimum priority and opt-in, and when selected is also independent of the other provider jobs after the same gate. Provider deployment IDs/URLs, exact source revision evidence, and health verification are recorded separately. Provider failures, skips, and missing configuration are not treated as successful releases. Ordinary pushes and CI completion never deploy production.
