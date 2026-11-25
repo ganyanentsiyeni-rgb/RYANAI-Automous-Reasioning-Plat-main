@@ -127,3 +127,12 @@ This patch does **not** trigger production deployment. Production deployment sti
 - Added regression coverage for retry backoff, Redis URL credential-safe inspection, readiness classification, degraded reconnect behavior, and startup timeout handling.
 - Preserved the existing degraded-start contract for non-production/test contexts and the production/staging dependency gate; no Redis configuration or infrastructure change was made.
 - No production deployment, migration, secret change, paid upgrade, or auto-merge.
+
+
+## Backend modular boundaries
+
+- Added the public plugin module API at `src/server/plugins/index.ts`.
+- Rewired the API launcher and engineering evidence route to consume plugin capabilities through that public API.
+- Added a repository boundary check that rejects external `src/server/**` imports into plugin implementation files; internal plugin files may continue to compose directly.
+- Added Vitest coverage for the boundary contract.
+- No runtime behavior, database schema, provider credentials, deployment configuration, or production infrastructure was changed.

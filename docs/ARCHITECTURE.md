@@ -378,3 +378,10 @@ Execution readiness therefore requires the conjunction of an owner-authorized ac
 Redis/Valkey is a non-authoritative coordination/cache layer. Durable mission state, approvals, audit evidence, memory and recovery records remain in PostgreSQL or their designated durable store. The Redis client boundary uses bounded connection and command timeouts, bounded exponential reconnect backoff, limited per-request retries, and ioredis ready-state checks. Initial production/staging startup remains fail-closed when Redis is unavailable; local/degraded modes may retain a reconnecting client so recovery can be observed without restart loops.
 
 Liveness and readiness are deliberately separate: `/health` and `/livez` prove the API process is alive, while `/readyz` performs a live PostgreSQL and Redis dependency probe. Redis being configured, constructing a client, or entering reconnecting state is not a readiness pass. Queue durability and worker recovery are governed by the later durable worker orchestration stage.
+
+
+## 19. Backend modular boundaries
+
+The server plugin subsystem is now explicitly bounded by `src/server/plugins/index.ts`. This file is the public API for consumers outside `src/server/plugins/`; implementation modules remain free to compose internally. The boundary is intentionally narrow: it does not require a broad rewrite of the existing server, but it prevents route and bootstrap code from coupling to provider/plugin implementation files directly.
+
+The enforced dependency direction is: server consumers → plugin public API → plugin implementations. The boundary check is repository-level and deterministic, so a future module can be refactored internally without changing every route import. Authorization, provider health, MCP registry and plugin execution remain separate contracts inside the subsystem.

@@ -12,8 +12,10 @@ import { pluginRegistry } from '../plugins/pluginCatalog.js';
 import { describeCapabilityState } from '../plugins/capabilityState.js';
 import { getStudioExecutionDescriptor, submitStudioProject } from '../engineering/studioExecution.js';
 import { cancelStudioTask, createStudioProject, getStudioDeliveryReadiness, getStudioNativeRuntimeDescriptor, listStudioProjects, listStudioWorkerHealth } from '../engineering/studioNativeCore.js';
-import { resolveProviderCapabilityState } from '../plugins/providerCapabilityState.js';
-import { readStoredProviderHealthEvidence } from '../plugins/providerHealth.js';
+import {
+  readStoredProviderHealthEvidence,
+  resolveProviderCapabilityState,
+} from '../plugins/index.js';
 import { approveStudioTask } from '../engineering/studioApprovals.js';
 import { createStudioArtifactDownloadUrl } from '../engineering/studioArtifactStorage.js';
 
