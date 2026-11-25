@@ -206,3 +206,14 @@ Authenticated actor identity is now carried as a trusted `actorType` derived fro
 - Aligned the PagerDuty workflow path filters and unittest discovery pattern with the actual underscore-named `scripts/test_pagerduty_manager.py` file.
 - The previous hyphenated path caused unittest discovery to run zero tests and exit with code 5; this was a test-discovery failure, not a PagerDuty API failure.
 - Validation remains pending on this branch. No PagerDuty credentials or live API calls, deployment, migration, or infrastructure changes were made.
+
+
+## 2026-11-25 — Repair independent provider deployment orchestration
+
+- Removed the duplicate render job definition and the concatenated/incomplete duplicate Render shell implementation from .github/workflows/deploy-platforms.yml.
+- Removed the duplicate Vercel timeout-minutes key.
+- Made Render and Railway independent jobs after the shared exact-SHA CI/security gate; one provider failure no longer blocks the other provider attempt.
+- Kept Vercel minimum-priority and opt-in, but made the selected Vercel job independent of Render and Railway after the same gate.
+- Preserved the explicit PUSH DEPLOY workflow-dispatch trigger; ordinary pushes and CI completion do not deploy.
+- Updated README and architecture documentation. This change only repairs workflow orchestration; it does not dispatch a deployment or contact any provider.
+- Static structure review only; GitHub Actions validation and provider execution remain pending. Main ruleset review protection remains a separate merge blocker.
