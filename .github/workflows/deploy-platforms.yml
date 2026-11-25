@@ -137,7 +137,7 @@ for run in runs:
     app = run.get("app") or {}
     app_id = str(app.get("id") or app.get("slug") or "unknown-app")
     details_url = run.get("details_url") or ""
-    match = re.search(r"/actions/runs/(\\d+)", details_url)
+    match = re.search(r"/actions/runs/(\d+)", details_url)
     if match and match.group(1) in workflow_by_run_id:
         producer = "workflow:" + workflow_by_run_id[match.group(1)]
     elif match:
