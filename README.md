@@ -767,7 +767,7 @@ sudo docker compose up -d --build postgres redis
 sudo docker compose --profile migrations run --rm --entrypoint node migrate \
   node_modules/prisma/build/index.js migrate resolve --applied 20261014000000_supabase_platform_baseline --schema=prisma/schema.prisma
 sudo docker compose --profile migrations run --rm migrate
-sudo docker compose exec postgres psql -U ryanai -d ryanai_db -c "\\dt"
+sudo docker compose exec postgres psql -U ryanai -d ryanai_db -c "\dt"
 sudo docker compose up -d --build --wait
 sudo docker compose ps
 ~~~
@@ -1007,7 +1007,7 @@ docker compose up -d --build
 docker compose --profile migrations run --rm migrate
 
 # List tables in the local Compose PostgreSQL database after migrations.
-docker compose exec postgres psql -U ryanai -d ryanai_db -c "\\dt"
+docker compose exec postgres psql -U ryanai -d ryanai_db -c "\dt"
 
 # Start the Studio worker after migrations complete.
 docker compose --profile workers up -d studio-worker
