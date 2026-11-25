@@ -263,3 +263,11 @@ Authenticated actor identity is now carried as a trusted `actorType` derived fro
 - These are source-level lint repairs only. Exact-SHA CI rerun, full test suite, independent review, and main protection remain required; no deployment, migration, secret, provider, or production change was made.
 
 - Validation branch: `repair/ci-lint-boundary-contract-20261125` (head `37df81848c107b570963d93b88f053b14adfbcbc` before this documentation-only commit). CI execution is required; no pass is claimed until exact-head workflow evidence is complete.
+
+
+## 2026-11-25 — exact-SHA CI contract repair
+
+- Reconciled backend module-boundary imports with the plugin public API and preserved a stable MCP unknown-tool error contract.
+- Updated Redis readiness tests to assert the reliability options actually used by `connectRedis`; the configured initial readiness deadline is now honored without an artificial 250 ms floor.
+- Updated provider/auth test fixtures to include the trusted `human` actor classification introduced by the provider Gen-X network gate, and corrected the environment-contract test to use a supported error assertion pattern.
+- These changes target the exact failures observed on main CI. They do not change provider deployment, production database migration, secrets, or production infrastructure.
