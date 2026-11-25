@@ -254,3 +254,10 @@ Authenticated actor identity is now carried as a trusted `actorType` derived fro
 - Distinct workflow producers sharing a context remain separate. Within each mapped producer, only the newest check attempt is authoritative.
 - Unmapped Actions runs are conservatively separated by run ID; this may keep an old failure blocking, but cannot allow another producer to hide it. External providers use external ID or details URL identity.
 - No PR, merge, workflow dispatch, deployment, provider call, production change, or credential change was performed. The revised workflow remains unvalidated by actionlint/YAML parsing and GitHub Actions execution.
+
+
+## 2026-11-25 — CI lint and MCP contract repair
+
+- Corrected over-escaped regular expressions and path-separator normalization in `scripts/backend-module-boundaries.mjs`; the prior import matcher failed ESLint parsing before the boundary test could run.
+- Imported `assertCanonicalMcpTool` from the canonical registry in the MCP delegation contract test and iterated the expected tool/capability tuples without an unused binding.
+- These are source-level lint repairs only. Exact-SHA CI rerun, full test suite, independent review, and main protection remain required; no deployment, migration, secret, provider, or production change was made.
