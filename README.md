@@ -1378,7 +1378,7 @@ Authenticated actor identity is now carried as a trusted `actorType` derived fro
 
 ## Observability boundary — 2026-11-25
 
-The API now creates one privacy-safe OpenTelemetry HTTP boundary span per request. Telemetry records only bounded HTTP method, registered route, status code and duration. Raw URLs/query strings, headers, bodies, authentication data and response content are excluded. The existing single NodeSDK lifecycle and durable queue trace-context propagation remain authoritative; this increment does not add a second telemetry stack or exporter.
+The API creates one privacy-safe OpenTelemetry HTTP boundary span per request through the canonical `src/telemetry/httpBoundary.ts` hooks. The duplicate standalone server telemetry registration has been removed; the existing bounded runtime request metrics remain active. Telemetry records only bounded HTTP method, registered route, status code and duration. Raw URLs/query strings, headers, bodies, authentication data and response content are excluded. The existing single NodeSDK lifecycle and durable queue trace-context propagation remain authoritative; this repair adds no second telemetry stack or exporter.
 
 
 ## Observability runtime metrics — 2026-11-25

@@ -61,7 +61,6 @@ import { providerGatewayRoutes } from './routes/providerGateway.js';
 import { registerPatchRoutes } from './routes/patchRoutes.js';
 import { adminResilienceRoutes } from './routes/adminResilience.js';
 import { resolveRequestCorrelationId } from './requestCorrelation.js';
-import { installHttpTelemetry } from './httpTelemetry.js';
 import { inspectDatabaseSchema } from './databaseSchema.js';
 import { agentOperationsRoutes } from './routes/agentOperations.js';
 import { memoryRoutes } from './routes/memory.js';
@@ -156,7 +155,6 @@ fastify.addHook('onSend', async (request, reply) => {
   reply.header('X-Request-ID', request.id);
 });
 
-installHttpTelemetry(fastify);
 // Start one privacy-safe HTTP boundary span per request. Route templates are used instead of
 // raw URLs, and no headers, query values, bodies, auth data or response content are recorded.
 fastify.addHook('onRequest', async (request) => {
