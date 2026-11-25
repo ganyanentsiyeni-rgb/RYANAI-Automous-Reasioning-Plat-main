@@ -1520,3 +1520,8 @@ The backend module-boundary scanner's regex escaping and path normalization were
 - Updated Redis readiness tests to assert the reliability options actually used by `connectRedis`; the configured initial readiness deadline is now honored without an artificial 250 ms floor.
 - Updated provider/auth test fixtures to include the trusted `human` actor classification introduced by the provider Gen-X network gate, and corrected the environment-contract test to use a supported error assertion pattern.
 - These changes target the exact failures observed on main CI. They do not change provider deployment, production database migration, secrets, or production infrastructure.
+
+
+## PA Agent sourced skills
+
+PA now exposes a governed sourced-skill registry with provenance and bounded execution modes. Active capabilities include research/source verification, observability and synthetic verification, correction-to-guardrail proposals, Supabase database governance, edge security watch, and incident evidence/recovery. The provider/model-routing proposal remains catalogued but disabled while OpenRouter work is paused. See [RyanAI agent skills](RyanAI.agent.skills.md) and [patches.md](patches.md).
