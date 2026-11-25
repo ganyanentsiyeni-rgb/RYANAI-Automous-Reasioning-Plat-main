@@ -6,7 +6,8 @@ import { verifyMcpDelegationToken } from './delegation.js';
 
 const production = process.env.NODE_ENV === 'production';
 const host = process.env.MCP_HOST || (production ? '0.0.0.0' : '127.0.0.1');
-const port = Number(process.env.PORT || process.env.MCP_PORT || 8765);
+// MCP is a separate service: never inherit the API's generic PORT.
+const port = Number(process.env.MCP_PORT || 8765);
 const delegationSecret = process.env.RYANAI_MCP_DELEGATION_SECRET || '';
 const serviceToken = process.env.RYANAI_MCP_SERVICE_TOKEN || '';
 const apiBaseUrl = process.env.RYANAI_API_BASE_URL || (production ? '' : 'http://127.0.0.1:3000');
