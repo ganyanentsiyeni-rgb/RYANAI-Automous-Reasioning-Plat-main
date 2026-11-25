@@ -4,6 +4,7 @@ const ALLOWED_ATTRIBUTE_KEYS = new Set([
   'agent.operation', 'agent.brain', 'agent.tool', 'agent.outcome',
   'agent.policy_outcome', 'agent.error_type', 'agent.retry_count',
   'agent.model_override',
+  'http.method', 'http.route', 'http.status_code', 'http.duration_ms',
 ]);
 
 /** Allowlisted, bounded metadata only. Unknown keys and content-like values are dropped. */

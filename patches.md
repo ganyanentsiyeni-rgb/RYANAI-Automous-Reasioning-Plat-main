@@ -141,3 +141,12 @@ This patch does **not** trigger production deployment. Production deployment sti
 ## Backend security boundary
 
 Authenticated actor identity is now carried as a trusted `actorType` derived from Supabase app metadata (`human`, `agent`, or `service`). Provider health and provider-read Gen-X decisions no longer hard-code every authenticated request as human. Explicit agent/service identities therefore cannot inherit the human owner authorization exception. Existing sessions without an explicit actor type remain human-compatible; no credentials, secrets, migrations, or deployment settings were changed.
+
+
+## 2026-11-25 — Observability HTTP boundary
+
+- Added a privacy-safe Fastify HTTP boundary span around every API request.
+- Route templates are recorded without query strings; status and duration are bounded numeric attributes.
+- Shared telemetry allowlisting is reused so HTTP telemetry cannot capture headers, bodies, auth data, prompts, response content or arbitrary baggage.
+- Added regression coverage for route/query privacy and response lifecycle metadata.
+- No exporter configuration, secret change, migration, deployment, infrastructure change or paid telemetry service was introduced.
