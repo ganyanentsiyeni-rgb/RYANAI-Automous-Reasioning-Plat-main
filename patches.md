@@ -199,3 +199,10 @@ Authenticated actor identity is now carried as a trusted `actorType` derived fro
 - Retained strict exact-head status checks, no bypass actors, stale-review dismissal, and review-thread resolution.
 - Kept live ruleset application behind the existing explicit `ENFORCE-REVIEWED-PROTECTION` workflow-dispatch confirmation and administrator credential. This branch change does not apply the live ruleset.
 - No deployment, migration, secret/credential change, infrastructure change, or merge was performed.
+
+
+## 2026-11-25 — PagerDuty contract test discovery repair
+
+- Aligned the PagerDuty workflow path filters and unittest discovery pattern with the actual underscore-named `scripts/test_pagerduty_manager.py` file.
+- The previous hyphenated path caused unittest discovery to run zero tests and exit with code 5; this was a test-discovery failure, not a PagerDuty API failure.
+- Validation remains pending on this branch. No PagerDuty credentials or live API calls, deployment, migration, or infrastructure changes were made.
