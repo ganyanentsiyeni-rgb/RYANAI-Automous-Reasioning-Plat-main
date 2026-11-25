@@ -31,4 +31,4 @@ Exact-head CI/security status must be checked on the repair branch before merge.
 
 ## HTTP tracing
 
-Fastify now creates a privacy-bounded `http.server.request` span for each request. Only the HTTP method and response status are recorded as span attributes. Request paths, query strings, headers, bodies, authorization data and provider content are excluded. The response log records the bounded request ID plus trace/span identifiers so an operator can correlate request logs with exported traces without treating telemetry as execution evidence.
+Fastify uses the existing HTTP boundary tracer as the single server-span owner. It records the bounded HTTP method, registered route template, response status and duration; raw URLs, query strings, headers, bodies, authorization data and provider content are excluded. The launcher must install only this boundary hook pair: a second request-span implementation would double-count traffic and is intentionally not registered. The request log and trace context remain separate correlation mechanisms; neither a request ID nor a trace proves successful execution.
