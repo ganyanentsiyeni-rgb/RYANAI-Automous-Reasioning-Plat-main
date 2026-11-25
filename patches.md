@@ -165,6 +165,14 @@ Authenticated actor identity is now carried as a trusted `actorType` derived fro
 - Added regression coverage for both caps and updates to existing series after saturation.
 - No exporter, secret, migration, deployment, infrastructure or paid telemetry service was introduced.\n
 
+## 2026-11-25 — Mainline build-contract repair
+
+- Removed the duplicate `exitCode` property from the AI Inspector error-report object.
+- Reused the authenticated request's trusted `actorType` when evaluating Gen-X for Gmail and calendar provider reads; non-human actors do not inherit the human-owner authorization exception.
+- Exposed the canonical MCP registry `version` field alongside the existing `registryVersion` field to satisfy the published tool contract.
+- Corrected the MCP Dockerfile contract test's over-escaped line-splitting and COPY matcher.
+- No credentials, schema, migration, deployment, provider configuration or production infrastructure were changed.
+
 ## 2026-11-25 — Remove duplicate HTTP span registration
 
 - Retained the canonical `src/telemetry/httpBoundary.ts` request span as the sole HTTP server-span owner.
