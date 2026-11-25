@@ -164,3 +164,11 @@ Authenticated actor identity is now carried as a trusted `actorType` derived fro
 - Added aggregate dropped-series diagnostics to the existing admin metrics snapshot.
 - Added regression coverage for both caps and updates to existing series after saturation.
 - No exporter, secret, migration, deployment, infrastructure or paid telemetry service was introduced.\n
+
+## 2026-11-25 — Remove duplicate HTTP span registration
+
+- Retained the canonical `src/telemetry/httpBoundary.ts` request span as the sole HTTP server-span owner.
+- Removed the redundant `installHttpTelemetry` launcher registration and its superseded helper/test files.
+- Preserved the existing HTTP outcome and duration metrics instrumentation in the launcher.
+- Updated the architecture and README observability contract to match the runtime wiring.
+- No exporter, credentials, schema, migration, deployment or infrastructure changes.
