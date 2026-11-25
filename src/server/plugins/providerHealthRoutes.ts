@@ -3,6 +3,7 @@ import { requireUser } from '../routes/auth.js';
 import { decryptProviderCredential, readProviderEncryptionKey } from './providerAuthorization.js';
 import { pluginRegistry } from './pluginCatalog.js';
 import { resolveProviderCapabilityState } from './providerCapabilityState.js';
+import { evaluateGenXSecurityEvent } from '../../security/genxPolicy.js';
 import { probeAuthenticatedProvider, readStoredProviderHealthEvidence } from './providerHealth.js';
 
 const SUPPORTED_HEALTH_PROVIDERS = new Set([
@@ -68,6 +69,29 @@ export const providerHealthRoutes: FastifyPluginAsync = async (fastify) => {
         );
       } catch {
         return reply.code(503).send({ error: 'Provider authorization could not be resolved securely.' });
+      }
+
+      const capabilityId = providerId === 'gmail' ? 'gmail.messages.read' : 'calendar.events.read';
+      const genx = evaluateGenXSecurityEvent({
+        agentId: 'ryanai-api',
+        principal: ownerUserId,
+        toolName: 'plugin_provider_read',
+        action: 'NETWORK',
+        target: `plugin-provider:${providerId}:${capabilityId}`,
+        environment: process.env.NODE_ENV === 'production' ? 'production'
+          : process.env.NODE_ENV === 'staging' ? 'staging' : 'development',
+        actorType: 'human',
+        ownerAuthorized: true,
+      });
+      if (genx.decision !== 'ALLOW') {
+        request.log.warn({ ruleId: genx.ruleId, providerId, capabilityId }, 'Gen-X denied provider health network probe');
+        return reply.code(403).send({
+          provider: providerId,
+          healthStatus: readStoredProviderHealthEvidence(connection.connectionMetadata).status,
+          executionStatus: 'blocked_genx',
+          usable: false,
+          error: 'Gen-X denied this provider health request.',
+        });
       }
 
       const result = await probeAuthenticatedProvider(providerId, accessToken);
