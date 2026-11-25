@@ -93,6 +93,16 @@ try {
   // payload and normal reasoning-run processing on the real worker.
   const notifiedRun = await dispatchAutonomousTask(userId, 'CI: process a task after PostgreSQL notification.');
   evidence.notificationTaskId = notifiedRun.id;
+  // Dispatch persists runs as approvalStatus 'pending', which the worker must never claim. Approve the
+  // fixture run as the operator approval route does (compare-and-set on the pending run, bound to its
+  // plan hash), then send the same queue notification so the worker wakes for this run.
+  const notifiedPlan = await prisma.agentRun.findUnique({ where: { id: notifiedRun.id }, select: { planHash: true } });
+  const approval = await prisma.agentRun.updateMany({
+    where: { id: notifiedRun.id, status: 'queued', approvalStatus: 'pending' },
+    data: { approvalStatus: 'approved', approvedBy: userId, approvedAt: new Date(), approvedPlanHash: notifiedPlan?.planHash ?? null },
+  });
+  assert.equal(approval.count, 1, 'Notification fixture run was not in a pending, queued state to approve.');
+  await prisma.$queryRaw`SELECT pg_notify('agent_task_queue', ${notifiedRun.id})::text`;
   await waitFor(async () => {
     const run = await prisma.agentRun.findUnique({ where: { id: notifiedRun.id }, select: { status: true, completedAt: true } });
     const worker = getAgentTaskWorkerStatus();

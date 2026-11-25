@@ -3,6 +3,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { PipelineOrchestrator } from '../orchestrator/pipelineOrchestrator';
 import { evaluateGenXSecurityEvent } from '../security/genxPolicy.js';
+import { createMcpToolView, assertCanonicalMcpTool } from './canonicalToolRegistry.js';
 
 export class RyanMcpEngine {
   private server: Server;
@@ -20,43 +21,28 @@ export class RyanMcpEngine {
 
   /** Registers the MCP list-tools and call-tool handlers for triggering the deployment pipeline and system health checks. */
   private registerTools() {
-    // 1. List Available MCP Tools
+    const canonicalTools = createMcpToolView(['execute_pipeline', 'get_system_health']);
+
+    // 1. List canonical MCP tools implemented by this engine.
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
-      tools: [
-        {
-          name: 'execute_pipeline',
-          description: 'Disabled by Gen-X policy; deployment pipeline execution requires authenticated human approval.',
-          inputSchema: {
-            type: 'object',
-            properties: {
-              projectName: { type: 'string' },
-              branch: { type: 'string' },
-              autoShip: { type: 'boolean' },
-              strictMode: { type: 'boolean' },
-            },
-            required: ['projectName', 'branch'],
-          },
-        },
-        {
-          name: 'get_system_health',
-          description: 'Retrieves process memory and uptime; kernel/eBPF telemetry is not configured',
-          inputSchema: {
-            type: 'object',
-            properties: {},
-          },
-        },
-      ],
+      tools: canonicalTools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+      })),
     }));
 
     // 2. Execute MCP Tools
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
 
-      if (name === 'execute_pipeline') {
+      const canonicalTool = assertCanonicalMcpTool(name);
+
+      if (canonicalTool.name === 'execute_pipeline') {
         const policy = evaluateGenXSecurityEvent({
           agentId: 'external-mcp-client',
           principal: 'mcp-client',
-          toolName: 'execute_pipeline',
+          toolName: canonicalTool.name,
           action: 'UPDATE',
           target: 'deployment-pipeline',
           environment: process.env.NODE_ENV === 'production' ? 'production' : 'staging',

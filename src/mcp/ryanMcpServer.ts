@@ -9,6 +9,7 @@ import * as path from "path";
 import { RyanAISandbox } from "../engine/sandbox.js";
 import { systemDiagnosticsTool } from "../tools/systemTools.js";
 import { evaluateGenXSecurityEvent } from "../security/genxPolicy.js";
+import { createMcpToolView, assertCanonicalMcpTool } from "./canonicalToolRegistry.js";
 
 const WORKSPACE_DIR = process.cwd();
 
@@ -37,75 +38,34 @@ export class RyanMCPServer {
    * Tool invocation exceptions are converted to MCP text results with isError set.
    */
   private setupToolHandlers() {
-    // List available tools exposed to external MCP clients
-    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      return {
-        tools: [
-          {
-            name: "read_workspace_file",
-            description:
-              "Reads a source file securely from the RyanAI workspace directory.",
-            inputSchema: {
-              type: "object",
-              properties: {
-                filePath: {
-                  type: "string",
-                  description: "Relative path to the target file.",
-                },
-              },
-              required: ["filePath"],
-            },
-          },
-          {
-            name: "execute_sandbox_script",
-            description:
-              "Disabled by Gen-X policy; arbitrary script execution is not available to external MCP clients.",
-            inputSchema: {
-              type: "object",
-              properties: {
-                scriptContent: {
-                  type: "string",
-                  description: "Executable code string.",
-                },
-                fileName: {
-                  type: "string",
-                  description: "Optional file name for the script.",
-                },
-              },
-              required: ["scriptContent"],
-            },
-          },
-          {
-            name: "system_diagnostics",
-            description:
-              "Inspects local GPU, memory, or general system telemetry.",
-            inputSchema: {
-              type: "object",
-              properties: {
-                queryType: {
-                  type: "string",
-                  enum: ["memory", "gpu", "general"],
-                  description: "Type of diagnostics query.",
-                },
-              },
-              required: ["queryType"],
-            },
-          },
-        ],
-      };
-    });
+    const canonicalTools = createMcpToolView([
+      "read_workspace_file",
+      "execute_sandbox_script",
+      "system_diagnostics",
+    ]);
+
+    // List only the tools implemented by this server; identity, capability and
+    // approval metadata come from the canonical registry.
+    this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
+      tools: canonicalTools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+      })),
+    }));
 
     // Handle tool execution requests with secure validation and structured error handling
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
 
       try {
-        const knownTool = ["read_workspace_file", "execute_sandbox_script", "system_diagnostics"].includes(name);
-        if (!knownTool) throw new Error(`Unknown MCP tool requested: ${name}`);
+        const canonicalTool = assertCanonicalMcpTool(name);
+        const knownTool = canonicalTool && canonicalTools.some((tool) => tool.name === name);
+        if (!knownTool) throw new Error(`Unknown or unimplemented canonical MCP tool requested: ${name}`);
         const policy = evaluateGenXSecurityEvent({
           agentId: "external-mcp-client",
           principal: "mcp-client",
-          toolName: name,
+          toolName: canonicalTool.name,
           action: name === "execute_sandbox_script" ? "EXECUTE" : "READ",
           target: name === "read_workspace_file" ? String(args?.filePath ?? "") : undefined,
         });
