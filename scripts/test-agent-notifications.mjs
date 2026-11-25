@@ -191,6 +191,10 @@ try {
   assert.ok(completedEvidence.some((event) => event.runId === notifiedRun.id && event.eventType === 'execution.completed'));
   assert.ok(completedEvidence.some((event) => event.runId === missed.id && event.eventType === 'execution.completed'));
 
+  // Stop the successful worker before the failure fixture so only the deterministic failing worker can claim it.
+  stopWorker?.();
+  stopWorker = undefined;
+
   // Exercise the real processAgentRun failure boundary with a deterministic provider failure.
   // The first failed attempt must be durably re-queued; the second must exhaust the
   // configured attempt budget and become terminally failed. No external provider is called.
