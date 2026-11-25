@@ -15,17 +15,17 @@ export interface HttpBoundarySpan {
 }
 
 /** Keep HTTP telemetry bounded: method and registered route only, never URL/query/body/header content. */
-export function startHttpBoundarySpan(request: HttpBoundaryRequest, now = Date.now()): HttpBoundarySpan {
+export function buildHttpBoundaryAttributes(request: HttpBoundaryRequest): Record<string, string> {
   const method = typeof request.method === 'string' ? request.method.slice(0, 16).toUpperCase() : 'UNKNOWN';
   const route = typeof request.routeOptions?.url === 'string'
     ? request.routeOptions.url.slice(0, 160)
     : 'unknown';
+  return { 'http.method': method, 'http.route': route };
+}
 
+export function startHttpBoundarySpan(request: HttpBoundaryRequest, now = Date.now()): HttpBoundarySpan {
   const span = trace.getTracer('ryanai.http').startSpan('http.server', {
-    attributes: {
-      'http.method': method,
-      'http.route': route,
-    },
+    attributes: buildHttpBoundaryAttributes(request),
   });
   return { span, startedAt: now };
 }
