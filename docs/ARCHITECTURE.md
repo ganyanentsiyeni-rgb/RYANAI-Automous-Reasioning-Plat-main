@@ -371,3 +371,10 @@ See [API Control Plane Contract](API_CONTROL_PLANE_CONTRACT.md) for the route, c
 Provider OAuth state and provider health are separate evidence layers. A stored owner grant, successful OAuth callback, configured provider, or registered adapter must not be described as a healthy executable integration. The owner-scoped provider health endpoint performs only a read-only authenticated provider API probe using server-resolved credentials. Supported probes currently cover Google Calendar, Gmail, and Microsoft 365 Calendar. Results are classified as `healthy`, `degraded`, or `unavailable` and stored as redacted evidence under the existing connection metadata; no schema migration is required.
 
 Execution readiness therefore requires the conjunction of an owner-authorized active connection, valid authentication, a registered compatible adapter, successful provider health evidence, Gen-X authorization, and any capability-specific human approval. Health checks do not grant permissions, execute business actions, or authorize outbound communications. Scheduled polling belongs to the later durable worker/observability stages and must retain explicit rate limits and evidence retention.
+
+
+## 19. Redis reliability and readiness
+
+Redis/Valkey is a non-authoritative coordination/cache layer. Durable mission state, approvals, audit evidence, memory and recovery records remain in PostgreSQL or their designated durable store. The Redis client boundary uses bounded connection and command timeouts, bounded exponential reconnect backoff, limited per-request retries, and ioredis ready-state checks. Initial production/staging startup remains fail-closed when Redis is unavailable; local/degraded modes may retain a reconnecting client so recovery can be observed without restart loops.
+
+Liveness and readiness are deliberately separate: `/health` and `/livez` prove the API process is alive, while `/readyz` performs a live PostgreSQL and Redis dependency probe. Redis being configured, constructing a client, or entering reconnecting state is not a readiness pass. Queue durability and worker recovery are governed by the later durable worker orchestration stage.
