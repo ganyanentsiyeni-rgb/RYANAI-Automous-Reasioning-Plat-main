@@ -80,8 +80,8 @@ export const providerHealthRoutes: FastifyPluginAsync = async (fastify) => {
         target: `plugin-provider:${providerId}:${capabilityId}`,
         environment: process.env.NODE_ENV === 'production' ? 'production'
           : process.env.NODE_ENV === 'staging' ? 'staging' : 'development',
-        actorType: 'human',
-        ownerAuthorized: true,
+        actorType: request.authUser?.actorType ?? 'human',
+        ownerAuthorized: request.authUser?.actorType === 'human',
       });
       if (genx.decision !== 'ALLOW') {
         request.log.warn({ ruleId: genx.ruleId, providerId, capabilityId }, 'Gen-X denied provider health network probe');
