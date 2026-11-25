@@ -1381,6 +1381,10 @@ Authenticated actor identity is now carried as a trusted `actorType` derived fro
 The API creates one privacy-safe OpenTelemetry HTTP boundary span per request through the canonical `src/telemetry/httpBoundary.ts` hooks. The duplicate standalone server telemetry registration has been removed; the existing bounded runtime request metrics remain active. Telemetry records only bounded HTTP method, registered route, status code and duration. Raw URLs/query strings, headers, bodies, authentication data and response content are excluded. The existing single NodeSDK lifecycle and durable queue trace-context propagation remain authoritative; this repair adds no second telemetry stack or exporter.
 
 
+## Mainline build-contract repair — 2026-11-25
+
+The follow-up CI repair removes a duplicate AI Inspector result property, evaluates provider-read Gen-X policy using the authenticated request actor type (human, agent, or service) for both calendar and Gmail reads, and exposes the canonical MCP registry version consistently in each tool contract. The MCP Dockerfile contract test now parses COPY directives using the intended newline/whitespace matcher. These changes restore compile-time and contract-test consistency; they do not enable provider calls, broaden permissions, or change deployment behavior.
+
 ## Observability runtime metrics — 2026-11-25
 
 Admin diagnostics now expose a bounded in-process runtime metric snapshot for HTTP request outcomes and durations. Metrics are outcome-bucketed and duration aggregates are capped; raw URLs, headers, bodies, prompts, authentication data and provider payloads are not stored. This is a diagnostic primitive only and does not add an exporter or paid telemetry backend.\n\n## Runtime metrics cardinality guard — 2026-11-25
