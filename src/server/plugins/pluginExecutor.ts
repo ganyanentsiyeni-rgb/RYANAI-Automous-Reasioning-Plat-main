@@ -1,7 +1,6 @@
 import {
   type PluginAdapterExecutionRequest,
   type PluginAdapterExecutionResult,
-  type PluginExecutionContext,
   type PluginRegistry,
 } from './pluginRegistry.js';
 
