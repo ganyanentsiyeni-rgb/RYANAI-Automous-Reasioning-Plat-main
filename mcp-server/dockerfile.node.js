@@ -25,7 +25,7 @@ test('MCP runtime image copies every local server module', () => {
 
 
 test('MCP Dockerfile copies the canonical tool registry contract', () => {
-  const copyLines = dockerfile.split(/\\r?\\n/).filter((line) => /^COPY\\s/.test(line));
+  const copyLines = dockerfile.split(/\r?\n/).filter((line) => /^COPY\s/.test(line));
   assert.ok(
     copyLines.some((line) => line.includes('src/mcp/canonical-tool-registry.json') && line.includes('/app/src/mcp/canonical-tool-registry.json')),
     'MCP Dockerfile must package src/mcp/canonical-tool-registry.json',
