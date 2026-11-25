@@ -157,4 +157,10 @@ Authenticated actor identity is now carried as a trusted `actorType` derived fro
 - Added a small in-process runtime metrics registry for bounded request outcome counters and duration aggregates.
 - Exposed the snapshot through the existing admin-only `/api/admin/metrics` diagnostics route.
 - HTTP lifecycle instrumentation records success/rejected/error outcomes and bounded request duration.
-- No new exporter, external telemetry service, secret, migration, deployment or infrastructure change.
+- No new exporter, external telemetry service, secret, migration, deployment or infrastructure change.\n\n## 2026-11-25 — Runtime metrics cardinality guard
+
+- Capped distinct counter series and duration series independently at 100 each.
+- Existing series continue to update after the cap; unseen series are dropped without allocating new map entries.
+- Added aggregate dropped-series diagnostics to the existing admin metrics snapshot.
+- Added regression coverage for both caps and updates to existing series after saturation.
+- No exporter, secret, migration, deployment, infrastructure or paid telemetry service was introduced.\n
