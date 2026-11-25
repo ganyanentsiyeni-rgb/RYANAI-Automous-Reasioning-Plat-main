@@ -547,6 +547,9 @@ describe('provider authorization HTTP lifecycle', () => {
   });
   it('treats authenticated connection ownership separately from the RyanAI global-owner flag', async () => {
     vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
+    vi.stubEnv('RYANAI_PLUGIN_GOOGLE_CALENDAR_CLIENT_ID', 'synthetic-client');
+    vi.stubEnv('RYANAI_PLUGIN_GOOGLE_CALENDAR_CLIENT_SECRET', 'synthetic-secret');
+    vi.stubEnv('RYANAI_PLUGIN_GOOGLE_CALENDAR_REDIRECT_URI', 'https://api.example.test/api/plugins/oauth/google-calendar/callback');
     const authenticatedUser = { ...owner, isOwner: false };
     const { app, connectionRows } = await createApp(authenticatedUser);
     const encrypted = encryptProviderCredential(
