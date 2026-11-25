@@ -3,6 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { providerAuthorizationRoutes } from './providerAuthorizationRoutes.js';
 import { encryptProviderCredential } from './providerAuthorization.js';
+import * as genxPolicy from '../../security/genxPolicy.js';
 
 const owner = {
   id: 'owner-user-1',
@@ -65,10 +66,10 @@ function createPrismaFixture() {
   return { prisma, stateRows, connectionRows, events };
 }
 
-async function createApp() {
+async function createApp(authUser = owner) {
   const app = Fastify();
   app.decorateRequest('authUser', null);
-  app.addHook('onRequest', async (request) => { request.authUser = owner; });
+  app.addHook('onRequest', async (request) => { request.authUser = authUser; });
   const fixture = createPrismaFixture();
   app.decorate('prisma', fixture.prisma as unknown as PrismaClient);
   await app.register(providerAuthorizationRoutes);
@@ -543,4 +544,71 @@ describe('provider authorization HTTP lifecycle', () => {
     expect(url.searchParams.get('access_type')).toBe('offline');
     await app.close();
   });
+  it('treats authenticated connection ownership separately from the RyanAI global-owner flag', async () => {
+    vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
+    const authenticatedUser = { ...owner, isOwner: false };
+    const { app, connectionRows } = await createApp(authenticatedUser);
+    const encrypted = encryptProviderCredential(
+      'synthetic-calendar-access-token', Buffer.from(key, 'hex'),
+      'plugin-token:google-calendar:owner-user-1',
+    );
+    connectionRows.set(`${authenticatedUser.id}:google-calendar`, {
+      id: 'calendar-connection', ownerUserId: authenticatedUser.id, providerId: 'google-calendar',
+      status: 'connected', encryptedAccessToken: encrypted,
+      accessTokenExpiresAt: new Date(Date.now() + 60_000),
+      grantedScopes: ['https://www.googleapis.com/auth/calendar.readonly'],
+    });
+    const policy = vi.spyOn(genxPolicy, 'evaluateGenXSecurityEvent').mockReturnValue({
+      decision: 'ALLOW', ruleId: 'GX-OWNER-PLUGIN-READ-001', reason: 'Test allow', severity: 'LOW',
+    });
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ items: [] }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await app.inject({ method: 'GET', url: '/api/plugins/google-calendar/events' });
+    expect(response.statusCode).not.toBe(403);
+    expect(policy).toHaveBeenCalledWith(expect.objectContaining({
+      principal: authenticatedUser.id,
+      actorType: 'human',
+      ownerAuthorized: true,
+    }));
+    expect(authenticatedUser.isOwner).toBe(false);
+    policy.mockRestore();
+    await app.close();
+  });
+
+  it('blocks provider network reads when Gen-X denies before contacting the provider', async () => {
+    vi.stubEnv('RYANAI_PLUGIN_TOKEN_ENCRYPTION_KEY', key);
+    vi.stubEnv('RYANAI_PLUGIN_GOOGLE_CALENDAR_CLIENT_ID', 'synthetic-client');
+    vi.stubEnv('RYANAI_PLUGIN_GOOGLE_CALENDAR_CLIENT_SECRET', 'synthetic-secret');
+    vi.stubEnv('RYANAI_PLUGIN_GOOGLE_CALENDAR_REDIRECT_URI', 'https://api.example.test/api/plugins/oauth/google-calendar/callback');
+    const { app, connectionRows } = await createApp();
+    const encrypted = encryptProviderCredential(
+      'synthetic-calendar-access-token', Buffer.from(key, 'hex'),
+      'plugin-token:google-calendar:owner-user-1',
+    );
+    connectionRows.set(`${owner.id}:google-calendar`, {
+      id: 'calendar-connection', ownerUserId: owner.id, providerId: 'google-calendar',
+      status: 'connected', encryptedAccessToken: encrypted,
+      accessTokenExpiresAt: new Date(Date.now() + 60_000),
+      grantedScopes: ['https://www.googleapis.com/auth/calendar.readonly'],
+    });
+    const policy = vi.spyOn(genxPolicy, 'evaluateGenXSecurityEvent').mockReturnValue({
+      decision: 'DENY', ruleId: 'GX-TEST-DENY', reason: 'Test denial', severity: 'HIGH',
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await app.inject({ method: 'GET', url: '/api/plugins/google-calendar/events' });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ error: 'Gen-X denied this provider read request.' });
+    expect(policy).toHaveBeenCalledWith(expect.objectContaining({
+      toolName: 'plugin_provider_read', action: 'NETWORK',
+      target: 'plugin-provider:google-calendar:calendar.events.read',
+      actorType: 'human', ownerAuthorized: true, principal: owner.id,
+    }));
+    expect(fetchMock).not.toHaveBeenCalled();
+    policy.mockRestore();
+    await app.close();
+  });
+
 });

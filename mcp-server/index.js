@@ -8,6 +8,7 @@ import process from 'node:process';
 import { routeReasoning, SUPPORTED_REASONING_PROVIDERS } from './provider-router.js';
 import { isDegradedHealthResponse, resolveHealthUrl } from './health-url.js';
 import { resolveToolRegistry } from './tool-registry.js';
+import { getCanonicalTool } from './tool-registry.js';
 import { authorizeDelegatedTool, MCP_TOOL_SCOPES, verifyMcpDelegationToken } from './delegation.js';
 
 const execFileAsync = promisify(execFile);
@@ -25,73 +26,26 @@ export function createMcpServer({ delegatedToken, requireDelegation = false } = 
     { capabilities: { tools: {} } },
   );
 
-  const tools = [
-    {
-      name: 'tool_registry',
-      description: 'List RyanAI MCP tools, ownership, risk classification, and explicit enablement state.',
-      inputSchema: { type: 'object', properties: {} },
-    },
-    ...(hasProjectManifest ? [{
-      name: 'run_project_checks',
-      description: 'Run the RyanAI application validation suite and verify the Docker Compose configuration.',
-      inputSchema: { type: 'object', properties: {} },
-    }] : []),
-    ...(hasGitMetadata ? [{
-      name: 'repository_status',
-      description: 'Return Git status and whitespace diagnostics without changing files.',
-      inputSchema: { type: 'object', properties: {} },
-    }] : []),
-    ...(hasStackManifest ? [{
-      name: 'ryanai_stack_manifest',
-      description: 'Return the non-secret RyanAI service and deployment stack manifest for Jarvis orchestration.',
-      inputSchema: { type: 'object', properties: {} },
-    }] : []),
-    {
-      name: 'platform_health',
-      description: 'Check the configured RyanAI API health endpoint.',
-      inputSchema: { type: 'object', properties: { url: { type: 'string' } } },
-    },
-    {
-      name: 'reasoning_route',
-      description: 'Send a prompt through the configured reasoning provider.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          prompt: { type: 'string', maxLength: 20000 },
-          provider: { type: 'string', enum: SUPPORTED_REASONING_PROVIDERS },
-          model: { type: 'string', minLength: 1, maxLength: 200 },
-          response_format: { type: 'string', enum: ['text', 'json_object'] },
-        },
-        required: ['prompt', 'provider', 'model'],
-      },
-    },
-    {
-      name: 'comms_policy_read',
-      description: 'Read channel consent and safety policy. Read-only; no private history or provider access.',
-      inputSchema: {
-        type: 'object',
-        properties: { channel: { type: 'string', enum: channels } },
-        required: ['channel'],
-        additionalProperties: false,
-      },
-    },
-    {
-      name: 'comms_draft_prepare',
-      description: 'Prepare a communications draft for human approval. Never sends, schedules or calls.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          channel: { type: 'string', enum: channels },
-          recipient: { type: 'string', minLength: 1, maxLength: 320 },
-          subject: { type: 'string', maxLength: 200 },
-          message: { type: 'string', minLength: 1, maxLength: 4000 },
-        },
-        required: ['channel', 'recipient', 'message'],
-        additionalProperties: false,
-      },
-    },
+  const runtimeToolNames = [
+    'tool_registry',
+    ...(hasProjectManifest ? ['run_project_checks'] : []),
+    ...(hasGitMetadata ? ['repository_status'] : []),
+    ...(hasStackManifest ? ['ryanai_stack_manifest'] : []),
+    'platform_health',
+    'reasoning_route',
+    'comms_policy_read',
+    'comms_draft_prepare',
   ];
 
+  const tools = runtimeToolNames.map((name) => {
+    const canonical = getCanonicalTool(name);
+    if (!canonical) throw new Error(`Missing canonical MCP tool definition: ${name}`);
+    return {
+      name: canonical.name,
+      description: canonical.description,
+      inputSchema: canonical.inputSchema,
+    };
+  });
   const requestedTools = String(process.env.RYANAI_MCP_ENABLED_TOOLS || '')
     .split(',').map((name) => name.trim()).filter(Boolean);
   if (requestedTools.some((name) => name.startsWith('comms_'))) {

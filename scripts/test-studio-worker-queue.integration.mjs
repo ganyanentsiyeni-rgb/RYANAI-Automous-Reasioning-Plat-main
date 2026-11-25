@@ -31,9 +31,11 @@ const taskType = {
   retry: 'worker-recovery',
   exhausted: 'infrastructure-audit',
   handlerFailure: 'build-failure',
-  handlerExhausted: 'worker-timeout',
+  // Both exhaustion scenarios use roster-supported task types. Unknown types are assigned no worker and
+  // are blocked by admission (RYANAI-TASK-001) before any handler runs, which hides the scenario under test.
+  handlerExhausted: 'health-check',
   leaseLost: 'test-failure',
-  leaseExhausted: 'lease-timeout',
+  leaseExhausted: 'readiness-review',
 };
 let projectId;
 
