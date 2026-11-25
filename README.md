@@ -357,8 +357,8 @@ The root development command starts the API, web client, and MCP HTTP service co
 npm run dev:api
 npm run dev:web
 npm run dev:mcp
+~~~
 
- 
 ### Run `api` and `web` while `dev:mcp` holds port `3001`
 
 Keep the MCP development server running in its own terminal:
@@ -375,7 +375,6 @@ npx concurrently --kill-others --names api,web "npm:dev:api" "npm:dev:web"
 ~~~
 
 This starts both package scripts concurrently and stops the other process if either one exits. Keep MCP in the first terminal so the second terminal does not attempt to start another process on port `3001`. If your checkout is in a different folder, adjust the `cd /d` path.
-~~~
 
 The API development entrypoint is src/server/launcher.ts. The Vite client is served by the web development script. The MCP server has its own package and scripts under mcp-server/.
 
@@ -400,7 +399,61 @@ The package start command launches dist/server/server/launcher.js. Confirm the a
 
 ## NPM commands and scripts
 
-**Checked against the root `package.json` on 24 November 2026.** Run root commands from the repository root. The `mcp-server/` and `workflows-ryanai/` directories are separate package scopes.
+**Checked against the root `package.json` on 25 November 2026.** Run root commands from the repository root. The `mcp-server/` and `workflows-ryanai/` directories are separate package scopes.
+
+### Verified root command sequence
+
+Use this sequence after installing dependencies and configuring the local environment. Run it from the repository root.
+
+**1. Inspect the scripts currently declared by the root package:**
+
+~~~bash
+node -e "console.log(require('./package.json').scripts)"
+~~~
+
+This prints the actual script names and commands from `package.json`; use it whenever documentation and the checked-out branch appear to disagree.
+
+**2. Generate the Prisma client:**
+
+~~~bash
+npx prisma generate
+~~~
+
+This generates the client from the root Prisma schema. It does not apply database migrations or change database data.
+
+**3. Type-check the application and build the web application:**
+
+~~~bash
+npm run typecheck && npm run build
+~~~
+
+The second command runs only if type-checking succeeds. The root `build` script runs the application TypeScript build and Vite production build.
+
+**4. Build the API server and verify its startup contract:**
+
+~~~bash
+npm run build:server && npm run startup:verify
+~~~
+
+The startup verification runs only if the server build succeeds. The server build compiles `tsconfig.server.json` and copies the required server assets. Startup verification is a check; it is not a deployment or proof of live-provider health.
+
+**5. Run the repository validation gate:**
+
+~~~bash
+npm run validate
+~~~
+
+This is the broad root validation script. It includes governance, workflow, type-check, lint, tests, repository and migration audits, deployment/stack validation, application/server builds, and Comms orchestration checks. It may take substantially longer than the focused commands above. A failed or blocked prerequisite must be reported accurately; do not treat skipped checks as passing.
+
+**6. Start the local development stack when ready to work interactively:**
+
+~~~bash
+npm run dev
+~~~
+
+The root development script starts the API, web client, and MCP HTTP service concurrently. Keep this command in its own terminal. The MCP service uses port `3001`; do not start a second process on that port. For the split-terminal setup, follow the port guidance in [Local development](#local-development).
+
+These commands are local development and verification steps only. They do not authorize production migrations, secret changes, infrastructure changes, or deployment.
 
 ### Common NPM commands
 
@@ -432,6 +485,7 @@ npm run dev:mcp
 npm run build
 npm run build:web
 npm run build:server
+npm run startup:verify
 npm run db:validate && npm run build:server
 
 npm start
