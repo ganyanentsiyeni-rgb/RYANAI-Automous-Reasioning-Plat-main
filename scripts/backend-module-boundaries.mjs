@@ -20,7 +20,7 @@ async function collectTsFiles(dir) {
 function normalizeImport(fromFile, specifier) {
   if (!specifier.startsWith('.')) return null;
   const absolute = join(fromFile, '..', specifier);
-  return posix.normalize(absolute.replaceAll('\\\\', '/'));
+  return posix.normalize(absolute.replaceAll('\\', '/'));
 }
 
 export async function findPluginBoundaryViolations() {
@@ -35,10 +35,10 @@ export async function findPluginBoundaryViolations() {
       if (!specifier.startsWith('.')) continue;
       const resolved = normalizeImport(file, specifier);
       if (!resolved) continue;
-      const pluginPath = posix.normalize(PLUGIN_DIR.replaceAll('\\\\', '/') + '/');
+      const pluginPath = posix.normalize(PLUGIN_DIR.replaceAll('\\', '/') + '/');
       if (resolved.startsWith(pluginPath) && !resolved.endsWith('/index.js')) {
         violations.push({
-          file: relative(ROOT, file).replaceAll('\\\\', '/'),
+          file: relative(ROOT, file).replaceAll('\\', '/'),
           import: specifier,
         });
       }
