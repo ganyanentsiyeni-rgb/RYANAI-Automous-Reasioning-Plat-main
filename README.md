@@ -445,7 +445,15 @@ npm run validate
 
 This is the broad root validation script. It includes governance, workflow, type-check, lint, tests, repository and migration audits, deployment/stack validation, application/server builds, and Comms orchestration checks. It may take substantially longer than the focused commands above. A failed or blocked prerequisite must be reported accurately; do not treat skipped checks as passing.
 
-**6. Start the local development stack when ready to work interactively:**
+**6. Start the local Docker infrastructure stack when Docker is running and the repository-root environment is configured:**
+
+~~~bash
+npm run infra:up
+~~~
+
+The root `infra:up` script runs `docker compose up -d`, starting the default Docker Compose services in detached mode. Check service state and health separately with `docker compose ps` and the documented health/readiness checks. This command starts local infrastructure; it does not run production deployment or authorize production migrations.
+
+**7. Start the local development application when ready to work interactively:**
 
 ~~~bash
 npm run dev
@@ -477,6 +485,7 @@ These commands are local development and verification steps only. They do not au
 ### Root development, build, and validation scripts
 
 ~~~bash
+npm run infra:up
 npm run dev
 npm run dev:api
 npm run dev:web
@@ -1462,7 +1471,7 @@ Production deployment is manual and requires the PUSH DEPLOY workflow-dispatch c
 
 ### Release-gate duplicate-check and Vercel verification safeguards
 
-The Push Deploy exact-SHA gate evaluates **every** check run matching each required check name; a duplicate failed or pending run cannot be hidden by a newer successful run. Vercel health verification targets the newly returned deployment URL (preserving the configured health-path suffix), rather than a potentially stale production domain. These safeguards are awaiting review and merge; they do not authorize or trigger a deployment.
+The Push Deploy exact-SHA gate groups matching check runs by required context and GitHub App, then evaluates the newest attempt for each producer. An obsolete failed attempt does not permanently block a successful rerun; any latest failed producer fails the gate, and any latest pending or missing required context keeps it waiting. Vercel health verification targets the newly returned deployment URL (preserving the configured health-path suffix), rather than a potentially stale production domain. These safeguards are awaiting review and merge; they do not authorize or trigger a deployment.
 ### Deployment source-file exclusions
 
 The deployment contexts explicitly exclude runtime environment files (`.env`, `.env.*`, and nested variants) from Railway and Vercel uploads while retaining credential-free example templates. This is a deployment-artifact safeguard; it does not remove previously committed environment files from Git history or remediate any already-exposed credentials.

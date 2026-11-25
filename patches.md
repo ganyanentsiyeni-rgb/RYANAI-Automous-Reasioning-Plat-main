@@ -221,7 +221,7 @@ Authenticated actor identity is now carried as a trusted `actorType` derived fro
 
 ## 2026-11-25 — Harden exact-SHA release evidence and Vercel health verification
 
-- Changed the Push Deploy gate to inspect every check run matching each required name. A duplicate failed result now fails the gate; a duplicate incomplete result keeps it pending instead of allowing the latest successful run to mask it.
+- Changed the Push Deploy gate to group check runs by required context and GitHub App, then evaluate the newest attempt per producer. Superseded failed attempts no longer permanently block a successful rerun; any latest failed producer fails the gate, and pending/missing contexts remain blocked.
 - Changed Vercel health verification to use the newly created deployment URL with the health-path suffix from the configured URL, avoiding a false positive from checking an existing production domain.
 - No deployment, domain change, credential change, or production infrastructure operation was performed. The changes are on branch fix/release-gate-duplicate-checks-vercel-health-20261125 and require independent review after main-branch protections are restored.
 ## 2026-11-25 — Exclude environment files from CLI deployment artifacts
