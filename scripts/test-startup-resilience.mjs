@@ -182,7 +182,7 @@ async function expectMissingCheckpointerSchema() {
   await withMissingCheckpointerSchema(() => expectFailClosedStartup(
     'Agent checkpointer schema missing',
     { DATABASE_URL: databaseUrl, REDIS_URL: redisUrl },
-    ['agent checkpointer'],
+    ['PostgreSQL', 'agent checkpointer'],
   ));
 }
 
