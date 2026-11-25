@@ -10,6 +10,14 @@ The first UI increment stores only user-owned preferences in Supabase Auth metad
 
 Provider credentials must remain in the server-side secret/configuration boundary and must never be copied into user metadata or browser storage. User preferences cannot grant roles, OAuth scopes, provider access or execution rights.
 
+## MCP unified registry — 25 November 2026
+
+The backend MCP tool boundary now has one canonical metadata contract at `src/mcp/canonical-tool-registry.json`. It defines tool identity, owner, risk, capability, execution class, approval requirement, audit requirement, timeout, idempotency, production/secret access flags, description and input schema.
+
+MCP implementations consume filtered views of this registry. A runtime may expose fewer tools because a capability is unavailable or disabled, but it must not add tools or widen the canonical capability/approval policy. Registry presence is not proof of adapter readiness, provider authentication, authorization or live health.
+
+The registry is deliberately separate from provider credentials and plugin connections. Provider execution still requires the server-side connection boundary, Gen-X authorization and any required human approval.
+
 ## Required integration lifecycle
 
 1. **Discover:** catalogue a provider, its supported capabilities, owner, data classification and adapter status.

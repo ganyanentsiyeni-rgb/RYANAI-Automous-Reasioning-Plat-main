@@ -16,6 +16,7 @@ COPY mcp-server/index.js mcp-server/http.js mcp-server/provider-router.js mcp-se
 RUN node --check index.js \
     && node --check http.js \
     && node --check delegation.js
+COPY src/mcp/canonical-tool-registry.json /app/src/mcp/canonical-tool-registry.json
 COPY stacks/ryanai.stack.json /app/stacks/ryanai.stack.json
 
 USER node

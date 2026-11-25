@@ -11,6 +11,9 @@
     "npm": ">=10.0.0"
   },
   "scripts": {
+    "env:check-template": "tsx -e \"import { parseContractKeys } from './scripts/validate-env-contract.ts'; parseContractKeys('.env.example'); console.log('Template names-only check passed.');\"",
+    "env:validate": "tsx scripts/validate-env-contract.ts",
+    "test:env-contract": "vitest run scripts/__tests__/validate-env-contract.test.ts",
     "dev": "concurrently --kill-others --names api,web,mcp \"npm:dev:api\" \"npm:dev:web\" \"npm:dev:mcp\"",
     "prebuild": "npm run db:generate",
     "build": "tsc -p tsconfig.app.json && vite build",
