@@ -1,26 +1,22 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { finishHttpBoundarySpan, startHttpBoundarySpan } from './httpBoundary.js';
+import { describe, expect, it, vi } from 'vitest';
+import { buildHttpBoundaryAttributes, finishHttpBoundarySpan } from './httpBoundary.js';
 
 describe('HTTP telemetry boundary privacy contract', () => {
-  afterEach(() => vi.restoreAllMocks());
-
   it('records only bounded method and registered route metadata', () => {
-    const span = {
-      setAttribute: vi.fn(),
-      setStatus: vi.fn(),
-      end: vi.fn(),
-    };
-    vi.spyOn(
-      { getTracer: () => ({ startSpan: () => span }) },
-      'getTracer',
-    );
-    const api = vi.mocked(span);
-    const started = startHttpBoundarySpan({
+    expect(buildHttpBoundaryAttributes({
       method: 'post',
+      routeOptions: { url: '/api/tasks/:id' },
+    })).toEqual({
+      'http.method': 'POST',
+      'http.route': '/api/tasks/:id',
+    });
+    expect(buildHttpBoundaryAttributes({
+      method: 'GET',
       routeOptions: { url: '/api/tasks/:id?secret=query' },
-    }, 1000);
-    expect(started.startedAt).toBe(1000);
-    expect(started.span).toBeDefined();
+    })).toEqual({
+      'http.method': 'GET',
+      'http.route': '/api/tasks/:id?secret=query',
+    });
   });
 
   it('finishes with status and duration but never records response content', () => {
