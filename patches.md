@@ -217,3 +217,11 @@ Authenticated actor identity is now carried as a trusted `actorType` derived fro
 - Preserved the explicit PUSH DEPLOY workflow-dispatch trigger; ordinary pushes and CI completion do not deploy.
 - Updated README and architecture documentation. This change only repairs workflow orchestration; it does not dispatch a deployment or contact any provider.
 - Static structure review only; GitHub Actions validation and provider execution remain pending. Main ruleset review protection remains a separate merge blocker.
+
+
+## 2026-11-25 — Exclude environment files from CLI deployment artifacts
+
+- Added `.railwayignore` and `.vercelignore` patterns for root and nested `.env` / `.env.*` files, while allowing credential-free example templates.
+- Added both ignore files to the root `.gitignore` allowlist so the deployment safeguards themselves are committed.
+- Updated README and architecture documentation to distinguish artifact exclusion from Git-history cleanup and credential remediation.
+- Static configuration change only; no provider upload or deployment was performed.
