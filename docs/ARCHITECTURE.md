@@ -406,3 +406,13 @@ The API launcher owns a single request boundary span for each HTTP request throu
 The API exposes bounded in-process diagnostic metrics through the existing admin-only metrics route. The current slice covers HTTP request outcome counts and duration aggregates. Metric keys and string attributes are bounded, duration observations are capped, and no request content, authentication material, provider payloads or arbitrary URLs are retained. This is intentionally an instrumentation primitive rather than a new metrics backend; external export remains a separate infrastructure decision.\n\n### Runtime metric cardinality limits
 
 The in-process metrics registry has a hard cap of 100 distinct counter series and 100 distinct duration series per process. Existing series remain writable after saturation; new series are dropped and counted in the aggregate `limits.droppedSeries` diagnostic. Key length remains capped at 80 characters and each duration observation is capped at 300,000 ms. This protects process memory from unbounded metric-name cardinality. The counters are diagnostic and process-local, not durable business evidence.\n
+
+### Provider actor and canonical MCP governance controls (2026-11-25)
+
+The Gmail provider-read route must pass a trusted actor type into Gen-X without dereferencing nullable authentication metadata. Missing actor metadata is classified as `service`, which is not owner-authorized; the route fails closed.
+
+Every tool in `src/mcp/canonical-tool-registry.json` must have a matching `tool_policy` entry in `governance/agent-governance-policy.json`. Six tools are explicitly denied to delegated agents: `read_workspace_file`, `execute_sandbox_script`, `system_diagnostics`, `get_container_logs`, `execute_pipeline`, and `get_system_health`. Registry presence is not authorization. Any future enablement requires a separate least-privilege review and runtime enforcement evidence. `execute_pipeline` cannot bypass explicit **Push Deploy**, exact-SHA CI/security gates, independent provider jobs, or human release approval.
+
+The current CI audit also found duplicate `(user_id, key)` pairs in the disposable `public.memory_entries` migration validation dataset. The migration stops safely rather than silently deleting or merging memory. Production memory must not be changed as part of this repair.
+
+The previous mainline repair PR (#860) was merged even though its exact-head CI and single-owner release gate had failed; the formal GitHub review listing returned no submitted review records at inspection time. A comment stating approval is not equivalent to a formal independent review or a successful release gate. Preserve this as a governance incident for separate ruleset/workflow enforcement review.
