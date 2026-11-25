@@ -191,6 +191,70 @@ try {
   assert.ok(completedEvidence.some((event) => event.runId === notifiedRun.id && event.eventType === 'execution.completed'));
   assert.ok(completedEvidence.some((event) => event.runId === missed.id && event.eventType === 'execution.completed'));
 
+  // Exercise the real processAgentRun failure boundary with a deterministic provider failure.
+  // The first failed attempt must be durably re-queued; the second must exhaust the
+  // configured attempt budget and become terminally failed. No external provider is called.
+  const failureRun = await prisma.$transaction(async (tx) => {
+    const created = await tx.agentRun.create({
+      data: {
+        userId,
+        objective: 'CI: verify worker failure retry and exhaustion.',
+        status: 'queued',
+        approvalStatus: 'approved',
+        queueType: 'reasoning',
+        maxAttempts: 2,
+        nextAttemptAt: new Date(),
+      },
+      select: { id: true, createdAt: true },
+    });
+    await tx.agentHandoff.createMany({ data: handoffFixture(created.id) });
+    return created;
+  });
+  const failureRunId = failureRun.id;
+  let failureInvokerCalls = 0;
+  const failureStopWorker = startAgentTaskWorker({
+    concurrency: 1,
+    recoveryIntervalMs: 30_000,
+    testBrainInvoker: async () => {
+      failureInvokerCalls += 1;
+      throw new Error('Deterministic CI provider failure for retry/exhaustion test.');
+    },
+  });
+  try {
+    await waitFor(async () => {
+      const run = await prisma.agentRun.findUnique({
+        where: { id: failureRunId },
+        select: { status: true, attempts: true, error: true, workerId: true, completedAt: true },
+      });
+      return run?.status === 'failed' && run.attempts === 2 && Boolean(run.completedAt) && run.workerId === null;
+    }, 15_000, 'Worker failure did not retry once and then exhaust the configured attempt budget.');
+
+    const failureEvidence = await prisma.agentRunEvidence.findMany({
+      where: { runId: failureRunId },
+      orderBy: { sequence: 'asc' },
+      select: { eventType: true, payload: true },
+    });
+    assert.ok(failureEvidence.some((event) => event.eventType === 'execution.retry_scheduled'), 'First worker failure must record execution.retry_scheduled.');
+    assert.ok(failureEvidence.some((event) => event.eventType === 'execution.failed'), 'Retry exhaustion must record execution.failed.');
+    assert.ok(failureInvokerCalls >= 2, 'Deterministic failing provider must be invoked across retry attempts.');
+    const failureFinal = await prisma.agentRun.findUnique({
+      where: { id: failureRunId },
+      select: { status: true, attempts: true, error: true, workerId: true, leaseExpiresAt: true, completedAt: true },
+    });
+    assert.equal(failureFinal?.status, 'failed');
+    assert.equal(failureFinal?.attempts, 2);
+    assert.equal(failureFinal?.workerId, null);
+    assert.equal(failureFinal?.leaseExpiresAt, null);
+    assert.ok(failureFinal?.completedAt);
+    evidence.failureRetryTaskId = failureRunId;
+    evidence.failureRetryProviderCalls = failureInvokerCalls;
+    evidence.failureRetryFinalStatus = failureFinal?.status ?? null;
+    evidence.failureRetryFinalAttempts = failureFinal?.attempts ?? null;
+    evidence.failureRetryEvidence = failureEvidence.map((event) => event.eventType);
+  } finally {
+    failureStopWorker();
+  }
+
   evidence.finishedAt = new Date().toISOString();
   console.log(JSON.stringify({
     status: 'PASS',
