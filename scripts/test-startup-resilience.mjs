@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 /**
  * Exercise production startup against disposable CI PostgreSQL/Redis services.
- * Each failure case runs in a child process and must keep liveness available
- * while readiness fails closed. Missing checkpoint schema is simulated only in disposable
+ * Production and staging fail closed: a required dependency that fails its startup
+ * check stops the process before the API listener opens (src/server/startupConfig.ts).
+ * Isolated test runtimes keep degraded startup, where liveness is up and readiness
+ * reports the failed dependency. Missing checkpoint schema is simulated only in disposable
  * PostgreSQL; a final clean restart proves recovery after transient faults.
  */
 import { spawn } from 'node:child_process';
@@ -41,8 +43,8 @@ function runChild(label, env) {
   const child = spawn(process.execPath, [launcher.pathname], {
     env: {
       ...process.env,
-      ...env,
       NODE_ENV: 'production',
+      ...env,
       HOST: '127.0.0.1',
       JWT_SECRET: 'isolated-ci-startup-secret-at-least-32-characters',
       SCHEDULER_ENABLED: 'false',
@@ -62,7 +64,8 @@ function runChild(label, env) {
         return await Promise.race([
           new Promise((resolve, reject) => {
             child.once('error', reject);
-            child.once('exit', (code, signal) => resolve({ code, signal }));
+            // 'close' (not 'exit') guarantees the captured output is complete before callers read it.
+            child.once('close', (code, signal) => resolve({ code, signal }));
           }),
           new Promise((_, reject) => {
             timer = setTimeout(() => {
@@ -139,6 +142,22 @@ async function expectDegradedStartup(label, env, expectedServices) {
   await new Promise((resolve) => process.child.once('exit', resolve));
 }
 
+// Production fail-closed contract: the process exits non-zero, names exactly the unavailable
+// dependencies in the policy's stable order, and never opens the API listener.
+async function expectFailClosedStartup(label, env, unavailable) {
+  const port = await reservePort();
+  const process = runChild(label, { ...env, PORT: String(port) });
+  const { code, signal } = await process.exited();
+  const expected = 'production startup blocked: required dependency checks failed for ' + unavailable.join(', ') + '.';
+  if (code === 0 || signal) {
+    throw new Error(label + ' did not fail closed; exit code=' + code + ' signal=' + signal + '. Output: ' + process.output);
+  }
+  if (!process.output.includes(expected)) {
+    throw new Error(label + ' did not report the expected fail-closed block (' + expected + '). Output: ' + process.output);
+  }
+  console.log('PASS ' + label + ': production startup failed closed before the API listener opened');
+}
+
 async function withMissingCheckpointerSchema(run) {
   const pool = new Pool({ connectionString: databaseUrl });
   try {
@@ -160,10 +179,10 @@ async function withMissingCheckpointerSchema(run) {
 }
 
 async function expectMissingCheckpointerSchema() {
-  await withMissingCheckpointerSchema(() => expectDegradedStartup(
+  await withMissingCheckpointerSchema(() => expectFailClosedStartup(
     'Agent checkpointer schema missing',
     { DATABASE_URL: databaseUrl, REDIS_URL: redisUrl },
-    { database: true, redis: true, agentCheckpointer: false },
+    ['PostgreSQL', 'agent checkpointer'],
   ));
 }
 
@@ -212,9 +231,16 @@ async function expectHealthyRecovery() {
 try {
   const unreachableDatabase = new URL(databaseUrl);
   unreachableDatabase.port = '1';
-  await expectDegradedStartup(
+  // Production fails closed when a required dependency is down; the listener never opens.
+  await expectFailClosedStartup(
     'PostgreSQL unavailable',
     { DATABASE_URL: unreachableDatabase.toString(), REDIS_URL: redisUrl },
+    ['PostgreSQL', 'agent checkpointer'],
+  );
+  // Isolated test runtimes keep degraded startup: live, with readiness naming the failed dependency.
+  await expectDegradedStartup(
+    'PostgreSQL unavailable in isolated test runtime',
+    { NODE_ENV: 'test', DATABASE_URL: unreachableDatabase.toString(), REDIS_URL: redisUrl },
     { database: false, redis: true, agentCheckpointer: false },
   );
 
@@ -224,23 +250,23 @@ try {
 
   const unreachableRedis = new URL(redisUrl);
   unreachableRedis.port = '1';
-  await expectDegradedStartup(
+  await expectFailClosedStartup(
     'Redis unavailable',
     { DATABASE_URL: databaseUrl, REDIS_URL: unreachableRedis.toString() },
-    { database: true, redis: false, agentCheckpointer: true },
+    ['Redis'],
   );
 
   // Combined outage: startup aggregates every unavailable dependency in
   // stable diagnostic order, including the dependent checkpointer check.
   const combinedUnavailableDatabase = new URL(databaseUrl);
   combinedUnavailableDatabase.port = '1';
-  await expectDegradedStartup(
+  await expectFailClosedStartup(
     'PostgreSQL and Redis unavailable together',
     {
       DATABASE_URL: combinedUnavailableDatabase.toString(),
       REDIS_URL: unreachableRedis.toString(),
     },
-    { database: false, redis: false, agentCheckpointer: false },
+    ['PostgreSQL', 'Redis', 'agent checkpointer'],
   );
 
   await expectHealthyRecovery();

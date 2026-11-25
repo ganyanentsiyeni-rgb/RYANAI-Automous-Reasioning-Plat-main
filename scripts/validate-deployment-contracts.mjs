@@ -187,7 +187,9 @@ const hasReusableExactShaCiCd =
   && ciCdWorkflow.includes('inputs.commit_sha || github.sha')
   && ciCdWorkflow.includes("github.event_name == 'workflow_dispatch' && inputs.publish_images == true")
   && platformDeployWorkflow.includes('needs.gate.outputs.sha')
-  && (platformDeployWorkflow.match(/needs: gate/g) ?? []).length === 3;
+  // Each provider job must depend on the exact-SHA gate, either alone (`needs: gate`) or as one entry
+  // of an ordered list (`needs: [gate, render]`), which the ordered Render -> Railway -> Vercel release uses.
+  && (platformDeployWorkflow.match(/needs:\s*(?:gate\b|\[\s*gate\b)/g) ?? []).length === 3;
 
 const checks = [
   ['Vercel build settings are scoped to the web service, with no ambiguous top-level build properties', hasNoAmbiguousTopLevelVercelBuildSettings],

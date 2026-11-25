@@ -111,7 +111,8 @@ async function collectAllowedEvidence(relativePath: string, signal?: AbortSignal
   try {
     const entries = await readdir(resolved, { withFileTypes: true });
     const output: Array<{ path: string; content: string }> = [];
-    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    // Files before directories at each level, so depth-first recursion cannot starve top-level manifests under the per-root cap.
+    for (const entry of entries.sort((a, b) => Number(a.isDirectory()) - Number(b.isDirectory()) || a.name.localeCompare(b.name))) {
       signal?.throwIfAborted();
       if (entry.name.startsWith('.') && relativePath !== '.github/workflows') continue;
       if (IGNORED_DIRECTORY.test(entry.name)) continue;
@@ -216,10 +217,10 @@ export async function runRyanAIRepositoryInventory(context: StudioWorkerContext)
     }
   });
   const repositoryScripts = repositoryFiles
-    .filter((file) => /(^|\\/)scripts\\//.test(file.path) && /\\.(?:cjs|js|mjs|cts|ts|mts|tsx|py|sh|ps1)$/i.test(file.path))
+    .filter((file) => /(^|\/)scripts\//.test(file.path) && /\.(?:cjs|js|mjs|cts|ts|mts|tsx|py|sh|ps1)$/i.test(file.path))
     .map((file) => ({ path: file.path, status: 'NOT_EXECUTED' }));
   const workflows = workflowFiles
-    .filter((file) => /\\.ya?ml$/i.test(file.path))
+    .filter((file) => /\.ya?ml$/i.test(file.path))
     .map((file) => ({ path: file.path, status: 'NOT_EXECUTED' }));
   return {
     schemaVersion: 1,
@@ -320,7 +321,7 @@ export async function runRyanAIInspectorAudit(input: { taskId: string; signal?: 
         taskId: input.taskId,
         report: appendSourceInspection(value.stdout),
         stderr: typeof value.stderr === 'string' ? value.stderr : '',
-        exitCode: sourceHasHighFindings || typeof value.code === 'number' ? Math.max(1, value.code) : 1,
+        exitCode: sourceHasHighFindings ? 1 : typeof value.code === 'number' ? Math.max(1, value.code) : 1,
         reportSource: 'scripts/ai-inspector-audit.mjs',
         sourceInspectionSource: 'src/server/engineering/ryanaiSpecialistTaskHandlers.ts',
         persistedBy: 'agent-run-evidence',
