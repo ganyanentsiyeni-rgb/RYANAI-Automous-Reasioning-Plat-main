@@ -261,3 +261,5 @@ Authenticated actor identity is now carried as a trusted `actorType` derived fro
 - Corrected over-escaped regular expressions and path-separator normalization in `scripts/backend-module-boundaries.mjs`; the prior import matcher failed ESLint parsing before the boundary test could run.
 - Imported `assertCanonicalMcpTool` from the canonical registry in the MCP delegation contract test and iterated the expected tool/capability tuples without an unused binding.
 - These are source-level lint repairs only. Exact-SHA CI rerun, full test suite, independent review, and main protection remain required; no deployment, migration, secret, provider, or production change was made.
+
+- Validation branch: `repair/ci-lint-boundary-contract-20261125` (head `37df81848c107b570963d93b88f053b14adfbcbc` before this documentation-only commit). CI execution is required; no pass is claimed until exact-head workflow evidence is complete.
