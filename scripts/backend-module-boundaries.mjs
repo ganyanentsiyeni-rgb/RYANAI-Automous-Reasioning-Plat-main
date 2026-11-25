@@ -12,7 +12,7 @@ async function collectTsFiles(dir) {
   for (const entry of entries) {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) files.push(...await collectTsFiles(full));
-    else if (/\\.(?:ts|tsx)$/.test(entry.name)) files.push(full);
+    else if (/\.(?:ts|tsx)$/.test(entry.name)) files.push(full);
   }
   return files;
 }
@@ -29,7 +29,7 @@ export async function findPluginBoundaryViolations() {
   for (const file of files) {
     if (file.startsWith(PLUGIN_DIR + '/') || file === PLUGIN_DIR) continue;
     const source = await readFile(file, 'utf8');
-    const importPattern = /(?:from\\s+|import\\s*\\(\\s*)['"]([^'"]+)['"]/g;
+    const importPattern = /(?:from\s+|import\s*\(\s*)['"]([^'"]+)['"]/g;
     for (const match of source.matchAll(importPattern)) {
       const specifier = match[1];
       if (!specifier.startsWith('.')) continue;
