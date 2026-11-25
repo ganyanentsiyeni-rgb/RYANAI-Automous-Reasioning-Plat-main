@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { providerHealthRoutes } from './providerHealthRoutes.js';
 import { encryptProviderCredential } from './providerAuthorization.js';
 
-const owner = { id: 'provider-health-owner', role: 'user' as const, isOwner: false, pluginPreferences: {} };
+const owner = { id: 'provider-health-owner', role: 'user' as const, isOwner: false, actorType: 'human' as const, pluginPreferences: {} };
 const key = '5a'.repeat(32);
 
 function createFixture() {
