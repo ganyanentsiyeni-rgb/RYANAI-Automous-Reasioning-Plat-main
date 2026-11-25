@@ -1,31 +1,18 @@
 # RyanAI's primary platform runs on Node.js; Python tooling is optional.
-# The core Python check uses the standard library. Install these packages only
-# when running the optional Python examples and integrations listed below.
+# The core Python check uses only the Python standard library (Python >=3.10).
+# Install this file only when using the optional Python examples/integrations:
 #   basic.py       -> OpenAI-compatible client (can target local Ollama)
 #   reactGraph.py  -> LangGraph reasoning example
 #   test_mongo.py  -> MongoDB connectivity example (requires your own URI)
+#
+# Keep one minimum-version declaration per distribution. Update these lower
+# bounds deliberately when the corresponding examples or integrations change.
 # Never put live provider credentials or database URIs in source files.
-openai>=3.51.0
-pydantic>=2.14.4
-openai>=3.51.0
-pydantic>=2.14.4
-langchain-core>=1.7.3
-langchain-openai>=1.8.5
+
 openai>=3.57.0
-pydantic>=2.14.3
-openai>=3.57.0
-pydantic>=2.14.2
+pydantic>=2.14.4
 langchain-core>=1.8.4
-langchain-openai>=1.8.0
-langgraph>=0.2.0
-langchain-core>=1.8.4
-langgraph>=1.2.24
-langchain-core>=1.8.0
 langchain-openai>=1.8.5
-langgraph>=1.2.21
-langchain-openai>=1.8.0
 langgraph>=1.2.24
 pymongo>=4.20.0
-requests>=2.32.0
-pymongo>=4.19.0
 requests>=2.34.2
