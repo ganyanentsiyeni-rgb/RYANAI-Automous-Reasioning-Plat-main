@@ -426,3 +426,8 @@ The `main` ruleset must require at least one independent approving review in Git
 ## Provider release orchestration
 
 The release workflow is manually dispatched and requires the exact reviewed main SHA plus the explicit PUSH DEPLOY choice. A shared gate validates the SHA and waits for the required CI/security checks. Once that gate succeeds, Render and Railway are independent provider jobs, ordered by operational priority (Render first, Railway second) but not chained by needs; one provider's failure must not block the other's attempt. Vercel is minimum priority and opt-in, and when selected is also independent of the other provider jobs after the same gate. Provider deployment IDs/URLs, exact source revision evidence, and health verification are recorded separately. Provider failures, skips, and missing configuration are not treated as successful releases. Ordinary pushes and CI completion never deploy production.
+
+
+## Deployment artifact secret exclusions
+
+Railway and Vercel source-upload contexts explicitly exclude `.env`, `.env.*`, and nested environment files. Credential-free `.env.example` templates may remain included. Keep `.railwayignore` and `.vercelignore` tracked in the repository (including explicit `.gitignore` allowlist entries). These exclusions prevent accidental inclusion in new CLI deployment artifacts; they do not purge Git history or revoke credentials that may already have been exposed.

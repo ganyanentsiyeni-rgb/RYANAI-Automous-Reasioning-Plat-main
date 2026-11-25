@@ -1458,3 +1458,8 @@ The reviewed-main ruleset must require at least **one independent approving revi
 ## Governed provider deployment
 
 Production deployment is manual and requires the PUSH DEPLOY workflow-dispatch choice, the exact reviewed main commit SHA, and successful exact-SHA CI/security checks. Render (priority 1) and Railway (priority 2) are independent jobs after the shared release gate: a failure at either provider does not prevent the other provider from being attempted. Vercel is priority 3 and remains an explicit opt-in; when selected, it also runs independently after the gate. Each provider reports its own deployment and health outcome. A skipped Vercel job is not a pass. No deployment is started by an ordinary push or by CI completion alone.
+
+
+### Deployment source-file exclusions
+
+The deployment contexts explicitly exclude runtime environment files (`.env`, `.env.*`, and nested variants) from Railway and Vercel uploads while retaining credential-free example templates. This is a deployment-artifact safeguard; it does not remove previously committed environment files from Git history or remediate any already-exposed credentials.
