@@ -53,10 +53,14 @@ describe('Redis initial readiness', () => {
 
   it('returns a connected client and clears the initial deadline without disabling reconnection', async () => {
     await expect(connectRedis('redis://fixture:6379')).resolves.toBe(redis);
-    expect(redis.construct).toHaveBeenCalledWith('redis://fixture:6379', {
+    expect(redis.construct).toHaveBeenCalledWith('redis://fixture:6379', expect.objectContaining({
       lazyConnect: true,
       connectTimeout: 5000,
-    });
+      commandTimeout: 2500,
+      maxRetriesPerRequest: 2,
+      enableReadyCheck: true,
+      retryStrategy: expect.any(Function),
+    }));
     expect(redis.connect).toHaveBeenCalledOnce();
     expect(redis.on).toHaveBeenCalledWith('error', expect.any(Function));
     expect(vi.getTimerCount()).toBe(0);
@@ -98,10 +102,14 @@ describe('Redis initial readiness', () => {
         message: expect.stringContaining('Redis is unavailable'),
       }),
     );
-    expect(redis.construct).toHaveBeenCalledWith('redis://fixture:6379', {
+    expect(redis.construct).toHaveBeenCalledWith('redis://fixture:6379', expect.objectContaining({
       lazyConnect: true,
       connectTimeout: 250,
-    });
+      commandTimeout: 2500,
+      maxRetriesPerRequest: 2,
+      enableReadyCheck: true,
+      retryStrategy: expect.any(Function),
+    }));
     expect(redis.disconnect).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
   });
