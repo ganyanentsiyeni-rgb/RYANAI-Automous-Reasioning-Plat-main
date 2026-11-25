@@ -166,6 +166,7 @@ PY
             echo "Waiting for required checks (attempt $attempt/90)."
             jq -r '(.pending[]?, .missing[]? | "Waiting: " + .)' <<< "$evaluation"
             sleep 30
+            sleep 30
           done
           echo "::error::Required exact-SHA CI/security checks did not all pass within 45 minutes"
           exit 1
