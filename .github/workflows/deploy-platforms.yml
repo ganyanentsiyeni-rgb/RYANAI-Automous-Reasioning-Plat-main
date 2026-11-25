@@ -114,17 +114,17 @@ jobs:
                 pending=1
                 continue
               fi
-              state="$(jq -r --arg name "$name" '[.[] | select(.name == $name)] | sort_by(.started_at // .completed_at // "") | last | [.status // "missing", .conclusion // ""] | @tsv' checks.json)"
-              status="${state%%$'\t'*}"
-              conclusion="${state#*$'\t'}"
-              if [[ "$status" == "completed" && "$conclusion" == "success" ]]; then
-                continue
-              elif [[ "$status" == "completed" ]]; then
-                echo "::error::Required check $name concluded $conclusion"
-                failed=1
-              else
-                pending=1
-              fi
+              states="$(jq -r --arg name "$name" '[.[] | select(.name == $name)] | map([.status // "missing", .conclusion // ""] | join("|")) | .[]' checks.json)"
+              while IFS='|' read -r status conclusion; do
+                if [[ "$status" == "completed" && "$conclusion" == "success" ]]; then
+                  continue
+                elif [[ "$status" == "completed" ]]; then
+                  echo "::error::Required check $name has a non-success result: $conclusion"
+                  failed=1
+                else
+                  pending=1
+                fi
+              done <<< "$states"
             done
             [[ "$failed" == "0" ]] || exit 1
             if [[ "$pending" == "0" ]]; then
@@ -285,7 +285,9 @@ jobs:
           echo "$deploy_output"
           deployment_url="$(printf '%s\n' "$deploy_output" | grep -Eo 'https://[^[:space:]]+' | tail -n1 | sed 's/[),]$//')"
           [[ "$deployment_url" == https://* ]] || { echo "::error::Vercel did not return a deployment URL"; exit 1; }
-          curl --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 10 --retry-max-time 90 "$VERCEL_HEALTH_URL" >/dev/null
+          health_path="$(printf '%s' "$VERCEL_HEALTH_URL" | sed -E 's#^https?://[^/]+##')"
+          [[ -n "$health_path" ]] || health_path="/"
+          curl --fail --silent --show-error --retry 6 --retry-all-errors --retry-delay 10 --retry-max-time 90 "${deployment_url}${health_path}" >/dev/null
           echo "### Priority 3 — Vercel (minimum)" >> "$GITHUB_STEP_SUMMARY"
           echo "- Deployment URL: $deployment_url" >> "$GITHUB_STEP_SUMMARY"
           echo "- Source SHA: $DEPLOY_SHA" >> "$GITHUB_STEP_SUMMARY"
