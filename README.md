@@ -1383,4 +1383,6 @@ The API now creates one privacy-safe OpenTelemetry HTTP boundary span per reques
 
 ## Observability runtime metrics — 2026-11-25
 
-Admin diagnostics now expose a bounded in-process runtime metric snapshot for HTTP request outcomes and durations. Metrics are outcome-bucketed and duration aggregates are capped; raw URLs, headers, bodies, prompts, authentication data and provider payloads are not stored. This is a diagnostic primitive only and does not add an exporter or paid telemetry backend.
+Admin diagnostics now expose a bounded in-process runtime metric snapshot for HTTP request outcomes and durations. Metrics are outcome-bucketed and duration aggregates are capped; raw URLs, headers, bodies, prompts, authentication data and provider payloads are not stored. This is a diagnostic primitive only and does not add an exporter or paid telemetry backend.\n\n## Runtime metrics cardinality guard — 2026-11-25
+
+The in-process metrics registry caps distinct counter series and duration series independently at 100 each. Existing series continue to update after the cap; new series are dropped rather than allocating more memory. The admin snapshot reports the configured cap and aggregate dropped-series observation count. Metric keys remain truncated to 80 characters and duration observations remain capped at 300,000 ms.\n
