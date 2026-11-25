@@ -210,6 +210,31 @@ describe('RyanAI native Studio worker runtime', () => {
     expect(heartbeat.mock.calls.filter((call) => call[1] === 'stopped')).toHaveLength(2);
   });
 
+  it('supports a full stop/start/stop lifecycle after a successful shutdown', async () => {
+    const heartbeat = vi.fn().mockResolvedValue(undefined);
+    const executeOnce = vi.fn().mockResolvedValue({ state: 'idle' });
+    const runtime = createRyanAIStudioWorkerRuntime({
+      workerProfileId: 'coordinator',
+      workerInstanceId: 'studio-worker-restart',
+      pollIntervalMs: 60_000,
+      heartbeatIntervalMs: 60_000,
+      recoveryIntervalMs: 60_000,
+      executeOnce,
+      heartbeat,
+      recoverExpiredLeases: vi.fn().mockResolvedValue({ inspected: 0, recovered: 0, failed: 0 }),
+    });
+
+    await runtime.start();
+    await runtime.stop();
+    expect(runtime.snapshot().status).toBe('stopped');
+
+    await runtime.start();
+    expect(runtime.snapshot().status).toBe('healthy');
+    await runtime.stop();
+
+    expect(heartbeat.mock.calls.filter((call) => call[1] === 'stopped')).toHaveLength(2);
+  });
+
   it('allows startup retry after the initial durable heartbeat fails', async () => {
     const heartbeat = vi.fn()
       .mockRejectedValueOnce(new Error('heartbeat store unavailable'))
