@@ -1458,3 +1458,8 @@ The reviewed-main ruleset must require at least **one independent approving revi
 ## Governed provider deployment
 
 Production deployment is manual and requires the PUSH DEPLOY workflow-dispatch choice, the exact reviewed main commit SHA, and successful exact-SHA CI/security checks. Render (priority 1) and Railway (priority 2) are independent jobs after the shared release gate: a failure at either provider does not prevent the other provider from being attempted. Vercel is priority 3 and remains an explicit opt-in; when selected, it also runs independently after the gate. Each provider reports its own deployment and health outcome. A skipped Vercel job is not a pass. No deployment is started by an ordinary push or by CI completion alone.
+
+
+### Release-gate duplicate-check and Vercel verification safeguards
+
+The Push Deploy exact-SHA gate evaluates **every** check run matching each required check name; a duplicate failed or pending run cannot be hidden by a newer successful run. Vercel health verification targets the newly returned deployment URL (preserving the configured health-path suffix), rather than a potentially stale production domain. These safeguards are awaiting review and merge; they do not authorize or trigger a deployment.
