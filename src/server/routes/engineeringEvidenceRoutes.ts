@@ -8,8 +8,8 @@ import { appendRunEvidence, buildEvidenceBundle, sha256, verifyEvidenceChain } f
 
 import { RYANAI_MODULE_AGENT_ROSTER } from '../../agent/moduleAgentRegistry.js';
 import { RYANAI_WORKER_ROSTER } from '../../agent/workerRegistry.js';
-import { pluginRegistry } from '../plugins/pluginCatalog.js';
-import { describeCapabilityState } from '../plugins/capabilityState.js';
+import { pluginRegistry, describeCapabilityState } from '../plugins/index.js';
+
 import { getStudioExecutionDescriptor, submitStudioProject } from '../engineering/studioExecution.js';
 import { cancelStudioTask, createStudioProject, getStudioDeliveryReadiness, getStudioNativeRuntimeDescriptor, listStudioProjects, listStudioWorkerHealth } from '../engineering/studioNativeCore.js';
 import {
