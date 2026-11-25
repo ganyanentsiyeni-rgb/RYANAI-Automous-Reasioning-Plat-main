@@ -8,6 +8,28 @@ import {
 const secret = 'test-only-delegation-signing-secret-32';
 const scopes = ['tool_registry', 'platform_health'] as const;
 
+describe('MCP delegation and canonical registry alignment', () => {
+  it('maps every delegated scope to a canonical MCP tool and capability', () => {
+    const expected = {
+      tool_registry: ['tool_registry', 'mcp.registry.read'],
+      repository_status: ['repository_status', 'repository.status.read'],
+      platform_health: ['platform_health', 'platform.health.read'],
+      ryanai_stack_manifest: ['ryanai_stack_manifest', 'platform.stack.read'],
+      reasoning_request: ['reasoning_route', 'reasoning.request'],
+    } as const;
+
+    for (const [scope, [toolName, capability]] of Object.entries(expected)) {
+      const tool = assertCanonicalMcpTool(toolName);
+      expect(tool.capability).toBe(capability);
+      expect(tool.audit).toBe('required');
+    }
+    expect(Object.keys(expected)).toEqual(expect.arrayContaining([
+      'tool_registry', 'repository_status', 'platform_health',
+      'ryanai_stack_manifest', 'reasoning_request',
+    ]));
+  });
+});
+
 describe('API-issued MCP delegated identity', () => {
   it('issues a short-lived audience-bound identity with only requested scopes', () => {
     const issued = issueMcpDelegationToken({ subject: 'supabase-user-123', role: 'user', scopes, secret, nowSeconds: 1_800_000_000, ttlSeconds: 60 });
