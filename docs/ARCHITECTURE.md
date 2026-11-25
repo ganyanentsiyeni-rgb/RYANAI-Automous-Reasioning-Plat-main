@@ -395,3 +395,8 @@ Authenticated actor identity is now carried as a trusted `actorType` derived fro
 ### Observability boundary
 
 The API launcher owns a single request boundary span for each HTTP request. The span uses the registered Fastify route template rather than the raw URL, and records only bounded method, status code and duration metadata. Query strings, headers, request/response bodies, authentication material, prompts and arbitrary baggage are not telemetry attributes. The boundary uses the existing canonical OpenTelemetry SDK and shared privacy allowlist; it does not create another observability stack or enable an exporter.
+
+
+### Runtime observability metrics
+
+The API exposes bounded in-process diagnostic metrics through the existing admin-only metrics route. The current slice covers HTTP request outcome counts and duration aggregates. Metric keys and string attributes are bounded, duration observations are capped, and no request content, authentication material, provider payloads or arbitrary URLs are retained. This is intentionally an instrumentation primitive rather than a new metrics backend; external export remains a separate infrastructure decision.

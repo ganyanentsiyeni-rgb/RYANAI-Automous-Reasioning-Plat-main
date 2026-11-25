@@ -5,6 +5,7 @@ import '../loadEnv.js';
 import '../instrument.js';
 import { shutdownTelemetry } from '../telemetry.js';
 import { finishHttpBoundarySpan, startHttpBoundarySpan, type HttpBoundarySpan } from '../telemetry/httpBoundary.js';
+import { incrementMetric, observeMetricDuration } from '../telemetry/runtimeMetrics.js';
 
 import Fastify, { FastifyReply, FastifyRequest } from 'fastify';
 import { parseCorsOrigins } from './corsOrigins.js';
@@ -128,6 +129,7 @@ const isDevelopment = config.nodeEnv === 'development';
 
 // Initialize Fastify instance with trustProxy and telemetry-aware logger
 const httpBoundarySpans = new WeakMap<object, HttpBoundarySpan>();
+const httpRequestStarts = new WeakMap<object, number>();
 
 const fastify = Fastify({
   trustProxy: true,
@@ -159,10 +161,17 @@ installHttpTelemetry(fastify);
 // raw URLs, and no headers, query values, bodies, auth data or response content are recorded.
 fastify.addHook('onRequest', async (request) => {
   httpBoundarySpans.set(request, startHttpBoundarySpan(request));
+  httpRequestStarts.set(request, Date.now());
 });
 fastify.addHook('onResponse', async (request, reply) => {
   const boundary = httpBoundarySpans.get(request);
   if (boundary) finishHttpBoundarySpan(boundary, reply);
+  const startedAt = httpRequestStarts.get(request);
+  if (startedAt !== undefined) {
+    const outcome = reply.statusCode >= 500 ? 'error' : reply.statusCode >= 400 ? 'rejected' : 'success';
+    incrementMetric('http.request', outcome);
+    observeMetricDuration('http.request.duration', Date.now() - startedAt, outcome);
+  }
 });
 
 // Initialize the core platform Prisma client and the separate optional Neon audiobook client.

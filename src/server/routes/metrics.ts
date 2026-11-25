@@ -1,6 +1,7 @@
 import { arch, cpus, freemem, loadavg, platform, release, totalmem } from 'node:os';
 import { requireAdmin } from './auth.js';
 import type { FastifyPluginAsync } from 'fastify';
+import { snapshotRuntimeMetrics } from '../../telemetry/runtimeMetrics.js';
 
 /**
  * Register admin-only, read-only host and process diagnostics.
@@ -17,6 +18,7 @@ export const metricsRoutes: FastifyPluginAsync = async (fastify) => {
     return {
       status: 'available',
       readiness: 'not_checked',
+      runtimeMetrics: snapshotRuntimeMetrics(),
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
       database: {
