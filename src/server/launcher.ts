@@ -68,9 +68,11 @@ import { getAgentTaskWorkerStatus, startAgentTaskWorker, startBrainHealthMonitor
 import { AgentPAScript, setAgentPAObserver } from '../skills/agentPAScript.js';
 import { startAttachmentScanner } from './attachments/scanner.js';
 import { startAttachmentOrphanCleanup } from './attachments/orphanCleanup.js';
-import { pluginRegistryRoutes } from './plugins/routes.js';
-import { providerAuthorizationRoutes } from './plugins/providerAuthorizationRoutes.js';
-import { providerHealthRoutes } from './plugins/providerHealthRoutes.js';
+import {
+  pluginRegistryRoutes,
+  providerAuthorizationRoutes,
+  providerHealthRoutes,
+} from './plugins/index.js';
 import { phoneLinkRoutes } from './routes/phoneLink.js';
 import { eventIngestionRoutes } from './routes/eventIngestionRoutes.js';
 import { adminEventQueueRoutes } from './routes/adminEventQueue.js';
