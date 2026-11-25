@@ -426,3 +426,8 @@ The `main` ruleset must require at least one independent approving review in Git
 ## Provider release orchestration
 
 The release workflow is manually dispatched and requires the exact reviewed main SHA plus the explicit PUSH DEPLOY choice. A shared gate validates the SHA and waits for the required CI/security checks. Once that gate succeeds, Render and Railway are independent provider jobs, ordered by operational priority (Render first, Railway second) but not chained by needs; one provider's failure must not block the other's attempt. Vercel is minimum priority and opt-in, and when selected is also independent of the other provider jobs after the same gate. Provider deployment IDs/URLs, exact source revision evidence, and health verification are recorded separately. Provider failures, skips, and missing configuration are not treated as successful releases. Ordinary pushes and CI completion never deploy production.
+
+
+### Release evidence integrity
+
+The Push Deploy gate must evaluate all matching check runs for each required check name. Duplicate check contexts are not collapsed to the latest result: any completed non-success result fails the gate, and any incomplete result keeps it pending. Vercel post-deploy health checks must address the newly created deployment URL, retaining the configured health path, so a previously routed production domain cannot provide a false-positive health result. These controls are source changes only until reviewed and merged; they do not initiate a release.
