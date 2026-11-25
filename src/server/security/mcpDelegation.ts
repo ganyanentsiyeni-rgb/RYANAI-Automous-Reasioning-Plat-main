@@ -18,16 +18,21 @@ const MCP_SCOPE_TO_CANONICAL_TOOL: Record<McpDelegatedScope, string> = {
   reasoning_request: 'reasoning_route',
 };
 
+const MCP_SCOPE_TO_CAPABILITY: Record<McpDelegatedScope, string> = {
+  tool_registry: 'mcp.registry.read',
+  repository_status: 'repository.status.read',
+  platform_health: 'platform.health.read',
+  ryanai_stack_manifest: 'platform.stack.read',
+  reasoning_request: 'reasoning.request',
+};
+
 // The delegation contract is intentionally checked against the canonical MCP
 // registry at module load. A new/renamed scope cannot silently become an
 // executable capability without first updating the canonical registry.
 for (const scope of MCP_DELEGATED_SCOPES) {
   const tool = assertCanonicalMcpTool(MCP_SCOPE_TO_CANONICAL_TOOL[scope]);
-  if (scope !== 'reasoning_request' && tool.capability !== `mcp.${scope === 'tool_registry' ? 'registry.read' : scope === 'repository_status' ? 'repository.status.read' : scope === 'platform_health' ? 'platform.health.read' : 'stack.read'}`) {
+  if (tool.capability !== MCP_SCOPE_TO_CAPABILITY[scope]) {
     throw new Error(`[mcp-delegation] Canonical registry capability mismatch for ${scope}.`);
-  }
-  if (scope === 'reasoning_request' && tool.capability !== 'reasoning.request') {
-    throw new Error('[mcp-delegation] Canonical registry capability mismatch for reasoning_request.');
   }
 }
 export type McpReadOnlyScope = (typeof MCP_READ_ONLY_SCOPES)[number];
