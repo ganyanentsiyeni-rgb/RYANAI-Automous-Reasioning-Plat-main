@@ -104,52 +104,52 @@ jobs:
           for attempt in $(seq 1 90); do
             gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs?per_page=100" --jq '.check_runs[]' > check-runs.ndjson
             jq -s --arg suite "$current_suite" '[.[] | select((.check_suite.id | tostring) != $suite)]' check-runs.ndjson > checks.json
-            evaluation="$(python3 - "${required[*]}" <<'PY'
-            import json
-            import sys
-            from collections import defaultdict
+            REQUIRED_CHECKS_JSON="$(printf '%s\\n' "${required[@]}" | jq -R . | jq -s .)"
+            evaluation="$(REQUIRED_CHECKS_JSON="$REQUIRED_CHECKS_JSON" python3 <<'PY'
+import json
+import os
+from collections import defaultdict
 
-            required = sys.argv[1:]
-            with open("checks.json", encoding="utf-8") as source:
-                runs = json.load(source)
+required = json.loads(os.environ["REQUIRED_CHECKS_JSON"])
+with open("checks.json", encoding="utf-8") as source:
+    runs = json.load(source)
 
-            # A rerun creates a newer check run. Evaluate the newest run for each
-            # required context and GitHub App, rather than letting an obsolete
-            # failed attempt permanently block a successful rerun.
-            grouped = defaultdict(list)
-            for run in runs:
-                name = run.get("name")
-                if name not in required:
-                    continue
-                app = run.get("app") or {}
-                app_id = str(app.get("id") or app.get("slug") or "unknown-app")
-                grouped[(name, app_id)].append(run)
+# Group by required context and GitHub App. For each producer, only its newest
+# attempt is authoritative, so an obsolete failed attempt cannot mask a rerun.
+grouped = defaultdict(list)
+for run in runs:
+    name = run.get("name")
+    if name not in required:
+        continue
+    app = run.get("app") or {}
+    app_id = str(app.get("id") or app.get("slug") or "unknown-app")
+    grouped[(name, app_id)].append(run)
 
-            pending = []
-            failed = []
-            missing = []
-            for name in required:
-                producers = [(key, values) for key, values in grouped.items() if key[0] == name]
-                if not producers:
-                    missing.append(name)
-                    continue
-                for (_, app_id), values in producers:
-                    latest = max(
-                        values,
-                        key=lambda item: (
-                            item.get("started_at") or item.get("completed_at") or item.get("created_at") or "",
-                            item.get("id") or 0,
-                        ),
-                    )
-                    status = latest.get("status") or "missing"
-                    conclusion = latest.get("conclusion") or ""
-                    if status != "completed":
-                        pending.append(f"{name} [{app_id}]")
-                    elif conclusion != "success":
-                        failed.append(f"{name} [{app_id}]: {conclusion or 'no conclusion'}")
+pending = []
+failed = []
+missing = []
+for name in required:
+    producers = [(key, values) for key, values in grouped.items() if key[0] == name]
+    if not producers:
+        missing.append(name)
+        continue
+    for (_, app_id), values in producers:
+        latest = max(
+            values,
+            key=lambda item: (
+                item.get("started_at") or item.get("completed_at") or item.get("created_at") or "",
+                item.get("id") or 0,
+            ),
+        )
+        status = latest.get("status") or "missing"
+        conclusion = latest.get("conclusion") or ""
+        if status != "completed":
+            pending.append(f"{name} [{app_id}]")
+        elif conclusion != "success":
+            failed.append(f"{name} [{app_id}]: {conclusion or 'no conclusion'}")
 
-            print(json.dumps({"pending": pending, "failed": failed, "missing": missing}))
-            PY
+print(json.dumps({"pending": pending, "failed": failed, "missing": missing}))
+PY
             )"
             printf '%s\n' "$evaluation" | jq .
             failed="$(jq '.failed | length' <<< "$evaluation")"
