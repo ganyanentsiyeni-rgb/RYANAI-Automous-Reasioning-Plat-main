@@ -73,13 +73,13 @@ export function resolveProviderCapabilityState(
   }
 
   let executionStatus: ProviderExecutionStatus;
-  if (adapterStatus !== 'adapter_registered') executionStatus = 'blocked_adapter_missing';
-  else if (connectionStatus === 'revoked') executionStatus = 'blocked_revoked';
+  if (connectionStatus === 'revoked') executionStatus = 'blocked_revoked';
   else if (connectionStatus !== 'connected') executionStatus = 'blocked_connection';
   else if (authenticationStatus !== 'oauth_grant_issued') executionStatus = 'blocked_authentication';
   else if (healthStatus === 'not_probed') executionStatus = 'blocked_health_unverified';
   else if (healthStatus === 'degraded') executionStatus = 'blocked_health_degraded';
   else if (healthStatus === 'unavailable') executionStatus = 'blocked_health_unavailable';
+  else if (adapterStatus !== 'adapter_registered') executionStatus = 'blocked_adapter_missing';
   else executionStatus = 'ready';
 
   return {
