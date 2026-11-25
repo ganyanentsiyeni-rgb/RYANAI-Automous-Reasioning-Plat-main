@@ -7,6 +7,8 @@
 !.gitignore
 !.railwayignore
 !.vercelignore
+!.railwayignore
+!.vercelignore
 !apps/
 !apps/mobile/
 # Read-only inventory contract test referenced by package.json (test:repository-inventory).
