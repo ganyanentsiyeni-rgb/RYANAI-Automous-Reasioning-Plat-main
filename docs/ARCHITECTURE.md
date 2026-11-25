@@ -406,3 +406,11 @@ The API launcher owns a single request boundary span for each HTTP request throu
 The API exposes bounded in-process diagnostic metrics through the existing admin-only metrics route. The current slice covers HTTP request outcome counts and duration aggregates. Metric keys and string attributes are bounded, duration observations are capped, and no request content, authentication material, provider payloads or arbitrary URLs are retained. This is intentionally an instrumentation primitive rather than a new metrics backend; external export remains a separate infrastructure decision.\n\n### Runtime metric cardinality limits
 
 The in-process metrics registry has a hard cap of 100 distinct counter series and 100 distinct duration series per process. Existing series remain writable after saturation; new series are dropped and counted in the aggregate `limits.droppedSeries` diagnostic. Key length remains capped at 80 characters and each duration observation is capped at 300,000 ms. This protects process memory from unbounded metric-name cardinality. The counters are diagnostic and process-local, not durable business evidence.\n
+
+### Canonical MCP registry and governance completeness (2026-11-25)
+
+Every tool in `src/mcp/canonical-tool-registry.json` must have a corresponding `tool_policy` entry in `governance/agent-governance-policy.json`. Completeness does not imply permission: the six recently reconciled entries (`read_workspace_file`, `execute_sandbox_script`, `system_diagnostics`, `get_container_logs`, `execute_pipeline`, and `get_system_health`) are explicitly `DENY` for delegated agents. Any future enablement requires a separate least-privilege review and runtime enforcement evidence. In particular, `execute_pipeline` cannot bypass the explicit **Push Deploy** trigger, exact-SHA CI/security gates, independent provider jobs, or human release approval.
+
+The Gmail provider-read route also fails closed when trusted actor metadata is absent by evaluating the request as `service`; missing identity cannot inherit human owner authorization.
+
+Disposable migration validation reported duplicate `(user_id, key)` pairs in `public.memory_entries`. The migration correctly stops rather than silently merging or deleting memory. This is a test-data/migration reconciliation issue and is not permission to mutate production memory.
