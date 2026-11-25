@@ -225,3 +225,10 @@ Authenticated actor identity is now carried as a trusted `actorType` derived fro
 - Added both ignore files to the root `.gitignore` allowlist so the deployment safeguards themselves are committed.
 - Updated README and architecture documentation to distinguish artifact exclusion from Git-history cleanup and credential remediation.
 - Static configuration change only; no provider upload or deployment was performed.
+
+
+## 2026-11-25 — Harden exact-SHA release evidence and Vercel health verification
+
+- Changed the Push Deploy gate to inspect every check run matching each required name. A duplicate failed result now fails the gate; a duplicate incomplete result keeps it pending instead of allowing the latest successful run to mask it.
+- Changed Vercel health verification to use the newly created deployment URL with the health-path suffix from the configured URL, avoiding a false positive from checking an existing production domain.
+- No deployment, domain change, credential change, or production infrastructure operation was performed. The changes are on branch fix/release-gate-evidence-integrity-20261125 and require independent review after main-branch protections are restored.
