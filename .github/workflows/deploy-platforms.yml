@@ -107,74 +107,74 @@ jobs:
             gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${SHA}&per_page=100" --jq '.workflow_runs' > workflow-runs.json
             REQUIRED_CHECKS_JSON="$(printf '%s\n' "${required[@]}" | jq -R . | jq -s .)"
             evaluation="$(REQUIRED_CHECKS_JSON="$REQUIRED_CHECKS_JSON" python3 <<'PY'
-import json
-import os
-import re
-from collections import defaultdict
-
-required = json.loads(os.environ["REQUIRED_CHECKS_JSON"])
-with open("checks.json", encoding="utf-8") as source:
-    runs = json.load(source)
-with open("workflow-runs.json", encoding="utf-8") as source:
-    workflow_runs = json.load(source)
-
-# CheckRun.check_suite exposes a suite ID but not the workflow ID. Resolve the
-# Actions run ID embedded in details_url against the exact-SHA workflow runs.
-workflow_by_run_id = {
-    str(item["id"]): str(item["workflow_id"])
-    for item in workflow_runs
-    if item.get("id") is not None and item.get("workflow_id") is not None
-}
-
-# Keep independent workflows separate even when they publish the same context
-# through the same GitHub App. Within each producer, only its newest attempt is
-# authoritative, so an obsolete failed attempt cannot mask a successful rerun.
-grouped = defaultdict(list)
-for run in runs:
-    name = run.get("name")
-    if name not in required:
-        continue
-    app = run.get("app") or {}
-    app_id = str(app.get("id") or app.get("slug") or "unknown-app")
-    details_url = run.get("details_url") or ""
-    match = re.search(r"/actions/runs/(\d+)", details_url)
-    if match and match.group(1) in workflow_by_run_id:
-        producer = "workflow:" + workflow_by_run_id[match.group(1)]
-    elif match:
-        # Fail closed on unmapped Actions runs: distinct run IDs cannot hide
-        # one another, though an older failure may remain blocking until mapped.
-        producer = "unmapped-run:" + match.group(1)
-    else:
-        # Non-Actions providers are separated by their own details/external ID.
-        producer = "external:" + str(run.get("external_id") or details_url or
-                                     (run.get("check_suite") or {}).get("id") or "unknown")
-    grouped[(name, app_id, producer)].append(run)
-
-pending = []
-failed = []
-missing = []
-for name in required:
-    producers = [(key, values) for key, values in grouped.items() if key[0] == name]
-    if not producers:
-        missing.append(name)
-        continue
-    for (_, app_id, producer), values in producers:
-        latest = max(
-            values,
-            key=lambda item: (
-                item.get("started_at") or item.get("completed_at") or item.get("created_at") or "",
-                item.get("id") or 0,
-            ),
-        )
-        status = latest.get("status") or "missing"
-        conclusion = latest.get("conclusion") or ""
-        if status != "completed":
-            pending.append(f"{name} [{app_id}; {producer}]")
-        elif conclusion != "success":
-            failed.append(f"{name} [{app_id}; {producer}]: {conclusion or 'no conclusion'}")
-
-print(json.dumps({"pending": pending, "failed": failed, "missing": missing}))
-PY
+          import json
+          import os
+          import re
+          from collections import defaultdict
+          
+          required = json.loads(os.environ["REQUIRED_CHECKS_JSON"])
+          with open("checks.json", encoding="utf-8") as source:
+              runs = json.load(source)
+          with open("workflow-runs.json", encoding="utf-8") as source:
+              workflow_runs = json.load(source)
+          
+          # CheckRun.check_suite exposes a suite ID but not the workflow ID. Resolve the
+          # Actions run ID embedded in details_url against the exact-SHA workflow runs.
+          workflow_by_run_id = {
+              str(item["id"]): str(item["workflow_id"])
+              for item in workflow_runs
+              if item.get("id") is not None and item.get("workflow_id") is not None
+          }
+          
+          # Keep independent workflows separate even when they publish the same context
+          # through the same GitHub App. Within each producer, only its newest attempt is
+          # authoritative, so an obsolete failed attempt cannot mask a successful rerun.
+          grouped = defaultdict(list)
+          for run in runs:
+              name = run.get("name")
+              if name not in required:
+                  continue
+              app = run.get("app") or {}
+              app_id = str(app.get("id") or app.get("slug") or "unknown-app")
+              details_url = run.get("details_url") or ""
+              match = re.search(r"/actions/runs/(\d+)", details_url)
+              if match and match.group(1) in workflow_by_run_id:
+                  producer = "workflow:" + workflow_by_run_id[match.group(1)]
+              elif match:
+                  # Fail closed on unmapped Actions runs: distinct run IDs cannot hide
+                  # one another, though an older failure may remain blocking until mapped.
+                  producer = "unmapped-run:" + match.group(1)
+              else:
+                  # Non-Actions providers are separated by their own details/external ID.
+                  producer = "external:" + str(run.get("external_id") or details_url or
+                                               (run.get("check_suite") or {}).get("id") or "unknown")
+              grouped[(name, app_id, producer)].append(run)
+          
+          pending = []
+          failed = []
+          missing = []
+          for name in required:
+              producers = [(key, values) for key, values in grouped.items() if key[0] == name]
+              if not producers:
+                  missing.append(name)
+                  continue
+              for (_, app_id, producer), values in producers:
+                  latest = max(
+                      values,
+                      key=lambda item: (
+                          item.get("started_at") or item.get("completed_at") or item.get("created_at") or "",
+                          item.get("id") or 0,
+                      ),
+                  )
+                  status = latest.get("status") or "missing"
+                  conclusion = latest.get("conclusion") or ""
+                  if status != "completed":
+                      pending.append(f"{name} [{app_id}; {producer}]")
+                  elif conclusion != "success":
+                      failed.append(f"{name} [{app_id}; {producer}]: {conclusion or 'no conclusion'}")
+          
+          print(json.dumps({"pending": pending, "failed": failed, "missing": missing}))
+          PY
             )"
             printf '%s\n' "$evaluation" | jq .
             failed="$(jq '.failed | length' <<< "$evaluation")"
