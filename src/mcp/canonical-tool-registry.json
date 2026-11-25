@@ -1,0 +1,384 @@
+{
+  "version": "1.0.0",
+  "registryId": "ryanai.mcp.canonical",
+  "tools": [
+    {
+      "name": "tool_registry",
+      "owner": "platform",
+      "risk": "read-only",
+      "capability": "mcp.registry.read",
+      "execution": "none",
+      "approval": "none",
+      "audit": "required",
+      "timeoutMs": 5000,
+      "idempotency": "safe",
+      "productionAccess": false,
+      "secretAccess": false,
+      "description": "Read the canonical RyanAI MCP tool catalogue and enablement state.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "run_project_checks",
+      "owner": "platform",
+      "risk": "code-execution",
+      "capability": "engineering.checks.execute",
+      "execution": "local-process",
+      "approval": "operator-allowlist",
+      "audit": "required",
+      "timeoutMs": 600000,
+      "idempotency": "best-effort",
+      "productionAccess": false,
+      "secretAccess": false,
+      "description": "Run repository validation and Docker Compose configuration checks.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "repository_status",
+      "owner": "platform",
+      "risk": "read-only",
+      "capability": "repository.status.read",
+      "execution": "read-only-process",
+      "approval": "none",
+      "audit": "required",
+      "timeoutMs": 10000,
+      "idempotency": "safe",
+      "productionAccess": false,
+      "secretAccess": false,
+      "description": "Read Git status and whitespace diagnostics.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "ryanai_stack_manifest",
+      "owner": "platform",
+      "risk": "read-only",
+      "capability": "platform.stack.read",
+      "execution": "none",
+      "approval": "none",
+      "audit": "required",
+      "timeoutMs": 5000,
+      "idempotency": "safe",
+      "productionAccess": false,
+      "secretAccess": false,
+      "description": "Read the non-secret RyanAI service stack manifest.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "platform_health",
+      "owner": "platform",
+      "risk": "network-read",
+      "capability": "platform.health.read",
+      "execution": "bounded-http-read",
+      "approval": "none",
+      "audit": "required",
+      "timeoutMs": 5000,
+      "idempotency": "safe",
+      "productionAccess": false,
+      "secretAccess": false,
+      "description": "Read the configured RyanAI API health endpoint.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "reasoning_route",
+      "owner": "reasoning",
+      "risk": "external-model-request",
+      "capability": "reasoning.request",
+      "execution": "approved-provider-request",
+      "approval": "user-requested-task",
+      "audit": "required",
+      "timeoutMs": 120000,
+      "idempotency": "non-idempotent",
+      "productionAccess": false,
+      "secretAccess": false,
+      "description": "Send a prompt to a configured reasoning provider.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "provider": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "response_format": {
+            "type": "string",
+            "enum": [
+              "text",
+              "json_object"
+            ]
+          }
+        },
+        "required": [
+          "prompt",
+          "provider",
+          "model"
+        ]
+      }
+    },
+    {
+      "name": "comms_policy_read",
+      "owner": "communications",
+      "risk": "read-only",
+      "capability": "communications.policy.read",
+      "execution": "none",
+      "approval": "none",
+      "audit": "required",
+      "timeoutMs": 5000,
+      "idempotency": "safe",
+      "productionAccess": false,
+      "secretAccess": false,
+      "description": "Read channel consent and safety policy; no private history or provider access.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "enum": [
+              "whatsapp",
+              "sms",
+              "voice",
+              "email"
+            ]
+          }
+        },
+        "required": [
+          "channel"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "comms_draft_prepare",
+      "owner": "communications",
+      "risk": "draft-only",
+      "capability": "communications.draft.prepare",
+      "execution": "draft-generation",
+      "approval": "human-before-dispatch",
+      "audit": "required",
+      "timeoutMs": 10000,
+      "idempotency": "safe",
+      "productionAccess": false,
+      "secretAccess": false,
+      "description": "Prepare a communications draft for human approval; never dispatch.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "enum": [
+              "whatsapp",
+              "sms",
+              "voice",
+              "email"
+            ]
+          },
+          "recipient": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 320
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          }
+        },
+        "required": [
+          "channel",
+          "recipient",
+          "message"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "read_workspace_file",
+      "owner": "engineering",
+      "risk": "read-only",
+      "capability": "workspace.file.read",
+      "execution": "filesystem-read",
+      "approval": "none",
+      "audit": "required",
+      "timeoutMs": 10000,
+      "idempotency": "safe",
+      "productionAccess": false,
+      "secretAccess": false,
+      "description": "Read a source file securely from the RyanAI workspace directory.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filePath": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "filePath"
+        ]
+      }
+    },
+    {
+      "name": "execute_sandbox_script",
+      "owner": "engineering",
+      "risk": "code-execution",
+      "capability": "sandbox.execute",
+      "execution": "sandbox-process",
+      "approval": "human-before-execution",
+      "audit": "required",
+      "timeoutMs": 120000,
+      "idempotency": "best-effort",
+      "productionAccess": false,
+      "secretAccess": false,
+      "description": "Execute code in the isolated RyanAI sandbox; external MCP clients are denied until Gen-X permits the action.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "scriptContent": {
+            "type": "string"
+          },
+          "fileName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "scriptContent"
+        ]
+      }
+    },
+    {
+      "name": "system_diagnostics",
+      "owner": "platform",
+      "risk": "read-only",
+      "capability": "system.diagnostics.read",
+      "execution": "local-diagnostics",
+      "approval": "none",
+      "audit": "required",
+      "timeoutMs": 10000,
+      "idempotency": "safe",
+      "productionAccess": false,
+      "secretAccess": false,
+      "description": "Inspect local GPU, memory, or general system telemetry.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "queryType": {
+            "type": "string",
+            "enum": [
+              "memory",
+              "gpu",
+              "general"
+            ]
+          }
+        },
+        "required": [
+          "queryType"
+        ]
+      }
+    },
+    {
+      "name": "get_container_logs",
+      "owner": "platform",
+      "risk": "read-only",
+      "capability": "container.logs.read",
+      "execution": "docker-read",
+      "approval": "authenticated-approval",
+      "audit": "required",
+      "timeoutMs": 10000,
+      "idempotency": "safe",
+      "productionAccess": false,
+      "secretAccess": false,
+      "description": "Retrieve recent Docker container logs for diagnostics; logs may contain sensitive data.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "container": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "container"
+        ]
+      }
+    },
+    {
+      "name": "execute_pipeline",
+      "owner": "engineering",
+      "risk": "deployment",
+      "capability": "deployment.pipeline.execute",
+      "execution": "pipeline-orchestrator",
+      "approval": "human-before-execution",
+      "audit": "required",
+      "timeoutMs": 600000,
+      "idempotency": "non-idempotent",
+      "productionAccess": false,
+      "secretAccess": false,
+      "description": "Trigger the deployment pipeline only after authenticated human approval and the platform release gates.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "autoShip": {
+            "type": "boolean"
+          },
+          "strictMode": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "projectName",
+          "branch"
+        ]
+      }
+    },
+    {
+      "name": "get_system_health",
+      "owner": "platform",
+      "risk": "read-only",
+      "capability": "system.health.read",
+      "execution": "process-read",
+      "approval": "none",
+      "audit": "required",
+      "timeoutMs": 5000,
+      "idempotency": "safe",
+      "productionAccess": false,
+      "secretAccess": false,
+      "description": "Read process memory and uptime plus policy telemetry.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ]
+}
