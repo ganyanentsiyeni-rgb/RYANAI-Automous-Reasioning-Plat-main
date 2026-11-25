@@ -87,6 +87,12 @@ export interface PluginRegistry {
   get(providerId: string): RegisteredPluginManifest | null;
   hasAdapter(providerId: string): boolean;
   registerAdapter(adapter: PluginAdapter): void;
+  /** Server-only execution boundary; adapter instances are never returned to callers. */
+  execute(
+    providerId: string,
+    request: PluginAdapterExecutionRequest,
+    context: PluginAdapterExecutionContext,
+  ): Promise<PluginAdapterExecutionResult>;
 }
 
 const CATEGORY_SET = new Set<string>(PLUGIN_CATEGORIES);
@@ -255,6 +261,27 @@ export function createPluginRegistry(manifests: readonly PluginManifest[]): Plug
         capabilities: Object.freeze([...registered]),
         execute: adapter.execute.bind(adapter),
       }));
+    },
+    execute: async (
+      providerId: string,
+      request: PluginAdapterExecutionRequest,
+      context: PluginAdapterExecutionContext,
+    ) => {
+      const manifest = catalogue.get(providerId);
+      if (!manifest) throw new Error(`No plugin manifest is registered for ${providerId}.`);
+      const adapter = adapters.get(providerId);
+      if (!adapter) throw new Error(`No adapter is registered for ${providerId}.`);
+      if (!adapter.capabilities.includes(request.capabilityId)) {
+        throw new Error(`The ${providerId} adapter does not implement capability ${request.capabilityId}.`);
+      }
+      if (context.capabilityId !== request.capabilityId) {
+        throw new Error('Plugin execution capability context does not match the request.');
+      }
+      if (!context.actorId.trim() || !context.connectionRef.trim() || !context.requestId.trim()) {
+        throw new Error('Plugin execution requires actorId, connectionRef and requestId.');
+      }
+      if (context.signal.aborted) throw new Error('Plugin execution was cancelled before dispatch.');
+      return adapter.execute(request, context);
     },
   });
 }
