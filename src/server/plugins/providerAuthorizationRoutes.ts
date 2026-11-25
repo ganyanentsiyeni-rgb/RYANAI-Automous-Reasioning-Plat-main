@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { describeProviderConnectionState } from './providerConnectionState.js';
 import { createHash } from 'node:crypto';
 import { requireUser, type TrustedActorType } from '../routes/auth.js';
-import { evaluateGenXSecurityEvent } from '../../security/genxPolicy.js';
+import * as genxPolicy from '../../security/genxPolicy.js';
 import {
   buildProviderAuthorizationUrl,
   createProviderOAuthTransaction,
@@ -249,7 +249,7 @@ export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) =
     capabilityId: 'calendar.events.read' | 'gmail.messages.read',
     actorType: TrustedActorType,
   ): boolean => {
-    const policy = evaluateGenXSecurityEvent({
+    const policy = genxPolicy.evaluateGenXSecurityEvent({
       agentId: 'ryanai-api',
       principal: ownerUserId,
       toolName: 'plugin_provider_read',
