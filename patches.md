@@ -110,3 +110,12 @@ This patch does **not** trigger production deployment. Production deployment sti
 - Removed duplicate/incomplete coordinator registration in the CLI worker bootstrap and centralized repository-auditor task registration.
 - Fixed duplicate specialist registration in the workforce tests and added explicit inventory output/capability tests.
 - Corrected PA objective newline serialization so internal Comms tasks and memory context receive real line breaks.
+
+
+## Authenticated provider health
+
+- Added a server-only authenticated provider health probe service for Google Calendar, Gmail, and Microsoft 365 Calendar.
+- Added owner-scoped `GET /api/plugins/:provider/health` with server-side credential resolution, bounded HTTPS probes, safe status classification, and persisted redacted health evidence in existing `connectionMetadata.health` JSON.
+- Extended Studio provider readiness evidence to surface `healthStatus`, `lastHealthCheckAt`, latency, and a safe health note; OAuth connection alone remains insufficient for execution.
+- Added regression coverage for healthy, authorization-rejected, transient/degraded, unsupported-provider, and malformed-evidence states.
+- No schema migration, secret change, deployment, auto-merge, paid upgrade, or outbound communication was performed.
