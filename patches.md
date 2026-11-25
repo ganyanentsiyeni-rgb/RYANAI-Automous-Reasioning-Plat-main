@@ -190,3 +190,12 @@ Authenticated actor identity is now carried as a trusted `actorType` derived fro
 - The disposable migration regression test intentionally inserts duplicate `(user_id, key)` pairs and verifies the migration rejects them without creating the unique index. That test behaved as intended; it is not evidence of production memory corruption.
 - PR #860 was merged while its exact-head CI and single-owner release gate had failed; the GitHub formal-review listing contained no submitted reviews at the time of inspection. This follow-up does not treat an issue comment as a substitute for a formal independent review or a passing release gate.
 - No deployment, migration, data mutation, credential/secret change, infrastructure change, or merge is performed by this follow-up.
+
+
+## 2026-11-25 — Require independent review in main ruleset proposal
+
+- Corrected `.github/workflows/enforce-main-protection.yml` from `required_approving_review_count: 0` to `1`.
+- Updated its post-application assertion to fail unless GitHub confirms at least one approving review is required.
+- Retained strict exact-head status checks, no bypass actors, stale-review dismissal, and review-thread resolution.
+- Kept live ruleset application behind the existing explicit `ENFORCE-REVIEWED-PROTECTION` workflow-dispatch confirmation and administrator credential. This branch change does not apply the live ruleset.
+- No deployment, migration, secret/credential change, infrastructure change, or merge was performed.
