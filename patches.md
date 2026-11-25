@@ -119,3 +119,11 @@ This patch does **not** trigger production deployment. Production deployment sti
 - Extended Studio provider readiness evidence to surface `healthStatus`, `lastHealthCheckAt`, latency, and a safe health note; OAuth connection alone remains insufficient for execution.
 - Added regression coverage for healthy, authorization-rejected, transient/degraded, unsupported-provider, and malformed-evidence states.
 - No schema migration, secret change, deployment, auto-merge, paid upgrade, or outbound communication was performed.
+
+
+## Redis reliability repair
+
+- Added an explicit Redis reliability policy to the existing ioredis boundary: bounded initial connect timeout, command timeout, bounded exponential reconnect delay, limited per-request retries, and ready-state checking.
+- Added regression coverage for retry backoff, Redis URL credential-safe inspection, readiness classification, degraded reconnect behavior, and startup timeout handling.
+- Preserved the existing degraded-start contract for non-production/test contexts and the production/staging dependency gate; no Redis configuration or infrastructure change was made.
+- No production deployment, migration, secret change, paid upgrade, or auto-merge.
