@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { assertCanonicalMcpTool } from '../../mcp/canonicalToolRegistry.js';
 import {
   hasValidMcpServiceToken,
   issueMcpDelegationToken,
