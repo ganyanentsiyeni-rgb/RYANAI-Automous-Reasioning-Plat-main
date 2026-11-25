@@ -214,6 +214,7 @@ export function createRyanAIStudioWorkerRuntime(
         await Promise.allSettled([...inFlight]);
         await persistHeartbeat('stopped');
         started = false;
+        stopPromise = null;
       })();
       try {
         await stopPromise;
