@@ -339,11 +339,19 @@ The root install:all script performs these three installs.
 
 ### 3. Configure local environment
 
+On Linux, macOS, or WSL:
+
 ~~~bash
 cp .env.example .env
 ~~~
 
-Edit .env locally. The template is a starting point, not a complete secret generator. Docker Compose additionally requires local values for DB_PASSWORD, REDIS_PASSWORD, and JWT_SECRET. Use unique development-only values. Do not paste credentials into issues, pull requests, chat, screenshots, or source files.
+On Windows Command Prompt (CMD):
+
+~~~cmd
+copy .env.example .env
+~~~
+
+Edit `.env` locally. The template is a starting point, not a complete secret generator. Docker Compose additionally requires local values for `DB_PASSWORD`, `REDIS_PASSWORD`, and `JWT_SECRET`. Set unique development-only values for all three. Do not paste credentials into issues, pull requests, chat, screenshots, or source files.
 
 ### 4. Start development services
 
