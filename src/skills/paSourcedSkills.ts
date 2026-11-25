@@ -1,5 +1,3 @@
-import { Object.freeze } from 'node:util';
-
 export type PASkillRisk = 'low' | 'medium';
 export type PASkillSourceType = 'project' | 'vendor-pattern' | 'installed-skill';
 
