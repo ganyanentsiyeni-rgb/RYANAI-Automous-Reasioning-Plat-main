@@ -1374,3 +1374,8 @@ The backend now treats `src/server/plugins/` as a modular subsystem with an expl
 ## Backend security boundary
 
 Authenticated actor identity is now carried as a trusted `actorType` derived from Supabase app metadata (`human`, `agent`, or `service`). Provider health and provider-read Gen-X decisions no longer hard-code every authenticated request as human. Explicit agent/service identities therefore cannot inherit the human owner authorization exception. Existing sessions without an explicit actor type remain human-compatible; no credentials, secrets, migrations, or deployment settings were changed.
+
+
+## Observability boundary — 2026-11-25
+
+The API now creates one privacy-safe OpenTelemetry HTTP boundary span per request. Telemetry records only bounded HTTP method, registered route, status code and duration. Raw URLs/query strings, headers, bodies, authentication data and response content are excluded. The existing single NodeSDK lifecycle and durable queue trace-context propagation remain authoritative; this increment does not add a second telemetry stack or exporter.
