@@ -1394,3 +1394,8 @@ The in-process metrics registry caps distinct counter series and duration series
 ### Canonical MCP governance completeness
 
 Every canonical MCP tool must have an explicit entry in `governance/agent-governance-policy.json`. A registry entry is not an execution grant. The six reconciled tools for workspace file reads, sandbox scripts, system diagnostics, container logs, pipeline execution, and process health are explicitly `DENY` for delegated agents until each capability receives a separate least-privilege review and runtime evidence. Pipeline execution remains subject to explicit **Push Deploy**, exact-SHA CI/security, and human release approval.
+
+
+### Main-branch review protection
+
+The reviewed-main ruleset must require at least **one independent approving review** for every pull request targeting `main`, alongside exact-head CI/security status checks, resolved review threads, stale-review dismissal, and no bypass actors. The Single-owner release gate is an additional exact-head approval check; it is not a substitute for the ruleset's required review count. The workflow in `.github/workflows/enforce-main-protection.yml` only applies the live ruleset after its explicit `workflow_dispatch` confirmation and administrator credential are supplied. Editing that workflow does not change the live ruleset.

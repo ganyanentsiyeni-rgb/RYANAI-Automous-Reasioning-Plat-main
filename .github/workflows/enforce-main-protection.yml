@@ -57,7 +57,7 @@ jobs:
               {
                 "type": "pull_request",
                 "parameters": {
-                  "required_approving_review_count": 0,
+                  "required_approving_review_count": 1,
                   "dismiss_stale_reviews_on_push": true,
                   "require_code_owner_review": false,
                   "require_last_push_approval": false,
@@ -126,7 +126,7 @@ jobs:
           assert {"deletion", "non_fast_forward", "required_linear_history", "pull_request", "required_status_checks"} <= set(rules), "A required protection rule is missing"
 
           pr = rules["pull_request"]
-          assert pr.get("required_approving_review_count") == 0, "Single-owner mode requires zero approvals; the Single-owner release gate is the merge control"
+          assert pr.get("required_approving_review_count") == 1, "At least one independent approving review is required for main"
           assert pr.get("dismiss_stale_reviews_on_push") is True, "Stale review dismissal must be enabled"
           assert pr.get("require_code_owner_review") is False, "Code-owner approval must not block a reviewed repository"
           assert pr.get("require_last_push_approval") is False, "Last-push approval cannot be required without a second reviewer"
