@@ -150,3 +150,11 @@ Authenticated actor identity is now carried as a trusted `actorType` derived fro
 - Shared telemetry allowlisting is reused so HTTP telemetry cannot capture headers, bodies, auth data, prompts, response content or arbitrary baggage.
 - Added regression coverage for route/query privacy and response lifecycle metadata.
 - No exporter configuration, secret change, migration, deployment, infrastructure change or paid telemetry service was introduced.
+
+
+## 2026-11-25 — Bounded runtime metrics
+
+- Added a small in-process runtime metrics registry for bounded request outcome counters and duration aggregates.
+- Exposed the snapshot through the existing admin-only `/api/admin/metrics` diagnostics route.
+- HTTP lifecycle instrumentation records success/rejected/error outcomes and bounded request duration.
+- No new exporter, external telemetry service, secret, migration, deployment or infrastructure change.
