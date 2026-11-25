@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { connectRedis, isRedisReady } from './connectRedis';
+import { calculateRedisRetryDelay, connectRedis, isRedisReady } from './connectRedis';
 
 const redis = vi.hoisted(() => ({
   construct: vi.fn(),
@@ -25,10 +25,18 @@ describe('Redis initial readiness', () => {
   it('passes rediss URLs unchanged so ioredis enables TLS and retains ACL credentials', async () => {
     const url = 'rediss://default:encoded%3Asecret@region-kv.render.com:6379/0';
     await expect(connectRedis(url)).resolves.toBe(redis);
-    expect(redis.construct).toHaveBeenCalledWith(url, {
+    expect(redis.construct).toHaveBeenCalledWith(url, expect.objectContaining({
       lazyConnect: true,
       connectTimeout: 5000,
-    });
+      commandTimeout: 2500,
+      maxRetriesPerRequest: 2,
+      enableReadyCheck: true,
+      retryStrategy: expect.any(Function),
+    }));
+    const options = redis.construct.mock.calls[0][1] as { retryStrategy: (attempt: number) => number };
+    expect(options.retryStrategy(0)).toBe(250);
+    expect(options.retryStrategy(3)).toBe(2000);
+    expect(options.retryStrategy(10)).toBe(5000);
   });
 
   it('keeps a reconnecting client available for degraded API startup', async () => {
@@ -193,5 +201,15 @@ describe('Redis connection URL inspection', () => {
     const { inspectRedisConnectionUrl } = await import('./connectRedis.js');
     expect(() => inspectRedisConnectionUrl('https://user:super-secret@redis.example:6379'))
       .toThrow(/REDIS_URL/);
+  });
+});
+
+
+describe('Redis retry backoff', () => {
+  it('uses bounded exponential delay', () => {
+    expect(calculateRedisRetryDelay(0, 250, 5000)).toBe(250);
+    expect(calculateRedisRetryDelay(1, 250, 5000)).toBe(500);
+    expect(calculateRedisRetryDelay(2, 250, 5000)).toBe(1000);
+    expect(calculateRedisRetryDelay(10, 250, 5000)).toBe(5000);
   });
 });

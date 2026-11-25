@@ -1359,3 +1359,8 @@ The repository-auditor worker registers its read-only inventory handlers from th
 ## Authenticated provider health
 
 The plugin integration layer now distinguishes OAuth authorization from live provider health. The owner-scoped `GET /api/plugins/:provider/health` route performs a bounded, read-only authenticated probe for Google Calendar, Gmail, or Microsoft 365 Calendar using the server-side stored credential. Health evidence is persisted in `connectionMetadata.health`; tokens are never returned or logged. `healthy` is required in addition to an active owner connection and registered adapter before execution can become ready. This route does not schedule polling or deploy infrastructure.
+
+
+## Redis reliability boundary
+
+Redis/Valkey is treated as ephemeral cache/coordination infrastructure, never the authoritative durable record. The API uses a bounded initial connection deadline, explicit command timeout, bounded exponential reconnect delay, limited per-request retries, and readiness checks that require the Redis client to reach the `ready` state. `/health` remains liveness-only; `/readyz` performs a live Redis probe. Redis recovery after startup is reported as unavailable until a real readiness/PING check succeeds.
