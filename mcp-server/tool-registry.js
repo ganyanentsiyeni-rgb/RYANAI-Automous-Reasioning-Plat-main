@@ -48,6 +48,7 @@ export function resolveToolRegistry(tools, env = process.env) {
     ...tool,
     toolId: `ryanai.mcp.${tool.name}`,
     registryVersion: canonicalRegistry.version,
+    version: canonicalRegistry.version,
     available: tool.name === REGISTRY_TOOL || availableNames.has(tool.name),
     inputSchema: tools.find((runtimeTool) => runtimeTool.name === tool.name)?.inputSchema ?? tool.inputSchema,
     outputContract: 'mcp-text-content',
