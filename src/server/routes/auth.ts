@@ -11,6 +11,18 @@ import { normalizeResponsePreferences, type ResponsePreferences } from '../../sh
 
 // --- Interfaces & Types ---
 
+export type TrustedActorType = 'human' | 'agent' | 'service';
+
+/**
+ * Resolve actor identity only from trusted Supabase app metadata.
+ * Unknown/missing metadata remains human-compatible for existing sessions;
+ * explicit agent/service identities can never be promoted to human by a route.
+ */
+export function resolveTrustedActorType(appMetadata: Record<string, unknown> | undefined): TrustedActorType {
+  const value = appMetadata?.actor_type;
+  return value === 'agent' || value === 'service' || value === 'human' ? value : 'human';
+}
+
 export interface AuthenticatedUser {
   id: string;
   email?: string;
@@ -23,6 +35,8 @@ export interface AuthenticatedUser {
   responsePreferences?: ResponsePreferences;
   /** AAL is taken only from Supabase-verified JWT claims. */
   sessionAssurance: 'aal1' | 'aal2';
+  /** Trusted actor classification from Supabase app metadata; never from request input. */
+  actorType: TrustedActorType;
 }
 
 // Augment Fastify types to include custom request properties and Prisma instance
@@ -103,6 +117,7 @@ export async function requireUser(
     request.authUser = {
       id: data.user.id,
       sessionAssurance: claimsData.claims.aal as 'aal1' | 'aal2',
+      actorType: resolveTrustedActorType(data.user.app_metadata as Record<string, unknown> | undefined),
       email: data.user.email,
       role: data.user.app_metadata?.role === 'admin' ? 'admin' : 'user',
       displayName: typeof data.user.user_metadata?.full_name === 'string' ? data.user.user_metadata.full_name : undefined,

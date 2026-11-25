@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateGenXSecurityEvent, isGenXOffensiveTool } from './genxPolicy';
+import { resolveTrustedActorType } from '../server/routes/auth';
 
 const base = { agentId: 'agent-test', principal: 'user-test', toolName: 'system_diagnostics', action: 'READ' as const };
 
 describe('Gen-X deterministic security enforcement', () => {
+  it('derives actor type only from trusted app metadata', () => {
+    expect(resolveTrustedActorType(undefined)).toBe('human');
+    expect(resolveTrustedActorType({ actor_type: 'human' })).toBe('human');
+    expect(resolveTrustedActorType({ actor_type: 'agent' })).toBe('agent');
+    expect(resolveTrustedActorType({ actor_type: 'service' })).toBe('service');
+    expect(resolveTrustedActorType({ actor_type: 'unknown' })).toBe('human');
+  });
   it('allows known read-only diagnostics and the PA AI Inspector report target', () => {
     expect(evaluateGenXSecurityEvent(base).decision).toBe('ALLOW');
     expect(evaluateGenXSecurityEvent({ ...base, target: 'pa:ai-inspector-audit-report', actorType: 'agent' }))

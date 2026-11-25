@@ -136,3 +136,8 @@ This patch does **not** trigger production deployment. Production deployment sti
 - Added a repository boundary check that rejects external `src/server/**` imports into plugin implementation files; internal plugin files may continue to compose directly.
 - Added Vitest coverage for the boundary contract.
 - No runtime behavior, database schema, provider credentials, deployment configuration, or production infrastructure was changed.
+
+
+## Backend security boundary
+
+Authenticated actor identity is now carried as a trusted `actorType` derived from Supabase app metadata (`human`, `agent`, or `service`). Provider health and provider-read Gen-X decisions no longer hard-code every authenticated request as human. Explicit agent/service identities therefore cannot inherit the human owner authorization exception. Existing sessions without an explicit actor type remain human-compatible; no credentials, secrets, migrations, or deployment settings were changed.
