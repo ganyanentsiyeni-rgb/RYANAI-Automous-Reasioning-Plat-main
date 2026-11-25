@@ -59,6 +59,8 @@ import { mcpDelegationRoutes } from './routes/mcpDelegation.js';
 import { providerGatewayRoutes } from './routes/providerGateway.js';
 import { registerPatchRoutes } from './routes/patchRoutes.js';
 import { adminResilienceRoutes } from './routes/adminResilience.js';
+import { resolveRequestCorrelationId } from './requestCorrelation.js';
+import { installHttpTelemetry } from './httpTelemetry.js';
 import { inspectDatabaseSchema } from './databaseSchema.js';
 import { agentOperationsRoutes } from './routes/agentOperations.js';
 import { memoryRoutes } from './routes/memory.js';
@@ -129,6 +131,10 @@ const httpBoundarySpans = new WeakMap<object, HttpBoundarySpan>();
 
 const fastify = Fastify({
   trustProxy: true,
+  // Keep request correlation server-controlled while accepting a bounded upstream ID.
+  // Fastify's default numeric IDs are useful locally but are not stable across services.
+  requestIdHeader: false,
+  genReqId: (rawRequest) => resolveRequestCorrelationId(rawRequest.headers),
   logger: {
     level: process.env.LOG_LEVEL || (isDevelopment ? 'debug' : 'info'),
     ...(isDevelopment && {
@@ -142,6 +148,13 @@ const fastify = Fastify({
   },
 });
 
+// Expose the same bounded correlation ID to downstream callers. This is an
+// observability header only; it carries no authentication or authorization data.
+fastify.addHook('onSend', async (request, reply) => {
+  reply.header('X-Request-ID', request.id);
+});
+
+installHttpTelemetry(fastify);
 // Start one privacy-safe HTTP boundary span per request. Route templates are used instead of
 // raw URLs, and no headers, query values, bodies, auth data or response content are recorded.
 fastify.addHook('onRequest', async (request) => {
