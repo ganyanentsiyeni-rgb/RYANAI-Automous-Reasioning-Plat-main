@@ -1507,3 +1507,8 @@ The Push Deploy exact-SHA gate maps each Actions check run's run ID from its det
 
 The deployment contexts explicitly exclude runtime environment files (`.env`, `.env.*`, and nested variants) from Railway and Vercel uploads while retaining credential-free example templates. This is a deployment-artifact safeguard; it does not remove previously committed environment files from Git history or remediate any already-exposed credentials.
 
+
+
+### CI lint and MCP contract repair — 2026-11-25
+
+The backend module-boundary scanner's regex escaping and path normalization were corrected, and the MCP delegation contract test now imports its canonical registry assertion and avoids an unused loop binding. This repairs two lint errors identified by exact-SHA CI; it does not certify the full test suite or authorize deployment.

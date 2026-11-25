@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { assertCanonicalMcpTool } from '../../mcp/canonicalToolRegistry.js';
 import {
   hasValidMcpServiceToken,
   issueMcpDelegationToken,
@@ -18,7 +19,7 @@ describe('MCP delegation and canonical registry alignment', () => {
       reasoning_request: ['reasoning_route', 'reasoning.request'],
     } as const;
 
-    for (const [scope, [toolName, capability]] of Object.entries(expected)) {
+    for (const [toolName, capability] of Object.values(expected)) {
       const tool = assertCanonicalMcpTool(toolName);
       expect(tool.capability).toBe(capability);
       expect(tool.audit).toBe('required');

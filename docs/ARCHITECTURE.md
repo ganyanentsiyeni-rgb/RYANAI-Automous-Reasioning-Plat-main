@@ -435,3 +435,8 @@ The Push Deploy gate maps Actions check-run details URLs to workflow IDs using t
 
 Railway and Vercel source-upload contexts explicitly exclude `.env`, `.env.*`, and nested environment files. Credential-free `.env.example` templates may remain included. Keep `.railwayignore` and `.vercelignore` tracked in the repository (including explicit `.gitignore` allowlist entries). These exclusions prevent accidental inclusion in new CLI deployment artifacts; they do not purge Git history or revoke credentials that may already have been exposed.
 
+
+
+### CI static-analysis integrity — 2026-11-25
+
+The backend module-boundary scanner must use JavaScript regex escapes (`\s`, `\.`) rather than over-escaped literal backslashes, and normalize Windows path separators correctly. The MCP delegation contract test imports `assertCanonicalMcpTool` from the canonical registry and iterates only the tuple values it asserts. These repairs address lint failures without changing authorization policy, runtime capabilities, or deployment behavior. Full exact-SHA CI and human review remain mandatory.
