@@ -250,9 +250,9 @@ describe('RyanAI Studio overview API', () => {
     const calendar = body.integrations.providers.find((provider: { id: string }) => provider.id === 'google-calendar');
     const microsoft = body.integrations.providers.find((provider: { id: string }) => provider.id === 'microsoft-365-calendar');
     const gmail = body.integrations.providers.find((provider: { id: string }) => provider.id === 'gmail');
-    expect(calendar).toMatchObject({ connectionStatus: 'refresh_required', authenticationStatus: 'expired', healthStatus: 'not_probed', executionStatus: 'blocked_adapter_missing', usable: false });
-    expect(microsoft).toMatchObject({ connectionStatus: 'reauthorization_required', authenticationStatus: 'reauthorization_required', healthStatus: 'not_probed', executionStatus: 'blocked_adapter_missing', usable: false });
-    expect(gmail).toMatchObject({ connectionStatus: 'expiry_unknown', authenticationStatus: 'expiry_unknown', healthStatus: 'not_probed', executionStatus: 'blocked_adapter_missing', usable: false });
+    expect(calendar).toMatchObject({ connectionStatus: 'refresh_required', authenticationStatus: 'expired', healthStatus: 'not_probed', executionStatus: 'blocked_connection', usable: false });
+    expect(microsoft).toMatchObject({ connectionStatus: 'reauthorization_required', authenticationStatus: 'reauthorization_required', healthStatus: 'not_probed', executionStatus: 'blocked_connection', usable: false });
+    expect(gmail).toMatchObject({ connectionStatus: 'expiry_unknown', authenticationStatus: 'expiry_unknown', healthStatus: 'not_probed', executionStatus: 'blocked_connection', usable: false });
     expect(JSON.stringify(body)).not.toContain('encrypted-refresh-token');
   });
 
