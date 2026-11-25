@@ -1471,12 +1471,8 @@ Production deployment is manual and requires the PUSH DEPLOY workflow-dispatch c
 
 ### Release-gate duplicate-check and Vercel verification safeguards
 
-The Push Deploy exact-SHA gate groups matching check runs by required context and GitHub App, then evaluates the newest attempt for each producer. An obsolete failed attempt does not permanently block a successful rerun; any latest failed producer fails the gate, and any latest pending or missing required context keeps it waiting. Vercel health verification targets the newly returned deployment URL (preserving the configured health-path suffix), rather than a potentially stale production domain. These safeguards are awaiting review and merge; they do not authorize or trigger a deployment.
+The Push Deploy exact-SHA gate groups check runs by required context, GitHub App, and workflow ID. Separate workflows that publish the same context remain independent producers; within each producer, only its newest attempt is authoritative. An obsolete failed attempt therefore does not permanently block a successful rerun, while a failure or pending result from another producer cannot be hidden. Missing required contexts remain blocked. Vercel health verification targets the newly returned deployment URL (preserving the configured health-path suffix), rather than a potentially stale production domain. These safeguards are source changes only and do not authorize or trigger a deployment.
 ### Deployment source-file exclusions
 
 The deployment contexts explicitly exclude runtime environment files (`.env`, `.env.*`, and nested variants) from Railway and Vercel uploads while retaining credential-free example templates. This is a deployment-artifact safeguard; it does not remove previously committed environment files from Git history or remediate any already-exposed credentials.
 
-
-### Release-gate duplicate-check and Vercel verification safeguards
-
-The Push Deploy exact-SHA gate evaluates **every** check run matching each required check name; a duplicate failed or pending run cannot be hidden by a newer successful run. Vercel health verification targets the newly returned deployment URL (preserving the configured health-path suffix), rather than a potentially stale production domain. These safeguards are awaiting review and merge; they do not authorize or trigger a deployment.

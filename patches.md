@@ -237,3 +237,12 @@ Authenticated actor identity is now carried as a trusted `actorType` derived fro
 - Changed the Push Deploy gate to inspect every check run matching each required name. A duplicate failed result now fails the gate; a duplicate incomplete result keeps it pending instead of allowing the latest successful run to mask it.
 - Changed Vercel health verification to use the newly created deployment URL with the health-path suffix from the configured URL, avoiding a false positive from checking an existing production domain.
 - No deployment, domain change, credential change, or production infrastructure operation was performed. The changes are on branch fix/release-gate-evidence-integrity-20261125 and require independent review after main-branch protections are restored.
+
+
+## 2026-11-25 — Preserve independent release-check producers across reruns
+
+- Refined exact-SHA check grouping to include the GitHub Actions workflow ID in addition to required context and GitHub App. Independent workflows publishing an identically named context are evaluated separately.
+- Within each producer, only the newest attempt is authoritative: a successful rerun can supersede that producer's older failure, but cannot hide another workflow producer's failure or pending result.
+- Removed an accidental duplicate 30-second sleep from the release-gate polling loop so its stated 45-minute timeout and 90 polling attempts align.
+- Consolidated contradictory release-gate descriptions in README and architecture documentation.
+- No workflow dispatch, deployment, provider call, production change, or credential change was performed. Static edits remain unvalidated by GitHub Actions tooling and require review after main governance is restored.
