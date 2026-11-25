@@ -177,3 +177,15 @@ For each provider, complete the following in a separate, provider-scoped change:
 8. Require exact-head CI/security evidence and human review. No auto-merge, deployment, production migration, secret modification or paid resource provisioning is implied.
 
 The current implementation does not add OAuth clients, provider secrets, adapters, database schema, migrations, deployment configuration or runtime connections for these nine entries.
+
+## Governed adapter execution boundary — 25 November 2026
+
+The first runtime wiring increment now adds a server-only execution boundary without enabling any provider by itself.
+
+- `PluginRegistry.execute()` is the only registry path that can dispatch a registered adapter; adapter instances remain private to the server process.
+- `executePluginCapability()` requires an explicit authorization callback before dispatch and fails closed for unknown providers, missing adapters, undeclared capabilities, invalid execution identity, cancellation, or denied policy.
+- Adapters receive only an opaque `connectionRef`; raw access/refresh tokens are not accepted as execution input.
+- Manifest capabilities marked `requiresHumanApproval` require an explicit human-approval authorization signal at invocation time.
+- The execution boundary is covered by tests for adapter absence, authorization denial, cancellation, capability binding and opaque connection references.
+
+This increment still does **not** register a live provider adapter or create provider credentials. The next provider-scoped change must connect this boundary to the existing encrypted connection ownership and Gen-X policy layers, then add one provider adapter with authenticated health evidence before marking that provider executable.
