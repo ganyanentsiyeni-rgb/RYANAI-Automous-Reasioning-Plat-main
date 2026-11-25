@@ -67,6 +67,36 @@ describe('enqueueCommsAssistRun', () => {
     expect(result).toMatchObject({ runId: 'comms_assist_abc', status: 'queued', replayed: false, notified: true });
   });
 
+  it('replays the same durable AgentRun for an identical owner, key, and objective', async () => {
+    tx.agentRun.create.mockRejectedValueOnce({ code: 'P2002' });
+    prismaMock.agentRun.findUnique.mockResolvedValueOnce({
+      id: 'comms_assist_existing',
+      userId: 'owner-1',
+      objective: 'Internal Comms task',
+      status: 'queued',
+      approvalStatus: 'approved',
+    });
+
+    const result = await enqueueCommsAssistRun({
+      ownerUserId: 'owner-1',
+      idempotencyKey: 'pa-delegation:delegation-1',
+      objective: 'Internal Comms task',
+    });
+
+    expect(result).toMatchObject({
+      runId: 'comms_assist_existing',
+      status: 'queued',
+      replayed: true,
+      notified: true,
+    });
+    expect(tx.agentRun.create).toHaveBeenCalledOnce();
+    expect(prismaMock.agentRun.findUnique).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: expect.stringMatching(/^comms_assist_[a-f0-9]{64}$/) },
+    }));
+    expect(publishAgentTaskNotification).toHaveBeenCalledOnce();
+    expect(appendRunEvidence).not.toHaveBeenCalled();
+  });
+
   it('rejects an idempotency replay with a different owner or objective', async () => {
     tx.agentRun.create.mockRejectedValueOnce({ code: 'P2002' });
     prismaMock.agentRun.findUnique.mockResolvedValueOnce({
