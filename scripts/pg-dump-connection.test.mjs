@@ -1,8 +1,8 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
+import test from 'node:test';
 import { buildPgDumpEnvironment } from './pg-dump-connection.mjs';
 
-test('maps PostgreSQL URL credentials and connection settings to libpq variables', () => {
+test('maps URL credentials and connection settings to libpq variables', () => {
   const env = buildPgDumpEnvironment(
     'postgresql://backup%40user:p%40ss%3Aword@db.example.test:6543/ryanai?sslmode=verify-full&sslrootcert=%2Fcerts%2Froot.pem&connect_timeout=8&application_name=ryanai-backup',
     { PATH: '/usr/bin', KEEP_ME: 'yes' },
@@ -38,7 +38,6 @@ test('rejects non-PostgreSQL and incomplete URLs without echoing credentials', (
   ]) {
     assert.throws(() => buildPgDumpEnvironment(value), (error) => {
       assert.match(error.message, /DATABASE_URL/);
-      assert.doesNotMatch(error.message, /private-password/);
       assert.equal(error.message.includes('private-password'), false);
       return true;
     });
