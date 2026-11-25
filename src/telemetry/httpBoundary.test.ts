@@ -15,7 +15,7 @@ describe('HTTP telemetry boundary privacy contract', () => {
       routeOptions: { url: '/api/tasks/:id?secret=query' },
     })).toEqual({
       'http.method': 'GET',
-      'http.route': '/api/tasks/:id?secret=query',
+      'http.route': '/api/tasks/:id',
     });
   });
 
