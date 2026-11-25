@@ -1364,3 +1364,8 @@ The plugin integration layer now distinguishes OAuth authorization from live pro
 ## Redis reliability boundary
 
 Redis/Valkey is treated as ephemeral cache/coordination infrastructure, never the authoritative durable record. The API uses a bounded initial connection deadline, explicit command timeout, bounded exponential reconnect delay, limited per-request retries, and readiness checks that require the Redis client to reach the `ready` state. `/health` remains liveness-only; `/readyz` performs a live Redis probe. Redis recovery after startup is reported as unavailable until a real readiness/PING check succeeds.
+
+
+## Backend module boundaries
+
+The backend now treats `src/server/plugins/` as a modular subsystem with an explicit public API at `src/server/plugins/index.ts`. Server consumers outside that subsystem must import plugin capabilities through the public API rather than reaching into implementation files. The boundary is enforced by `scripts/backend-module-boundaries.mjs` and covered by `scripts/backend-module-boundaries.test.ts`. This preserves the plugin execution, MCP, provider-health and authorization contracts while allowing internal plugin implementation to evolve without route-level coupling.
