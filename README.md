@@ -1512,3 +1512,11 @@ The deployment contexts explicitly exclude runtime environment files (`.env`, `.
 ### CI lint and MCP contract repair — 2026-11-25
 
 The backend module-boundary scanner's regex escaping and path normalization were corrected, and the MCP delegation contract test now imports its canonical registry assertion and avoids an unused loop binding. This repairs two lint errors identified by exact-SHA CI; it does not certify the full test suite or authorize deployment.
+
+
+## 2026-11-25 — exact-SHA CI contract repair
+
+- Reconciled backend module-boundary imports with the plugin public API and preserved a stable MCP unknown-tool error contract.
+- Updated Redis readiness tests to assert the reliability options actually used by `connectRedis`; the configured initial readiness deadline is now honored without an artificial 250 ms floor.
+- Updated provider/auth test fixtures to include the trusted `human` actor classification introduced by the provider Gen-X network gate, and corrected the environment-contract test to use a supported error assertion pattern.
+- These changes target the exact failures observed on main CI. They do not change provider deployment, production database migration, secrets, or production infrastructure.
