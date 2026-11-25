@@ -60,3 +60,8 @@ STDIO is a local process transport, not a remotely exposed HTTP endpoint. It rem
 - Human review and separate deployment approval.
 
 Queued, skipped, missing or provider-blocked checks are not passing evidence.
+
+
+## Canonical registry alignment — 25 November 2026
+
+The API-issued MCP delegation scopes are now checked against the canonical registry in `src/mcp/canonical-tool-registry.json` at module load. Each delegated scope must resolve to a canonical tool with the expected capability identifier and required audit metadata. This prevents the API delegation contract from silently drifting away from the MCP tool catalogue. A new or renamed delegated capability must update the canonical registry and its regression tests before it can execute.
