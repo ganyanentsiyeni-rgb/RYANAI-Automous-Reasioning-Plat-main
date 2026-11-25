@@ -58,6 +58,7 @@ import { mcpDelegationRoutes } from './routes/mcpDelegation.js';
 import { providerGatewayRoutes } from './routes/providerGateway.js';
 import { registerPatchRoutes } from './routes/patchRoutes.js';
 import { adminResilienceRoutes } from './routes/adminResilience.js';
+import { resolveRequestCorrelationId } from './requestCorrelation.js';
 import { inspectDatabaseSchema } from './databaseSchema.js';
 import { agentOperationsRoutes } from './routes/agentOperations.js';
 import { memoryRoutes } from './routes/memory.js';
@@ -126,6 +127,10 @@ const isDevelopment = config.nodeEnv === 'development';
 // Initialize Fastify instance with trustProxy and telemetry-aware logger
 const fastify = Fastify({
   trustProxy: true,
+  // Keep request correlation server-controlled while accepting a bounded upstream ID.
+  // Fastify's default numeric IDs are useful locally but are not stable across services.
+  requestIdHeader: false,
+  genReqId: (rawRequest) => resolveRequestCorrelationId(rawRequest.headers),
   logger: {
     level: process.env.LOG_LEVEL || (isDevelopment ? 'debug' : 'info'),
     ...(isDevelopment && {
@@ -137,6 +142,12 @@ const fastify = Fastify({
       },
     }),
   },
+});
+
+// Expose the same bounded correlation ID to downstream callers. This is an
+// observability header only; it carries no authentication or authorization data.
+fastify.addHook('onSend', async (request, reply) => {
+  reply.header('X-Request-ID', request.id);
 });
 
 // Initialize the core platform Prisma client and the separate optional Neon audiobook client.
