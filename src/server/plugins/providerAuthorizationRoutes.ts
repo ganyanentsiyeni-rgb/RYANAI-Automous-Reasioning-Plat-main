@@ -628,7 +628,7 @@ export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) =
       if (!granted.includes(required)) {
         return reply.code(403).send({ error: 'The connected account has not granted the required read-only calendar scope.' });
       }
-      if (!authorizeAuthenticatedConnectionOwnerRead(ownerUserId, config.id, 'calendar.events.read', request.authUser.actorType)) {
+      if (!authorizeAuthenticatedConnectionOwnerRead(ownerUserId, config.id, 'calendar.events.read', request.authUser?.actorType ?? 'service')) {
         return reply.code(403).send({ error: 'Gen-X denied this provider read request.' });
       }
 
