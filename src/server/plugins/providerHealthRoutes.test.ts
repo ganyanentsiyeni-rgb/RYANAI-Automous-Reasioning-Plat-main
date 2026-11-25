@@ -142,7 +142,7 @@ describe('authenticated provider health HTTP boundary', () => {
     expect(response.json()).toMatchObject({
       provider: 'google-calendar',
       healthStatus: 'unavailable',
-      executionStatus: 'blocked_health_unavailable',
+      executionStatus: 'blocked_adapter_missing',
       usable: false,
     });
     expect(rows.get(`${owner.id}:google-calendar`)?.connectionMetadata).toMatchObject({
