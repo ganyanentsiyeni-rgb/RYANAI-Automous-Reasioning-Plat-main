@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { getStudioWorkerHandlerReadiness } from './studioNativeCore.js';
+import { getStudioWorkerHandlerReadiness, registerStudioTaskHandler } from './studioNativeCore.js';
 import { registerRyanAISpecialistTaskHandlers, runRyanAIInspectorAudit, runRyanAIRepositoryInventory } from './ryanaiSpecialistTaskHandlers.js';
 import { findModuleAgentForTask, getModuleAgentForModule } from '../../agent/moduleAgentRegistry.js';
 import { findWorkerForTask } from '../../agent/workerRegistry.js';

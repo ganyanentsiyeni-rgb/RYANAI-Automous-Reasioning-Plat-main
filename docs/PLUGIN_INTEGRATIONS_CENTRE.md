@@ -10,6 +10,14 @@ The first UI increment stores only user-owned preferences in Supabase Auth metad
 
 Provider credentials must remain in the server-side secret/configuration boundary and must never be copied into user metadata or browser storage. User preferences cannot grant roles, OAuth scopes, provider access or execution rights.
 
+## MCP unified registry — 25 November 2026
+
+The backend MCP tool boundary now has one canonical metadata contract at `src/mcp/canonical-tool-registry.json`. It defines tool identity, owner, risk, capability, execution class, approval requirement, audit requirement, timeout, idempotency, production/secret access flags, description and input schema.
+
+MCP implementations consume filtered views of this registry. A runtime may expose fewer tools because a capability is unavailable or disabled, but it must not add tools or widen the canonical capability/approval policy. Registry presence is not proof of adapter readiness, provider authentication, authorization or live health.
+
+The registry is deliberately separate from provider credentials and plugin connections. Provider execution still requires the server-side connection boundary, Gen-X authorization and any required human approval.
+
 ## Required integration lifecycle
 
 1. **Discover:** catalogue a provider, its supported capabilities, owner, data classification and adapter status.
@@ -186,3 +194,14 @@ The calendar-event and Gmail-message read endpoints now require a fresh Gen-X de
 A successful OAuth callback or enabled UI preference is not sufficient authorization. The route separately checks the owner-bound connection, active connection status, token expiry and exact granted read-only scope before invoking Gen-X. A Gen-X denial returns HTTP 403 and must occur before any provider request. No write, outbound, signing, infrastructure mutation or communications capability is added by this change.
 
 Tests cover the exact allowlist, negative actor/owner/capability cases, the distinction between connection ownership and the RyanAI global-owner flag, and a route-level denial proving that the external provider is not contacted when Gen-X denies. This is an incremental authorization hardening; it does not yet implement the general-purpose adapter invocation service or PA/MCP delegation path.
+## Governed adapter execution boundary — 25 November 2026
+
+The first runtime wiring increment now adds a server-only execution boundary without enabling any provider by itself.
+
+- `PluginRegistry.execute()` is the only registry path that can dispatch a registered adapter; adapter instances remain private to the server process.
+- `executePluginCapability()` requires an explicit authorization callback before dispatch and fails closed for unknown providers, missing adapters, undeclared capabilities, invalid execution identity, cancellation, or denied policy.
+- Adapters receive only an opaque `connectionRef`; raw access/refresh tokens are not accepted as execution input.
+- Manifest capabilities marked `requiresHumanApproval` require an explicit human-approval authorization signal at invocation time.
+- The execution boundary is covered by tests for adapter absence, authorization denial, cancellation, capability binding and opaque connection references.
+
+This increment still does **not** register a live provider adapter or create provider credentials. The next provider-scoped change must connect this boundary to the existing encrypted connection ownership and Gen-X policy layers, then add one provider adapter with authenticated health evidence before marking that provider executable.

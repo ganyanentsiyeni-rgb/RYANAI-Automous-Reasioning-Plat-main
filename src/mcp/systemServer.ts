@@ -7,6 +7,7 @@ import {
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { evaluateGenXSecurityEvent } from "../security/genxPolicy.js";
+import { createMcpToolView, assertCanonicalMcpTool } from "./canonicalToolRegistry.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -31,35 +32,27 @@ export class SystemMcpServer {
 
   /** Registers the MCP list-tools and call-tool handlers for system diagnostics and container log retrieval. */
   private setupHandlers() {
-    // List available system tools
+    const canonicalTools = createMcpToolView(["get_container_logs"]);
+
+    // System MCP exposes only its implemented canonical tools.
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
-      tools: [
-        {
-          name: "get_container_logs",
-          description: "Retrieve recent Docker container logs for diagnostics.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              container: {
-                type: "string",
-                description: "Docker container name or ID",
-              },
-            },
-            required: ["container"],
-          },
-        },
-      ],
+      tools: canonicalTools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+      })),
     }));
 
     // Handle incoming tool execution calls
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
 
-      if (name === "get_container_logs") {
+      const canonicalTool = assertCanonicalMcpTool(name);
+      if (canonicalTool.name === "get_container_logs") {
         const policy = evaluateGenXSecurityEvent({
           agentId: "external-mcp-client",
           principal: "mcp-client",
-          toolName: "get_container_logs",
+          toolName: canonicalTool.name,
           action: "READ",
           target: String((args as { container?: string } | undefined)?.container ?? "ryanai-runtime"),
         });

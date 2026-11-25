@@ -13,6 +13,7 @@ import { describeCapabilityState } from '../plugins/capabilityState.js';
 import { getStudioExecutionDescriptor, submitStudioProject } from '../engineering/studioExecution.js';
 import { cancelStudioTask, createStudioProject, getStudioDeliveryReadiness, getStudioNativeRuntimeDescriptor, listStudioProjects, listStudioWorkerHealth } from '../engineering/studioNativeCore.js';
 import { resolveProviderCapabilityState } from '../plugins/providerCapabilityState.js';
+import { readStoredProviderHealthEvidence } from '../plugins/providerHealth.js';
 import { approveStudioTask } from '../engineering/studioApprovals.js';
 import { createStudioArtifactDownloadUrl } from '../engineering/studioArtifactStorage.js';
 
@@ -245,6 +246,7 @@ export const engineeringEvidenceRoutes: FastifyPluginAsync = async (fastify) => 
           providerId: true, status: true, grantedScopes: true,
           connectedAt: true, revokedAt: true, updatedAt: true,
           accessTokenExpiresAt: true, encryptedRefreshToken: true,
+          connectionMetadata: true,
         },
       }),
       prisma.codingTask.findMany({
@@ -277,7 +279,8 @@ export const engineeringEvidenceRoutes: FastifyPluginAsync = async (fastify) => 
         revokedAt: connection.revokedAt,
         accessTokenExpiresAt: connection.accessTokenExpiresAt,
         hasRefreshToken: Boolean(connection.encryptedRefreshToken),
-      } : null);
+      } : null, new Date(), readStoredProviderHealthEvidence(connection?.connectionMetadata).status);
+      const storedHealth = readStoredProviderHealthEvidence(connection?.connectionMetadata);
       return {
         id: provider.id,
         displayName: provider.displayName,
@@ -293,6 +296,9 @@ export const engineeringEvidenceRoutes: FastifyPluginAsync = async (fastify) => 
         connectionStatus: capabilityState.connectionStatus,
         authenticationStatus: capabilityState.authenticationStatus,
         healthStatus: capabilityState.healthStatus,
+        lastHealthCheckAt: storedHealth.checkedAt,
+        healthLatencyMs: storedHealth.latencyMs,
+        healthNote: storedHealth.safeNote,
         executionStatus: capabilityState.executionStatus,
         usable: capabilityState.usable,
         grantedScopes: connection?.grantedScopes ?? [],
