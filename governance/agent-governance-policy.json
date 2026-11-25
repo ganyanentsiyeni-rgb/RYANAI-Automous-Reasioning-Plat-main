@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "policy_id": "ryanai.agent-governance",
-  "policy_version": "2026-11-08.1",
+  "policy_version": "2026-11-25.1",
   "status": "phase1-policy-contract-and-mcp-tool-metadata",
   "default_decision": "DENY",
   "authority": {
@@ -127,6 +127,54 @@
       "approval": "human_before_dispatch",
       "dispatch_allowed": false,
       "http_availability": "NOT_GRANTED_BY_CURRENT_DELEGATION_SCOPE"
+    },
+    "read_workspace_file": {
+      "capability": "workspace.file.read",
+      "decision": "DENY",
+      "approval": "none",
+      "production_access": false,
+      "secret_access": false,
+      "rationale": "Read-only workspace access remains denied until path and secret-file controls are independently verified."
+    },
+    "execute_sandbox_script": {
+      "capability": "sandbox.execute",
+      "decision": "DENY",
+      "approval": "explicit_human_approval_required_but_not_granted",
+      "production_access": false,
+      "secret_access": false,
+      "rationale": "Script execution remains denied until sandbox isolation and approval enforcement are verified."
+    },
+    "system_diagnostics": {
+      "capability": "system.diagnostics.read",
+      "decision": "DENY",
+      "approval": "none",
+      "production_access": false,
+      "secret_access": false,
+      "rationale": "Local diagnostics remain denied to delegated agents until a bounded runtime allowlist is established."
+    },
+    "get_container_logs": {
+      "capability": "container.logs.read",
+      "decision": "DENY",
+      "approval": "none",
+      "production_access": false,
+      "secret_access": false,
+      "rationale": "Container logs remain denied because diagnostic output may contain sensitive data."
+    },
+    "execute_pipeline": {
+      "capability": "deployment.pipeline.execute",
+      "decision": "DENY",
+      "approval": "explicit_human_approval_required_but_not_granted",
+      "production_access": false,
+      "secret_access": false,
+      "rationale": "Pipeline execution remains denied; no MCP tool bypasses the explicit Push Deploy and release gates."
+    },
+    "get_system_health": {
+      "capability": "system.health.read",
+      "decision": "DENY",
+      "approval": "none",
+      "production_access": false,
+      "secret_access": false,
+      "rationale": "Process health access remains denied to delegated agents until an explicit runtime scope is granted."
     }
   },
   "audit": {

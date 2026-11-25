@@ -180,3 +180,13 @@ Authenticated actor identity is now carried as a trusted `actorType` derived fro
 - Preserved the existing HTTP outcome and duration metrics instrumentation in the launcher.
 - Updated the architecture and README observability contract to match the runtime wiring.
 - No exporter, credentials, schema, migration, deployment or infrastructure changes.
+
+
+## 2026-11-25 — Provider actor and MCP governance follow-up
+
+- Fixed the Gmail provider-read route's nullable actor dereference by treating missing trusted actor metadata as `service`; Gen-X therefore fails closed rather than inheriting human owner authorization.
+- Added explicit `DENY` entries for all six canonical MCP tools previously missing from the governance policy: `read_workspace_file`, `execute_sandbox_script`, `system_diagnostics`, `get_container_logs`, `execute_pipeline`, and `get_system_health`.
+- The entries restore registry/policy completeness without granting delegated execution. Pipeline execution remains gated by explicit **Push Deploy** and exact-SHA release checks.
+- The disposable migration regression test intentionally inserts duplicate `(user_id, key)` pairs and verifies the migration rejects them without creating the unique index. That test behaved as intended; it is not evidence of production memory corruption.
+- PR #860 was merged while its exact-head CI and single-owner release gate had failed; the GitHub formal-review listing contained no submitted reviews at the time of inspection. This follow-up does not treat an issue comment as a substitute for a formal independent review or a passing release gate.
+- No deployment, migration, data mutation, credential/secret change, infrastructure change, or merge is performed by this follow-up.

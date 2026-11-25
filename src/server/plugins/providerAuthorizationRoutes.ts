@@ -731,7 +731,7 @@ export const providerAuthorizationRoutes: FastifyPluginAsync = async (fastify) =
       if (!granted.includes(requiredScope)) {
         return reply.code(403).send({ error: 'The connected account has not granted the required read-only Gmail scope.' });
       }
-      if (!authorizeAuthenticatedConnectionOwnerRead(ownerUserId, config.id, 'gmail.messages.read', request.authUser.actorType)) {
+      if (!authorizeAuthenticatedConnectionOwnerRead(ownerUserId, config.id, 'gmail.messages.read', request.authUser?.actorType ?? 'service')) {
         return reply.code(403).send({ error: 'Gen-X denied this provider read request.' });
       }
 
