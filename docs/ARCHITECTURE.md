@@ -364,3 +364,10 @@ PR B introduces a single API-owned Memory Vault persistence module used by HTTP 
 The API-issued MCP delegation contract uses a separate service credential and HMAC signing secret, a verified Supabase principal, issuer `ryanai-api`, audience `ryanai-mcp`, a maximum 120-second lifetime, unique token ID and explicitly allowlisted read-only diagnostic scopes. MCP runtime verification and execution-time policy reauthorization remain PR C work. The legacy service-token-only OpenAI gateway is disabled by default until delegated identity is integrated.
 
 See [API Control Plane Contract](API_CONTROL_PLANE_CONTRACT.md) for the route, claim, scope, provider and rollout details. PR B remains a code proposal until exact-head CI/security checks and human review pass; this architecture section is not a deployment or production-readiness certificate.
+
+
+## 18. Authenticated provider health evidence
+
+Provider OAuth state and provider health are separate evidence layers. A stored owner grant, successful OAuth callback, configured provider, or registered adapter must not be described as a healthy executable integration. The owner-scoped provider health endpoint performs only a read-only authenticated provider API probe using server-resolved credentials. Supported probes currently cover Google Calendar, Gmail, and Microsoft 365 Calendar. Results are classified as `healthy`, `degraded`, or `unavailable` and stored as redacted evidence under the existing connection metadata; no schema migration is required.
+
+Execution readiness therefore requires the conjunction of an owner-authorized active connection, valid authentication, a registered compatible adapter, successful provider health evidence, Gen-X authorization, and any capability-specific human approval. Health checks do not grant permissions, execute business actions, or authorize outbound communications. Scheduled polling belongs to the later durable worker/observability stages and must retain explicit rate limits and evidence retention.
