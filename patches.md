@@ -433,3 +433,11 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Missing counters and approval state render as `Not reported`; an empty task response is not presented as proof of a healthy or empty queue.
 - Reuses the hook's active-run polling behavior; no new API route, registry assertion, approval action, lease mutation, migration, deployment, or production change.
 - Exact-head CI/build/security checks remain required; tests have not been run locally in this workflow.
+
+## 2026-11-26 — OpenRouter optional configuration and gateway regression coverage
+
+- Added optional server-only `OPENROUTER_API_KEY`, HTTPS endpoint, and explicit model allowlist entries to `.env.example`.
+- Declared the same optional variables for the Render U2EB API service. The key remains `sync: false`; no credential value is committed or provisioned.
+- Documented that Logic synthesis uses the shared API-owned provider adapter and requires an approved AgentRun plus a fresh live worker lease.
+- OpenRouter remains runtime-disabled pending catalogue, versioned ZAR pricing, streaming/tool policy, reliability/failover, privacy/data-region, and staging acceptance evidence.
+- No provider API call, secret change, billing change, hosted configuration change, deployment, migration, or production modification was performed by this configuration/documentation increment.
