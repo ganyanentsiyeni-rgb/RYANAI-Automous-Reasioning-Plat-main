@@ -115,10 +115,9 @@ const destinations = appManifest.routes.map((route) => ({
   icon: routeIcons[route.id],
 }));
 const routeUiOptions: Partial<Record<Route, DashboardUiId>> = {
-  // Dashboard is a core authenticated surface, not a user-toggleable workspace.
-  pa: 'pa', programming: 'programming', operator: 'operator',
+  dashboard: 'dashboard', pa: 'pa', programming: 'programming', operator: 'operator',
   operations: 'operations', admin: 'admin', quant: 'quant', trading: 'trading',
-  cockpit: 'cockpit', studio: 'studio', comms: 'comms', audiobook: 'audiobook', music: 'music', phonelink: 'phonelink', workspace: 'workspace',
+  cockpit: 'cockpit', studio: 'studio', comms: 'comms', music: 'music', phonelink: 'phonelink', workspace: 'workspace',
 };
 
 export default function App() {
@@ -130,11 +129,11 @@ export default function App() {
   // Supabase redirects OAuth authorization requests to this real path (not a hash route).
   const isOAuthConsentRoute = window.location.pathname.replace(/\/+$/, '') === '/oauth/consent';
   const user = session?.user;
-  const isAdmin = user?.app_metadata?.role === 'admin';
   const isOwner = user?.app_metadata?.owner === true || Boolean(user && verifiedIdentity?.userId === user.id && verifiedIdentity.isOwner);
-  // All authenticated workspaces remain discoverable. Account preferences may
-  // customize dashboard layout, but cannot hide or block a registered workspace.
-  const enabledUiIds = Object.keys(normalizeDashboardUiPreferences(user?.user_metadata?.ryanai_dashboard_ui_preferences)) as DashboardUiId[];
+  // Owner identity is established by the verified API response; it always carries administrator UI access.
+  const isAdmin = user?.app_metadata?.role === 'admin' || isOwner;
+  const dashboardUiPreferences = normalizeDashboardUiPreferences(user?.user_metadata?.ryanai_dashboard_ui_preferences);
+  const enabledUiIds = (Object.keys(dashboardUiPreferences) as DashboardUiId[]).filter((id) => dashboardUiPreferences[id]);
   const roleAccessDenied = Boolean(user && (
     (route === 'admin' && !isAdmin)
     || (route === 'comms' && !isOwner)
@@ -143,13 +142,8 @@ export default function App() {
     typeof user?.user_metadata?.full_name === 'string'
       ? user.user_metadata.full_name
       : user?.email?.split('@')[0];
-  const dashboardUiPreferences = normalizeDashboardUiPreferences(user?.user_metadata?.ryanai_dashboard_ui_preferences);
-  // Keep every registered workspace visible on the dashboard regardless of stale
-  // per-account hide flags. Role checks below still protect privileged destinations.
-  const effectiveDashboardUiPreferences = { ...dashboardUiPreferences };
-  for (const preferenceId of Object.keys(effectiveDashboardUiPreferences) as DashboardUiId[]) {
-    effectiveDashboardUiPreferences[preferenceId] = true;
-  }
+  // Visibility preferences affect navigation and shortcuts only; route/API authorization remains independent.
+  const effectiveDashboardUiPreferences = dashboardUiPreferences;
   const audiobookSettings = normalizeAudiobookSettings(user?.user_metadata?.ryanai_audiobook_settings);
   const inferenceSettings = normalizeInferenceSettings(user?.user_metadata?.ryanai_inference_settings, MODEL_LIST, DEFAULT_MODEL);
   const musicSettings = normalizeMusicSettings(user?.user_metadata?.ryanai_music_settings);
@@ -215,7 +209,7 @@ export default function App() {
       ? id !== 'signin' && id !== 'signup' && id !== 'survey'
         && (id !== 'comms' || isOwner)
         && (id !== 'admin' || isAdmin)
-        && (id === 'landing' || id === 'dashboard' || id === 'settings' || id === 'copilot' || id === 'survey' || id === 'help' || id === 'architecture' || Boolean(routeUiOptions[id]))
+        && (id === 'landing' || id === 'settings' || id === 'copilot' || id === 'survey' || id === 'help' || id === 'architecture' || (routeUiOptions[id] ? dashboardUiPreferences[routeUiOptions[id]!] : false))
       : id === 'landing' || id === 'signin' || id === 'signup' || id === 'survey' || id === 'help',
   );
   const currentTitle = destinations.find(({ id }) => id === route)?.label ?? 'Workspace';
