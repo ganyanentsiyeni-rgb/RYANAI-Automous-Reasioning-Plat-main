@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 
 interface AuthPageProps {
   mode?: 'signin' | 'signup';
+  loginAs?: 'user' | 'admin';
 }
 
 type OAuthProvider = 'google' | 'github';
@@ -66,7 +67,8 @@ function getOAuthProviderError(provider: OAuthProvider, cause: unknown): Error |
  * provider errors and email confirmation. Authentication is disabled without
  * a configured client; access follows verified session state.
  */
-export default function AuthPage({ mode = 'signin' }: AuthPageProps) {
+export default function AuthPage({ mode = 'signin', loginAs: initialLoginAs = 'user' }: AuthPageProps) {
+  const [loginAs, setLoginAs] = useState<'user' | 'admin'>(initialLoginAs);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -123,6 +125,9 @@ export default function AuthPage({ mode = 'signin' }: AuthPageProps) {
     setLoading(true);
     try {
       const credentials = { email: email.trim().toLowerCase(), password };
+      if (!isSignup) {
+        sessionStorage.setItem('ryanai-login-intent', loginAs);
+      }
       const { data, error: authError } = isSignup
         ? await supabase.auth.signUp({
             ...credentials,
@@ -164,6 +169,13 @@ export default function AuthPage({ mode = 'signin' }: AuthPageProps) {
         </p>
       ) : (
         <>
+          {!isSignup && (
+            <div role="group" aria-label="Login account type" className="mb-4 grid grid-cols-2 gap-2 rounded-lg border border-white/10 bg-white/[0.02] p-1">
+              <button type="button" aria-pressed={loginAs === 'user'} onClick={() => setLoginAs('user')} className={`rounded-md p-2.5 text-sm font-semibold transition-colors ${loginAs === 'user' ? 'bg-cyan-500/20 text-cyan-100' : 'text-slate-400 hover:bg-white/[0.04] hover:text-slate-200'}`}>Login as User</button>
+              <button type="button" aria-pressed={loginAs === 'admin'} onClick={() => setLoginAs('admin')} className={`rounded-md p-2.5 text-sm font-semibold transition-colors ${loginAs === 'admin' ? 'bg-amber-500/20 text-amber-100' : 'text-slate-400 hover:bg-white/[0.04] hover:text-slate-200'}`}>Login as Admin</button>
+            </div>
+          )}
+          <p className="mb-3 text-xs text-slate-500">{!isSignup && loginAs === 'admin' ? 'Administrator access is granted only when the verified account has the admin role.' : !isSignup ? 'Standard workspace access for verified RyanAI users.' : ''}</p>
           <div className="space-y-3">
             <button
               type="button"
@@ -261,7 +273,7 @@ export default function AuthPage({ mode = 'signin' }: AuthPageProps) {
                   ? 'Please wait…'
                   : isSignup
                     ? 'Create account'
-                    : 'Sign in'}
+                    : loginAs === 'admin' ? 'Sign in as Admin' : 'Sign in as User'}
               </button>
             </fieldset>
           </form>
