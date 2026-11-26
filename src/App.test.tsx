@@ -238,10 +238,11 @@ describe('application authentication boundary', () => {
     await mount('/dashboard');
     await expectContent('Private dashboard');
 
-    for (const path of ['/dashboard', '/programming', '/quant', '/cockpit', '/workspace', '/audiobook', '/operator', '/operations', '/settings', '/trading', '/studio']) {
+    for (const path of ['/dashboard', '/programming', '/quant', '/cockpit', '/workspace', '/operator', '/operations', '/settings', '/trading', '/studio']) {
       expect(container.querySelector(`nav[aria-label="Main navigation"] a[href="#${path}"]`)).not.toBeNull();
       expect(container.querySelector(`nav[aria-label="Mobile navigation"] a[href="#${path}"]`)).not.toBeNull();
     }
+    expect(container.querySelector('nav[aria-label="Main navigation"] a[href="#/audiobook"]')).toBeNull();
     expect(container.querySelector('nav[aria-label="Main navigation"] a[href="#/comms"]')).toBeNull();
     expect(container.querySelector('nav[aria-label="Main navigation"] a[href="#/admin"]')).toBeNull();
   });
@@ -288,6 +289,7 @@ describe('application authentication boundary', () => {
   });
 
   it('applies workspace visibility preferences to desktop/mobile navigation while keeping Settings available', async () => {
+  it('hides opted-out workspaces from desktop and mobile navigation without revoking direct access', async () => {
     const limitedSession = {
       ...session,
       user: {

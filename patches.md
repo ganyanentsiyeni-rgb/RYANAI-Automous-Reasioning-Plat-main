@@ -300,3 +300,8 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Hiding a workspace affects presentation only and does not revoke direct-route or API authorization. Enabling a workspace does not grant permissions.
 - Admin Console and RyanAI Comms remain role/owner gated independently of visibility preferences.
 - Regression coverage verifies hidden workspaces, the Settings recovery path, Dashboard visibility, and direct-route authorization.
+## 2026-11-26 — Align dashboard shortcuts with the fourteen workspace options
+
+- Removed the legacy Audiobook Studio shortcut from the Commander Dashboard so dashboard shortcuts match the fourteen user-selected workspace options.
+- Updated navigation regression assertions to exclude the legacy audiobook destination while preserving direct-route access and permission boundaries.
+- No backend permission, deployment, database, credential, or production configuration was changed.
