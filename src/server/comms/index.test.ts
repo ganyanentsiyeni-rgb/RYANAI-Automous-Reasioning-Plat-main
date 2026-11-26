@@ -10,6 +10,7 @@ const { enqueueInboundCommunicationRun, waitForInboundCommunicationRun, enqueueC
   enqueueCommsAssistRun: vi.fn(),
   waitForAutonomousTask: vi.fn(),
   prismaMock: {
+    agentRun: { findFirst: vi.fn().mockResolvedValue(null) },
     communicationConversation: { upsert: vi.fn().mockResolvedValue({ id: 'conversation-1' }), findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]), updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
     $executeRawUnsafe: vi.fn().mockResolvedValue(1),
     $queryRawUnsafe: vi.fn().mockResolvedValue([]),
@@ -475,6 +476,23 @@ describe('outbound Comms request validation', () => {
     });
     expect(response.statusCode).toBe(409);
     expect(response.json().error).toContain('verified owner destination');
+    expect(prismaMock.communicationConversation.upsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects an AgentRun that is not owned by the authenticated owner before dispatch', async () => {
+    const response = await send('/api/comms/send', '', {
+      channel: 'sms',
+      recipient: '+15555550123',
+      message: 'This must not be sent',
+      idempotencyKey: 'comms-test-key-agent-run',
+      agentRunId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    });
+    expect(response.statusCode).toBe(404);
+    expect(response.json().error).toContain('AgentRun was not found for this owner');
+    expect(prismaMock.agentRun.findFirst).toHaveBeenCalledWith({
+      where: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', userId: '11111111-1111-4111-8111-111111111111' },
+      select: { id: true },
+    });
     expect(prismaMock.communicationConversation.upsert).not.toHaveBeenCalled();
   });
 
