@@ -22,7 +22,7 @@ Required UI states: configuration status, last attempted backup, last successful
 Required operations:
 - Preflight checks for direct PostgreSQL dump capability, private destination bucket, source/destination separation, storage reachability and available space/limits.
 - Explicitly initiated backup with a durable job receipt and bounded execution.
-- Inventory and manifest verification, content digest/checksum, artifact metadata and retention-policy visibility.
+- Inventory and manifest retrieval, content digest/checksum metadata, artifact metadata and retention-policy visibility. The current inventory reads the manifest SHA-256 but does not re-download and hash each stored dump; it must report `not_verified` until an explicit content-verification workflow is implemented and run.
 - Retention preview before any deletion. Deletion requires separate owner confirmation and must preserve configured recovery-point objectives.
 - Never include secrets in manifests, logs, UI, artifacts or PRs.
 
