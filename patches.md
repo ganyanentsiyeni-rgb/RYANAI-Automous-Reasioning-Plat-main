@@ -309,3 +309,10 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Removed the legacy Audiobook Studio shortcut from the Commander Dashboard so dashboard shortcuts match the fourteen user-selected workspace options.
 - Updated navigation regression assertions to exclude the legacy audiobook destination while preserving direct-route access and permission boundaries.
 - No backend permission, deployment, database, credential, or production configuration was changed.
+
+## 2026-11-26 — Ignore stale Operations Center refresh responses
+
+- Added monotonically increasing request guards to task-history and administrator approval-inbox refreshes.
+- Older responses can no longer overwrite newer account-scoped data after an account/role change or overlapping refresh.
+- Clear prior resource errors on successful refresh; regular-account refresh explicitly clears the administrator-only inbox.
+- No API authorization, task execution, approval semantics, production configuration, or deployment behavior changed.
