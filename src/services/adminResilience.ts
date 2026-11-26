@@ -463,7 +463,7 @@ export function evaluateSchemaMigrationArtifacts(
   const sortedIds = [...ids].sort();
   const migrationsValid = migrations.length > 0 &&
     uniqueIds.size === ids.length &&
-    ids.every((id, index) => /^\\d{14}_[a-z0-9_]+$/i.test(id) && id === sortedIds[index]);
+    ids.every((id, index) => /^\d{14}_[a-z0-9_]+$/i.test(id) && id === sortedIds[index]);
   const artifacts = migrations.map((migration) => {
     const sqlBytes = migration.sqlContent === null ? null : Buffer.byteLength(migration.sqlContent);
     const sqlPresent = sqlBytes !== null && sqlBytes > 0;
@@ -494,7 +494,7 @@ export async function inspectSchemaMigrationArtifacts(): Promise<SchemaMigration
     const schemaContent = await readFile(path.resolve(process.cwd(), 'prisma', 'schema.prisma'), 'utf8');
     const entries = await readdir(migrationsPath, { withFileTypes: true });
     const migrationIds = entries
-      .filter((entry) => entry.isDirectory() && /^\\d{14}_[a-z0-9_]+$/i.test(entry.name))
+      .filter((entry) => entry.isDirectory() && /^\d{14}_[a-z0-9_]+$/i.test(entry.name))
       .map((entry) => entry.name)
       .sort();
     const migrations = await Promise.all(migrationIds.map(async (id) => {
