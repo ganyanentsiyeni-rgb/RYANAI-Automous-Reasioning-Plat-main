@@ -96,6 +96,7 @@ const railwayDeploy = read('.github/workflows/deploy-railway.yml');
 const dockerCompose = read('docker-compose.yml');
 const composeConfig = parseYaml(dockerCompose);
 const databaseContract = read('database.yml');
+const apiLauncher = read('src/server/launcher.ts');
 
 function dockerStage(source, preferredNames) {
   const stages = [...source.matchAll(/^FROM\s+.+?\s+AS\s+([\w-]+)\s*$/gim)];
@@ -314,6 +315,9 @@ checks.push(
   ['Compose MCPJungle and Cloudflare edge remain opt-in profiles', composeConfig.services['mcpjungle-db'].profiles.includes('mcp-gateway') && composeConfig.services.mcpjungle.profiles.includes('mcp-gateway') && composeConfig.services.cloudflared.profiles.includes('cloudflare-edge')],
   ['Compose MCPJungle database credentials are mandatory and never default to empty', composeConfig.services['mcpjungle-db'].environment.POSTGRES_PASSWORD.includes(':?Set MCPJUNGLE_DB_PASSWORD') && composeConfig.services.mcpjungle.environment.DATABASE_URL.includes(':?Set MCPJUNGLE_DB_PASSWORD') && !dockerCompose.includes('MCPJUNGLE_DB_PASSWORD:-')],
   ['Compose local PostgreSQL and Redis publish host ports only on loopback', composeConfig.services.postgres.ports.includes('127.0.0.1:5432:5432') && composeConfig.services.redis.ports.includes('127.0.0.1:6379:6379')],
+  ['Compose API liveness stays independent from dependency readiness', apiLauncher.includes("fastify.get('/livez', livenessCheck)") && apiLauncher.includes("fastify.get('/health', livenessCheck)") && apiLauncher.includes("fastify.get('/readyz', healthCheck)") && apiLauncher.includes('Liveness is deliberately independent of dependency readiness')],
+  ['Compose MCP starts on API liveness while its platform health tool checks API readiness', composeConfig.services['mcp-server'].depends_on.api.condition === 'service_healthy' && composeConfig.services['mcp-server'].environment.RYANAI_API_HEALTH_URL === 'http://api:3000/readyz' && composeConfig.services['mcp-server'].healthcheck.test.join(' ').includes('/health')],
+  ['Compose migrations target only the disposable local PostgreSQL service', composeConfig.services.migrate.environment.DATABASE_URL.includes('@postgres:5432/ryanai_db') && !composeConfig.services.migrate.environment.DATABASE_URL.includes('supabase.co') && !composeConfig.services.migrate.environment.DATABASE_URL.includes('pooler.supabase.com')],
 );
 
 for (const [name, passed] of checks) console.log((passed ? 'PASS' : 'FAIL') + ' | ' + name);
