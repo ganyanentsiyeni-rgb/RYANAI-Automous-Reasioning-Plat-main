@@ -346,3 +346,11 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Added a deferred-response UI regression test for the next-page loading state and disabled control.
 - This is a frontend request-feedback repair only. It does not change memory authorization, persistence, retention, or database schema.
 - Tests have not been executed in this environment; exact-head CI remains required. No merge, deployment, migration, credential change, or production modification.
+
+
+## 2026-11-26 — Resume OpenRouter governance implementation
+
+- Preserved the trusted Supabase actor type (`human`, `agent`, or `service`) in API-issued MCP delegation assertions and re-evaluated Gen-X using that signed actor classification at delegation, execution authorization, and provider dispatch.
+- Removed the hard-coded `actorType: human` assumption from delegated reasoning. Explicit agent/service identities are denied by the existing human-only reasoning policy and cannot inherit owner permissions.
+- Added regression coverage across API delegation, API provider gateway, HMAC token verification, and MCP token verification.
+- OpenRouter remains optional and runtime-disabled pending the remaining unified-routing, catalogue, usage/cost, reliability, privacy, and staging acceptance gates. No provider key, billing, hosted environment, deployment, migration, or external API call was changed.
