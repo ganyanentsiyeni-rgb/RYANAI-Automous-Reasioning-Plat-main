@@ -221,7 +221,7 @@ describe('Plugin integrations centre', () => {
     expect(twilio.disabled).toBe(false);
   });
   it('persists preferences only after verifying the authenticated account', async () => {
-    await mount({ isOwner: true });
+    await mount({ isAdmin: true });
     const toggle = container.querySelector('[aria-label="Request WhatsApp Business for eligible workers"]') as HTMLInputElement;
     await act(async () => { toggle.click(); });
     await click([...container.querySelectorAll('button')].find(button => button.textContent?.includes('Save plugin preferences')) ?? null);
