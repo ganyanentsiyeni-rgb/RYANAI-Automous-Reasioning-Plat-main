@@ -200,3 +200,9 @@ The manual staging/production release workflow now has a fail-closed exact-SHA p
 ### Exact-SHA latest-attempt check semantics (2026-11-26)
 
 The governed release, AWS ECS staging, and Azure AKS staging workflows share one required-check catalogue and validator. For each required check name on the exact candidate commit, the validator selects the newest check run by `started_at` (using the monotonically increasing check-run ID as a tie-breaker). It evaluates only that latest attempt: completed success passes; missing, pending, cancelled, failed, skipped, or SHA-mismatched latest attempts block. A prior failed attempt is superseded only by a newer successful attempt. Automated unit tests cover these semantics. This workflow-level control does not replace GitHub branch protection or establish that CI has passed.
+
+## CI execution evidence boundary
+
+Release checks are an execution contract. The canonical `scripts/ci/required-release-checks.json` catalogue names the contexts that must actually execute for a candidate SHA. The `CI execution completeness` workflow polls GitHub check runs for that exact SHA and requires the newest attempt for every catalogue context to complete successfully on the same SHA. This prevents a green-looking release gate caused by stale, missing, pending, or differently-SHA check evidence.
+
+The completeness workflow is evidence-only: it does not deploy, publish images, perform shared/production migrations, change credentials, or modify branch protection.

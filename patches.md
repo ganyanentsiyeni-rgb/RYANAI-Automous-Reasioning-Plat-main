@@ -522,3 +522,19 @@ Both lanes are disabled unless their provider enablement and staging-isolation v
 - Release, AWS ECS staging, and Azure AKS staging gates now select the newest check run for each required context by start time (check-run ID breaks timestamp ties), then require that selected run to be completed successfully and to reference the exact candidate SHA.
 - Older failed/cancelled attempts no longer permanently block a context after a newer successful rerun; a newer pending/failed/cancelled attempt still blocks. Missing contexts and mismatched SHAs remain fail-closed.
 - Added automated tests for reruns, pending latest attempts, missing contexts, SHA mismatch, and duplicate timestamps. No deployment, cloud authentication, image publication, migration, or branch-ruleset change is performed by this patch.
+
+# CI execution completeness
+
+The release-check catalogue is now treated as an execution contract, not only a list of names.
+
+`CI execution completeness` runs on every main push and pull request and waits for the catalogue contexts to appear for the candidate SHA. For each context it selects the newest check attempt by `started_at` (check-run ID as the tie-breaker), then requires:
+
+- the check exists for the candidate SHA;
+- the newest attempt is completed;
+- the conclusion is `success`;
+- the check's `head_sha` exactly matches the candidate SHA.
+
+A missing workflow, a workflow that never starts, a pending check, a failed/cancelled/skipped check, or a check attached to another SHA therefore remains a release blocker.
+
+This verifier does not deploy, publish images, run migrations against shared/production databases, change credentials, or modify branch rulesets. It is diagnostic/gating evidence for CI execution itself.
+
