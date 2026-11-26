@@ -127,6 +127,9 @@ jobs:
       - name: Validate GitHub workflows
         run: npm run workflow:validate
 
+      - name: Validate canonical release-check producer inventory
+        run: node scripts/ci/validate-release-check-producers.mjs
+
       - name: Audit optional deployment readiness and agent inventory
         env:
           AWS_ECS_DEPLOY_ENABLED: ${{ vars.AWS_ECS_DEPLOY_ENABLED }}
