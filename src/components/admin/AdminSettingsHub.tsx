@@ -41,7 +41,7 @@ export default function AdminSettingsHub() {
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-300">Administrator settings index</p>
           <h2 id="admin-settings-hub-title" className="mt-1 text-xl font-semibold text-white">Settings & workspace control</h2>
-          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-400">A single entry point to the eight existing Settings areas and the ten primary RyanAI UI areas. Preference controls remain account-scoped; privileged access is still enforced by the API and Gen-X.</p>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-400">A single entry point to the eight existing Settings areas and the twelve primary RyanAI UI areas. Preference controls remain account-scoped; privileged access is still enforced by the API and Gen-X.</p>
         </div>
         <a href="#/settings" className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/25 px-3 py-2 text-xs font-semibold text-cyan-100 hover:bg-cyan-300/10">Open Settings <ArrowUpRight className="h-3.5 w-3.5" /></a>
       </header>
@@ -61,7 +61,7 @@ export default function AdminSettingsHub() {
       </div>
 
       <div className="border-t border-white/10 pt-4">
-        <div className="mb-3 flex items-center gap-2"><Blocks className="h-4 w-4 text-cyan-300" /><h3 className="text-sm font-semibold text-white">RyanAI UI access directory</h3><span className="ml-auto text-[10px] text-slate-500">10 product areas</span></div>
+        <div className="mb-3 flex items-center gap-2"><Blocks className="h-4 w-4 text-cyan-300" /><h3 className="text-sm font-semibold text-white">RyanAI UI access directory</h3><span className="ml-auto text-[10px] text-slate-500">12 product areas</span></div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
           {workspaceAreas.map((area) => (
             <a key={area.title} href={'#/' + area.route} className="rounded-lg border border-white/10 bg-slate-950/50 p-3 hover:border-cyan-300/30">
