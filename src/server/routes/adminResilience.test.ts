@@ -6,6 +6,7 @@ const resilience = vi.hoisted(() => ({
   createDatabaseBackup: vi.fn(),
   listDatabaseBackups: vi.fn(),
   listExpectedMigrationIds: vi.fn(),
+  verifyDatabaseBackupArtifacts: vi.fn(),
   recoveryPreflight: vi.fn(),
 }));
 vi.mock('../../services/adminResilience.js', () => resilience);
@@ -56,6 +57,7 @@ beforeEach(() => {
     listedAt: '2026-11-20T00:00:00.000Z', items: [], hasMore: false,
   });
   resilience.listExpectedMigrationIds.mockResolvedValue({ status: 'available', migrationIds: ['20261124170000_studio_artifact_idempotency'] });
+  resilience.verifyDatabaseBackupArtifacts.mockResolvedValue([]);
   resilience.recoveryPreflight.mockReturnValue({
     status: 'not_configured', targetLabel: null, productionRestore: 'disabled', writesPerformed: false,
   });
@@ -136,12 +138,13 @@ describe('Admin resilience routes', () => {
         databaseBytes: 100, databaseSha256: 'recorded-digest', manifestPresent: true, retention: 'within_policy',
       }],
     });
+    resilience.verifyDatabaseBackupArtifacts.mockResolvedValueOnce([{ backupId: 'backup-1', status: 'verified', bytesRehashed: true, actualBytes: 100 }]);
     const response = await app.inject({ method: 'GET', url: '/api/admin/resilience/recovery/report', headers: adminHeaders });
     expect(response.statusCode).toBe(200);
     expect(response.json().backupEvidence.artifacts[0]).toMatchObject({
       recordedSha256Present: true,
-      artifactBytesRehashed: false,
-      integrityStatus: 'not_verified',
+      artifactBytesRehashed: true,
+      integrityStatus: 'verified',
     });
   });
 
