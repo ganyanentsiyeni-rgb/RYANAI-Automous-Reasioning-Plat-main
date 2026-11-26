@@ -67,6 +67,26 @@ describe('Gen-X deterministic security enforcement', () => {
       ownerAuthorized: true,
     })).toMatchObject({ decision: 'ALLOW', ruleId: 'GX-OWNER-LIFECYCLE-REQUEST-001' });
   });
+  it('keeps Self-Patch promotion approval-gated even with owner confirmation', () => {
+    const promotion = {
+      agentId: 'ryanai-self-patch',
+      principal: 'verified-owner-id',
+      toolName: 'github_self_patch_promotion',
+      action: 'UPDATE' as const,
+      target: 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main#42@' + 'a'.repeat(40),
+      actorType: 'human' as const,
+      ownerAuthorized: true,
+      ownerConfirmed: true,
+    };
+    expect(evaluateGenXSecurityEvent(promotion)).toMatchObject({
+      decision: 'REQUIRE_APPROVAL',
+      ruleId: 'GX-SELF-PATCH-PROMOTION-001',
+      severity: 'CRITICAL',
+    });
+    expect(evaluateGenXSecurityEvent({ ...promotion, target: 'another/repository#42@' + 'b'.repeat(40) }))
+      .toMatchObject({ decision: 'REQUIRE_APPROVAL', ruleId: 'GX-SELF-PATCH-PROMOTION-001' });
+  });
+
   it('requires approval for network and write actions', () => {
     expect(evaluateGenXSecurityEvent({ ...base, action: 'NETWORK' }).decision).toBe('REQUIRE_APPROVAL');
     expect(evaluateGenXSecurityEvent({ ...base, action: 'UPDATE' }).decision).toBe('REQUIRE_APPROVAL');
