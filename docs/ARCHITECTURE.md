@@ -448,3 +448,8 @@ The backend module-boundary scanner must use JavaScript regex escapes (`\s`, `\.
 - Updated Redis readiness tests to assert the reliability options actually used by `connectRedis`; the configured initial readiness deadline is now honored without an artificial 250 ms floor.
 - Updated provider/auth test fixtures to include the trusted `human` actor classification introduced by the provider Gen-X network gate, and corrected the environment-contract test to use a supported error assertion pattern.
 - These changes target the exact failures observed on main CI. They do not change provider deployment, production database migration, secrets, or production infrastructure.
+
+
+### OpenRouter delegation identity update — 26 November 2026
+
+MCP delegation tokens now carry the API-verified actor classification (`human`, `agent`, or `service`). The API checks the verified actor at token issuance and re-evaluates Gen-X with the signed actor claim at MCP execution and provider-gateway invocation. Agent/service identities are not promoted to human. This closes the actor-identity hard-coding gap for the delegated MCP reasoning path. The durable Logic worker's direct `ChatOpenAI` override remains an outstanding bypass of the shared gateway and must be removed before OpenRouter is considered fully governed.
