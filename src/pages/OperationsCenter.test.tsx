@@ -82,6 +82,15 @@ describe('Operations Center', () => {
     await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/api/actions/action-1/approve', expect.objectContaining({ method: 'POST' }), 'synthetic-user-a'));
   });
 
+  it('clears the administrator approval inbox when the account loses admin UI scope', async () => {
+    await mount(true);
+    await vi.waitFor(() => expect(container.textContent).toContain('Administrator approval inbox'));
+
+    await act(async () => root.render(<OperationsCenter userId="synthetic-user-a" isAdmin={false} />));
+    await vi.waitFor(() => expect(container.textContent).not.toContain('Administrator approval inbox'));
+    expect(container.textContent).not.toContain('Send the approved project update.');
+  });
+
   it('does not request the administrator-only approval queue for a regular account', async () => {
     await mount(false);
     await vi.waitFor(() => expect(container.textContent).toContain('Review the platform wiring'));
