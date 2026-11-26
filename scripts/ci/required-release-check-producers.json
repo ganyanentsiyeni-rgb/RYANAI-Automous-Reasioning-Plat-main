@@ -1,24 +1,100 @@
 {
   "version": 1,
   "contexts": [
-    {"name":"Validate (typecheck, lint, test, build)","workflow":".github/workflows/ci.yml","job":"validate"},
-    {"name":"MCP server and workflow worker","workflow":".github/workflows/ci.yml","job":"subprojects"},
-    {"name":"Integration and end-to-end checks","workflow":".github/workflows/ci.yml","job":"integration"},
-    {"name":"PostgreSQL 19 compatibility","workflow":".github/workflows/ci.yml","job":"postgres19-compatibility"},
-    {"name":"Issue 435 migrations and attachment security","workflow":".github/workflows/ci.yml","job":"issue-435"},
-    {"name":"Audit Render API configuration (read-only)","workflow":".github/workflows/ci.yml","job":"validate"},
-    {"name":"validate-database","workflow":".github/workflows/database.yml","job":"validate-database"},
-    {"name":"Upgrade legacy pgvector database safely (quoted)","workflow":".github/workflows/prisma-pgvector-upgrade.yml","job":"legacy-pgvector-upgrade[quoted]"},
-    {"name":"Upgrade legacy pgvector database safely (unquoted)","workflow":".github/workflows/prisma-pgvector-upgrade.yml","job":"legacy-pgvector-upgrade[unquoted]"},
-    {"name":"Test agent API contracts","workflow":".github/workflows/agent-regression.yml","job":"regression"},
-    {"name":"Dependency audit","workflow":".github/workflows/security.yml","job":"dependency-audit"},
-    {"name":"Trivy filesystem scan","workflow":".github/workflows/security.yml","job":"trivy"},
-    {"name":"Analyze (javascript-typescript)","workflow":".github/workflows/codeql.yml","job":"analyze[javascript-typescript]"},
-    {"name":"Analyze (python)","workflow":".github/workflows/codeql.yml","job":"analyze[python]"},
-    {"name":"TruffleHog secret audit","workflow":".github/workflows/secret-scan.yml","job":"secret-scan"},
-    {"name":"Codacy Security Scan","workflow":".github/workflows/codacy.yml","job":"codacy"},
-    {"name":"Scan api image","workflow":".github/workflows/deploy-platforms.yml","job":"ci_cd"},
-    {"name":"Scan web image","workflow":".github/workflows/deploy-platforms.yml","job":"ci_cd"},
-    {"name":"Generate & Upload SBOMs","workflow":".github/workflows/sbom.yml","job":"generate-sbom"}
+    {
+      "name": "Validate (typecheck, lint, test, build)",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "validate"
+    },
+    {
+      "name": "MCP server and workflow worker",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "subprojects"
+    },
+    {
+      "name": "Integration and end-to-end checks",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "integration"
+    },
+    {
+      "name": "PostgreSQL 19 compatibility",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "postgres19-compatibility"
+    },
+    {
+      "name": "Issue 435 migrations and attachment security",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "issue-435-supabase"
+    },
+    {
+      "name": "Audit Render API configuration (read-only)",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "validate"
+    },
+    {
+      "name": "validate-database",
+      "workflow": ".github/workflows/database.yml",
+      "job": "validate-database"
+    },
+    {
+      "name": "Upgrade legacy pgvector database safely (quoted)",
+      "workflow": ".github/workflows/prisma-pgvector-upgrade.yml",
+      "job": "legacy-pgvector-upgrade[quoted]"
+    },
+    {
+      "name": "Upgrade legacy pgvector database safely (unquoted)",
+      "workflow": ".github/workflows/prisma-pgvector-upgrade.yml",
+      "job": "legacy-pgvector-upgrade[unquoted]"
+    },
+    {
+      "name": "Test agent API contracts",
+      "workflow": ".github/workflows/agent-regression.yml",
+      "job": "regression"
+    },
+    {
+      "name": "Dependency audit",
+      "workflow": ".github/workflows/security.yml",
+      "job": "dependency-audit"
+    },
+    {
+      "name": "Trivy filesystem scan",
+      "workflow": ".github/workflows/security.yml",
+      "job": "trivy"
+    },
+    {
+      "name": "Analyze (javascript-typescript)",
+      "workflow": ".github/workflows/codeql.yml",
+      "job": "analyze[javascript-typescript]"
+    },
+    {
+      "name": "Analyze (python)",
+      "workflow": ".github/workflows/codeql.yml",
+      "job": "analyze[python]"
+    },
+    {
+      "name": "TruffleHog secret audit",
+      "workflow": ".github/workflows/secret-scan.yml",
+      "job": "secret-scan"
+    },
+    {
+      "name": "Codacy Security Scan",
+      "workflow": ".github/workflows/codacy.yml",
+      "job": "codacy"
+    },
+    {
+      "name": "Scan api image",
+      "workflow": ".github/workflows/docker.yml",
+      "job": "scan-api-image"
+    },
+    {
+      "name": "Scan web image",
+      "workflow": ".github/workflows/docker.yml",
+      "job": "scan-web-image"
+    },
+    {
+      "name": "Generate & Upload SBOMs",
+      "workflow": ".github/workflows/sbom.yml",
+      "job": "generate-sbom"
+    }
   ]
 }
