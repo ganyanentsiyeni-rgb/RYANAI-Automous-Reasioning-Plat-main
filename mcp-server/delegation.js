@@ -37,6 +37,7 @@ export function verifyMcpDelegationToken(token, secret, nowSeconds = Math.floor(
     || claims.iss !== 'ryanai-api' || claims.aud !== 'ryanai-mcp'
     || typeof claims.sub !== 'string' || !claims.sub
     || !['user', 'admin'].includes(claims.role)
+    || !['human', 'agent', 'service'].includes(claims.actorType)
     || !Array.isArray(claims.scope) || claims.scope.length < 1
     || claims.scope.some((scope) => !Object.values(MCP_TOOL_SCOPES).includes(scope))
     || !Number.isInteger(claims.iat) || !Number.isInteger(claims.exp)
