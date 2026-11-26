@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   validate-database:
@@ -312,6 +312,10 @@ jobs:
         run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel "$PRISMA_PUBLIC_SCHEMA_FILE" --exit-code
 
       - name: Build server and verify live agent notification delivery
+        env:
+          NODE_ENV: test
+          RYANAI_DISPOSABLE_DB: '1'
+          RYANAI_DISPOSABLE_SUPABASE: '1'
         run: |
           npm run build:server
           node scripts/test-agent-queue.mjs

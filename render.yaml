@@ -20,7 +20,7 @@ projects:
             rootDir: .
             dockerContext: .
             dockerfilePath: ./Dockerfile.api
-            healthCheckPath: /health
+            healthCheckPath: /readyz
             autoDeployTrigger: checksPass
             envVars:
               - key: NODE_ENV
@@ -57,6 +57,13 @@ projects:
                 sync: false
               - key: OPENAI_API_KEY
                 sync: false
+              # Optional OpenRouter routing; no credential is provisioned by this declaration.
+              - key: OPENROUTER_API_KEY
+                sync: false
+              - key: OPENROUTER_API_ENDPOINT
+                value: https://openrouter.ai/api/v1
+              - key: OPENROUTER_MODEL_ALLOWLIST
+                value: ~openai/gpt-latest,~anthropic/claude-sonnet-latest
               # Shared MCP signing/service credentials must match the MCP service; set from the existing Render test environment group.
               - key: RYANAI_MCP_DELEGATION_SECRET
                 sync: false

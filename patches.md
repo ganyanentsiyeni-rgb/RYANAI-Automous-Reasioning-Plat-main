@@ -343,6 +343,17 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Tests have not been executed in this environment; exact-head CI remains required. No merge, deployment, migration, credential change, or production modification.
 
 
+## 26. Provider readiness gate correction — 26 November 2026
+
+- Changed the U2EB Render API Blueprint health check from `/health` (process liveness) to `/readyz` (application readiness). The API readiness contract includes database, Redis, LangGraph/checkpointer, and agent queue-listener dependencies; a process-only health response must not certify the application as ready.
+- Kept the API Dockerfile, repository, `main` branch, root directory, Free plan, Oregon region, and `checksPass` auto-deploy policy unchanged in the Blueprint.
+- This is a repository Blueprint correction only. It does not mutate the inaccessible live Render workspace, existing service settings, or deployments.
+- Railway source/build alignment remains blocked by Railway account suspension. No service, source, volume, variable, or deployment changes were applied.
+- Required exact-SHA CI/security checks, a recorded human approval, and explicit Push Deploy remain mandatory before any provider deployment.
+
+- Fixed the missing `fetchSystemHealth` import in the browser fallback of `TauriBridge` and added a regression test for browser system-health checks.
+- Corrected the disposable PostgreSQL notification/queue CI step to run with `NODE_ENV=test` and explicit disposable-database flags. The previous job imported the Prisma singleton with its production default and incorrectly required a hosted Supabase project mapping for loopback CI PostgreSQL.
+- The duplicate `(user_id, key)` migration preflight is an intentional negative test; it passed. No production memory records were changed.
 ## 2026-11-26 — Frontend environment and operational truth increment
 
 - Added a shared browser-environment validator used by Vite build configuration and the runtime API base URL resolver.
@@ -399,3 +410,51 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - The UI continues to wait for backend-confirmed `success`, `delegationId`, `taskId`, and `approved | pending_approval` before clearing the draft or displaying an accepted notice.
 - Added hook regression coverage for stable ID propagation and a Gen-X/backend 403 denial; denied requests do not report success.
 - This is frontend integration only. Server-side authorization and execution boundaries are unchanged; no deployment, migration, credential change, or production action.
+
+
+## 9. Environment-example contract validator alignment (PR #953)
+
+- Replaced the stale exact-three-variable assertion for `.env.example` with explicit checks for the active U2EB Supabase URL and Session Pooler host, while requiring `DATABASE_URL`, `DIRECT_URL`, `AUDIOBOOK_DATABASE_URL`, `AUDIOBOOK_DATABASE_URL_UNPOOLED`, and `VITE_SUPABASE_PUBLISHABLE_KEY` to remain blank in the committed template.
+- This corrects the validator drift introduced when the example was expanded to document frontend and audiobook runtime configuration.
+- The patch changes validation only; it does not populate credentials, alter provider configuration, run migrations, or deploy.
+- PR #953 must pass all required exact-head CI/security checks and required review before merge. Vercel checks are currently failing with the team's Hobby build-rate limit; this is a provider/account capacity block, not a successful deployment.
+## 2026-11-26 — Admin Console backend plugin capability catalogue
+
+- Added a read-only Admin Console view backed by the authenticated `GET /api/plugins/registry` endpoint.
+- Displays server-declared provider metadata, capability IDs, risk classifications, human-approval flags, data classifications, manifest versions and adapter registration state.
+- Validates the response shape and visibly distinguishes API/contract failures from a confirmed empty catalogue.
+- Explicitly does not infer user permissions, provider connection/health, or executable authority from catalogue metadata. No credentials, connection records or adapter methods are exposed by the route.
+- Added component tests for authenticated loading, manifest rendering, invalid payloads and HTTP 403. Tests/build have not been run locally in this workflow; exact-head CI remains required.
+- No backend authorization policy, provider credential, database schema, deployment, merge or production configuration was changed.
+## 2026-11-26 — Command Cockpit AgentRun queue visibility
+
+- Added a dedicated AgentRun queue panel to the Command Cockpit using the shared authenticated `useRyanOperations` hook.
+- Exposes API-reported queued/running/failed/cancelled/total counters, recent persisted AgentRuns, approval state when present, last confirmed snapshot time, and manual refresh.
+- Missing counters and approval state render as `Not reported`; an empty task response is not presented as proof of a healthy or empty queue.
+- Reuses the hook's active-run polling behavior; no new API route, registry assertion, approval action, lease mutation, migration, deployment, or production change.
+- Exact-head CI/build/security checks remain required; tests have not been run locally in this workflow.
+
+## 2026-11-26 — OpenRouter optional configuration and gateway regression coverage
+
+- Added optional server-only `OPENROUTER_API_KEY`, HTTPS endpoint, and explicit model allowlist entries to `.env.example`.
+- Declared the same optional variables for the Render U2EB API service. The key remains `sync: false`; no credential value is committed or provisioned.
+- Documented that Logic synthesis uses the shared API-owned provider adapter and requires an approved AgentRun plus a fresh live worker lease.
+- OpenRouter remains runtime-disabled pending catalogue, versioned ZAR pricing, streaming/tool policy, reliability/failover, privacy/data-region, and staging acceptance evidence.
+- No provider API call, secret change, billing change, hosted configuration change, deployment, migration, or production modification was performed by this configuration/documentation increment.
+
+## 2026-11-26 — Admin Console AI Inspector evidence
+
+- Added a read-only Admin Console view over the existing authenticated AgentRun list and persisted evidence records; no new endpoint or database change.
+- Accepts only `pa.capability.executed` events whose payload identifies `ai-inspector.inspect` and contains the report, source, SHA-256 digest, and documented exit code.
+- Surfaces structured findings and the durable report with event ID/sequence and recorded digest.
+- Distinguishes no recent task, task without report evidence, malformed evidence, API/source errors, completed-with-findings (exit code 1), and completed exit code 0.
+- Explicitly does not equate exit code 0 with a clean audit, independently verify the hash chain, prove runtime health, launch audits, or perform remediation.
+- No migrations, credential changes, deployment, or production modifications.
+
+## 2026-11-26 — AgentRun read-only migration compatibility evidence
+
+- Audited the canonical `main` source at `abcecd9c38787f83abcbd8d12eb754412df80b45` without connecting to the production recovery target.
+- Corrected the recovery runbook: the 42-migration / 8-ledger-entry figures are dated 8 November observations, not current production state; the repository currently contains 61 primary Prisma migration directories.
+- Cross-checked the `AgentRun` Prisma model against `database.yml` and the ordered base, execution-scope, trace-context, runtime-contract, queue-classification, lease-heartbeat, and fail-closed approval migrations.
+- Recorded that the runtime-contract migration performs row reclassification as well as DDL, and must not be manually replayed after recovery.
+- Full compatibility remains unverified: the latest exact-SHA database/CI workflows were cancelled, and no isolated clone of the exact production migration ledger was inspected. No production connection, SQL execution, migration, deployment, credential change, or gate bypass was performed.

@@ -1,4 +1,6 @@
 import { ArrowUpRight, Blocks, BrainCircuit, GitBranch, LayoutDashboard, LockKeyhole, Plug, ShieldCheck, Smartphone, UserRound, Workflow } from 'lucide-react';
+import PluginCapabilityCatalog from '@/components/admin/PluginCapabilityCatalog';
+import AIInspectorEvidencePanel from '@/components/admin/AIInspectorEvidencePanel';
 
 type SettingsArea = {
   id: string;
@@ -34,7 +36,7 @@ const workspaceAreas = [
   { title: 'Voice Controls', route: 'settings', detail: 'Voice preferences in Settings' },
 ];
 
-export default function AdminSettingsHub() {
+export default function AdminSettingsHub({ userId }: { userId: string }) {
   return (
     <section id="admin-settings-hub" className="scroll-mt-6 space-y-5 rounded-2xl border border-cyan-300/20 bg-slate-900/70 p-5 sm:p-6" aria-labelledby="admin-settings-hub-title">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -71,6 +73,9 @@ export default function AdminSettingsHub() {
           ))}
         </div>
       </div>
+
+      <PluginCapabilityCatalog userId={userId} />
+      <AIInspectorEvidencePanel />
 
       <div className="rounded-xl border border-amber-300/20 bg-amber-300/[0.04] p-4">
         <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-amber-200" /><h3 className="text-sm font-semibold text-amber-100">Privileged controls still require server-side implementation</h3></div>

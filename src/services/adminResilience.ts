@@ -381,6 +381,27 @@ export async function verifyDatabaseBackupArtifacts(
       };
     }
   }));
+export interface BackupArtifactVerification { backupId: string; status: 'verified' | 'failed' | 'not_verified'; bytesRehashed: boolean; actualBytes: number | null; reason?: string; }
+const MAX_RECOVERY_VERIFY_ARTIFACTS = 10;
+const MAX_RECOVERY_VERIFY_BYTES = 256 * 1024 * 1024;
+/** Read-only, bounded re-download and SHA-256 verification of private dump objects. */
+export async function verifyDatabaseBackupArtifacts(inventory: BackupInventory, request: typeof storageRequest = storageRequest): Promise<BackupArtifactVerification[]> {
+ const storage = storageConfig();
+ if (!storage || inventory.status !== 'available') return inventory.items.map(item => ({ backupId:item.backupId,status:'not_verified',bytesRehashed:false,actualBytes:null,reason:'Private backup storage or inventory is unavailable.' }));
+ return Promise.all(inventory.items.slice(0,MAX_RECOVERY_VERIFY_ARTIFACTS).map(async item => {
+  if (!item.manifestPresent || !item.databaseSha256 || !/^[a-f0-9]{64}$/i.test(item.databaseSha256) || !Number.isSafeInteger(item.databaseBytes) || (item.databaseBytes ?? 0)<=0 || (item.databaseBytes ?? 0)>MAX_RECOVERY_VERIFY_BYTES)
+   return {backupId:item.backupId,status:'not_verified' as const,bytesRehashed:false,actualBytes:null,reason:'Manifest, SHA-256, or bounded artifact size evidence is missing or invalid.'};
+  try {
+   const objectPath=item.prefix.split('/').map(encodeURIComponent).join('/');
+   const response=await request(storage.baseUrl,storage.key,'/storage/v1/object/authenticated/'+encodeURIComponent(storage.bucket)+'/'+objectPath+'/database.dump');
+   const declared=Number(response.headers.get('content-length'));
+   if(Number.isFinite(declared)&&declared>MAX_RECOVERY_VERIFY_BYTES) return {backupId:item.backupId,status:'failed' as const,bytesRehashed:false,actualBytes:null,reason:'Stored artifact exceeds the verification size limit.'};
+   const bytes=Buffer.from(await response.arrayBuffer());
+   if(bytes.byteLength>MAX_RECOVERY_VERIFY_BYTES) return {backupId:item.backupId,status:'failed' as const,bytesRehashed:false,actualBytes:bytes.byteLength,reason:'Stored artifact exceeds the verification size limit.'};
+   const digest=createHash('sha256').update(bytes).digest('hex'), matches=bytes.byteLength===item.databaseBytes&&digest===item.databaseSha256.toLowerCase();
+   return {backupId:item.backupId,status:matches?'verified' as const:'failed' as const,bytesRehashed:true,actualBytes:bytes.byteLength,...(matches?{}:{reason:'Stored artifact byte count or SHA-256 does not match its manifest.'})};
+  } catch { return {backupId:item.backupId,status:'failed' as const,bytesRehashed:false,actualBytes:null,reason:'Stored artifact could not be downloaded for verification.'}; }
+ }));
 }
 
 export function backupReadbackMatches(original: Uint8Array, stored: Uint8Array): boolean {
@@ -480,6 +501,85 @@ export async function listExpectedMigrationIds(): Promise<{ status: 'available' 
     return { status: 'available', migrationIds };
   } catch {
     return { status: 'unavailable', migrationIds: [], reason: 'Repository migration inventory could not be read.' };
+  }
+}
+
+export interface SchemaMigrationArtifact {
+  id: string;
+  sqlPresent: boolean;
+  sqlBytes: number | null;
+  sqlSha256: string | null;
+}
+export interface SchemaMigrationEvidence {
+  status: 'source_artifacts_complete' | 'source_artifacts_incomplete';
+  schemaPresent: boolean;
+  schemaBytes: number;
+  schemaSha256: string | null;
+  migrationCount: number;
+  migrations: SchemaMigrationArtifact[];
+  missingMigrationSql: string[];
+  reason?: string;
+}
+
+/**
+ * Validates only the checked-out Prisma schema and migration source files.
+ * This is not proof that a database applied these migrations or is compatible.
+ */
+export function evaluateSchemaMigrationArtifacts(
+  schemaContent: string | null,
+  migrations: Array<{ id: string; sqlContent: string | null }>,
+): SchemaMigrationEvidence {
+  const schemaBytes = schemaContent === null ? 0 : Buffer.byteLength(schemaContent);
+  const schemaPresent = schemaBytes > 0;
+  const ids = migrations.map((migration) => migration.id);
+  const uniqueIds = new Set(ids);
+  const sortedIds = [...ids].sort();
+  const migrationsValid = migrations.length > 0 &&
+    uniqueIds.size === ids.length &&
+    ids.every((id, index) => /^\d{14}_[a-z0-9_]+$/i.test(id) && id === sortedIds[index]);
+  const artifacts = migrations.map((migration) => {
+    const sqlBytes = migration.sqlContent === null ? null : Buffer.byteLength(migration.sqlContent);
+    const sqlPresent = sqlBytes !== null && sqlBytes > 0;
+    return {
+      id: migration.id,
+      sqlPresent,
+      sqlBytes,
+      sqlSha256: sqlPresent ? createHash('sha256').update(migration.sqlContent as string).digest('hex') : null,
+    };
+  });
+  const missingMigrationSql = artifacts.filter((item) => !item.sqlPresent).map((item) => item.id);
+  const complete = schemaPresent && migrationsValid && missingMigrationSql.length === 0;
+  return {
+    status: complete ? 'source_artifacts_complete' : 'source_artifacts_incomplete',
+    schemaPresent,
+    schemaBytes,
+    schemaSha256: schemaPresent ? createHash('sha256').update(schemaContent as string).digest('hex') : null,
+    migrationCount: migrations.length,
+    migrations: artifacts,
+    missingMigrationSql,
+    ...(!complete ? { reason: 'Prisma schema or migration source files are missing, empty, duplicated, or incorrectly ordered.' } : {}),
+  };
+}
+
+export async function inspectSchemaMigrationArtifacts(): Promise<SchemaMigrationEvidence> {
+  const migrationsPath = path.resolve(process.cwd(), 'prisma', 'migrations');
+  try {
+    const schemaContent = await readFile(path.resolve(process.cwd(), 'prisma', 'schema.prisma'), 'utf8');
+    const entries = await readdir(migrationsPath, { withFileTypes: true });
+    const migrationIds = entries
+      .filter((entry) => entry.isDirectory() && /^\d{14}_[a-z0-9_]+$/i.test(entry.name))
+      .map((entry) => entry.name)
+      .sort();
+    const migrations = await Promise.all(migrationIds.map(async (id) => {
+      try {
+        return { id, sqlContent: await readFile(path.join(migrationsPath, id, 'migration.sql'), 'utf8') };
+      } catch {
+        return { id, sqlContent: null };
+      }
+    }));
+    return evaluateSchemaMigrationArtifacts(schemaContent, migrations);
+  } catch {
+    return evaluateSchemaMigrationArtifacts(null, []);
   }
 }
 

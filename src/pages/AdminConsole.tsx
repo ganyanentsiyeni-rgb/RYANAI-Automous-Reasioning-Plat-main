@@ -383,7 +383,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
       {errors.map((error, index) => <p key={index} role="alert" className="rounded-lg border border-rose-400/25 bg-rose-950/20 p-3 text-sm text-rose-200">{error}</p>)}
       {notice && <p role="status" className="rounded-lg border border-cyan-300/20 bg-cyan-950/20 p-3 text-sm text-cyan-100">{notice}</p>}
 
-      <AdminSettingsHub />
+      <AdminSettingsHub userId={userId} />
       {(identity?.user.role === 'admin' || identity?.user.isOwner) && (
         <section id="admin-pa-control-plane" className="scroll-mt-6 space-y-3" aria-labelledby="admin-pa-control-plane-title">
           <header>
