@@ -291,3 +291,10 @@ The Supabase-verified account `rmnganyane@gmail.com` is the canonical RyanAI own
 The fourteen Dashboard UI options control navigation and dashboard-shortcut visibility only. Settings remains available. Hiding a workspace does not revoke its server-side permission, and enabling a preference does not grant access. Admin Console and RyanAI Communications retain their separate verified administrator/owner authorization checks. Desktop and mobile navigation use the same visibility rules.
 
 This change is delivered through a reviewable pull request. It does not authorize production deployment, database migrations, credential changes, or a bypass of required CI/security checks.
+
+
+## 2026-11-26 — Align dashboard shortcuts with the fourteen workspace options
+
+- Removed the legacy Audiobook Studio shortcut from the Commander Dashboard so the dashboard shortcuts match the fourteen user-selected workspace options.
+- Updated navigation regression assertions: hidden legacy Audiobook Studio is not a navigation destination, while enabled workspaces remain visible and hidden workspaces remain directly addressable without changing authorization.
+- No backend permission, deployment, database, credential, or production configuration was changed.
