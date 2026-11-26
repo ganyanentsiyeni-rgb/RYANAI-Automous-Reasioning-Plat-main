@@ -14,7 +14,7 @@ async function fixture() {
   }
   await mkdir(path.join(root, 'node_modules', 'ignored'), { recursive: true });
   await mkdir(path.join(root, 'scripts'), { recursive: true });
-  await writeFile(path.join(root, 'scripts', 'unmapped.ts'), 'export const outsideDeclaredLayers = true;\\n');
+  await writeFile(path.join(root, 'scripts', 'unmapped.ts'), 'export const outsideDeclaredLayers = true;\n');
   await writeFile(path.join(root, 'src', 'pages', 'page.tsx'), "import { callApi } from '../services/api.js';\nexport const page = callApi;\n");
   await writeFile(path.join(root, 'src', 'services', 'api.ts'), 'export const callApi = () => true;\n');
   await writeFile(path.join(root, 'src', 'agent', 'reasoning.ts'), "import { callApi } from '../services/api.js';\nexport { callApi };\n");
