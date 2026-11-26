@@ -87,6 +87,7 @@ jobs:
                       "exclude": []
                   }
               },
+              "rules": [
               "rules": preserved_rules + [
                   {"type": "deletion"},
                   {"type": "non_fast_forward"},
@@ -114,6 +115,7 @@ jobs:
               ]
           }
           Path("ruleset.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+          print(f"Prepared {len(required)} unique exact required contexts")
           print(f"Prepared {len(required)} unique exact required contexts; preserved unrelated rule types: {preserved_types}")
           PY
           python3 -m json.tool ruleset.json >/dev/null
@@ -154,6 +156,7 @@ jobs:
 
           rules = {rule["type"]: rule.get("parameters", {}) for rule in data.get("rules", [])}
           expected_types = {"deletion", "non_fast_forward", "required_linear_history", "pull_request", "required_status_checks"}
+          assert expected_types <= set(rules), "A required protection rule is missing"
           existing = json.loads(Path("ruleset-existing.json").read_text(encoding="utf-8"))
           managed_types = expected_types
           preserved_types = {rule.get("type") for rule in existing.get("rules", []) if rule.get("type") not in managed_types}
