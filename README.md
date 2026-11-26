@@ -1686,4 +1686,4 @@ npx vitest run src/config/frontendEnv.test.ts src/lib/platformHealth.test.ts
 npm run build:web
 ```
 
-The `RyanAI Frontend Verification Gate` workflow repeats these checks against the exact pull-request head SHA and scans the compiled browser bundle. It is an additional CI check; it does not change branch protection, authorize merging, or trigger deployment. The existing explicit **PUSH DEPLOY** release gate remains authoritative.
+The existing CI workflow now runs the focused frontend contract tests, an explicit production web build, and a compiled-bundle audit on this pull request's exact head SHA. The standalone `RyanAI Frontend Verification Gate` is also added for subsequent pull requests after its workflow definition reaches the base branch. Neither workflow changes branch protection, authorizes merging, or triggers deployment. The existing explicit **PUSH DEPLOY** release gate remains authoritative.
