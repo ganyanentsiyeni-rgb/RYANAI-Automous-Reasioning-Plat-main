@@ -353,6 +353,61 @@ copy .env.example .env
 
 Edit `.env` locally. The template is a starting point, not a complete secret generator. Docker Compose additionally requires local values for `DB_PASSWORD`, `REDIS_PASSWORD`, and `JWT_SECRET`. Set unique development-only values for all three. Do not paste credentials into issues, pull requests, chat, screenshots, or source files.
 
+### 3A. Generate local development secrets (Windows PowerShell)
+
+After creating `.env` from `.env.example`, generate fresh local-only secrets before starting Docker Compose. This avoids reusing example values and keeps secret material out of the repository documentation itself.
+
+~~~powershell
+function New-SecretHex([int]$Bytes = 32) {
+  $buf = New-Object byte[] $Bytes
+  [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($buf)
+  -join ($buf | ForEach-Object { $_.ToString("x2") })
+}
+
+$dbPass   = New-SecretHex 24
+$jwtSec   = New-SecretHex 32
+$redisSec = New-SecretHex 24
+$mcpTok   = New-SecretHex 24
+
+$envText = Get-Content .\\.env -Raw
+$updates = @{
+  "DB_PASSWORD"                = $dbPass
+  "JWT_SECRET"                 = $jwtSec
+  "REDIS_PASSWORD"             = $redisSec
+  "MCP_PROXY_DELEGATION_TOKEN" = $mcpTok
+}
+
+foreach ($key in $updates.Keys) {
+  $val = $updates[$key]
+  if ($envText -match "(?m)^\$\{key\}=") {
+    $envText = [regex]::Replace($envText, "(?m)^\$\{key\}=.*$", "\$\{key\}=\$val")
+  } else {
+    $envText = $envText.TrimEnd() + "`r`n\$\{key\}=\$val`r`n"
+  }
+}
+
+Set-Content -Path .\\.env -Value $envText -NoNewline
+
+# Verify only the variable names; never print secret values.
+Select-String -Path .\\.env -Pattern '^(DB_PASSWORD|JWT_SECRET|REDIS_PASSWORD|MCP_PROXY_DELEGATION_TOKEN)=' | ForEach-Object { $_.Line.Split('=')[0] + '=***' }
+~~~
+
+The generated values are written only to the local `.env` file. The command does not print the secret values. Use this for local development only; do not use these generated values as production credentials, and never commit `.env`.
+
+### 3B. Validate Compose configuration and start the local stack
+
+After the local environment file is populated:
+
+~~~powershell
+docker compose config --quiet
+docker compose up -d --wait
+docker compose ps -a
+~~~
+
+`docker compose config --quiet` validates the resolved Compose configuration without starting services. `docker compose up -d --wait` starts the configured local services and waits for their health conditions. `docker compose ps -a` records the resulting container state.
+
+If Compose reports missing variables or services are unhealthy, inspect the rendered configuration and service logs before changing credentials or container definitions. Do not paste `.env` contents or secret-bearing Compose output into issues, pull requests, chat, or screenshots.
+
 ### 4. Start development services
 
 ~~~bash
