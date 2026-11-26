@@ -77,7 +77,15 @@ jobs:
           for value in "$AZURE_CLIENT_ID" "$AZURE_TENANT_ID" "$AZURE_SUBSCRIPTION_ID" "$AZURE_CONTAINER_REGISTRY" "$AZURE_CONTAINER_NAME" "$AZURE_RESOURCE_GROUP" "$AZURE_CLUSTER_NAME" "$AZURE_KUSTOMIZE_PATH" "$AZURE_DEPLOYMENT_NAME" "$AZURE_NAMESPACE"; do
             test -n "$value" || { echo "::error::Azure staging configuration is incomplete"; exit 1; }
           done
-          [[ "$AZURE_STAGING_API_URL" == https://*staging* ]] || { echo "::error::Azure health URL must be an HTTPS staging hostname"; exit 1; }
+          python3 - "$AZURE_STAGING_API_URL" <<'PY'
+          import sys
+          from urllib.parse import urlparse
+          target = urlparse(sys.argv[1])
+          if (target.scheme != "https" or not target.hostname or "staging" not in target.hostname.lower()
+                  or target.username or target.password or target.path not in ("", "/")
+                  or target.query or target.fragment):
+              raise SystemExit("Azure health URL must use an HTTPS staging hostname with no embedded path, credentials, query, or fragment")
+          PY
           [[ "$AZURE_RESOURCE_GROUP" == *staging* && "$AZURE_CLUSTER_NAME" == *staging* && "$AZURE_NAMESPACE" == *staging* ]] || {
             echo "::error::Azure resource group, AKS cluster and namespace must explicitly identify staging"; exit 1;
           }
