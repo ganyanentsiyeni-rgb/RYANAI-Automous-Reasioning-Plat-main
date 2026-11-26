@@ -315,3 +315,9 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Applied the workspace visibility preference to the Commander Dashboard's secondary "Open workspace" quick action, not only the workspace card grid.
 - Added a regression test proving a disabled Reasoning Workspace is not exposed by that quick action while Settings remains available.
 - No route authorization, backend permissions, production configuration, credentials, database, or deployment behavior changed.
+## 2026-11-26 — Ignore stale Operations Center refresh responses
+
+- Added monotonically increasing request guards to task-history and administrator approval-inbox refreshes.
+- Older responses can no longer overwrite newer account-scoped data after an account/role change or overlapping refresh.
+- Clear prior resource errors on successful refresh; regular-account refresh explicitly clears the administrator-only inbox.
+- No API authorization, task execution, approval semantics, production configuration, or deployment behavior changed.

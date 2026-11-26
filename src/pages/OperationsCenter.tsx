@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, useRef, type FormEvent } from 'react';
 import {
   AlertCircle,
   CheckCircle2,
@@ -90,29 +90,41 @@ export default function OperationsCenter({ userId, isAdmin = false }: { userId: 
   const [taskError, setTaskError] = useState('');
   const [approvalError, setApprovalError] = useState('');
   const [notice, setNotice] = useState('');
+  const taskRequestId = useRef(0);
+  const actionRequestId = useRef(0);
 
   const refreshTasks = useCallback(async () => {
+    const requestId = ++taskRequestId.current;
     try {
       const response = await request('/api/agent/ops/tasks');
       const payload = await readPayload<ApiPayload<AgentTask>>(response, 'Could not load autonomous task history.');
+      if (requestId !== taskRequestId.current) return;
       setTasks(Array.isArray(payload.tasks) ? payload.tasks : []);
+      setTaskError('');
     } catch (error) {
-      setTaskError(error instanceof Error ? error.message : 'Could not load autonomous task history.');
+      if (requestId === taskRequestId.current) setTaskError(error instanceof Error ? error.message : 'Could not load autonomous task history.');
     } finally {
-      setLoadingTasks(false);
+      if (requestId === taskRequestId.current) setLoadingTasks(false);
     }
   }, [request]);
 
   const refreshActions = useCallback(async () => {
-    if (!isAdmin) return;
+    const requestId = ++actionRequestId.current;
+    if (!isAdmin) {
+      setActions([]);
+      setLoadingActions(false);
+      return;
+    }
     try {
       const response = await request('/api/actions');
       const payload = await readPayload<ApiPayload<PendingAction>>(response, 'Could not load pending approvals.');
+      if (requestId !== actionRequestId.current) return;
       setActions(Array.isArray(payload.actions) ? payload.actions : []);
+      setApprovalError('');
     } catch (error) {
-      setApprovalError(error instanceof Error ? error.message : 'Could not load pending approvals.');
+      if (requestId === actionRequestId.current) setApprovalError(error instanceof Error ? error.message : 'Could not load pending approvals.');
     } finally {
-      setLoadingActions(false);
+      if (requestId === actionRequestId.current) setLoadingActions(false);
     }
   }, [isAdmin, request]);
 
