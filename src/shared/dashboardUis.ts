@@ -74,13 +74,13 @@ export const DASHBOARD_UI_OPTIONS = [
   {
     id: 'admin',
     label: 'Admin Console',
-    description: 'Protected approvals, diagnostics and administration.',
+    description: 'Show administrative controls. Requires admin access; preferences cannot grant access.',
     access: 'admin',
   },
   {
     id: 'comms',
     label: 'RyanAI Comms',
-    description: 'Owner-authorised communications workspace.',
+    description: 'Show owner-authorised communications. Requires owner access; preferences cannot grant access.',
     access: 'owner',
   },
 ] as const;
