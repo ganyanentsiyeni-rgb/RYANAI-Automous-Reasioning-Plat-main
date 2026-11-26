@@ -174,4 +174,20 @@ describe('authenticated reasoning requests', () => {
     expect(callbacks.onToken).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });
+
+  it('passes the caller AbortSignal through to the authenticated transport and suppresses abort errors', async () => {
+    const controller = new AbortController();
+    authenticatedFetch.mockRejectedValue(Object.assign(new Error('The operation was aborted.'), { name: 'AbortError' }));
+    const callbacks = { onError: vi.fn(), onDone: vi.fn(), onToken: vi.fn() };
+    await streamReasoning('Explain this', DEFAULT_MODEL, callbacks, undefined, undefined, undefined, controller.signal);
+    expect(authenticatedFetch).toHaveBeenCalledWith(
+      'https://api.example.test/api/reasoning/stream',
+      expect.objectContaining({
+        signal: controller.signal,
+      }),
+      undefined,
+    );
+    expect(callbacks.onError).not.toHaveBeenCalled();
+    expect(callbacks.onDone).not.toHaveBeenCalled();
+  });
 });
