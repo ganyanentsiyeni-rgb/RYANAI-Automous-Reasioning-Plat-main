@@ -107,6 +107,25 @@ describe('Tauri authenticated reasoning bridge', () => {
     expect(mocks.invoke).not.toHaveBeenCalled();
   });
 
+  it('uses the API health endpoint in browser mode', async () => {
+    mocks.isTauri.mockReturnValue(false);
+    mocks.fetchSystemHealth.mockResolvedValue({
+      status: 'ok',
+      engine: 'ryanai',
+      architect: 'ready',
+      cudaActive: false,
+      activeGraph: 'reasoning',
+      timestamp: '2026-11-26T00:00:00.000Z',
+    });
+
+    await expect(TauriBridge.checkSystemHealth()).resolves.toMatchObject({
+      status: 'ok',
+      engine: 'ryanai',
+    });
+    expect(mocks.fetchSystemHealth).toHaveBeenCalledOnce();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+
   it('rejects empty objectives before reading credentials or invoking native IPC', async () => {
     await expect(TauriBridge.executeObjective('   ')).rejects.toThrow(
       'A non-empty objective is required.',
