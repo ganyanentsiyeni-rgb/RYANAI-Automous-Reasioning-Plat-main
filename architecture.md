@@ -187,3 +187,8 @@ The local Compose API starts only after the disposable local PostgreSQL and Redi
 ### Compose health semantics follow-up (2026-11-26)
 
 API `/livez` and `/health` report process liveness independently of PostgreSQL/Redis availability; `/readyz` evaluates live dependencies and agent queue/checkpointer readiness. Compose uses liveness to avoid restart loops during dependency recovery. MCP's own `/health` is a process probe, while its platform-health tool targets API `/readyz` for dependency status. The local migration profile's `DATABASE_URL` points to the Compose PostgreSQL service only. Both MCPJungle database initialization and gateway connection require the same non-empty password.
+
+
+### Manual release gate (2026-11-26)
+
+The manual staging/production release workflow now has a fail-closed exact-SHA preflight. It confirms the candidate is current `main` and requires the full configured CI/security check set to be present and successful before either release job can start. Production migration approval remains separate. This workflow-level guard is defense in depth and does not replace restoring GitHub branch ruleset required checks and approval requirements. Pending or missing checks block release; no deployment is initiated by the preflight.
