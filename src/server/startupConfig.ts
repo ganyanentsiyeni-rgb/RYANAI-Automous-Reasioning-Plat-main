@@ -138,7 +138,21 @@ export function resolveConnectionUrls(
 
   if (strictRuntime && database) {
     parseProductionDatabaseUrl(database);
-    if (supabaseUrl?.trim() && !isLocalComposeDatabase && !isLocalDisposableSupabaseDatabase) {
+
+    // Hosted staging/production must never silently bind to an arbitrary
+    // PostgreSQL service. The primary database is the explicitly mapped
+    // Supabase project; only the two opt-in local test/Compose modes are exempt.
+    if (!isLocalComposeDatabase && !isLocalDisposableSupabaseDatabase) {
+      if (!supabaseUrl?.trim()) {
+        throw new Error(
+          'Missing required Supabase project mapping: set SUPABASE_URL to the project that owns the primary RyanAI database. Credentials are not logged.',
+        );
+      }
+      if (!sessionPoolerHost?.trim()) {
+        throw new Error(
+          'Missing required Supabase Session Pooler mapping: set SUPABASE_SESSION_POOLER_HOST to the exact host copied from Supabase Connect. Credentials are not logged.',
+        );
+      }
       assertDatabaseUrlMatchesSupabaseProject(database, supabaseUrl);
     }
   }
