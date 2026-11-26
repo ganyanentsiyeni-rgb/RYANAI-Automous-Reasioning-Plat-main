@@ -211,6 +211,8 @@ services:
     container_name: ryanai-mcp
     environment:
       NODE_ENV: production
+      # Canonical runtime root for MCP project metadata and provenance checks.
+      RYANAI_PROJECT_ROOT: /app
       RYANAI_MCP_TRANSPORT: http
       RYANAI_API_HEALTH_URL: http://api:3000/readyz
       MCP_HOST: 0.0.0.0
