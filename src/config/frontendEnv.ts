@@ -55,8 +55,13 @@ export function validateFrontendEnvironment(
       ? 'production'
       : 'development';
 
+  const hostedDeployment = configuredEnvironment === 'staging'
+    || configuredEnvironment === 'production'
+    || mode === 'staging'
+    || values.VERCEL === '1';
+
   if (!configuredApiUrl) {
-    if (appEnvironment !== 'development') {
+    if (hostedDeployment) {
       throw new Error(
         '[CONFIG ERROR] VITE_API_BASE_URL is required for staging/production builds.',
       );
