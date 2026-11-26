@@ -552,3 +552,16 @@ This verifier does not deploy, publish images, run migrations against shared/pro
 - Normalized Render staging, Railway staging, production migration, and guarded Render repair workflows to use the canonical `scripts/ci/require-latest-exact-sha-checks.mjs` validator instead of maintaining smaller, divergent required-check lists.
 - Those gates now require the complete 19-context release evidence contract on the exact target SHA. The gates remain fail-closed and no provider deployment, migration, credential change, or ruleset change was performed.
 
+
+
+## 2026-11-26 — Docker CI fan-out deduplication
+
+The PR Docker workflow no longer runs a separate application/MCP/Compose validation job. Those checks duplicated authoritative CI work already produced by `ci.yml` (`Validate (typecheck, lint, test, build)` and `MCP server and workflow worker`). Docker PR scanning now consumes the images built by `build-pr` directly. The required `Scan api image` and `Scan web image` contexts remain unchanged; the release gate still obtains application validation from the canonical CI producers.
+
+
+## 2026-11-26 — Container security duplicate scan removal
+
+- Audited the PR-triggered container security fan-out and confirmed that its api and web matrix entries rebuilt and scanned the same runtime images already built once by the canonical Docker workflow and scanned by the required `Scan api image` and `Scan web image` producers.
+- Removed only those two duplicate matrix entries from `container-security.yml`; standalone API, MCP, and migration image scans remain intact.
+- The canonical 19 release-check contexts are unchanged and continue to be produced by their designated workflows.
+- No image publication, deployment, migration, credential change, or ruleset change was performed.
