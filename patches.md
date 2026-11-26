@@ -321,3 +321,11 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Older responses can no longer overwrite newer account-scoped data after an account/role change or overlapping refresh.
 - Clear prior resource errors on successful refresh; regular-account refresh explicitly clears the administrator-only inbox.
 - No API authorization, task execution, approval semantics, production configuration, or deployment behavior changed.
+
+
+## 2026-11-26 — Invalidate Comms approval when attachment draft changes
+
+- Selecting or replacing files now starts a fresh draft identity and clears any prior approval ID/status, matching the existing invalidation behavior for message, channel, recipient, subject, and attachment removal.
+- Added a regression test proving a previously approved message cannot retain its Send approved message action after the attachment selection changes.
+- This is a frontend state-integrity guard; the backend approval and owner authorization checks remain authoritative.
+- No external message was sent, no production deployment, migration, credential change, or merge was performed.
