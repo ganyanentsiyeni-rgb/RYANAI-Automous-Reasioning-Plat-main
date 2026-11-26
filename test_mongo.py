@@ -1,11 +1,39 @@
-from pymongo import MongoClient
+"""Optional MongoDB Atlas connectivity smoke check.
 
-uri = "mongodb://rmnganyane_db_user:<db_password>@ac-9vbuxul-shard-00-00.flyv1jy.mongodb.net:27017,ac-9vbuxul-shard-00-01.flyv1jy.mongodb.net:27017,ac-9vbuxul-shard-00-02.flyv1jy.mongodb.net:27017/?ssl=true&replicaSet=atlas-60d03p-shard-0&authSource=admin&compressors=zlib"
+Supply MONGODB_URI through the environment. Never store credentials in source.
+This script is an opt-in connectivity example, not an application startup dependency.
+"""
+import os
+import sys
 
-try:
-    client = MongoClient(uri)
-    client.admin.command("ping")
-    print("Connected successfully to MongoDB!")
-    client.close()
-except Exception as e:
-    print("The following error occurred:", e)
+
+def main() -> int:
+    uri = os.environ.get("MONGODB_URI", "").strip()
+    if not uri:
+        print("MONGODB_URI is required for the MongoDB connectivity check.", file=sys.stderr)
+        return 2
+
+    try:
+        from pymongo import MongoClient
+    except ImportError:
+        print("pymongo is required; install the optional requirements.txt dependencies.", file=sys.stderr)
+        return 2
+
+    client = MongoClient(
+        uri,
+        serverSelectionTimeoutMS=5000,
+        connectTimeoutMS=5000,
+    )
+    try:
+        client.admin.command("ping")
+        print("MongoDB connectivity check passed.")
+        return 0
+    except Exception as exc:  # Connectivity failures are reported without printing the URI.
+        print(f"MongoDB connectivity check failed ({type(exc).__name__}).", file=sys.stderr)
+        return 1
+    finally:
+        client.close()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
