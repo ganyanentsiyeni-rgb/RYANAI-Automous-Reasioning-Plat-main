@@ -216,6 +216,24 @@ describe('Supabase API authentication', () => {
     },
   );
 
+  it('returns admin role only from trusted Supabase app metadata or owner identity', async () => {
+    user.app_metadata = { role: 'admin' };
+    user.user_metadata = {};
+    const app = await createApp();
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/auth/verify',
+      headers: bearer,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().user).toMatchObject({
+      id: user.id,
+      role: 'admin',
+      isOwner: false,
+      sessionAssurance: 'aal2',
+    });
+  });
+
   it('uses the verified identity and ignores client-editable admin metadata', async () => {
     const app = await createApp();
     const response = await app.inject({
