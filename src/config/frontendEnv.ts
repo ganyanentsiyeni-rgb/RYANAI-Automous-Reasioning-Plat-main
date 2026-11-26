@@ -45,11 +45,11 @@ export function validateFrontendEnvironment(
   }
 
   const configuredApiUrl = String(
-    values.VITE_API_BASE_URL ?? values.VITE_API_URL ?? '',
+    values.VITE_API_BASE_URL || values.VITE_API_URL || '',
   ).trim();
 
   const configuredEnvironment = String(values.VITE_APP_ENV ?? '').trim().toLowerCase();
-  const appEnvironment = configuredEnvironment === 'staging'
+  const appEnvironment = configuredEnvironment === 'staging' || mode === 'staging'
     ? 'staging'
     : configuredEnvironment === 'production' || mode === 'production'
       ? 'production'
