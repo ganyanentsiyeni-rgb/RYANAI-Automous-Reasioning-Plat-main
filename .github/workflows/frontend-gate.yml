@@ -10,7 +10,6 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/frontend-gate.yml'
-  workflow_dispatch:
   push:
     branches: [main]
     paths:
