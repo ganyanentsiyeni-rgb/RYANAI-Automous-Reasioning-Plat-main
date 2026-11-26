@@ -92,7 +92,27 @@ jobs:
           test -f "$AZURE_KUSTOMIZE_PATH/kustomization.yaml" || test -f "$AZURE_KUSTOMIZE_PATH/kustomization.yml" || {
             echo "::error::Configured Azure Kustomize directory has no kustomization file"; exit 1;
           }
-          kubectl kustomize "$AZURE_KUSTOMIZE_PATH" >/dev/null
+          kubectl kustomize "$AZURE_KUSTOMIZE_PATH" > rendered-staging-manifests.yaml
+          ruby -ryaml -e '
+            documents = YAML.load_stream(File.read(ARGV.fetch(0))).compact
+            documents.each do |document|
+              next unless document.is_a?(Hash)
+              namespace = document.dig("metadata", "namespace")
+              if namespace && namespace != ENV.fetch("AZURE_NAMESPACE")
+                abort "Refusing AKS apply: manifest namespace #{namespace} is outside the configured staging namespace"
+              end
+            end
+            deployment = documents.find do |document|
+              document.is_a?(Hash) &&
+                document["kind"] == "Deployment" &&
+                document.dig("metadata", "name") == ENV.fetch("AZURE_DEPLOYMENT_NAME")
+            end
+            abort "Configured staging Deployment is absent from rendered Kustomize output" unless deployment
+            containers = deployment.dig("spec", "template", "spec", "containers") || []
+            unless containers.any? { |container| container["name"] == ENV.fetch("AZURE_CONTAINER_NAME") }
+              abort "Configured API container is absent from the staging Deployment"
+            end
+          ' rendered-staging-manifests.yaml
 
       - name: Sign in to Azure with GitHub OIDC
         uses: azure/login@v2
