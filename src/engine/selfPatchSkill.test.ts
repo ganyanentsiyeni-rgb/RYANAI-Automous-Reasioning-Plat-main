@@ -48,7 +48,9 @@ describe('production self-patch proposal', () => {
     expect(firstRequest[1]?.headers).toBeInstanceOf(Headers);
     expect((firstRequest[1]?.headers as Headers).get('Authorization')).toBe('Bearer fixture-scoped-token');
     const prRequest = fetchMock.mock.calls[7][1];
-    expect(String(prRequest?.body)).toContain('has **not** been deployed or promoted');
+    const prPayload = JSON.parse(String(prRequest?.body)) as { draft?: boolean; body?: string };
+    expect(prPayload.draft).toBe(true);
+    expect(prPayload.body).toContain('has **not** been deployed or promoted');
   });
 
   it('rejects path traversal and protected files before any GitHub request', async () => {
