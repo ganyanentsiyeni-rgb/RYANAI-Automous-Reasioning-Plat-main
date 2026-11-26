@@ -186,7 +186,7 @@ describe('Gen-X deterministic security enforcement', () => {
       agentId: 'ryanai-agent-worker', principal: 'owner-user',
       toolName: 'api_agent_reasoning_request', action: 'NETWORK',
       target: 'configured-approved-provider', actorType: 'agent',
-      ownerAuthorized: true, environment: 'staging',
+      approvedAgentRun: true, environment: 'staging',
     })).toMatchObject({ decision: 'ALLOW', ruleId: 'GX-APPROVED-AGENT-REASONING-001' });
   });
 
