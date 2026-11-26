@@ -14,6 +14,9 @@ export async function authenticatedFetch(
   init: RequestInit = {},
   expectedUserId?: string,
 ) {
+  if (!API_BASE_URL) {
+    throw new Error('API base URL is not configured for this runtime.');
+  }
   const api = new URL(API_BASE_URL);
   const target = new URL(input, api);
   if (target.origin !== api.origin || !target.pathname.startsWith('/api/')) {
