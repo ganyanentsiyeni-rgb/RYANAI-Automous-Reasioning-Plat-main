@@ -21,7 +21,7 @@ describe('API MCP delegation endpoint', () => {
     vi.stubEnv('NODE_ENV', 'test');
     createContextClient.mockReturnValue({ auth: { getUser, getClaims: vi.fn().mockResolvedValue({ data: { claims: { sub: 'verified-user-id', aal: 'aal2' } }, error: null }) } });
     getUser.mockResolvedValue({
-      data: { user: { id: 'verified-user-id', email: 'member@example.test', app_metadata: { actor_type: 'human' }, user_metadata: {}, is_anonymous: false } },
+      data: { user: { id: 'verified-user-id', email: 'member@example.test', app_metadata: {}, user_metadata: {}, is_anonymous: false } },
       error: null,
     });
     app = Fastify();
@@ -78,18 +78,19 @@ describe('API MCP delegation endpoint', () => {
     expect(verifyMcpDelegationToken(response.json().token, signingSecret).scope).toEqual(['reasoning_request']);
   });
 
-
-  it('does not promote a verified agent actor to human for reasoning delegation', async () => {
-    getUser.mockResolvedValue({
-      data: { user: { id: 'verified-agent-id', email: 'agent@example.test', app_metadata: { actor_type: 'agent' }, user_metadata: {}, is_anonymous: false } },
-      error: null,
-    });
-    const response = await app.inject({
-      method: 'POST', url: '/api/internal/mcp/delegation',
-      headers: { 'x-ryanai-service-token': serviceToken, authorization: 'Bearer supabase-access-token' },
-      payload: { scopes: ['reasoning_request'] },
-    });
-    expect(response.statusCode).toBe(403);
+  it('denies reasoning delegation for explicit agent and service app-metadata actors', async () => {
+    for (const actorType of ['agent', 'service'] as const) {
+      getUser.mockResolvedValue({
+        data: { user: { id: 'verified-user-id', email: 'member@example.test', app_metadata: { actor_type: actorType }, user_metadata: {}, is_anonymous: false } },
+        error: null,
+      });
+      const response = await app.inject({
+        method: 'POST', url: '/api/internal/mcp/delegation',
+        headers: { 'x-ryanai-service-token': serviceToken, authorization: 'Bearer supabase-access-token' },
+        payload: { scopes: ['reasoning_request'] },
+      });
+      expect(response.statusCode).toBe(403);
+    }
   });
 
   it('rejects unapproved scopes before issuing a token', async () => {
