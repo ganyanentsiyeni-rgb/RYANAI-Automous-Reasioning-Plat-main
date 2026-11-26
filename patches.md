@@ -502,3 +502,10 @@ Both lanes are disabled unless their provider enablement and staging-isolation v
 - Removed the remaining empty-password fallback from the MCPJungle PostgreSQL initializer, matching the gateway connection requirement.
 - Extended static contracts to protect API liveness (`/livez`, `/health`) from dependency readiness (`/readyz`), MCP's liveness-based startup ordering, its explicit API readiness target, and local-only migration URL routing.
 - CI's Docker workflow includes `docker compose --file docker-compose.yml config --quiet`; execution on the exact PR SHA is pending. No local Docker daemon/runtime validation is claimed.
+
+
+### Governed release exact-SHA gate (2026-11-26)
+
+- Added a fail-closed preflight to the manual staging/production release workflow. It verifies the dispatched commit is still current `main` and requires every configured application, database, dependency, code-scanning, secret-scanning, image-scan, and SBOM check context to exist and have completed successfully on that exact SHA.
+- Both staging and production release jobs now depend on this preflight. The production migration approval input remains an additional independent requirement.
+- The preflight does not wait for checks or alter branch rules; if evidence is pending, missing, stale, or unsuccessful, the operator must not release. No deployment or migration was run as part of this patch.
