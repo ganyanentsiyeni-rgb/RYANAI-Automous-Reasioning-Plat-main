@@ -509,3 +509,8 @@ Both lanes are disabled unless their provider enablement and staging-isolation v
 - Expanded both staging workflows to require the full configured application, database compatibility, dependency, static-analysis, secret-audit, image-scan, and SBOM check set on the candidate commit before credentials, image publication, or cluster/service mutation can occur.
 - Existing explicit `STAGE` confirmation, disabled-by-default provider flags, staging-isolation confirmation, OIDC authentication, immutable SHA image tags, and runtime `/readyz` verification remain in place.
 - This is workflow-level defense in depth; it does not activate AWS/Azure, configure cloud credentials, deploy, or replace repository branch protection.
+### Governed release exact-SHA gate (2026-11-26)
+
+- Added a fail-closed preflight to the manual staging/production release workflow. It verifies the dispatched commit is still current `main` and requires every configured application, database, dependency, code-scanning, secret-scanning, image-scan, and SBOM check context to exist and have completed successfully on that exact SHA.
+- Both staging and production release jobs now depend on this preflight. The production migration approval input remains an additional independent requirement.
+- The preflight does not wait for checks or alter branch rules; if evidence is pending, missing, stale, or unsuccessful, the operator must not release. No deployment or migration was run as part of this patch.

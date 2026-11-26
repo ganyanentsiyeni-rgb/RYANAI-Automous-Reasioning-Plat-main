@@ -192,3 +192,6 @@ API `/livez` and `/health` report process liveness independently of PostgreSQL/R
 ### AWS and Azure staging release gates (2026-11-26)
 
 AWS ECS and Azure AKS staging workflows require the complete configured exact-commit CI/security check set before any cloud authentication, image publication, or workload mutation. Deployment remains disabled unless the explicit staging confirmation and provider-specific staging-isolation flags are enabled. OIDC and runtime `/readyz` verification remain required. These controls do not replace GitHub branch rulesets and no cloud deployment is initiated by the gate patch.
+### Manual release gate (2026-11-26)
+
+The manual staging/production release workflow now has a fail-closed exact-SHA preflight. It confirms the candidate is current `main` and requires the full configured CI/security check set to be present and successful before either release job can start. Production migration approval remains separate. This workflow-level guard is defense in depth and does not replace restoring GitHub branch ruleset required checks and approval requirements. Pending or missing checks block release; no deployment is initiated by the preflight.
