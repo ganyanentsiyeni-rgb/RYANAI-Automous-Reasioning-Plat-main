@@ -390,3 +390,12 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Existing `gpt-4o` and `gpt-4o-mini` selections continue to use the configured Logic provider. Only the two explicitly catalogued OpenRouter aliases may select the OpenRouter route.
 - Added model selection, provider invocation, and Gen-X policy regression tests. Exact-head CI is still required; tests have not been executed locally in this workflow.
 - OpenRouter remains runtime-disabled. No provider API request, secret/billing change, hosted configuration change, merge, migration, or deployment was performed.
+
+
+## 2026-11-26 — PA delegation UI uses the operational contract hook
+
+- Routed the shared PA/Darkside Copilot delegation creation action through `useRyanOperations().createPADelegation()` rather than maintaining a second raw POST implementation in the panel.
+- Extended the hook to accept the panel's stable delegation UUID and send it with the objective and capability scope, preserving retry identity and avoiding duplicate delegation creation.
+- The UI continues to wait for backend-confirmed `success`, `delegationId`, `taskId`, and `approved | pending_approval` before clearing the draft or displaying an accepted notice.
+- Added hook regression coverage for stable ID propagation and a Gen-X/backend 403 denial; denied requests do not report success.
+- This is frontend integration only. Server-side authorization and execution boundaries are unchanged; no deployment, migration, credential change, or production action.
