@@ -38,6 +38,12 @@ jobs:
       TARGET_SHA: ${{ github.sha }}
 
     steps:
+      - name: Check out exact target SHA for canonical release validator
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA || github.sha }}
+          persist-credentials: false
+
       - name: Require explicit migration authorization and current main
         id: verify
         env:
