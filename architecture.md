@@ -89,3 +89,19 @@ A worker profile is startable only when every task type declared in `RYANAI_WORK
 ## Repository inventory execution boundary
 
 Repository inventory task handlers are registered by the typed specialist handler module and are available to both server-managed and CLI worker bootstraps. Inventory is bounded by repository-root confinement, maximum recursion depth, file count, and per-file size; it does not execute discovered scripts or read environment values. The standalone Node inventory command remains an independent read-only utility. Server TypeScript modules must not import the `.mjs` command entrypoint, which can cause TypeScript to emit over an input file (`TS5055`).
+
+
+## 9. PA sourced skill registry
+
+PA has a governed sourced-skill registry at `src/skills/paSourcedSkills.ts`. It converts useful external patterns and approved project skills into bounded PA capabilities with explicit provenance, capabilities, risk, execution mode, and enabled state.
+
+The initial active set includes:
+
+- research and source verification;
+- observability and synthetic verification;
+- correction-to-guardrail proposals;
+- Supabase database governance;
+- edge security advisory review;
+- incident evidence and recovery.
+
+Provider/model routing remains catalogued but disabled while the previously reviewed OpenRouter proposal is paused. A registry entry is not an external integration or permission grant. Active skills remain read-only or proposal-only and must continue through the existing Gen-X, AgentRun, evidence, and execution boundaries.

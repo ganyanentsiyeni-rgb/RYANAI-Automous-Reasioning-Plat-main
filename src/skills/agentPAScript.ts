@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { PA_TASK_AWARENESS_SKILL } from "../agent/awareness/operationalAwareness.js";
+import { getPASourcedSkillIds } from "./paSourcedSkills.js";
 
 export interface AgentPAHealthSnapshot {
   api: boolean;
@@ -148,7 +149,7 @@ export class AgentPAScript extends EventEmitter {
       if (healthy) {
         this.retryCount = 0;
         this.lastError = null;
-        this.lastReport = "PA observer active: API, Supabase/PostgreSQL, Redis, checkpointer and agent worker probes passed. Optional MCP and Neon audiobook integrations are reported separately; unconfigured integrations do not degrade core observer health. Task Awareness is adopted by PA. No privileged actions were performed.";
+        this.lastReport = "PA observer active: API, Supabase/PostgreSQL, Redis, checkpointer and agent worker probes passed. Optional MCP and Neon audiobook integrations are reported separately; unconfigured integrations do not degrade core observer health. Task Awareness and governed sourced PA skills are active. No privileged actions were performed.";
         this.emit("report", this.getStatus());
         this.emit("heartbeat", this.getStatus());
       } else {
@@ -188,7 +189,7 @@ export class AgentPAScript extends EventEmitter {
       observationsCompleted: this.observationsCompleted,
       eBPFPolicyEnforced: false,
       genXPolicyEngineAvailable: false,
-      adoptedSkills: [PA_TASK_AWARENESS_SKILL.id],
+      adoptedSkills: [PA_TASK_AWARENESS_SKILL.id, ...getPASourcedSkillIds()],
       retryAttempts: this.retryCount,
       lastTransitionAt: this.lastTransitionAt,
       outageStartedAt: this.outageStartedAt,
