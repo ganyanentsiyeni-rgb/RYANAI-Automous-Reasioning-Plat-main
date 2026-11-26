@@ -76,6 +76,11 @@ async function invokeWithRecovery(
     if (!run || run.approval_status !== 'approved' || !run.user_id) {
       throw new Error('An OpenRouter Logic override requires an approved, owner-bound AgentRun. No provider request was made.');
     }
+    await assertAgentRunLeaseActive(
+      { id: run.id, workerId: run.worker_id, attempts: run.attempts },
+      async (where) => Boolean(await prisma.agentRun.findFirst({ where, select: { id: true } })),
+      cancellationSignal,
+    );
     const policy = evaluateGenXSecurityEvent({
       agentId: 'ryanai-agent-worker',
       principal: run.user_id,
@@ -84,7 +89,7 @@ async function invokeWithRecovery(
       target: 'configured-approved-provider',
       environment: process.env.NODE_ENV === 'production' ? 'production' : process.env.NODE_ENV === 'staging' ? 'staging' : 'development',
       actorType: 'agent',
-      ownerAuthorized: true,
+      approvedAgentRun: true,
     });
     if (policy.decision !== 'ALLOW') {
       throw new Error('Gen-X denied the approved AgentRun provider request. No provider request was made.');
