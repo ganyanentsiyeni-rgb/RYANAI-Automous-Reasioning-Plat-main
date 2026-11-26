@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Conservative, offline migration dependency audit.
- * Reads only prisma/schema.prisma and prisma/migrations/*/migration.sql.
+ * Reads only prisma/schema.prisma and each named prisma/migrations directory's migration.sql file.
  * It never imports a database client or opens a database connection.
  */
 import { readdir, readFile } from 'node:fs/promises';

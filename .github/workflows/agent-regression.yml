@@ -117,7 +117,7 @@ jobs:
           api_pid=$!
           # Vite reads this value when preview starts; without it the preview
           # silently falls back to the local-development API port.
-          VITE_API_BASE_URL=http://127.0.0.1:3000 npm run preview -- --host 127.0.0.1 --port 9090 > web.log 2>&1 &
+          VITE_API_BASE_URL=http://127.0.0.1:3000 npm run preview -- --mode development --host 127.0.0.1 --port 9090 > web.log 2>&1 &
           web_pid=$!
           # The MCP server prefers PORT over MCP_PORT; override both so it
           # cannot inherit the API's 3000 listener from the job environment.
