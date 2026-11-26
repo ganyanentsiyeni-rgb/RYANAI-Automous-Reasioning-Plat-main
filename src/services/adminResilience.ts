@@ -399,7 +399,7 @@ export async function listExpectedMigrationIds(): Promise<{ status: 'available' 
   try {
     const entries = await readdir(path.resolve(process.cwd(), 'prisma', 'migrations'), { withFileTypes: true });
     const migrationIds = entries
-      .filter((entry) => entry.isDirectory() && /^\\d{14}_[a-z0-9_]+$/i.test(entry.name))
+      .filter((entry) => entry.isDirectory() && /^\d{14}_[a-z0-9_]+$/i.test(entry.name))
       .map((entry) => entry.name)
       .sort();
     return { status: 'available', migrationIds };
