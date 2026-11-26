@@ -8,7 +8,7 @@
 
 The endpoint returns a timestamped report containing:
 
-- Backup inventory metadata, while explicitly marking each existing artifact `not_verified` because inventory does not re-download and hash the stored dump bytes.
+- Backup inventory metadata plus a bounded, read-only re-download of eligible private dump objects. The report compares actual byte count and SHA-256 with manifest metadata; results are `verified`, `failed`, or `not_verified`.
 - The migration directory inventory shipped with the running application build. This is expected repository state only, not the target's applied migration ledger.
 - Recovery preflight status and target label, without returning database URLs or credentials.
 - Acceptance criteria, all initially `not_verified` until independently evidenced.
@@ -18,8 +18,8 @@ The report intentionally returns `evidence_incomplete`. It does not claim schema
 
 ## Explicit non-goals
 
-This endpoint does not connect to the recovery target, query `_prisma_migrations`, inspect target schema, download backup artifacts, execute SQL, restore a database, or write audit/database/storage records. Those require separate, reviewed increments and explicit authorization.
+This endpoint does not connect to the recovery target, query `_prisma_migrations`, inspect target schema, execute SQL, restore a database, or write audit/database/storage records. Its only artifact access is authenticated read-only download from the configured private backup bucket; dump bytes are hashed in memory and never returned. Verification is bounded to the first 10 listed artifacts and 256 MiB per artifact. Missing/invalid manifest evidence remains `not_verified`; download failures or digest/size mismatches are `failed`.
 
 ## Validation
 
-Route tests cover administrator authorization, unauthenticated rejection, migration inventory presence, read-only safety invariants, and the distinction between recorded SHA-256 metadata and fresh artifact-byte verification.
+Route and service tests cover administrator authorization, unauthenticated rejection, migration inventory presence, read-only safety invariants, matching and tampered bytes, missing manifest/digest evidence, download failures, and credential/content redaction.
