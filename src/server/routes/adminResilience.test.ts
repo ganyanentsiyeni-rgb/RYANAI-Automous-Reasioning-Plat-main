@@ -5,7 +5,7 @@ const resilience = vi.hoisted(() => ({
   backupPreflight: vi.fn(),
   createDatabaseBackup: vi.fn(),
   listDatabaseBackups: vi.fn(),
-  listExpectedMigrationIds: vi.fn(),
+  listExpectedMigrationIds: vi.fn(),\n  inspectSchemaMigrationArtifacts: vi.fn(),
   recoveryPreflight: vi.fn(),
 }));
 vi.mock('../../services/adminResilience.js', () => resilience);
@@ -55,7 +55,7 @@ beforeEach(() => {
     status: 'available', bucket: 'private-backups', retentionDays: 30,
     listedAt: '2026-11-20T00:00:00.000Z', items: [], hasMore: false,
   });
-  resilience.listExpectedMigrationIds.mockResolvedValue({ status: 'available', migrationIds: ['20261124170000_studio_artifact_idempotency'] });\n  resilience.verifyDatabaseBackupArtifacts.mockResolvedValue([]);
+  resilience.listExpectedMigrationIds.mockResolvedValue({ status: 'available', migrationIds: ['20261124170000_studio_artifact_idempotency'] });\n  resilience.inspectSchemaMigrationArtifacts.mockResolvedValue({ status: 'source_artifacts_complete', schemaPresent: true, schemaBytes: 100, schemaSha256: 'a'.repeat(64), migrationCount: 1, migrations: [{ id: '20261124170000_studio_artifact_idempotency', sqlPresent: true, sqlBytes: 10, sqlSha256: 'b'.repeat(64) }], missingMigrationSql: [] });\n  resilience.verifyDatabaseBackupArtifacts.mockResolvedValue([]);
   resilience.recoveryPreflight.mockReturnValue({
     status: 'not_configured', targetLabel: null, productionRestore: 'disabled', writesPerformed: false,
   });
