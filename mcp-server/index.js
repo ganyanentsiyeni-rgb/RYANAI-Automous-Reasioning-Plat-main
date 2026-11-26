@@ -12,7 +12,34 @@ import { getCanonicalTool } from './tool-registry.js';
 import { authorizeDelegatedTool, MCP_TOOL_SCOPES, verifyMcpDelegationToken } from './delegation.js';
 
 const execFileAsync = promisify(execFile);
-const projectRoot = path.resolve(process.env.RYANAI_PROJECT_ROOT || path.join(import.meta.dirname, '..'));
+
+function resolveProjectRoot() {
+  const configured = process.env.RYANAI_PROJECT_ROOT?.trim();
+  if (!configured) {
+    throw new Error('FATAL: RYANAI_PROJECT_ROOT is not set in mcp-server environment.');
+  }
+
+  const resolved = path.resolve(configured);
+  if (!existsSync(resolved)) {
+    throw new Error(`FATAL: RYANAI_PROJECT_ROOT does not exist: ${resolved}`);
+  }
+
+  const requiredPaths = [
+    ['package.json', 'project package manifest'],
+    ['src/mcp/canonical-tool-registry.json', 'canonical MCP tool registry'],
+    ['stacks/ryanai.stack.json', 'RyanAI stack manifest'],
+  ];
+
+  for (const [relativePath, description] of requiredPaths) {
+    if (!existsSync(path.join(resolved, relativePath))) {
+      throw new Error(`FATAL: ${description} is missing under RYANAI_PROJECT_ROOT: ${path.join(resolved, relativePath)}`);
+    }
+  }
+
+  return resolved;
+}
+
+const projectRoot = resolveProjectRoot();
 const isWindows = process.platform === 'win32';
 const hasProjectManifest = existsSync(path.join(projectRoot, 'package.json'));
 const hasGitMetadata = existsSync(path.join(projectRoot, '.git'));
