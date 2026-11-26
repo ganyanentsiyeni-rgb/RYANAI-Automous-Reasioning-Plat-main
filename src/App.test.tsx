@@ -287,7 +287,7 @@ describe('application authentication boundary', () => {
     }
   });
 
-  it('keeps every registered regular-account workspace visible and directly reachable despite hide preferences', async () => {
+  it('hides opted-out workspaces from desktop and mobile navigation without revoking direct access', async () => {
     const limitedSession = {
       ...session,
       user: {
@@ -300,8 +300,11 @@ describe('application authentication boundary', () => {
     await expectContent('Private dashboard');
 
     for (const navigation of ['Main navigation', 'Mobile navigation']) {
-      for (const path of ['/pa', '/workspace', '/cockpit', '/quant', '/settings']) {
+      for (const path of ['/pa', '/workspace', '/settings']) {
         expect(container.querySelector(`nav[aria-label="${navigation}"] a[href="#${path}"]`)).not.toBeNull();
+      }
+      for (const path of ['/cockpit', '/quant', '/audiobook']) {
+        expect(container.querySelector(`nav[aria-label="${navigation}"] a[href="#${path}"]`)).toBeNull();
       }
     }
 
