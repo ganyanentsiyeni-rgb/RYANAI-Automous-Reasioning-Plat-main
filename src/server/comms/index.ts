@@ -352,6 +352,16 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
     if (!isCommunicationsEnabled()) return reply.code(503).send({ success: false, error: 'Outbound communications are disabled by configuration. Comms history and workspace access remain available.' });
     if (!isCommunicationsTestAuthorized()) return reply.code(503).send({ success: false, error: 'Outbound provider dispatch is disabled until an owner explicitly authorizes a communications test.' });
     const { channel, recipient, message, subject, contentSid, contentVariables, idempotencyKey, attachmentIds = [] } = request.body ?? {};
+    const requestedAgentRunId = typeof request.body?.agentRunId === 'string' ? request.body.agentRunId.trim() : '';
+    if (requestedAgentRunId) {
+      const ownedRun = await fastify.prisma.agentRun.findFirst({
+        where: { id: requestedAgentRunId, userId: request.authUser.id },
+        select: { id: true },
+      });
+      if (!ownedRun) {
+        return reply.code(404).send({ success: false, error: 'The linked AgentRun was not found for this owner.' });
+      }
+    }
     if (attachmentIds.length && !areCommunicationAttachmentsEnabled()) return reply.code(503).send({ success: false, error: 'Communication attachments are disabled.' });
     if (!channel || !['whatsapp', 'sms', 'voice', 'email'].includes(channel)) return reply.code(400).send({ success: false, error: 'Unsupported communication channel.' });
     if (channel === 'email') return reply.code(503).send({ success: false, error: 'Outbound email dispatch is not implemented on this route. No provider request was sent.' });
