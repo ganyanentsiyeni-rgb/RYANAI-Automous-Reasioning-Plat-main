@@ -16,7 +16,8 @@ The optional MCPJungle PostgreSQL service is an infrastructure dependency for th
 
 - `Dockerfile`: multi-target API, web, one-shot migration, and Studio worker images.
 - `Dockerfile.api`: standalone API image for platforms that need a dedicated API Dockerfile.
-- `Dockerfile.mcp_server`: standalone, non-root MCP HTTP service with a healthcheck.
+- `mcp-server/Dockerfile`: canonical standalone, non-root MCP HTTP image used by Docker Compose, Render, Railway stack metadata, Vercel service configuration, and container CI. Compose and hosted platform health checks probe `/health`.
+- `Dockerfile.mcp_server`: legacy alternate build file retained for compatibility; it is not the canonical Compose or hosted deployment entrypoint. Do not update deployment references to it.
 - `docker-entrypoint.sh`: validates proxy inputs, renders the nginx template with a strict envsubst allowlist, validates the rendered nginx config, then execs nginx.
 - `docker-compose.yml`: local-only Postgres/Redis, API, web, MCP and optional MCPJungle services. The local migration service is profile-gated.
 

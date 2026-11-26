@@ -1111,7 +1111,7 @@ docker build -f Dockerfile --target studio-worker -t ryanai-studio-worker:local 
 
 # Build the standalone API and MCP images.
 docker build -f Dockerfile.api -t ryanai-api:local .
-docker build -f Dockerfile.mcp_server -t ryanai-mcp:local .
+docker build -f mcp-server/Dockerfile -t ryanai-mcp:local .
 
 # Generic production Dockerfile example.
 docker build -f docker/Dockerfile.prod -t myapp:prod .
