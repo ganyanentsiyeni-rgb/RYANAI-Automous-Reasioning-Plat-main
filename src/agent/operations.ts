@@ -72,6 +72,7 @@ async function invokeWithRecovery(
 ): Promise<BrainOutput> {
   const config = brains[brain];
   const selectedModel = brain === 'logic' ? resolveSelectedReasoningModel(modelOverride) : null;
+  try {
   if (selectedModel) {
     if (!run || run.approval_status !== 'approved' || !run.user_id) {
       throw new Error('An OpenRouter Logic override requires an approved, owner-bound AgentRun. No provider request was made.');
@@ -97,7 +98,6 @@ async function invokeWithRecovery(
   } else if (!config.credential && config.adapter !== 'ollama' && !localRuntime(config.endpoint)) {
     throw new Error(brain + ' brain credential is not configured');
   }
-  try {
     return await invokeWithCancellationRetry(async () => {
     if (run) await updateRunHandoffs(run, brain, 'running');
     const started = Date.now();
