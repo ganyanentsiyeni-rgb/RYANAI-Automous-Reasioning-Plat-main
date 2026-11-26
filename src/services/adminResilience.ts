@@ -164,6 +164,8 @@ export interface BackupInventoryItem {
   createdAt: string | null;
   databaseBytes: number | null;
   databaseSha256: string | null;
+  /** Inventory reads the manifest only; the stored dump has not been re-downloaded and re-hashed. */
+  integrityStatus: 'not_verified';
   manifestPresent: boolean;
   retention: 'within_policy' | 'outside_policy' | 'unknown';
 }
@@ -279,6 +281,7 @@ export async function listDatabaseBackups(): Promise<BackupInventory> {
         createdAt,
         databaseBytes: manifest?.databaseDump?.bytes ?? dump?.metadata?.size ?? null,
         databaseSha256: manifest?.databaseDump?.sha256 ?? null,
+        integrityStatus: 'not_verified',
         manifestPresent: Boolean(manifestObject && manifest),
         retention,
       });
