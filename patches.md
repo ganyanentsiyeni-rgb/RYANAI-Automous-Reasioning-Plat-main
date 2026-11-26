@@ -441,3 +441,12 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Documented that Logic synthesis uses the shared API-owned provider adapter and requires an approved AgentRun plus a fresh live worker lease.
 - OpenRouter remains runtime-disabled pending catalogue, versioned ZAR pricing, streaming/tool policy, reliability/failover, privacy/data-region, and staging acceptance evidence.
 - No provider API call, secret change, billing change, hosted configuration change, deployment, migration, or production modification was performed by this configuration/documentation increment.
+
+## 2026-11-26 — Admin Console AI Inspector evidence
+
+- Added a read-only Admin Console view over the existing authenticated AgentRun list and persisted evidence records; no new endpoint or database change.
+- Accepts only `pa.capability.executed` events whose payload identifies `ai-inspector.inspect` and contains the report, source, SHA-256 digest, and documented exit code.
+- Surfaces structured findings and the durable report with event ID/sequence and recorded digest.
+- Distinguishes no recent task, task without report evidence, malformed evidence, API/source errors, completed-with-findings (exit code 1), and completed exit code 0.
+- Explicitly does not equate exit code 0 with a clean audit, independently verify the hash chain, prove runtime health, launch audits, or perform remediation.
+- No migrations, credential changes, deployment, or production modifications.
