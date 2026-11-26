@@ -422,7 +422,7 @@ export function recoveryPreflight(): RecoveryPreflight {
     }
     const sourceValue = resolvedSourceDatabaseUrl();
     const sourceUrl = new URL(sourceValue);
-    const databaseName = (url: URL) => decodeURIComponent(url.pathname).replace(/^\\//, '').toLowerCase();
+    const databaseName = (url: URL) => decodeURIComponent(url.pathname).split('/').slice(1).join('/').toLowerCase();
     const port = (url: URL) => url.port || '5432';
     const sameEndpoint = targetUrl.hostname.toLowerCase() === sourceUrl.hostname.toLowerCase() &&
       port(targetUrl) === port(sourceUrl) &&
