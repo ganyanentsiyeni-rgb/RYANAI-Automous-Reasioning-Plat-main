@@ -109,6 +109,8 @@ jobs:
           RYANAI_MCP_DELEGATION_SECRET: ci-only-mcp-delegation-secret-0123456789abcdef0123456789abcdef
           RYANAI_MCP_SERVICE_TOKEN: ci-only-mcp-service-token-0123456789abcdef0123456789abcdef
           RYANAI_API_BASE_URL: http://127.0.0.1:3000
+          # MCP startup requires an explicit canonical repository root.
+          RYANAI_PROJECT_ROOT: ${{ github.workspace }}
         run: |
           set -euo pipefail
           npm run start > api.log 2>&1 &
