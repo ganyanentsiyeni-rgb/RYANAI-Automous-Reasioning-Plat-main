@@ -288,7 +288,6 @@ describe('application authentication boundary', () => {
     }
   });
 
-  it('applies workspace visibility preferences to desktop/mobile navigation while keeping Settings available', async () => {
   it('hides opted-out workspaces from desktop and mobile navigation without revoking direct access', async () => {
     const limitedSession = {
       ...session,
