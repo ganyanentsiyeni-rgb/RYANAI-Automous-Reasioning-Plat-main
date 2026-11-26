@@ -6,6 +6,7 @@ import { getOwnerResponseLanguage, ownerCommunicationInstruction } from '../../s
 import { DEFAULT_LANGUAGE, isRyanLanguage, languageInstruction } from '../../shared/languages.js';
 import { getRyanAIAnniversaryInfo, getRyanVoiceDeliveryInstruction } from '../../shared/ryanVoiceIdentity.js';
 import { RYANAI_REALTIME_VOICES, type RyanAIRealtimeVoice } from '../../lib/settingsPreferences.js';
+import { parseCorsOrigins } from '../corsOrigins.js';
 
 const TICKET_TTL_SECONDS = 30;
 const MAX_CLIENT_MESSAGE_BYTES = 64 * 1024;
@@ -33,19 +34,15 @@ interface RedisTicketClient {
 
 function isAllowedOrigin(origin: string | undefined): boolean {
   if (!origin) return true; // Native clients are protected by the single-use ticket.
-  const configured = (process.env.CORS_ORIGINS ?? '')
-    .split(',')
-    .map((value) => value.trim())
-    .filter(Boolean);
-  if (process.env.NODE_ENV !== 'production') {
-    configured.push(
-      'http://localhost:1420',
-      'http://127.0.0.1:1420',
-      'http://localhost:9090',
-      'http://127.0.0.1:9090',
-    );
-  }
-  return configured.includes(origin);
+  const developmentOrigins = process.env.NODE_ENV !== 'production'
+    ? [
+        'http://localhost:1420',
+        'http://127.0.0.1:1420',
+        'http://localhost:9090',
+        'http://127.0.0.1:9090',
+      ]
+    : [];
+  return parseCorsOrigins(process.env.CORS_ORIGINS, ...developmentOrigins).has(origin);
 }
 
 export const realtimeVoiceRoutes: FastifyPluginAsync = async (fastify) => {
