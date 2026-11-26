@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { evaluateGenXSecurityEvent } from '../../security/genxPolicy.js';
-import { listProviderRegistry, resolveProviderRuntime, type ProviderId, type ProviderRegistryEntry } from '../../agent/providerRegistry.js';
+import { listProviderRegistry, type ProviderId, type ProviderRegistryEntry } from '../../agent/providerRegistry.js';
 import { hasValidMcpServiceToken, verifyMcpDelegationToken } from '../security/mcpDelegation.js';
 import { invokeConfiguredProvider } from '../../agent/providerInvocation.js';
 
