@@ -111,3 +111,28 @@ test('inventories every migration directory, including malformed identifiers', (
   assert.deepEqual(result.invalidMigrationIds, ['not-a-migration']);
   assert.equal(result.status, 'static_dependencies_incomplete');
 });
+
+test('preserves PostgreSQL quoted-identifier case when checking table dependencies', () => {
+  const mismatch = analyzeMigrationDependencies([
+    { id: '20261101000000_create_quoted', sqlContent: 'CREATE TABLE "Foo" (id text);' },
+    { id: '20261102000000_alter_unquoted', sqlContent: 'ALTER TABLE foo ADD COLUMN name text;' },
+  ]);
+  assert.ok(mismatch.findings.some(item => item.status === 'alter_before_create_or_external_dependency'));
+
+  const exact = analyzeMigrationDependencies([
+    { id: '20261101000000_create_quoted', sqlContent: 'CREATE TABLE "Foo" (id text);' },
+    { id: '20261102000000_alter_quoted', sqlContent: 'ALTER TABLE "Foo" ADD COLUMN name text;' },
+  ]);
+  assert.equal(exact.findings.length, 0);
+  assert.equal(exact.status, 'static_dependencies_clear');
+});
+
+test('does not treat a dot inside a quoted identifier as a schema separator', () => {
+  const result = analyzeMigrationDependencies([
+    { id: '20261101000000_create_dotted', sqlContent: 'CREATE TABLE "tenant.table" (id text);' },
+    { id: '20261102000000_alter_dotted', sqlContent: 'ALTER TABLE "tenant.table" ADD COLUMN name text;' },
+  ]);
+  assert.equal(result.findings.length, 0);
+  assert.equal(result.externalDependencies.length, 0);
+  assert.equal(result.status, 'static_dependencies_clear');
+});
