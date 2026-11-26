@@ -176,6 +176,7 @@ export class SelfPatchSkill {
         method: 'POST',
         body: JSON.stringify({
           title: `Self-patch: update ${request.filePath.trim()}`,
+          draft: true,
           head: branch,
           base: baseBranch,
           body: [
