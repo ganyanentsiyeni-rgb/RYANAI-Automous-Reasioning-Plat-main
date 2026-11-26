@@ -99,6 +99,14 @@ const adminSession = {
     app_metadata: { role: 'admin' },
   },
 } as Session;
+const canonicalOwnerSession = {
+  user: {
+    id: 'canonical-owner',
+    email: 'rmnganyane@gmail.com',
+    user_metadata: {},
+    app_metadata: {},
+  },
+} as Session;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -356,6 +364,15 @@ describe('application authentication boundary', () => {
     await expectContent('Private operations center');
     expect(container.querySelector('nav[aria-label="Main navigation"] a[href="#/operations"]')).not.toBeNull();
     expect(container.querySelector('nav[aria-label="Mobile navigation"] a[href="#/operations"]')).not.toBeNull();
+  });
+
+  it('treats the canonical owner email as owner/admin for UI access even without client role metadata', async () => {
+    auth.getSession.mockResolvedValue({ data: { session: canonicalOwnerSession }, error: null });
+    await mount('/dashboard');
+    await expectContent('Private dashboard');
+    expect(container.querySelector('nav a[href="#/admin"]')).not.toBeNull();
+    expect(container.querySelector('nav a[href="#/comms"]')).not.toBeNull();
+    expect(container.textContent).toContain('Owner account');
   });
 
   it('makes owner-only Comms available to an authenticated owner', async () => {
