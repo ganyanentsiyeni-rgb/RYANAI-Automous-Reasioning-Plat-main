@@ -399,3 +399,11 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - The UI continues to wait for backend-confirmed `success`, `delegationId`, `taskId`, and `approved | pending_approval` before clearing the draft or displaying an accepted notice.
 - Added hook regression coverage for stable ID propagation and a Gen-X/backend 403 denial; denied requests do not report success.
 - This is frontend integration only. Server-side authorization and execution boundaries are unchanged; no deployment, migration, credential change, or production action.
+
+
+## 9. Environment-example contract validator alignment (PR #953)
+
+- Replaced the stale exact-three-variable assertion for `.env.example` with explicit checks for the active U2EB Supabase URL and Session Pooler host, while requiring `DATABASE_URL`, `DIRECT_URL`, `AUDIOBOOK_DATABASE_URL`, `AUDIOBOOK_DATABASE_URL_UNPOOLED`, and `VITE_SUPABASE_PUBLISHABLE_KEY` to remain blank in the committed template.
+- This corrects the validator drift introduced when the example was expanded to document frontend and audiobook runtime configuration.
+- The patch changes validation only; it does not populate credentials, alter provider configuration, run migrations, or deploy.
+- PR #953 must pass all required exact-head CI/security checks and required review before merge. Vercel checks are currently failing with the team's Hobby build-rate limit; this is a provider/account capacity block, not a successful deployment.
