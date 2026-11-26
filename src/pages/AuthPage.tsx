@@ -86,6 +86,9 @@ export default function AuthPage({ mode = 'signin', loginAs: initialLoginAs = 'u
     authAttemptInFlight.current = true;
     setError('');
     setSuccess('');
+    // OAuth returns through the same session listener as password sign-in;
+    // persist the selected access intent before leaving the app.
+    if (!isSignup) sessionStorage.setItem('ryanai-login-intent', loginAs);
     setLoading(true);
     try {
       const { error: authError } = await supabase.auth.signInWithOAuth({
