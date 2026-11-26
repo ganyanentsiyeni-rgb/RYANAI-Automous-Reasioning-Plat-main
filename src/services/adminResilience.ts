@@ -1,5 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -164,6 +164,8 @@ export interface BackupInventoryItem {
   createdAt: string | null;
   databaseBytes: number | null;
   databaseSha256: string | null;
+  /** Inventory reads the manifest only; the stored dump has not been re-downloaded and re-hashed. */
+  integrityStatus: 'not_verified';
   manifestPresent: boolean;
   retention: 'within_policy' | 'outside_policy' | 'unknown';
 }
@@ -279,6 +281,7 @@ export async function listDatabaseBackups(): Promise<BackupInventory> {
         createdAt,
         databaseBytes: manifest?.databaseDump?.bytes ?? dump?.metadata?.size ?? null,
         databaseSha256: manifest?.databaseDump?.sha256 ?? null,
+        integrityStatus: 'not_verified',
         manifestPresent: Boolean(manifestObject && manifest),
         retention,
       });
@@ -387,6 +390,24 @@ export async function createDatabaseBackup(): Promise<BackupResult> {
   }
 }
 
+
+/**
+ * Returns migration directory names shipped with this application build.
+ * This is repository inventory only; it is not evidence that a database applied them.
+ */
+export async function listExpectedMigrationIds(): Promise<{ status: 'available' | 'unavailable'; migrationIds: string[]; reason?: string }> {
+  try {
+    const entries = await readdir(path.resolve(process.cwd(), 'prisma', 'migrations'), { withFileTypes: true });
+    const migrationIds = entries
+      .filter((entry) => entry.isDirectory() && /^\d{14}_[a-z0-9_]+$/i.test(entry.name))
+      .map((entry) => entry.name)
+      .sort();
+    return { status: 'available', migrationIds };
+  } catch {
+    return { status: 'unavailable', migrationIds: [], reason: 'Repository migration inventory could not be read.' };
+  }
+}
+
 export interface RecoveryPreflight {
   status: 'not_configured' | 'invalid_target' | 'blocked_same_as_source' | 'identity_unverified';
   targetLabel: string | null;
@@ -422,15 +443,18 @@ export function recoveryPreflight(): RecoveryPreflight {
     }
     const sourceValue = resolvedSourceDatabaseUrl();
     const sourceUrl = new URL(sourceValue);
-    const sameHost = targetUrl.hostname.toLowerCase() === sourceUrl.hostname.toLowerCase();
-    const sameDatabase = decodeURIComponent(targetUrl.pathname).replace(/^\//, '').toLowerCase() === decodeURIComponent(sourceUrl.pathname).replace(/^\//, '').toLowerCase();
-    if (sameHost || sameDatabase) {
+    const databaseName = (url: URL) => decodeURIComponent(url.pathname).split('/').slice(1).join('/').toLowerCase();
+    const port = (url: URL) => url.port || '5432';
+    const sameEndpoint = targetUrl.hostname.toLowerCase() === sourceUrl.hostname.toLowerCase() &&
+      port(targetUrl) === port(sourceUrl) &&
+      databaseName(targetUrl) === databaseName(sourceUrl);
+    if (sameEndpoint) {
       return {
         status: 'blocked_same_as_source',
         targetLabel,
         productionRestore: 'disabled',
         writesPerformed: false,
-        reason: 'Recovery target resolves to the source database; isolated recovery is blocked.',
+        reason: 'Recovery target matches the source host, port and database; isolated recovery is blocked.',
       };
     }
     if (targetUrl.protocol !== 'postgres:' && targetUrl.protocol !== 'postgresql:') {

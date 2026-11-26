@@ -104,7 +104,7 @@ The initial active set includes:
 - edge security advisory review;
 - incident evidence and recovery.
 
-Provider/model routing remains catalogued but disabled while the previously reviewed OpenRouter proposal is paused. A registry entry is not an external integration or permission grant. Active skills remain read-only or proposal-only and must continue through the existing Gen-X, AgentRun, evidence, and execution boundaries.
+Provider/model routing remains catalogued but runtime-disabled while the resumed OpenRouter implementation completes its remaining catalogue, usage/cost, reliability, privacy, regional-data, and staging acceptance gates. The Logic override now routes through the shared API-owned provider adapter only after a persisted approved AgentRun and live worker lease are revalidated by the API worker. A registry entry is not an external integration or permission grant. Active skills remain read-only or proposal-only and must continue through the existing Gen-X, AgentRun, evidence, and execution boundaries.
 
 
 ## Owner access and dashboard workspace preferences
@@ -119,3 +119,27 @@ This change is delivered through a reviewable pull request. It does not authoriz
 ## Frontend navigation and dashboard preferences
 
 The account preference record is a presentation setting consumed by both desktop/mobile navigation and Dashboard shortcuts. Settings is deliberately not user-hideable. The Dashboard option controls its navigation shortcut. A hidden workspace may still be reached by a direct route when the authenticated account is otherwise authorized; the API and route guards remain the security boundary. Visibility preferences never grant Admin, Owner, or other privileged capabilities.
+
+
+## Frontend trust and operational API boundary (2026-11-26)
+
+Vite build configuration and browser runtime share `src/config/frontendEnv.ts` as the frontend environment policy. It rejects server-only credentials exposed through `VITE_*`, allows only the named public Supabase anon/publishable keys, and requires HTTPS non-loopback API origins for staging/production. The legacy `VITE_API_URL` alias remains temporarily accepted; `VITE_API_BASE_URL` is canonical.
+
+`src/hooks/useRyanOperations.ts` is an authenticated UI adapter over the existing Agent Operations routes. It does not synthesize successful task creation or approval state. Task/awareness/PA telemetry is fetched independently so a failed observer does not erase another observer's last confirmed snapshot. Active task polling stops when all observed runs are terminal.
+
+The detailed multi-subsystem health, fixed 12-agent/10-worker registry, five-stage MCP tool verification, complete Comms receipt state machine, and backend capabilities manifest are not represented as live frontend contracts until corresponding API endpoints and backend runtime schemas exist. Frontend types must describe confirmed backend payloads, not create an apparent implementation by declaring interfaces alone.
+
+The focused frontend contract tests, explicit production web build, and compiled-bundle audit are integrated into the existing pull-request CI job for pre-merge execution. The standalone workflow becomes independently active once merged into the base branch. Merge remains governed by the existing required exact-SHA CI/security checks and independent review; production deployment remains behind the explicit Push Deploy trigger and the independent Render/Railway/Vercel release jobs.
+
+
+## PA delegation frontend dispatch boundary (2026-11-26)
+
+The shared `PADelegationPanel` creates delegations through `useRyanOperations`, which sends the authenticated request to the existing `/api/agent/ops/pa/delegations` route. The panel's fingerprinted UUID is carried as the backend `delegationId` so retries retain the same request identity. UI acceptance requires the backend's persisted delegation and AgentRun references plus its explicit approval state. Gen-X policy evaluation, owner scoping, approval recording, and execution authorization remain server-side.
+
+
+## Admin Console capability metadata boundary (2026-11-26)
+
+The Admin Console's plugin capability catalogue reads the authenticated, read-only `GET /api/plugins/registry` endpoint. It renders provider manifest metadata, declared capability risk and approval requirements, data classifications, and adapter registration status. The route deliberately excludes connection state, credentials, and executable adapter instances. A manifest entry or registered adapter is not a user permission, live provider health, or execution authorization. Gen-X policy and the server-side connection/adapter execution gateway remain authoritative; unavailable or malformed metadata is shown as an error rather than synthesized state.
+## Command Cockpit AgentRun observability
+
+The Command Cockpit's AgentRun queue panel is a read-only view over the authenticated task-list and operational-awareness endpoints through `useRyanOperations`. Queue counters, task statuses, and approval states are displayed only when returned by the API. Missing fields remain explicitly unreported; an empty list is not treated as proof of queue health. Active-run polling is bounded to the hook's observed non-terminal tasks. The panel does not approve, dispatch, claim, renew, or recover tasks; those operations remain backend-authorized and lease-controlled.

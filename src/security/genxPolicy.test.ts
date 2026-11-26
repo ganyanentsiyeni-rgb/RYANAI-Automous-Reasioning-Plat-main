@@ -181,4 +181,21 @@ describe('Gen-X deterministic security enforcement', () => {
       .toBe('REQUIRE_APPROVAL');
   });
 
+  it('allows approved owner-bound AgentRuns to use only the configured reasoning provider', () => {
+    expect(evaluateGenXSecurityEvent({
+      agentId: 'ryanai-agent-worker', principal: 'owner-user',
+      toolName: 'api_agent_reasoning_request', action: 'NETWORK',
+      target: 'configured-approved-provider', actorType: 'agent',
+      approvedAgentRun: true, environment: 'staging',
+    })).toMatchObject({ decision: 'ALLOW', ruleId: 'GX-APPROVED-AGENT-REASONING-001' });
+  });
+
+  it('denies agent reasoning without trusted owner-bound approval context', () => {
+    expect(evaluateGenXSecurityEvent({
+      agentId: 'ryanai-agent-worker', principal: 'owner-user',
+      toolName: 'api_agent_reasoning_request', action: 'NETWORK',
+      target: 'configured-approved-provider', actorType: 'agent',
+    })).toMatchObject({ decision: 'REQUIRE_APPROVAL' });
+  });
+
 });

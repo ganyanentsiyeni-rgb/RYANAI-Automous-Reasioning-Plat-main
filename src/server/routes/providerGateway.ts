@@ -1,7 +1,8 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { evaluateGenXSecurityEvent } from '../../security/genxPolicy.js';
-import { listProviderRegistry, resolveProviderRuntime, type ProviderId, type ProviderRegistryEntry } from '../../agent/providerRegistry.js';
+import { listProviderRegistry, type ProviderId, type ProviderRegistryEntry } from '../../agent/providerRegistry.js';
 import { hasValidMcpServiceToken, verifyMcpDelegationToken } from '../security/mcpDelegation.js';
+import { invokeConfiguredProvider } from '../../agent/providerInvocation.js';
 
 interface GatewayBody {
   providerId: ProviderId;
@@ -19,72 +20,6 @@ async function requireMcpService(request: FastifyRequest, reply: FastifyReply): 
   if (!hasValidMcpServiceToken(request.headers['x-ryanai-service-token'], expected)) {
     reply.code(401).send({ success: false, error: 'Unauthorized MCP service.' });
   }
-}
-
-function safeProviderError(status: number): string {
-  if (status === 401 || status === 403) return 'Provider authentication was rejected.';
-  if (status === 429) return 'Provider rate limit or quota was reached.';
-  if (status >= 500) return 'Provider is temporarily unavailable.';
-  return 'Provider rejected the request.';
-}
-
-async function invokeProvider(body: GatewayBody, signal: AbortSignal) {
-  const runtime = resolveProviderRuntime(body.providerId, body.model);
-  const headers: Record<string, string> = { 'content-type': 'application/json' };
-  let url: URL;
-  let payload: Record<string, unknown>;
-
-  if (runtime.adapter === 'anthropic-messages') {
-    if (body.responseFormat === 'json_object') {
-      throw new Error('Structured JSON response mode is not supported by the native Anthropic adapter yet.');
-    }
-    url = new URL('messages', runtime.endpoint.endsWith('/') ? runtime.endpoint : runtime.endpoint + '/');
-    headers['anthropic-version'] = '2023-06-01';
-    if (runtime.credential) headers['x-api-key'] = runtime.credential;
-    payload = {
-      model: runtime.model,
-      max_tokens: 1024,
-      messages: [{ role: 'user', content: body.prompt }],
-    };
-  } else {
-    url = new URL('chat/completions', runtime.endpoint.endsWith('/') ? runtime.endpoint : runtime.endpoint + '/');
-    if (runtime.credential) headers.authorization = 'Bearer ' + runtime.credential;
-    payload = {
-      model: runtime.model,
-      messages: [{ role: 'user', content: body.prompt }],
-      ...(body.responseFormat === 'json_object' ? { response_format: { type: 'json_object' } } : {}),
-    };
-  }
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload),
-    signal,
-  });
-  if (!response.ok) throw new Error(safeProviderError(response.status));
-
-  const result = await response.json() as {
-    choices?: Array<{ message?: { content?: unknown; tool_calls?: unknown[] } }>;
-    content?: Array<{ type?: string; text?: string }>;
-    usage?: { prompt_tokens?: number; completion_tokens?: number; input_tokens?: number; output_tokens?: number };
-  };
-  const text = runtime.adapter === 'anthropic-messages'
-    ? result.content?.filter((item) => item.type === 'text').map((item) => item.text ?? '').join('')
-    : result.choices?.[0]?.message?.content;
-  if (typeof text !== 'string' || !text.trim()) {
-    throw new Error('Provider returned no text response; provider tool calls are not executed by this gateway.');
-  }
-  if (body.responseFormat === 'json_object') {
-    try { JSON.parse(text); } catch { throw new Error('Provider did not return valid JSON.'); }
-  }
-  return {
-    response: text,
-    usage: result.usage ? {
-      inputTokens: result.usage.prompt_tokens ?? result.usage.input_tokens ?? null,
-      outputTokens: result.usage.completion_tokens ?? result.usage.output_tokens ?? null,
-    } : null,
-  };
 }
 
 export const providerGatewayRoutes: FastifyPluginAsync = async (fastify) => {
@@ -126,7 +61,7 @@ export const providerGatewayRoutes: FastifyPluginAsync = async (fastify) => {
       action: 'NETWORK',
       target: 'configured-approved-provider',
       environment,
-      actorType: 'human',
+      actorType: claims.actorType,
     });
     if (policy.decision !== 'ALLOW') {
       fastify.log.warn({ ruleId: policy.ruleId, principal: claims.sub, providerId: request.body.providerId }, 'Gen-X denied delegated provider request');
@@ -150,7 +85,7 @@ export const providerGatewayRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     try {
-      const result = await invokeProvider(request.body, AbortSignal.timeout(60_000));
+      const result = await invokeConfiguredProvider(request.body, AbortSignal.timeout(60_000));
       return {
         success: true,
         providerId: request.body.providerId,

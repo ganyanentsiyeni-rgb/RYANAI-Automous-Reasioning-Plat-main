@@ -9,7 +9,7 @@ const serviceToken = 'test-only-service-token-32-bytes-long';
 function tokenFor(overrides = {}, now = 1_800_000_000) {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
   const claims = {
-    iss: 'ryanai-api', aud: 'ryanai-mcp', sub: 'user-123', role: 'user',
+    iss: 'ryanai-api', aud: 'ryanai-mcp', sub: 'user-123', role: 'user', actorType: 'human',
     scope: ['platform_health'], iat: now, exp: now + 60, jti: 'jti-test',
     ...overrides,
   };
@@ -27,6 +27,7 @@ test('verifies API-issued HMAC delegated identity and narrow scopes', () => {
 test('rejects expired, wrong-audience, overlong and unknown-scope tokens', () => {
   assert.throws(() => verifyMcpDelegationToken(tokenFor({ exp: 1_800_000_000 }), secret, 1_800_000_000), /expired/);
   assert.throws(() => verifyMcpDelegationToken(tokenFor({ aud: 'other' }), secret, 1_800_000_010), /invalid or expired/);
+  assert.throws(() => verifyMcpDelegationToken(tokenFor({ actorType: 'root' }), secret, 1_800_000_010), /invalid or expired/);
   assert.throws(() => verifyMcpDelegationToken(tokenFor({ exp: 1_800_000_200 }), secret, 1_800_000_010), /invalid or expired/);
   assert.throws(() => verifyMcpDelegationToken(tokenFor({ scope: ['run_project_checks'] }), secret, 1_800_000_010), /invalid or expired/);
 });

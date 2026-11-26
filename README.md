@@ -1654,7 +1654,7 @@ The backend module-boundary scanner's regex escaping and path normalization were
 
 ## PA Agent sourced skills
 
-PA now exposes a governed sourced-skill registry with provenance and bounded execution modes. Active capabilities include research/source verification, observability and synthetic verification, correction-to-guardrail proposals, Supabase database governance, edge security watch, and incident evidence/recovery. The provider/model-routing proposal remains catalogued but disabled while OpenRouter work is paused. See [RyanAI agent skills](RyanAI.agent.skills.md) and [patches.md](patches.md).
+PA now exposes a governed sourced-skill registry with provenance and bounded execution modes. Active capabilities include research/source verification, observability and synthetic verification, correction-to-guardrail proposals, Supabase database governance, edge security watch, and incident evidence/recovery. The OpenRouter implementation is being resumed in reviewable increments. The first security increment preserves verified actor identity through delegated MCP tokens; the Logic model override now uses the shared API-owned provider adapter and canonical registry after approved-AgentRun and live-lease checks. OpenRouter runtime activation remains disabled until catalogue, usage/cost, reliability, privacy, regional-data and staging gates pass. See [RyanAI agent skills](RyanAI.agent.skills.md) and [patches.md](patches.md).
 
 
 ## Owner access and dashboard workspace preferences
@@ -1681,3 +1681,32 @@ Account-level Dashboard UI preferences control whether registered workspaces app
 - Fixed the browser TauriBridge health fallback import and added regression coverage.
 - The disposable PostgreSQL agent queue/notification integration now explicitly runs in test mode; this avoids applying hosted-production Supabase project requirements to the loopback CI database.
 - The memory uniqueness migration's duplicate-pair failure is an intentional negative fixture, not a production-data issue.
+## Frontend environment and operational truth boundary
+
+The Vite browser build validates all exposed `VITE_*` variable names before bundling. Provider credentials, database/Redis URLs, private keys, passwords, and server auth tokens must remain server-only; only the explicitly browser-safe Supabase anon/publishable key names are allowed. Hosted staging/production builds require an absolute HTTPS API URL and reject loopback endpoints. Set `VITE_APP_ENV=staging` or `VITE_APP_ENV=production` for non-Vercel hosted builds; Vercel production is detected automatically. The legacy `VITE_API_URL` alias remains accepted during migration. Local development may continue to use a loopback API URL.
+
+The authenticated operational hooks in `src/hooks/useRyanOperations.ts` consume the existing `/api/agent/ops/tasks`, `/api/agent/ops/awareness`, `/api/agent/ops/pa/status`, task approval, and PA delegation routes. They display only backend-confirmed responses, preserve independently available telemetry when one observer is unavailable, and poll only while a task remains active. They do not infer an agent/worker inventory, MCP availability, or Comms delivery status from frontend constants.
+
+Run the focused frontend checks with:
+
+```bash
+npm run lint
+npm run typecheck
+npx vitest run src/config/frontendEnv.test.ts src/lib/platformHealth.test.ts
+npm run build:web
+```
+
+The existing CI workflow now runs the focused frontend contract tests, an explicit production web build, and a compiled-bundle audit on this pull request's exact head SHA. The standalone `RyanAI Frontend Verification Gate` is also added for subsequent pull requests after its workflow definition reaches the base branch. Neither workflow changes branch protection, authorizes merging, or triggers deployment. The existing explicit **PUSH DEPLOY** release gate remains authoritative.
+
+
+### PA delegation dispatch integration
+
+The shared PA/Darkside Copilot delegation panel now submits creation through `useRyanOperations().createPADelegation()`. The panel preserves its request fingerprint and caller-generated delegation UUID across failed attempts, passing that stable ID to the authenticated backend endpoint for duplicate-safe retries. A delegation is shown as accepted only when the API returns the persisted delegation ID, AgentRun task ID, and an approved or pending-approval state. Existing server-side Gen-X policy, approval, and deployment gates remain authoritative.
+
+
+## Admin Console plugin capability catalogue
+
+The Admin Console reads the server-owned plugin metadata from authenticated `GET /api/plugins/registry`. It displays declared capability IDs, risk labels, human-approval flags, data classifications, manifest version and adapter registration status. The endpoint is metadata-only: it does not expose credentials, connection state or adapter execution methods. The UI does not interpret a declaration or registered adapter as a user permission, connected provider, healthy provider or authorization to execute. Gen-X and the server-side execution boundary remain authoritative.
+### Command Cockpit AgentRun telemetry
+
+The Command Cockpit includes an AgentRun queue panel backed by `useRyanOperations`. It displays only API-confirmed queue counts and persisted task records, exposes manual refresh, and shows missing/unavailable telemetry as unreported rather than healthy. Active-run polling stops when all observed runs are terminal. This is read-only UI telemetry; approval, dispatch, worker leases, and execution remain server-authorized.

@@ -354,6 +354,16 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Fixed the missing `fetchSystemHealth` import in the browser fallback of `TauriBridge` and added a regression test for browser system-health checks.
 - Corrected the disposable PostgreSQL notification/queue CI step to run with `NODE_ENV=test` and explicit disposable-database flags. The previous job imported the Prisma singleton with its production default and incorrectly required a hosted Supabase project mapping for loopback CI PostgreSQL.
 - The duplicate `(user_id, key)` migration preflight is an intentional negative test; it passed. No production memory records were changed.
+## 2026-11-26 — Frontend environment and operational truth increment
+
+- Added a shared browser-environment validator used by Vite build configuration and the runtime API base URL resolver.
+- Rejects server-only credentials under `VITE_*` names, permits only the explicitly browser-safe Supabase anon/publishable key names, rejects URL-embedded credentials, and requires HTTPS/non-loopback API endpoints in staging and production.
+- Added focused regression tests for localhost/loopback, staging HTTPS, missing hosted API configuration, forbidden secret names, safe Supabase public keys, and URL normalization.
+- Added `useRyanOperations` and browser contracts for the API routes that exist today: AgentRun task listing/dispatch, operational awareness, PA observer status, task approval/rejection, and PA delegation.
+- The hook uses authenticated API requests, validates essential response fields, waits for backend-confirmed action results, preserves independent telemetry when one source fails, and polls only while runs are active.
+- Added the standalone `RyanAI Frontend Verification Gate` and integrated its focused environment/health tests, explicit production web build, and compiled-bundle credential/loopback audit into the existing CI workflow so this PR receives pre-merge verification before the new workflow reaches main.
+- Deliberately did not invent detailed health, agent/worker registry, MCP tool, Comms receipt, or capabilities endpoints: the proposed `/api/v1/*` paths are not the current API route contract. These require backend implementation and contract tests before the frontend can truthfully render them.
+- No branch-protection rule was modified, no PR was merged, and no deployment, migration, credential change, provider configuration change, or production operation was performed. Exact-head CI evidence and independent review remain required.
 ## 2026-11-26 — GitHub Integration status refresh feedback
 
 - Refreshing an already-loaded GitHub connection now re-enters a visible checking state and disables repeat refresh while the authenticated status request is pending.
@@ -373,3 +383,53 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Added regression coverage proving the caller signal reaches authenticated transport and aborts do not trigger completion or error callbacks.
 - This is a frontend/request-lifecycle safety repair only; model catalog, provider authorization, backend policy, database schema, credentials, deployment and production configuration are unchanged.
 - Tests have not been executed in this environment; exact-head CI remains required. No merge, deployment, migration, credential change, or production modification.
+
+
+## 2026-11-26 — Resume OpenRouter governance implementation
+
+- Preserved the trusted Supabase actor type (`human`, `agent`, or `service`) in API-issued MCP delegation assertions and re-evaluated Gen-X using that signed actor classification at delegation, execution authorization, and provider dispatch.
+- Removed the hard-coded `actorType: human` assumption from delegated reasoning. Explicit agent/service identities are denied by the existing human-only reasoning policy and cannot inherit owner permissions.
+- Added regression coverage across API delegation, API provider gateway, HMAC token verification, and MCP token verification.
+- OpenRouter remains optional and runtime-disabled pending the remaining catalogue, usage/cost, reliability, privacy, regional-data, and staging acceptance gates. No provider key, billing, hosted environment, deployment, migration, or external API call was changed.
+
+
+## 2026-11-26 — Logic OpenRouter override routed through API gateway
+
+- Replaced the Logic override's direct `ChatOpenAI` construction and direct endpoint/key resolution with `resolveSelectedReasoningModel` backed by the canonical provider registry and `invokeConfiguredProvider` shared API-owned adapter.
+- The worker now requires a persisted approved AgentRun, revalidates its current worker lease immediately before provider dispatch, and evaluates Gen-X using the internal `approvedAgentRun` context. The worker-only context is distinct from route-only `ownerAuthorized` and is never accepted from model/tool input.
+- The API MCP gateway and approved AgentRun worker now share the same provider request shaping, server-held credential resolution, HTTPS/allowlist checks, normalized text response, usage normalization, and no-tool-execution behavior.
+- Existing `gpt-4o` and `gpt-4o-mini` selections continue to use the configured Logic provider. Only the two explicitly catalogued OpenRouter aliases may select the OpenRouter route.
+- Added model selection, provider invocation, and Gen-X policy regression tests. Exact-head CI is still required; tests have not been executed locally in this workflow.
+- OpenRouter remains runtime-disabled. No provider API request, secret/billing change, hosted configuration change, merge, migration, or deployment was performed.
+
+
+## 2026-11-26 — PA delegation UI uses the operational contract hook
+
+- Routed the shared PA/Darkside Copilot delegation creation action through `useRyanOperations().createPADelegation()` rather than maintaining a second raw POST implementation in the panel.
+- Extended the hook to accept the panel's stable delegation UUID and send it with the objective and capability scope, preserving retry identity and avoiding duplicate delegation creation.
+- The UI continues to wait for backend-confirmed `success`, `delegationId`, `taskId`, and `approved | pending_approval` before clearing the draft or displaying an accepted notice.
+- Added hook regression coverage for stable ID propagation and a Gen-X/backend 403 denial; denied requests do not report success.
+- This is frontend integration only. Server-side authorization and execution boundaries are unchanged; no deployment, migration, credential change, or production action.
+
+
+## 9. Environment-example contract validator alignment (PR #953)
+
+- Replaced the stale exact-three-variable assertion for `.env.example` with explicit checks for the active U2EB Supabase URL and Session Pooler host, while requiring `DATABASE_URL`, `DIRECT_URL`, `AUDIOBOOK_DATABASE_URL`, `AUDIOBOOK_DATABASE_URL_UNPOOLED`, and `VITE_SUPABASE_PUBLISHABLE_KEY` to remain blank in the committed template.
+- This corrects the validator drift introduced when the example was expanded to document frontend and audiobook runtime configuration.
+- The patch changes validation only; it does not populate credentials, alter provider configuration, run migrations, or deploy.
+- PR #953 must pass all required exact-head CI/security checks and required review before merge. Vercel checks are currently failing with the team's Hobby build-rate limit; this is a provider/account capacity block, not a successful deployment.
+## 2026-11-26 — Admin Console backend plugin capability catalogue
+
+- Added a read-only Admin Console view backed by the authenticated `GET /api/plugins/registry` endpoint.
+- Displays server-declared provider metadata, capability IDs, risk classifications, human-approval flags, data classifications, manifest versions and adapter registration state.
+- Validates the response shape and visibly distinguishes API/contract failures from a confirmed empty catalogue.
+- Explicitly does not infer user permissions, provider connection/health, or executable authority from catalogue metadata. No credentials, connection records or adapter methods are exposed by the route.
+- Added component tests for authenticated loading, manifest rendering, invalid payloads and HTTP 403. Tests/build have not been run locally in this workflow; exact-head CI remains required.
+- No backend authorization policy, provider credential, database schema, deployment, merge or production configuration was changed.
+## 2026-11-26 — Command Cockpit AgentRun queue visibility
+
+- Added a dedicated AgentRun queue panel to the Command Cockpit using the shared authenticated `useRyanOperations` hook.
+- Exposes API-reported queued/running/failed/cancelled/total counters, recent persisted AgentRuns, approval state when present, last confirmed snapshot time, and manual refresh.
+- Missing counters and approval state render as `Not reported`; an empty task response is not presented as proof of a healthy or empty queue.
+- Reuses the hook's active-run polling behavior; no new API route, registry assertion, approval action, lease mutation, migration, deployment, or production change.
+- Exact-head CI/build/security checks remain required; tests have not been run locally in this workflow.
