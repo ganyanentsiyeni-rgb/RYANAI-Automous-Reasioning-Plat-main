@@ -44,5 +44,5 @@ for (const item of results) {
   console.log(`${item.status}${primary} | ${item.name} | role: ${item.role} | gate: ${item.gate}${suffix}`);
 }
 const blocked = results.filter((item) => item.status === 'BLOCKED');
-console.log(`\nDeployment readiness: ${results.filter((item) => item.status === 'READY').length} ready, ${blocked.length} blocked, ${results.filter((item) => item.status === 'DISABLED').length} disabled. No deployments were triggered.`);
+console.log(`\\nDeployment readiness: ${results.filter((item) => item.status === 'READY').length} ready, ${blocked.length} blocked, ${results.filter((item) => item.status === 'DISABLED').length} disabled. No deployments were triggered.`);
 if (process.argv.includes('--strict') && blocked.length) process.exitCode = 1;
