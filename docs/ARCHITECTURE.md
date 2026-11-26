@@ -448,3 +448,9 @@ The backend module-boundary scanner must use JavaScript regex escapes (`\s`, `\.
 - Updated Redis readiness tests to assert the reliability options actually used by `connectRedis`; the configured initial readiness deadline is now honored without an artificial 250 ms floor.
 - Updated provider/auth test fixtures to include the trusted `human` actor classification introduced by the provider Gen-X network gate, and corrected the environment-contract test to use a supported error assertion pattern.
 - These changes target the exact failures observed on main CI. They do not change provider deployment, production database migration, secrets, or production infrastructure.
+
+
+
+### OpenRouter delegated provider configuration — 26 November 2026
+
+OpenRouter configuration is optional and server-only. The API resolves the HTTPS endpoint and model allowlist on the server; the provider key must never be exposed to browser or MCP clients. Logic synthesis routes through the shared API-owned provider invocation adapter after Gen-X authorization, persisted AgentRun approval, and live worker-lease validation. Runtime activation remains disabled until model catalogue, versioned ZAR pricing, streaming/tool boundaries, reliability/failover, privacy/data-region, and staging gates are evidenced.

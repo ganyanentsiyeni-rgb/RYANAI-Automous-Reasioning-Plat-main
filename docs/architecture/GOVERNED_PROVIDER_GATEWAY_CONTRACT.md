@@ -134,3 +134,12 @@ This document does not authorize secret provisioning or modification, provider a
 - Worker dispatch requires a persisted approved AgentRun and a fresh live-lease check, then uses a distinct worker-only Gen-X `approvedAgentRun` signal. It does not reuse the route-only `ownerAuthorized` flag.
 - `gpt-4o` and `gpt-4o-mini` remain on the configured Logic provider. OpenRouter runtime activation remains disabled pending remaining catalogue, usage/cost, reliability, privacy/data-region and staging gates.
 - Regression tests were added for model selection, shared OpenRouter invocation, allowlist/credential fail-closed behavior, no tool-call execution and Gen-X approved-run authorization. Exact-head CI remains authoritative.
+
+
+
+## OpenRouter configuration and release boundary — 26 November 2026
+
+- OpenRouter API key, endpoint, and model allowlist are optional API-runtime configuration; the key is never a browser or MCP credential.
+- The Logic worker uses the shared API-owned provider invocation adapter after approved-AgentRun and live-lease revalidation. Provider tool calls are not executed implicitly.
+- Runtime activation remains disabled pending model catalogue review, versioned pricing/ZAR attribution, streaming/tool capability contracts, provider health/failover, privacy/data-region review, and staging proof.
+- The Render U2EB blueprint declares the key as `sync: false`; this does not create or provision a secret. No live Render/Railway/Vercel settings are changed by the repository declaration.
