@@ -1671,6 +1671,16 @@ This change is delivered through a reviewable pull request. It does not authoriz
 Account-level Dashboard UI preferences control whether registered workspaces appear in desktop navigation, mobile navigation, and Dashboard shortcuts. The Dashboard preference controls its navigation entry; **Settings remains available** as the recovery path. Hiding a workspace changes presentation only: it does not revoke route/API authorization, and enabling a workspace does not grant permissions. Admin Console and RyanAI Comms remain subject to server-verified role/owner checks. The frontend regression suite covers default visibility, hidden workspace behavior, direct-route authorization, and Settings availability.
 
 
+## 26 November 2026 — provider readiness gate correction
+
+- The Render U2EB API Blueprint now uses `/readyz` rather than `/health` as its deploy health-check path. `/health` and `/livez` establish process liveness only; `/readyz` is the application-readiness contract and includes required database, Redis, checkpointer, and queue-listener dependencies.
+- This repository change does not update an existing Render workspace or service by itself. Verify the exact Render workspace, service IDs, linked repository, branch, root, Dockerfile, plan, region, and latest deployment before claiming the live service is aligned.
+- Railway service source/build settings are provider-side configuration. The current live Railway service must be verified against this repository before it can be considered aligned. Never accept staged changes or deploy before exact-SHA CI/CD and security gates pass.
+- Render, Railway, and Vercel remain independent provider jobs after the explicit Push Deploy gate. Provider failure is recorded separately and does not block attempts to the other providers.
+
+- Fixed the browser TauriBridge health fallback import and added regression coverage.
+- The disposable PostgreSQL agent queue/notification integration now explicitly runs in test mode; this avoids applying hosted-production Supabase project requirements to the loopback CI database.
+- The memory uniqueness migration's duplicate-pair failure is an intentional negative fixture, not a production-data issue.
 ## Frontend environment and operational truth boundary
 
 The Vite browser build validates all exposed `VITE_*` variable names before bundling. Provider credentials, database/Redis URLs, private keys, passwords, and server auth tokens must remain server-only; only the explicitly browser-safe Supabase anon/publishable key names are allowed. Hosted staging/production builds require an absolute HTTPS API URL and reject loopback endpoints. Set `VITE_APP_ENV=staging` or `VITE_APP_ENV=production` for non-Vercel hosted builds; Vercel production is detected automatically. The legacy `VITE_API_URL` alias remains accepted during migration. Local development may continue to use a loopback API URL.

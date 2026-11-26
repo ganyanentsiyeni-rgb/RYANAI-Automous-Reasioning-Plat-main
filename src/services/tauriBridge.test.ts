@@ -114,4 +114,13 @@ describe('Tauri authenticated reasoning bridge', () => {
     expect(mocks.getSession).not.toHaveBeenCalled();
     expect(mocks.invoke).not.toHaveBeenCalled();
   });
+  it('uses the API health helper for browser system-health checks', async () => {
+    mocks.isTauri.mockReturnValue(false);
+    mocks.fetchSystemHealth.mockResolvedValue({ status: 'healthy' });
+
+    await expect(TauriBridge.checkSystemHealth()).resolves.toEqual({ status: 'healthy' });
+    expect(mocks.fetchSystemHealth).toHaveBeenCalledOnce();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+
 });

@@ -185,7 +185,7 @@ test('Render API configuration audit is read-only and repair remains separately 
   assert.ok(blueprint.includes('staticPublishPath: ./dist'));
   assert.ok(!blueprint.includes('dockerTarget:'));
   assert.ok(blueprint.includes('ipAllowList: []'));
-  assert.ok(blueprint.includes('healthCheckPath: /health'));
+  assert.ok(blueprint.includes('healthCheckPath: /readyz'));
   assert.ok(blueprint.includes('value: https://ryanai-api-u2eb.onrender.com'));
   assert.ok(blueprint.includes('autoDeployTrigger: checksPass'));
   assert.ok(blueprint.includes('region: oregon'));
@@ -274,4 +274,10 @@ test('Render and Railway are the only default deployment providers with distinct
     'Docker-and-persistent-workloads',
   ]);
   assert.ok(defaults.every((target) => target.status === 'DISABLED'));
+});
+
+test('Render API deployment health check uses application readiness, not process liveness', async () => {
+  const blueprint = await readFile(new URL('../render.yaml', import.meta.url), 'utf8');
+  assert.ok(blueprint.includes('healthCheckPath: /readyz'));
+  assert.match(blueprint, /name: ryanai-api-u2eb[\s\S]*?healthCheckPath: \/readyz/);
 });
