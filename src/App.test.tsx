@@ -301,6 +301,7 @@ describe('application authentication boundary', () => {
     await expectContent('Private dashboard');
 
     for (const navigation of ['Main navigation', 'Mobile navigation']) {
+      for (const path of ['/pa', '/workspace', '/cockpit', '/quant', '/settings']) {
       for (const path of ['/pa', '/workspace', '/settings']) {
         expect(container.querySelector(`nav[aria-label="${navigation}"] a[href="#${path}"]`)).not.toBeNull();
       }
