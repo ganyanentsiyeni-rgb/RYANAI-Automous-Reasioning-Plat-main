@@ -576,3 +576,14 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Added `audit:application-layers` and `test:application-layers` package scripts and wired the focused tests into `npm run validate`.
 - The audit does not execute discovered code, read environment values, make network calls, inspect credentials, connect to services, run migrations, or claim runtime health. Static baseline output is not a clean-architecture or production-readiness certification.
 - No speculative source-module moves, authorization-policy changes, database/schema/migration changes, credential changes, provider changes, production mutations, merges, or deployments.
+
+
+## 2026-11-26 — Bind Studio owner approval to exact task content
+
+- Added a versioned SHA-256 digest over each Studio task's execution-relevant identity, objective, task type, priority, required capabilities, assigned worker, dependencies, and input.
+- Owner approval now records that digest in the append-only `task.human_approved` event and uses a conditional task-state update to avoid recording approval after a concurrent status/approval change.
+- Gen-X's `REQUIRE_APPROVAL` path now accepts only a well-formed approval event whose digest exactly matches the task being claimed for execution. Legacy events, unsupported digest versions, missing evidence, and stale task-content approvals fail closed.
+- Gen-X `DENY` remains absolute; runtime state, leases, timestamps, and output are excluded from the digest.
+- Added canonicalization and regression coverage for changed execution fields, legacy/malformed approvals, and DENY precedence.
+- No database migration, production data change, merge, deployment, credential change, or ruleset modification.
+- Local test execution and exact-SHA CI/security evidence remain pending.
