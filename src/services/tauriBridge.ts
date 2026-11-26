@@ -1,6 +1,6 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { supabase } from '@/lib/supabase';
-import { executeAgentReasoning } from './api';
+import { executeAgentReasoning, fetchSystemHealth } from './api';
 
 export interface AgentResponse {
   status: string;
