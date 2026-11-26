@@ -1,5 +1,3 @@
-import { evaluateGenXSecurityEvent } from '../security/genxPolicy.js';
-
 export const GITHUB_PR_REVIEW_REPOSITORY =
   'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main';
 
@@ -51,17 +49,12 @@ export async function recordOwnerGitHubPrReviewDecision(
     throw new Error('inbound_owner_phone_not_configured');
   }
 
-  const policy = evaluateGenXSecurityEvent({
-    agentId: 'ryanai-api',
-    principal: input.ownerUserId,
-    toolName: 'github_pr_review_approval',
-    action: 'NETWORK',
-    target: `github:${GITHUB_PR_REVIEW_REPOSITORY}:approval:${input.approvalId}:${input.expectedHeadSha.toLowerCase()}`,
-    actorType: 'human',
-    ownerAuthorized: true,
-    ownerConfirmed: true,
-  });
-  if (policy.decision === 'DENY') throw new Error('genx_denied');
+  // No independent Gen-X authorization adapter is wired for this approval path.
+  // Never manufacture owner authorization by passing hardcoded true flags.
+  // Rejections remain available; approvals fail closed until verified authorization exists.
+  if (input.decision === 'approve') {
+    throw new Error('genx_authorization_unavailable');
+  }
 
   const status = input.decision === 'approve' ? 'approved' : 'rejected';
   const rows = await prisma.$queryRawUnsafe<ApprovalRow[]>(
