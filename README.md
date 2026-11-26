@@ -409,6 +409,28 @@ The package start command launches dist/server/server/launcher.js. Confirm the a
 
 **Checked against the root `package.json` on 25 November 2026.** Run root commands from the repository root. The `mcp-server/` and `workflows-ryanai/` directories are separate package scopes.
 
+### Frontend agent and web verification commands
+
+Run these commands from the repository root, in this order, when reviewing or validating frontend patches:
+
+~~~bash
+npm run frontend:agent:dry-run
+npm run frontend:agent
+npm run typecheck
+npm run build:web
+~~~
+
+| Command | Actual script behavior | What to check |
+| --- | --- | --- |
+| `npm run frontend:agent:dry-run` | Runs `scripts/frontend-platform-agent.mjs --fix --dry-run`. | Preview the proposed frontend fixes without applying the fix pass. Review the reported findings and proposed changes. |
+| `npm run frontend:agent` | Runs `scripts/frontend-platform-agent.mjs --audit`. | Run the frontend platform audit and review its findings. This is an audit, not the fix mode. |
+| `npm run typecheck` | Runs `tsc -p tsconfig.app.json --noEmit`. | Check the application TypeScript project without emitting build output. |
+| `npm run build:web` | Runs `npm run build:client`, which executes `tsc -p tsconfig.app.json && vite build`. | Build the web client for production. The build script performs its own TypeScript compilation before Vite. |
+
+The dry-run command is deliberately listed before the audit and build so proposed changes can be reviewed first. It does not apply the fix pass; `frontend:agent` runs audit mode and should not be described as an automatic patch command. If fixes are explicitly intended, use the separately declared `npm run frontend:agent:fix` only after reviewing the dry-run output and confirming the intended scope. Re-run the audit, type-check, and web build after any applied changes.
+
+These frontend commands validate local source and build behavior. A successful local build does not prove hosted sign-in, API/database readiness, provider deployment, or production health.
+
 ### Verified root command sequence
 
 Use this sequence after installing dependencies and configuring the local environment. Run it from the repository root.
