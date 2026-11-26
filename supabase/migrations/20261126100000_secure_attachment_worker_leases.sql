@@ -88,12 +88,19 @@ GRANT EXECUTE ON FUNCTION public.claim_ryanai_attachment_scan_v2() TO service_ro
 GRANT EXECUTE ON FUNCTION public.finish_ryanai_attachment_scan_v2(text, text, text, text, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.claim_ryanai_orphan_attachment_cleanup(timestamptz, integer) TO service_role;
 
--- Prevent future SECURITY DEFINER functions created by either migration role
--- from inheriting browser EXECUTE grants through role-specific default ACLs.
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
-  REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated;
-ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public
-  REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated;
+-- Default ACLs can only be changed by the role owner or a member of that role.
+-- Keep this migration portable: harden each role only when the migration executor
+-- is authorized to do so, instead of failing the entire migration on hosted Supabase.
+DO $$
+BEGIN
+  IF pg_has_role(current_user, 'postgres', 'MEMBER') THEN
+    EXECUTE 'ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated';
+  END IF;
+  IF pg_has_role(current_user, 'supabase_admin', 'MEMBER') THEN
+    EXECUTE 'ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated';
+  END IF;
+END;
+$$;
 
 COMMENT ON COLUMN public.ryanai_attachment_scans.lease_token IS
   'Per-claim generation token; only the worker holding this token may finish the scan.';
