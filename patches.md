@@ -309,3 +309,9 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Removed the legacy Audiobook Studio shortcut from the Commander Dashboard so dashboard shortcuts match the fourteen user-selected workspace options.
 - Updated navigation regression assertions to exclude the legacy audiobook destination while preserving direct-route access and permission boundaries.
 - No backend permission, deployment, database, credential, or production configuration was changed.
+
+## 2026-11-26 — Respect workspace visibility in dashboard quick actions
+
+- Applied the workspace visibility preference to the Commander Dashboard's secondary "Open workspace" quick action, not only the workspace card grid.
+- Added a regression test proving a disabled Reasoning Workspace is not exposed by that quick action while Settings remains available.
+- No route authorization, backend permissions, production configuration, credentials, database, or deployment behavior changed.
