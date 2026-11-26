@@ -48,6 +48,7 @@ describe('System Dashboard workspace launcher', () => {
     expect(container.textContent).toContain('Music player');
     expect(container.textContent).toContain('Your music library is empty');
     for (const [path, label] of [
+      ['#/pa', 'Personal Assistant'],
       ['#/cockpit', 'Command Cockpit'],
       ['#/operator', 'Operator Console'],
       ['#/operations', 'Operations Center'],
@@ -56,7 +57,7 @@ describe('System Dashboard workspace launcher', () => {
       ['#/quant', 'Quant Lab'],
       ['#/trading', 'Trading Terminal'],
       ['#/workspace', 'Reasoning Workspace'],
-      ['#/audiobook', 'Audiobook Studio'],
+      ['#/phonelink', 'RyanAI PhoneLink'],
       ['#/music', 'RyanAI Music'],
       ['#/studio', 'RyanAI Studio'],
     ]) {
@@ -68,13 +69,23 @@ describe('System Dashboard workspace launcher', () => {
   });
 
   it('keeps Settings visible while filtering disabled workspace cards', async () => {
-    await renderDashboard(false, false, { pa: true, workspace: true, cockpit: false, calculator: false });
+    await renderDashboard(false, false, { pa: true, workspace: true, cockpit: false, programming: false });
 
     expect(container.querySelector('a[href="#/pa"]')).not.toBeNull();
     expect(container.querySelector('a[href="#/workspace"]')).not.toBeNull();
     expect(container.querySelector('a[href="#/settings"]')?.textContent).toContain('Settings');
     expect(container.querySelector('a[href="#/cockpit"]')).toBeNull();
-    expect(container.querySelector('a[href="#/calculator"]')).toBeNull();
+    expect(container.querySelector('a[href="#/programming"]')).toBeNull();
+    expect(container.querySelector('a[href="#/audiobook"]')).toBeNull();
+  });
+
+  it('keeps the requested fourteen-option dashboard contract free of legacy audiobook shortcuts', async () => {
+    await renderDashboard(true, true);
+    for (const path of ['/pa', '/operator', '/operations', '/admin', '/quant', '/trading', '/cockpit', '/studio', '/programming', '/comms', '/workspace', '/music', '/phonelink']) {
+      expect(container.querySelector(`a[href="#${path}"]`), `expected workspace link ${path}`).not.toBeNull();
+    }
+    expect(container.querySelector('a[href="#/audiobook"]')).toBeNull();
+    expect(container.querySelector('a[href="#/settings"]')).not.toBeNull();
   });
 
   it('adds the Admin Console only for an administrator session', async () => {

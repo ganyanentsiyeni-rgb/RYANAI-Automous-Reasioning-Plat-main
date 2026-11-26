@@ -5,7 +5,6 @@ import {
   Music2,
   Smartphone,
   BrainCircuit,
-  BookAudio,
   Code2,
   Cpu,
   MessageSquareText,
@@ -191,13 +190,6 @@ export default function DashboardPage({ isOwner = false, isAdmin = false, enable
       title: 'RyanAI PhoneLink',
       description: 'Pair your Android phone, manage trusted devices and mobile permissions.',
       icon: Smartphone,
-    },
-    {
-      id: 'audiobook',
-      href: '#/audiobook',
-      title: 'Audiobook Studio',
-      description: 'Prepare chapters, transcribe audio and generate narration.',
-      icon: BookAudio,
     },
     {
       id: 'studio',
