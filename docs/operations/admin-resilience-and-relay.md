@@ -9,7 +9,7 @@
 - `src/ha/disasterRecovery.ts` is a narrow model-provider failover helper, not a platform disaster-recovery manager.
 - `scripts/backup-on-startup.mjs` optionally runs a PostgreSQL dump and configured Supabase Storage copies. It is disabled unless explicitly configured, does not block API startup on failure, does not implement retention, and does not prove restorability.
 - `docs/startup-backups.md` documents the required private bucket and environment configuration. No credentials or bucket changes are part of this project approval.
-- `src/engine/selfPatchSkill.ts` proposes source changes as isolated GitHub branches and PRs. It does not deploy or merge. `src/components/SelfPatchPanel.tsx` exists but was not previously integrated into AdminConsole.
+- `src/engine/selfPatchSkill.ts` proposes source changes as isolated GitHub branches and PRs. It does not deploy or merge. `src/components/SelfPatchPanel.tsx` is integrated into AdminConsole and rendered only after the API verifies the configured owner. The patch route independently enforces `requireOwner`; the panel requires an explicit confirmation before creating a PR. The form does not retrieve CI/review status, which must be checked against the exact PR head on GitHub.
 - `scripts/pagerduty_manager.py` provides a CI-oriented maintenance-window context manager; there is no complete Admin UI maintenance lifecycle.
 - `src/events/intelligenceEventInbox.ts`, `src/events/eventWorker.ts`, `src/lib/offlineTaskOutbox.ts` and `src/lib/offlineTaskSyncClient.ts` are existing continuity foundations to inspect and reuse.
 
@@ -22,7 +22,7 @@ Required UI states: configuration status, last attempted backup, last successful
 Required operations:
 - Preflight checks for direct PostgreSQL dump capability, private destination bucket, source/destination separation, storage reachability and available space/limits.
 - Explicitly initiated backup with a durable job receipt and bounded execution.
-- Inventory and manifest verification, content digest/checksum, artifact metadata and retention-policy visibility.
+- Inventory and manifest retrieval, content digest/checksum metadata, artifact metadata and retention-policy visibility. The current inventory reads the manifest SHA-256 but does not re-download and hash each stored dump; it must report `not_verified` until an explicit content-verification workflow is implemented and run.
 - Retention preview before any deletion. Deletion requires separate owner confirmation and must preserve configured recovery-point objectives.
 - Never include secrets in manifests, logs, UI, artifacts or PRs.
 
@@ -41,7 +41,7 @@ Required sequence:
 6. Record achieved RPO/RTO, data-integrity report, gaps and rollback path.
 7. Production recovery remains a separate explicit approval and controlled operator action.
 
-No UI control may restore over production by default. A missing or ambiguous target must fail closed. A backup listing, successful dump, or process health response is not proof of recovery.
+No UI control may restore over production by default. A missing or ambiguous target must fail closed. Preflight blocks only an exact host/port/database endpoint match; matching database names on different hosts and all other non-identical URLs remain `identity_unverified` until database identity and network isolation are independently proven. A backup listing, successful dump, or process health response is not proof of recovery.
 
 ### C. RyanAI self-patches
 

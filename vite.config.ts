@@ -1,4 +1,5 @@
 import { defineConfig, loadEnv } from 'vite';
+import { validateFrontendEnvironment } from './src/config/frontendEnv';
 import { configDefaults } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import path from 'path';
@@ -32,6 +33,7 @@ function normalizeApiUrl(value: string): string {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
+  validateFrontendEnvironment({ ...env, ...process.env }, mode);
   const forbiddenClientSecrets = [
     'VITE_OPENAI_API_KEY',
     'VITE_NVIDIA_API_KEY',

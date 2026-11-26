@@ -113,6 +113,7 @@ describe('admin resilience backup inventory', () => {
         prefix: 'ryanai-admin/2026-11-20-backup',
         databaseBytes: 42,
         databaseSha256: 'abc123',
+        integrityStatus: 'not_verified',
         manifestPresent: true,
         retention: 'within_policy',
       }),
@@ -139,6 +140,7 @@ describe('admin resilience backup inventory', () => {
       createdAt: '2026-11-20T11:00:00.000Z',
       databaseBytes: 84,
       databaseSha256: null,
+      integrityStatus: 'not_verified',
       manifestPresent: false,
       retention: 'within_policy',
     }));
@@ -164,6 +166,7 @@ describe('admin resilience backup inventory', () => {
       backupId: 'manifest-unreadable',
       databaseBytes: 128,
       databaseSha256: null,
+      integrityStatus: 'not_verified',
       manifestPresent: false,
     }));
   });
@@ -198,9 +201,9 @@ describe('admin resilience backup inventory', () => {
 });
 
 describe('admin resilience recovery target comparison', () => {
-  it('blocks a recovery target with the same host and database as the source', () => {
+  it('blocks an exact recovery endpoint match even when credentials differ', () => {
     process.env.DATABASE_URL = 'postgresql://source:secret@db.example.com:5432/ryanai';
-    process.env.RYANAI_RECOVERY_DATABASE_URL = 'postgresql://recovery:other@DB.EXAMPLE.COM:6543/ryanai';
+    process.env.RYANAI_RECOVERY_DATABASE_URL = 'postgresql://recovery:other@DB.EXAMPLE.COM:5432/ryanai';
     process.env.RYANAI_RECOVERY_TARGET_LABEL = 'recovery-drill';
 
     expect(recoveryPreflight()).toEqual(expect.objectContaining({
@@ -224,13 +227,13 @@ describe('admin resilience recovery target comparison', () => {
     }));
   });
 
-  it('blocks a matching database name even when a misleading hostname alias is used', () => {
+  it('does not infer endpoint identity from a matching database name on a different hostname', () => {
     process.env.DATABASE_URL = 'postgresql://source:secret@db-primary.example.com:5432/ryanai';
     process.env.RYANAI_RECOVERY_DATABASE_URL = 'postgresql://recovery:other@db-alias.example.com:6432/ryanai';
     process.env.RYANAI_RECOVERY_TARGET_LABEL = 'recovery-drill';
 
     expect(recoveryPreflight()).toEqual(expect.objectContaining({
-      status: 'blocked_same_as_source',
+      status: 'identity_unverified',
       productionRestore: 'disabled',
       writesPerformed: false,
     }));

@@ -1,16 +1,16 @@
 # RyanAI Supabase OAuth 2.1 Server
 
-RyanAI uses the Supabase project `narsvpwymvlrhurqbthu` as its OAuth 2.1 / OpenID Connect authorization server. Supabase Auth owns the authorization-code flow, PKCE validation, token creation, refresh-token rotation, and signing. RyanAI provides the user authentication boundary and the explicit consent screen.
+RyanAI uses the active U2EB Supabase project `omqavyppdoniehseokvx` (eu-central-1) as its OAuth 2.1 / OpenID Connect authorization server. Supabase Auth owns the authorization-code flow, PKCE validation, token creation, refresh-token rotation, and signing. RyanAI provides the user authentication boundary and the explicit consent screen.
 
 ## Public endpoints
 
 | Purpose | Endpoint |
 |---|---|
-| Authorization | `https://narsvpwymvlrhurqbthu.supabase.co/auth/v1/oauth/authorize` |
-| Token | `https://narsvpwymvlrhurqbthu.supabase.co/auth/v1/oauth/token` |
-| JWKS | `https://narsvpwymvlrhurqbthu.supabase.co/auth/v1/.well-known/jwks.json` |
-| OIDC discovery | `https://narsvpwymvlrhurqbthu.supabase.co/auth/v1/.well-known/openid-configuration` |
-| OAuth authorization-server metadata | `https://narsvpwymvlrhurqbthu.supabase.co/.well-known/oauth-authorization-server/auth/v1` |
+| Authorization | `https://omqavyppdoniehseokvx.supabase.co/auth/v1/oauth/authorize` |
+| Token | `https://omqavyppdoniehseokvx.supabase.co/auth/v1/oauth/token` |
+| JWKS | `https://omqavyppdoniehseokvx.supabase.co/auth/v1/.well-known/jwks.json` |
+| OIDC discovery | `https://omqavyppdoniehseokvx.supabase.co/auth/v1/.well-known/openid-configuration` |
+| OAuth authorization-server metadata | `https://omqavyppdoniehseokvx.supabase.co/.well-known/oauth-authorization-server/auth/v1` |
 | RyanAI authorization UI | `/oauth/consent` |
 
 ## Supabase Dashboard configuration
@@ -18,10 +18,23 @@ RyanAI uses the Supabase project `narsvpwymvlrhurqbthu` as its OAuth 2.1 / OpenI
 The hosted project must have OAuth 2.1 Server enabled in **Authentication → OAuth Server**. Set:
 
 - Authorization path: `/oauth/consent`
-- Dynamic client registration: **off** unless a separately reviewed MCP integration explicitly requires it.
-- Site URL: the canonical deployed RyanAI frontend origin. Add approved development origins to the redirect allow-list only when required.
+- Dynamic client registration: **off** for the current RyanAI MCP architecture. Enable it only when the MCP client-registration path is deployed, reviewed, and monitored.
+- Site URL: `https://ryanai-web-u2eb.onrender.com`
+- Redirect URLs: keep only the approved RyanAI web origins and development origins actually used by the current authentication flow; do not add the API origin merely because the API is public.
 
 The local Supabase configuration in `supabase/config.toml` mirrors the OAuth Server setting for local development. It does not update the hosted project's Dashboard configuration.
+
+## U2EB hosted configuration
+
+For the current Render U2EB frontend, configure Supabase Authentication → URL Configuration / OAuth Server as follows:
+
+- Site URL: `https://ryanai-web-u2eb.onrender.com`
+- Authorization path: `/oauth/consent`
+- Preview authorization URL: `https://ryanai-web-u2eb.onrender.com/oauth/consent`
+- OAuth 2.1 server: **enabled**
+- Dynamic OAuth app registration: **disabled** until the reviewed MCP dynamic-registration implementation is live.
+
+The repository implements the `/oauth/consent` route and the Supabase OAuth SDK approval/denial flow. Saving the hosted Dashboard settings is a separate Supabase control-plane operation; changing `supabase/config.toml` does not change the hosted project.
 
 ## Consent and client registration
 
@@ -36,6 +49,16 @@ Request only the scopes a client needs (for example, `openid email profile`). Su
 OAuth access tokens are Supabase Auth bearer tokens. A client calls the Supabase Data API with the project publishable key in `apikey` and the OAuth access token in `Authorization: Bearer`. Existing row-level security remains the authority for access to `profiles`, `conversations`, `messages`, and `memory_entries`; do not bypass it with a service-role key.
 
 RyanAI's API verifies Supabase sessions with Supabase Auth's `getUser(token)` before attaching a user identity to protected requests. OAuth-issued user tokens therefore follow the same verified-user path; authorization is not based on decoding an unverified JWT or trusting browser metadata.
+
+## OAuth endpoint verification
+
+For project `omqavyppdoniehseokvx`, the expected public endpoints are:
+
+- Authorization: `https://omqavyppdoniehseokvx.supabase.co/auth/v1/oauth/authorize`
+- Token: `https://omqavyppdoniehseokvx.supabase.co/auth/v1/oauth/token`
+- JWKS: `https://omqavyppdoniehseokvx.supabase.co/auth/v1/.well-known/jwks.json`
+- OAuth authorization-server metadata: `https://omqavyppdoniehseokvx.supabase.co/.well-known/oauth-authorization-server/auth/v1`
+- OIDC discovery: `https://omqavyppdoniehseokvx.supabase.co/auth/v1/.well-known/openid-configuration`
 
 ## Operational verification
 
