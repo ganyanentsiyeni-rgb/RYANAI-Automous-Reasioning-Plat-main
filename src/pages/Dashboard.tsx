@@ -287,10 +287,23 @@ export default function DashboardPage({ isOwner = false, isAdmin = false, enable
       {enabledModules?.music !== false && <MusicPlayer settings={musicSettings} />}
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatusCard title="API gateway" value={healthServiceLabel(health?.status === 'online', checking, healthStale, healthFresh)} icon={Server} healthy={healthFresh ? health?.status === 'online' : undefined} />
+        <StatusCard title="API gateway" value={healthServiceLabel(health?.services?.api ?? (health?.status === 'online'), checking, healthStale, healthFresh)} icon={Server} healthy={healthFresh ? (health?.services?.api ?? health?.status === 'online') : undefined} />
         <StatusCard title="PostgreSQL" value={serviceLabel(health?.services?.database, checking, healthStale, healthFresh)} icon={Database} healthy={healthFresh ? health?.services?.database : undefined} />
         <StatusCard title="Redis" value={serviceLabel(health?.services?.redis, checking, healthStale, healthFresh)} icon={Wifi} healthy={healthFresh ? health?.services?.redis : undefined} />
         <StatusCard title="Agent checkpointer" value={serviceLabel(health?.services?.agentCheckpointer, checking, healthStale, healthFresh)} icon={Activity} healthy={healthFresh ? health?.services?.agentCheckpointer : undefined} />
+        <StatusCard title="Agent queue listener" value={serviceLabel(health?.services?.agentQueueListener, checking, healthStale, healthFresh)} icon={ListChecks} healthy={healthFresh ? health?.services?.agentQueueListener : undefined} />
+        <StatusCard title="Queue claim" value={healthFresh ? (health?.agentQueue?.queueClaimState === 'ready' ? 'Ready' : health?.agentQueue?.queueClaimState ?? 'Unknown') : checking && !health ? 'Checking' : 'Unverified'} icon={Activity} healthy={healthFresh ? health?.agentQueue?.queueClaimState === 'ready' : undefined} />
+      </div>
+      <div className="mt-3 rounded-xl border border-white/10 bg-slate-900/50 p-4 text-xs text-slate-400" aria-live="polite">
+        <div className="flex flex-wrap gap-x-5 gap-y-2">
+          <span>Worker: {healthFresh ? health?.agentQueue?.state ?? 'Not reported' : 'Unverified'}</span>
+          <span>Listener: {healthFresh ? health?.agentQueue?.listener?.state ?? 'Not reported' : 'Unverified'}</span>
+          <span>Connected: {healthFresh && health?.agentQueue?.listener?.connected === true ? 'Yes' : healthFresh && health?.agentQueue?.listener?.connected === false ? 'No' : 'Unverified'}</span>
+          <span>Subscribed: {healthFresh && health?.agentQueue?.listener?.subscribed === true ? 'Yes' : healthFresh && health?.agentQueue?.listener?.subscribed === false ? 'No' : 'Unverified'}</span>
+          <span>Last successful claim: {healthFresh && health?.agentQueue?.lastSuccessfulClaimAt ? new Date(health.agentQueue.lastSuccessfulClaimAt).toLocaleString() : 'Not verified'}</span>
+          <span>Last claim error code: {healthFresh ? health?.agentQueue?.lastClaimErrorCode ?? 'None reported' : 'Unverified'}</span>
+        </div>
+        <p className="mt-2">Queue and listener values are API-reported diagnostics, not proof that a task completed. Stale or failed health refreshes are never shown as live.</p>
       </div>
 
       <section className="mt-8" aria-labelledby="platform-workspaces-title">
