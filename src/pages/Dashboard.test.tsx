@@ -75,7 +75,7 @@ describe('System Dashboard workspace launcher', () => {
     expect(container.querySelector('a[href="#/workspace"]')).not.toBeNull();
     expect(container.querySelector('a[href="#/settings"]')?.textContent).toContain('Settings');
     expect(container.querySelector('a[href="#/cockpit"]')).toBeNull();
-    expect(container.querySelector('a[href="#/programming"]')).not.toBeNull();
+    expect(container.querySelector('a[href="#/programming"]')).toBeNull();
     expect(container.querySelector('a[href="#/audiobook"]')).toBeNull();
   });
 
