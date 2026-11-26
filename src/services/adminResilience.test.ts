@@ -1,6 +1,8 @@
-import { createHash } from 'node:crypto';\nimport { afterEach, describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { backupReadbackMatches, listDatabaseBackups, persistBackupArtifact, recoveryPreflight, verifyDatabaseBackupArtifacts } from './adminResilience.js';
+import { backupReadbackMatches, evaluateSchemaMigrationArtifacts, listDatabaseBackups, persistBackupArtifact, recoveryPreflight, verifyDatabaseBackupArtifacts } from './adminResilience.js';
 
 const originalEnv = { ...process.env };
 
@@ -23,6 +25,38 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+describe('read-only schema migration source evidence', () => {
+  it('fingerprints a complete ordered schema and migration source set', () => {
+    const result = evaluateSchemaMigrationArtifacts('model Example { id String @id }', [
+      { id: '20261101000000_initial', sqlContent: 'CREATE TABLE example (id text);' },
+      { id: '20261102000000_add_index', sqlContent: 'CREATE INDEX example_id_idx ON example(id);' },
+    ]);
+    expect(result.status).toBe('source_artifacts_complete');
+    expect(result.schemaSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.migrations.every((migration) => migration.sqlSha256?.match(/^[a-f0-9]{64}$/))).toBe(true);
+    expect(result.appliedMigrationLedger).toBeUndefined();
+  });
+
+  it('fails closed for missing schema or migration SQL', () => {
+    const result = evaluateSchemaMigrationArtifacts(null, [
+      { id: '20261101000000_initial', sqlContent: null },
+    ]);
+    expect(result.status).toBe('source_artifacts_incomplete');
+    expect(result.schemaPresent).toBe(false);
+    expect(result.missingMigrationSql).toEqual(['20261101000000_initial']);
+  });
+
+  it('fails closed for duplicate or unordered migration identifiers', () => {
+    const result = evaluateSchemaMigrationArtifacts('schema', [
+      { id: '20261102000000_second', sqlContent: 'SELECT 2;' },
+      { id: '20261101000000_first', sqlContent: 'SELECT 1;' },
+      { id: '20261101000000_first', sqlContent: 'SELECT 1;' },
+    ]);
+    expect(result.status).toBe('source_artifacts_incomplete');
+  });
+});
+
+
 describe('admin resilience backup integrity', () => {
   it('accepts a complete read-back only when byte length and SHA-256 match', () => {
     const original = Buffer.from('complete database dump');
@@ -37,6 +71,74 @@ describe('admin resilience backup integrity', () => {
   });
 });
 
+describe('admin resilience stored artifact verification', () => {
+  const inventory = (overrides: Record<string, unknown> = {}) => ({
+    status: 'available' as const, bucket: 'private-backups', retentionDays: 30,
+    listedAt: new Date().toISOString(), hasMore: false,
+    items: [{
+      backupId: 'backup-verify', prefix: 'ryanai-admin/backup-verify',
+      createdAt: '2026-11-20T00:00:00.000Z', databaseBytes: 7,
+      databaseSha256: createHashForTest('payload'), manifestPresent: true,
+      integrityStatus: 'not_verified' as const, retention: 'within_policy' as const,
+    }],
+    ...overrides,
+  });
+  const payload = Buffer.from('payload');
+  const storageRequest = vi.fn(async () => new Response(new Uint8Array(payload)));
+
+  it('re-downloads and verifies matching artifact bytes', async () => {
+    configureStorage();
+    const result = await verifyDatabaseBackupArtifacts(inventory(), storageRequest as never);
+    expect(result).toEqual([expect.objectContaining({
+      backupId: 'backup-verify', status: 'verified', bytesRehashed: true, actualBytes: 7,
+    })]);
+    expect(storageRequest).toHaveBeenCalledWith(
+      'https://example.supabase.co', 'service-role-test-key',
+      '/storage/v1/object/authenticated/private-backups/ryanai-admin/backup-verify/database.dump',
+    );
+  });
+
+  it('fails closed when stored bytes do not match the manifest digest', async () => {
+    configureStorage();
+    const request = vi.fn(async () => new Response(new Uint8Array(Buffer.from('tampered'))));
+    const result = await verifyDatabaseBackupArtifacts(inventory(), request as never);
+    expect(result[0]).toMatchObject({ status: 'failed', bytesRehashed: true, actualBytes: 8 });
+  });
+
+  it('does not download artifacts with missing manifest evidence', async () => {
+    configureStorage();
+    const request = vi.fn();
+    const result = await verifyDatabaseBackupArtifacts(inventory({
+      items: [{ ...inventory().items[0], manifestPresent: false }],
+    }), request as never);
+    expect(result[0]).toMatchObject({ status: 'not_verified', bytesRehashed: false });
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('does not download artifacts with missing or invalid digest metadata', async () => {
+    configureStorage();
+    const request = vi.fn();
+    const result = await verifyDatabaseBackupArtifacts(inventory({
+      items: [{ ...inventory().items[0], databaseSha256: null }],
+    }), request as never);
+    expect(result[0].status).toBe('not_verified');
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('reports download failures without exposing storage credentials or object contents', async () => {
+    configureStorage();
+    const request = vi.fn(async () => { throw new Error('secret-key and private object body'); });
+    const result = await verifyDatabaseBackupArtifacts(inventory(), request as never);
+    expect(result[0]).toMatchObject({ status: 'failed', bytesRehashed: false });
+    expect(JSON.stringify(result)).not.toContain('secret-key');
+    expect(JSON.stringify(result)).not.toContain('private object body');
+  });
+});
+
+function createHashForTest(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
 describe('read-only stored backup verification',()=> {
  const data=Buffer.from('payload');
  const inv=(extra:Record<string,unknown>={})=>({status:'available' as const,bucket:'private-backups',retentionDays:30,listedAt:new Date().toISOString(),hasMore:false,items:[{backupId:'b1',prefix:'ryanai-admin/b1',createdAt:null,databaseBytes:7,databaseSha256:createHash('sha256').update(data).digest('hex'),manifestPresent:true,integrityStatus:'not_verified' as const,retention:'unknown' as const,...extra}]});
@@ -46,7 +148,8 @@ describe('read-only stored backup verification',()=> {
  it('leaves missing manifest or digest unverified without downloading',async()=>{setup();const req=vi.fn();expect((await verifyDatabaseBackupArtifacts(inv({manifestPresent:false}),req as never))[0].status).toBe('not_verified');expect((await verifyDatabaseBackupArtifacts(inv({databaseSha256:null}),req as never))[0].status).toBe('not_verified');expect(req).not.toHaveBeenCalled();});
  it('redacts storage download errors',async()=>{setup();const req=vi.fn(async()=>{throw new Error('secret private body');});const result=await verifyDatabaseBackupArtifacts(inv(),req as never);expect(result[0].status).toBe('failed');expect(JSON.stringify(result)).not.toContain('secret');});
 });
-\ndescribe('admin resilience backup artifact persistence', () => {
+
+describe('admin resilience backup artifact persistence', () => {
   const storage = { baseUrl: 'https://storage.example.test', key: 'test-key', bucket: 'private-backups' };
   const manifest = { format: 'ryanai-admin-backup-v1', backupId: 'backup-test' };
   const dump = Buffer.from('complete database dump');

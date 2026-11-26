@@ -4,16 +4,20 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { authenticatedFetch } from '@/lib/authenticatedFetch';
 import AdminSettingsHub from './AdminSettingsHub';
+import { useRyanOperations } from '@/hooks/useRyanOperations';
 
 vi.mock('@/lib/authenticatedFetch', () => ({ authenticatedFetch: vi.fn() }));
+vi.mock('@/hooks/useRyanOperations', () => ({ useRyanOperations: vi.fn() }));
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const apiFetch = vi.mocked(authenticatedFetch);
+const operations = vi.mocked(useRyanOperations);
 let container: HTMLDivElement;
 let root: Root;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  operations.mockReturnValue({ tasks: [], loading: false, error: null, lastConfirmedAt: null, refresh: vi.fn(), refreshing: false } as unknown as ReturnType<typeof useRyanOperations>);
   apiFetch.mockResolvedValue(new Response(JSON.stringify({ providers: [] }), { status: 200 }));
 });
 afterEach(async () => {

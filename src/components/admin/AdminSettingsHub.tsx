@@ -1,5 +1,6 @@
 import { ArrowUpRight, Blocks, BrainCircuit, GitBranch, LayoutDashboard, LockKeyhole, Plug, ShieldCheck, Smartphone, UserRound, Workflow } from 'lucide-react';
 import PluginCapabilityCatalog from '@/components/admin/PluginCapabilityCatalog';
+import AIInspectorEvidencePanel from '@/components/admin/AIInspectorEvidencePanel';
 
 type SettingsArea = {
   id: string;
@@ -74,6 +75,7 @@ export default function AdminSettingsHub({ userId }: { userId: string }) {
       </div>
 
       <PluginCapabilityCatalog userId={userId} />
+      <AIInspectorEvidencePanel />
 
       <div className="rounded-xl border border-amber-300/20 bg-amber-300/[0.04] p-4">
         <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-amber-200" /><h3 className="text-sm font-semibold text-amber-100">Privileged controls still require server-side implementation</h3></div>

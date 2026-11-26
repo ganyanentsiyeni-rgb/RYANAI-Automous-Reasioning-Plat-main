@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import type { FastifyPluginAsync } from 'fastify';
 import { requireAdmin, requireOwner } from './auth.js';
 import { backupPreflight, createDatabaseBackup, listDatabaseBackups, listExpectedMigrationIds, recoveryPreflight, verifyDatabaseBackupArtifacts } from '../../services/adminResilience.js';
+import { backupPreflight, createDatabaseBackup, listDatabaseBackups, listExpectedMigrationIds, inspectSchemaMigrationArtifacts, recoveryPreflight } from '../../services/adminResilience.js';
 
 interface MaintenanceBody {
   action?: 'scheduled' | 'started' | 'completed' | 'cancelled';
@@ -45,6 +46,13 @@ export const adminResilienceRoutes: FastifyPluginAsync = async (fastify) => {
       listDatabaseBackups(),
       listExpectedMigrationIds(),
     ]);
+    const [artifactVerifications] = await Promise.all([verifyDatabaseBackupArtifacts(inventory)]);
+    const verificationById = new Map(artifactVerifications.map((item) => [item.backupId, item]));
+    const [inventory, migrations, schemaArtifacts] = await Promise.all([
+      listDatabaseBackups(),
+      listExpectedMigrationIds(),
+      inspectSchemaMigrationArtifacts(),
+    ]);
     const recovery = recoveryPreflight();
     return {
       reportId: randomUUID(),
@@ -69,11 +77,14 @@ export const adminResilienceRoutes: FastifyPluginAsync = async (fastify) => {
           databaseBytes: item.databaseBytes,
           manifestPresent: item.manifestPresent,
           recordedSha256Present: Boolean(item.databaseSha256),
-          artifactBytesRehashed: false,
-          integrityStatus: 'not_verified',
+          artifactBytesRehashed: verificationById.get(item.backupId)?.bytesRehashed ?? false,
+          integrityStatus: verificationById.get(item.backupId)?.status ?? 'not_verified',
+          actualBytes: verificationById.get(item.backupId)?.actualBytes ?? null,
+          verificationReason: verificationById.get(item.backupId)?.reason ?? 'Artifact verification was not performed.',
           retention: item.retention,
         })),
-        verificationLimit: 'At most 10 artifacts and 256 MiB per artifact are re-downloaded per report.',\n        reason: inventory.reason || 'Eligible artifact bytes are freshly re-downloaded and hashed; incomplete evidence remains unverified.',
+        verificationLimit: 'At most 10 artifacts and 256 MiB per artifact are re-downloaded per report.',
+        reason: inventory.reason || 'Artifact bytes are freshly re-downloaded and hashed where bounded manifest evidence is complete.',
       },
       schemaMigrationEvidence: {
         status: 'not_verified',
@@ -82,12 +93,28 @@ export const adminResilienceRoutes: FastifyPluginAsync = async (fastify) => {
         requiredSchema: 'not_inspected',
         compatibility: 'not_verified',
         reason: 'The recovery target migration ledger and schema have not been queried. This endpoint does not connect to the target or execute SQL.',
+      safety: { productionRestore: 'disabled', writesPerformed: false, migrationsExecuted: false, targetDatabaseQueried: false },
+      backupEvidence: {
+        status: inventory.status, listedAt: inventory.listedAt,
+        artifacts: inventory.items.map((item) => ({
+          backupId: item.backupId, createdAt: item.createdAt, databaseBytes: item.databaseBytes,
+          manifestPresent: item.manifestPresent, recordedSha256Present: Boolean(item.databaseSha256),
+          artifactBytesRehashed: false, integrityStatus: 'not_verified', retention: item.retention,
+        })),
+        reason: inventory.reason || 'Backup inventory is reported separately from this source-only schema assessment.',
+      },
+      schemaMigrationEvidence: {
+        status: schemaArtifacts.status, sourceArtifacts: schemaArtifacts,
+        expectedMigrationInventory: migrations, appliedMigrationLedger: 'not_inspected',
+        targetSchema: 'not_inspected', compatibility: 'not_verified',
+        reason: 'Repository schema and migration files are fingerprinted only. The recovery target ledger and schema are not queried; source completeness is not database compatibility.',
       },
       targetEvidence: {
         preflightStatus: recovery.status,
         identityStatus: recovery.status === 'blocked_same_as_source' ? 'blocked' : 'identity_unverified',
         networkIsolation: 'not_verified',
         nonProductionDesignation: 'not_verified',
+        networkIsolation: 'not_verified', nonProductionDesignation: 'not_verified',
         reason: recovery.reason || 'Independent database identity and network isolation evidence is unavailable.',
       },
       acceptanceCriteria: [

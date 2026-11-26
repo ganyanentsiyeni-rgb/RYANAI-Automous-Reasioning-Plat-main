@@ -12,7 +12,7 @@ function githubResponse(body: Record<string, unknown>, status = 200) {
 
 beforeEach(() => {
   vi.stubEnv('RYANAI_GITHUB_TOKEN', 'fixture-scoped-token');
-  vi.stubEnv('RYANAI_GITHUB_REPOSITORY', 'RyanAI-Automated/RYANAI-Automous-Reasioning-Plat');
+  vi.stubEnv('RYANAI_GITHUB_REPOSITORY', 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main');
   vi.stubEnv('RYANAI_GITHUB_BASE_BRANCH', 'main');
   fetchMock.mockReset();
   vi.stubGlobal('fetch', fetchMock);
@@ -48,7 +48,9 @@ describe('production self-patch proposal', () => {
     expect(firstRequest[1]?.headers).toBeInstanceOf(Headers);
     expect((firstRequest[1]?.headers as Headers).get('Authorization')).toBe('Bearer fixture-scoped-token');
     const prRequest = fetchMock.mock.calls[7][1];
-    expect(String(prRequest?.body)).toContain('has **not** been deployed or promoted');
+    const prPayload = JSON.parse(String(prRequest?.body)) as { draft?: boolean; body?: string };
+    expect(prPayload.draft).toBe(true);
+    expect(prPayload.body).toContain('has **not** been deployed or promoted');
   });
 
   it('rejects path traversal and protected files before any GitHub request', async () => {
@@ -128,6 +130,16 @@ describe('production self-patch proposal', () => {
       ].join('\\n'),
     });
     expect(result.status).toBe('proposed');
+  });
+
+  it('rejects non-canonical repository destinations before contacting GitHub', async () => {
+    vi.stubEnv('RYANAI_GITHUB_REPOSITORY', 'RyanAI-Automated/RYANAI-Automous-Reasioning-Plat');
+    const result = await SelfPatchSkill.proposePullRequest({
+      filePath: 'src/agent/example.ts',
+      patchContent: 'export const candidate = true;',
+    });
+    expect(result.status).toBe('rejected');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('fails closed when the scoped GitHub token or repository is missing', async () => {
