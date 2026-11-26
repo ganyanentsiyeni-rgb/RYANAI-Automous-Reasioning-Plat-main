@@ -5,6 +5,7 @@ const resilience = vi.hoisted(() => ({
   backupPreflight: vi.fn(),
   createDatabaseBackup: vi.fn(),
   listDatabaseBackups: vi.fn(),
+  listExpectedMigrationIds: vi.fn(),
   recoveryPreflight: vi.fn(),
 }));
 vi.mock('../../services/adminResilience.js', () => resilience);
@@ -54,6 +55,7 @@ beforeEach(() => {
     status: 'available', bucket: 'private-backups', retentionDays: 30,
     listedAt: '2026-11-20T00:00:00.000Z', items: [], hasMore: false,
   });
+  resilience.listExpectedMigrationIds.mockResolvedValue({ status: 'available', migrationIds: ['20261124170000_studio_artifact_idempotency'] });
   resilience.recoveryPreflight.mockReturnValue({
     status: 'not_configured', targetLabel: null, productionRestore: 'disabled', writesPerformed: false,
   });
@@ -95,6 +97,52 @@ describe('Admin resilience routes', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().recovery.status).toBe('identity_unverified');
     expect(response.json().recovery.productionRestore).toBe('disabled');
+  });
+
+
+  it('exposes an authenticated read-only recovery evidence report with explicit unknown states', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/admin/resilience/recovery/report', headers: adminHeaders });
+    expect(response.statusCode).toBe(200);
+    const report = response.json();
+    expect(report.mode).toBe('read_only');
+    expect(report.overallStatus).toBe('evidence_incomplete');
+    expect(report.safety).toEqual({
+      productionRestore: 'disabled',
+      writesPerformed: false,
+      migrationsExecuted: false,
+      targetDatabaseQueried: false,
+    });
+    expect(report.schemaMigrationEvidence.appliedMigrationLedger).toBe('not_inspected');
+    expect(report.schemaMigrationEvidence.expectedMigrationInventory.migrationIds).toContain('20261124170000_studio_artifact_idempotency');
+    expect(report.backupEvidence.artifacts).toEqual([]);
+    expect(report.acceptanceCriteria.every((item: { status: string }) => item.status === 'not_verified')).toBe(true);
+    expect(resilience.listExpectedMigrationIds).toHaveBeenCalledTimes(1);
+    expect(resilience.listDatabaseBackups).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not expose the recovery report to unauthenticated requests', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/admin/resilience/recovery/report' });
+    expect(response.statusCode).toBe(401);
+    expect(resilience.listExpectedMigrationIds).not.toHaveBeenCalled();
+    expect(resilience.listDatabaseBackups).not.toHaveBeenCalled();
+  });
+
+  it('keeps backup checksum metadata explicitly unverified in the recovery report', async () => {
+    resilience.listDatabaseBackups.mockResolvedValueOnce({
+      status: 'available', bucket: 'private-backups', retentionDays: 30,
+      listedAt: '2026-11-20T00:00:00.000Z', hasMore: false,
+      items: [{
+        backupId: 'backup-1', prefix: 'private/backup-1', createdAt: '2026-11-20T00:00:00.000Z',
+        databaseBytes: 100, databaseSha256: 'recorded-digest', manifestPresent: true, retention: 'within_policy',
+      }],
+    });
+    const response = await app.inject({ method: 'GET', url: '/api/admin/resilience/recovery/report', headers: adminHeaders });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().backupEvidence.artifacts[0]).toMatchObject({
+      recordedSha256Present: true,
+      artifactBytesRehashed: false,
+      integrityStatus: 'not_verified',
+    });
   });
 
   it('rejects backup execution for non-owners', async () => {
