@@ -122,6 +122,27 @@ it.each([
     expect(alertText).toMatch(/(?:callback URL shown in Supabase Dashboard|\/auth\/v1\/callback)/);
   },
 );
+it('exposes explicit user and admin login modes and records admin intent only on sign-in', async () => {
+  await act(async () => root.render(<AuthPage />));
+  const adminButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Login as Admin') as HTMLButtonElement;
+  expect(adminButton).toBeTruthy();
+  await act(async () => adminButton.click());
+  expect(adminButton.getAttribute('aria-pressed')).toBe('true');
+  expect(container.querySelector('button[type="submit"]')?.textContent).toContain('Sign in as Admin');
+
+  mock.signInWithPassword.mockResolvedValue({ data: { session: {} }, error: null });
+  await fill('[type=email]', 'Admin@Example.com');
+  await fill('[type=password]', 'correct-password');
+  await submit();
+  expect(sessionStorage.getItem('ryanai-login-intent')).toBe('admin');
+
+  await act(async () => {
+    const userButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent === 'Login as User') as HTMLButtonElement;
+    userButton.click();
+  });
+  expect(container.querySelector('button[type="submit"]')?.textContent).toContain('Sign in as User');
+});
+
 it('authenticates with normalized email and password', async () => {
   mock.signInWithPassword.mockResolvedValue({
     data: { session: {} },
