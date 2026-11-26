@@ -10,13 +10,25 @@ export interface PersistedAgentRun {
   id: string;
   objective: string;
   status: string;
+  approvalStatus?: string | null;
   createdAt: Date | string;
   updatedAt?: Date | string;
   completedAt?: Date | string | null;
   error?: string | null;
   attempts?: number;
   maxAttempts?: number;
+  workerId?: string | null;
+  lockedAt?: Date | string | null;
+  leaseExpiresAt?: Date | string | null;
+  heartbeatAt?: Date | string | null;
+  nextAttemptAt?: Date | string | null;
   handoffs?: Array<{ status: string }>;
+  evidence?: Array<{ eventType: string; createdAt?: Date | string }>;
+}
+
+function asIso(value: Date | string | null | undefined): string | null {
+  if (value == null) return null;
+  return value instanceof Date ? value.toISOString() : value;
 }
 
 function normalizeState(status: string): TaskState {
@@ -33,26 +45,53 @@ function normalizeState(status: string): TaskState {
 }
 
 /** Convert persisted run data into the shared, truthful task-awareness contract. */
-export function toOperationalTask(run: PersistedAgentRun): OperationalTask {
+export function toOperationalTask(run: PersistedAgentRun, now = new Date()): OperationalTask {
   const handoffs = run.handoffs ?? [];
   const finishedHandoffs = handoffs.filter((handoff) => handoff.status === 'completed').length;
   const timestamp = run.updatedAt ?? run.createdAt;
+  const approvalStatus = (run.approvalStatus ?? 'pending').toLowerCase();
+  const approvalRequired = approvalStatus === 'pending';
+  const approvalGranted = approvalStatus === 'approved';
+  const leaseExpiresAt = asIso(run.leaseExpiresAt);
+  const leaseExpired = run.status.toLowerCase() === 'running'
+    && leaseExpiresAt !== null
+    && new Date(leaseExpiresAt).getTime() <= now.getTime();
+  const recoveryEvents = (run.evidence ?? [])
+    .filter((event) => event.eventType === 'execution.recovered')
+    .sort((a, b) => new Date(asIso(b.createdAt) ?? 0).getTime() - new Date(asIso(a.createdAt) ?? 0).getTime());
+
+  let state = approvalRequired ? 'awaiting_approval' as TaskState : normalizeState(run.status);
+  if (leaseExpired && state === 'running') state = 'retrying';
+
   return {
     id: run.id,
     title: run.objective,
     moduleId: 'reasoning',
-    state: normalizeState(run.status),
+    state,
     executionSurface: 'hybrid',
-    // Provider selection may be local or remote; this snapshot does not infer it.
     requiresConnectivity: false,
     localFallbackAvailable: false,
-    approvalRequired: false,
-    approvalGranted: true,
+    approvalRequired,
+    approvalGranted,
     progress: handoffs.length ? { completed: finishedHandoffs, total: handoffs.length } : undefined,
     updatedAt: timestamp instanceof Date ? timestamp.toISOString() : timestamp,
     lastError: run.error ?? null,
-    // A terminal status alone is not evidence of independently verified completion.
     completionVerified: false,
+    lease: {
+      state: leaseExpiresAt === null ? 'unleased' : leaseExpired ? 'expired' : 'active',
+      workerId: run.workerId ?? null,
+      lockedAt: asIso(run.lockedAt),
+      expiresAt: leaseExpiresAt,
+      heartbeatAt: asIso(run.heartbeatAt),
+      nextAttemptAt: asIso(run.nextAttemptAt),
+      attempts: run.attempts ?? 0,
+      maxAttempts: run.maxAttempts ?? null,
+    },
+    recovery: {
+      recovered: recoveryEvents.length > 0,
+      recoveryCount: recoveryEvents.length,
+      lastRecoveredAt: asIso(recoveryEvents[0]?.createdAt),
+    },
   };
 }
 
@@ -103,7 +142,7 @@ export function buildUserAwarenessSnapshot(
   connectivity: ConnectivityMode,
   generatedAt = new Date().toISOString(),
 ) {
-  const tasks = runs.map(toOperationalTask);
+  const tasks = runs.map((run) => toOperationalTask(run, new Date(generatedAt)));
   return {
     generatedAt,
     source: 'persisted-agent-runs-and-live-worker-observer',
