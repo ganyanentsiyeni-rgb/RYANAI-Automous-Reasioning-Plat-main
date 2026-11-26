@@ -346,3 +346,12 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Added a deferred-response UI regression test for the next-page loading state and disabled control.
 - This is a frontend request-feedback repair only. It does not change memory authorization, persistence, retention, or database schema.
 - Tests have not been executed in this environment; exact-head CI remains required. No merge, deployment, migration, credential change, or production modification.
+
+
+## 26. Provider readiness gate correction — 26 November 2026
+
+- Changed the U2EB Render API Blueprint health check from `/health` (process liveness) to `/readyz` (application readiness). The API readiness contract includes database, Redis, LangGraph/checkpointer, and agent queue-listener dependencies; a process-only health response must not certify the application as ready.
+- Kept the API Dockerfile, repository, `main` branch, root directory, Free plan, Oregon region, and `checksPass` auto-deploy policy unchanged in the Blueprint.
+- This is a repository Blueprint correction only. It does not mutate the inaccessible live Render workspace, existing service settings, or deployments.
+- Railway source/build alignment remains blocked by Railway account suspension. No service, source, volume, variable, or deployment changes were applied.
+- Required exact-SHA CI/security checks, a recorded human approval, and explicit Push Deploy remain mandatory before any provider deployment.
