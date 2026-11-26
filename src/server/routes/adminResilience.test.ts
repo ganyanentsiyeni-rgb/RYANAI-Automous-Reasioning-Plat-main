@@ -5,7 +5,8 @@ const resilience = vi.hoisted(() => ({
   backupPreflight: vi.fn(),
   createDatabaseBackup: vi.fn(),
   listDatabaseBackups: vi.fn(),
-  listExpectedMigrationIds: vi.fn(),\n  inspectSchemaMigrationArtifacts: vi.fn(),
+  listExpectedMigrationIds: vi.fn(),
+  inspectSchemaMigrationArtifacts: vi.fn(),
   recoveryPreflight: vi.fn(),
 }));
 vi.mock('../../services/adminResilience.js', () => resilience);
