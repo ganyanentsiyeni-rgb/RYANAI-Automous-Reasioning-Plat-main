@@ -346,3 +346,12 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Added a deferred-response UI regression test for the next-page loading state and disabled control.
 - This is a frontend request-feedback repair only. It does not change memory authorization, persistence, retention, or database schema.
 - Tests have not been executed in this environment; exact-head CI remains required. No merge, deployment, migration, credential change, or production modification.
+
+
+## 2026-11-26 — OpenRouter configuration and gateway contract coverage
+
+- Documented the optional server-side OpenRouter variables in `.env.example`: API key, HTTPS endpoint, and explicit model allowlist. The key remains empty by default and is never exposed through a browser-prefixed variable.
+- Declared the same optional variables for the U2EB API in `render.yaml`; the API key remains `sync: false`, and no credential value was added or provisioned.
+- Added a provider-gateway regression test for an allowlisted OpenRouter model, asserting the OpenRouter endpoint, bearer credential isolation, normalized token usage, and response redaction.
+- This is a configuration/documentation/test increment only. The Logic worker's direct `ChatOpenAI` override and actor-type propagation through delegated reasoning remain outstanding; this patch does not claim unified runtime routing or end-to-end completion.
+- No provider API call, live Render/Railway/Vercel configuration change, deployment, merge, migration, billing change, or secret modification.
