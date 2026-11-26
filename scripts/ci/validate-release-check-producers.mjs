@@ -6,6 +6,12 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const inventoryPath = path.join(root, "scripts/ci/required-release-check-producers.json");
 const inventory = JSON.parse(fs.readFileSync(inventoryPath, "utf8"));
+const catalogPath = path.join(root, "scripts/ci/required-release-checks.json");
+const catalog = JSON.parse(fs.readFileSync(catalogPath, "utf8"));
+const inventoryNames = inventory.contexts.map((context) => context.name);
+if (JSON.stringify(inventoryNames) !== JSON.stringify(catalog)) {
+  throw new Error("Canonical producer inventory and required-release-checks.json are out of sync");
+}
 
 if (!Number.isInteger(inventory.version) || inventory.version < 1 || !Array.isArray(inventory.contexts)) {
   throw new Error("Invalid release-check producer inventory");
