@@ -18,7 +18,7 @@ The report intentionally returns `evidence_incomplete`. It does not claim schema
 
 ## Explicit non-goals
 
-This endpoint does not connect to the recovery target, query `_prisma_migrations`, inspect target schema, execute SQL, restore a database, or write audit/database/storage records. Schema/migration evidence is limited to local repository files and SHA-256 fingerprints; target migration application and database compatibility remain `not_verified`. Its only artifact access is authenticated read-only download from the configured private bucket; dump bytes are hashed in memory and never returned. Verification is bounded to 10 artifacts and 256 MiB per artifact. Missing manifest evidence stays `not_verified`; download failures or byte/digest mismatches are `failed`.
+This endpoint does not connect to the recovery target, query `_prisma_migrations`, inspect target schema, execute SQL, restore a database, or write audit/database/storage records. Schema/migration evidence is limited to repository files and SHA-256 fingerprints; target migration application and database compatibility remain `not_verified`. Schema/migration evidence is limited to local repository files and SHA-256 fingerprints; target migration application and database compatibility remain `not_verified`. Its only artifact access is authenticated read-only download from the configured private bucket; dump bytes are hashed in memory and never returned. Verification is bounded to 10 artifacts and 256 MiB per artifact. Missing manifest evidence stays `not_verified`; download failures or byte/digest mismatches are `failed`.
 
 ## Validation
 
