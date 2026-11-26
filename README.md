@@ -135,8 +135,7 @@ Capability-scoped tools <-------------------+
     +---- communication providers
     +---- isolated research workers
 
-Persistence: Supabase/PostgreSQL + pgvector, Redis, and
-separately scoped audiobook storage/database connections.
+Persistence: Supabase PostgreSQL + pgvector for core relational data; Neon PostgreSQL for separately scoped audiobook data; MongoDB Atlas as the third intended database; and Redis for cache/queue transport. The current repository snapshot does not yet show an application-level MongoDB client/consumer, so Atlas connectivity remains unverified.
 ~~~
 
 ### Authority boundaries
