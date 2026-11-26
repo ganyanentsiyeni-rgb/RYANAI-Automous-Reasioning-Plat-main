@@ -129,6 +129,10 @@ function recordUnresolvedTable(migrationId, object, rawTable, findingStatus, ext
   }
 }
 
+export function migrationDirectoryIds(entries) {
+  return entries.filter(entry => entry.isDirectory()).map(entry => entry.name).sort();
+}
+
 export function analyzeMigrationDependencies(migrations) {
   const ordered = [...migrations].sort((a, b) => a.id.localeCompare(b.id));
   const seenIds = new Set();
@@ -234,8 +238,7 @@ async function main() {
   const migrationsPath = path.join(root, 'prisma', 'migrations');
   const entries = await readdir(migrationsPath, { withFileTypes: true });
   // Include every directory so malformed migration IDs are reported instead of silently skipped.
-  const ids = entries.filter(entry => entry.isDirectory())
-    .map(entry => entry.name).sort();
+  const ids = migrationDirectoryIds(entries);
   const migrations = await Promise.all(ids.map(async id => {
     try {
       return { id, sqlContent: await readFile(path.join(migrationsPath, id, 'migration.sql'), 'utf8') };

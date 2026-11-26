@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { analyzeMigrationDependencies } from './audit-prisma-migration-dependencies.mjs';
+import { analyzeMigrationDependencies, migrationDirectoryIds } from './audit-prisma-migration-dependencies.mjs';
 
 test('reports clear supported create/alter/index dependency order without database access', () => {
   const result = analyzeMigrationDependencies([
@@ -98,4 +98,16 @@ test('does not split on semicolons or comment markers inside quoted SQL text', (
   assert.equal(result.statementCount, 2);
   assert.equal(result.createdTableCount, 1);
   assert.equal(result.status, 'static_dependencies_clear');
+});
+
+test('inventories every migration directory, including malformed identifiers', () => {
+  const entries = [
+    { name: '20261102000000_valid', isDirectory: () => true },
+    { name: 'not-a-migration', isDirectory: () => true },
+    { name: 'README.md', isDirectory: () => false },
+  ];
+  assert.deepEqual(migrationDirectoryIds(entries), ['20261102000000_valid', 'not-a-migration']);
+  const result = analyzeMigrationDependencies(migrationDirectoryIds(entries).map(id => ({ id, sqlContent: 'SELECT 1;' })));
+  assert.deepEqual(result.invalidMigrationIds, ['not-a-migration']);
+  assert.equal(result.status, 'static_dependencies_incomplete');
 });
