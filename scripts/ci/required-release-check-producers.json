@@ -29,7 +29,7 @@
     {
       "name": "Audit Render API configuration (read-only)",
       "workflow": ".github/workflows/ci.yml",
-      "job": "validate"
+      "job": "render-api-config-audit"
     },
     {
       "name": "validate-database",
