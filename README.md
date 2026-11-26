@@ -1669,3 +1669,21 @@ This change is delivered through a reviewable pull request. It does not authoriz
 ## Frontend workspace visibility contract
 
 Account-level Dashboard UI preferences control whether registered workspaces appear in desktop navigation, mobile navigation, and Dashboard shortcuts. The Dashboard preference controls its navigation entry; **Settings remains available** as the recovery path. Hiding a workspace changes presentation only: it does not revoke route/API authorization, and enabling a workspace does not grant permissions. Admin Console and RyanAI Comms remain subject to server-verified role/owner checks. The frontend regression suite covers default visibility, hidden workspace behavior, direct-route authorization, and Settings availability.
+
+
+## Frontend environment and operational truth boundary
+
+The Vite browser build validates all exposed `VITE_*` variable names before bundling. Provider credentials, database/Redis URLs, private keys, passwords, and server auth tokens must remain server-only; only the explicitly browser-safe Supabase anon/publishable key names are allowed. Staging and production builds require an absolute HTTPS `VITE_API_BASE_URL` (the legacy `VITE_API_URL` alias remains accepted during migration) and reject loopback endpoints. Local development may continue to use a loopback API URL.
+
+The authenticated operational hooks in `src/hooks/useRyanOperations.ts` consume the existing `/api/agent/ops/tasks`, `/api/agent/ops/awareness`, `/api/agent/ops/pa/status`, task approval, and PA delegation routes. They display only backend-confirmed responses, preserve independently available telemetry when one observer is unavailable, and poll only while a task remains active. They do not infer an agent/worker inventory, MCP availability, or Comms delivery status from frontend constants.
+
+Run the focused frontend checks with:
+
+```bash
+npm run lint
+npm run typecheck
+npx vitest run src/config/frontendEnv.test.ts src/lib/platformHealth.test.ts
+npm run build:web
+```
+
+The `RyanAI Frontend Verification Gate` workflow repeats these checks against the exact pull-request head SHA and scans the compiled browser bundle. It is an additional CI check; it does not change branch protection, authorize merging, or trigger deployment. The existing explicit **PUSH DEPLOY** release gate remains authoritative.
