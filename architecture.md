@@ -135,3 +135,8 @@ The focused frontend contract tests, explicit production web build, and compiled
 ## PA delegation frontend dispatch boundary (2026-11-26)
 
 The shared `PADelegationPanel` creates delegations through `useRyanOperations`, which sends the authenticated request to the existing `/api/agent/ops/pa/delegations` route. The panel's fingerprinted UUID is carried as the backend `delegationId` so retries retain the same request identity. UI acceptance requires the backend's persisted delegation and AgentRun references plus its explicit approval state. Gen-X policy evaluation, owner scoping, approval recording, and execution authorization remain server-side.
+
+
+## Command Cockpit AgentRun observability
+
+The Command Cockpit's AgentRun queue panel is a read-only view over the authenticated task-list and operational-awareness endpoints through `useRyanOperations`. Queue counters, task statuses, and approval states are displayed only when returned by the API. Missing fields remain explicitly unreported; an empty list is not treated as proof of queue health. Active-run polling is bounded to the hook's observed non-terminal tasks. The panel does not approve, dispatch, claim, renew, or recover tasks; those operations remain backend-authorized and lease-controlled.
