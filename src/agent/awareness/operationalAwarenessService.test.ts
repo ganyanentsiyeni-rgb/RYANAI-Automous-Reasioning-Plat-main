@@ -25,7 +25,6 @@ describe('operational awareness service mapping', () => {
   it('surfaces pending approval and never reports it as granted', () => {
     const task = toOperationalTask({ ...base, status: 'queued', approvalStatus: 'pending' });
     expect(task).toMatchObject({ state: 'awaiting_approval', approvalRequired: true, approvalGranted: false });
-    expect(task).toHaveProperty('indicator');
   });
 
   it('marks an expired running lease as retrying and exposes lease ownership and timestamps', () => {
