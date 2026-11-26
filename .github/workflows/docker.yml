@@ -116,7 +116,7 @@ jobs:
       contents: read
     steps:
       - name: Download API image artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: docker-image-api
           path: /tmp
@@ -142,7 +142,7 @@ jobs:
       contents: read
     steps:
       - name: Download web image artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: docker-image-web
           path: /tmp
