@@ -126,7 +126,7 @@ export const providerGatewayRoutes: FastifyPluginAsync = async (fastify) => {
       action: 'NETWORK',
       target: 'configured-approved-provider',
       environment,
-      actorType: 'human',
+      actorType: claims.actorType,
     });
     if (policy.decision !== 'ALLOW') {
       fastify.log.warn({ ruleId: policy.ruleId, principal: claims.sub, providerId: request.body.providerId }, 'Gen-X denied delegated provider request');
