@@ -88,7 +88,8 @@ jobs:
           for value in "$AWS_REGION" "$ECR_REPOSITORY" "$ECS_SERVICE" "$ECS_CLUSTER" "$ECS_TASK_DEFINITION" "$ECS_CONTAINER_NAME" "$AWS_ROLE_TO_ASSUME"; do
             test -n "$value" || { echo "::error::AWS staging configuration is incomplete"; exit 1; }
           done
-          [[ "$AWS_STAGING_API_URL" == https://* ]] || { echo "::error::AWS staging health URL must be HTTPS"; exit 1; }
+          [[ "$AWS_STAGING_API_URL" == https://*staging* ]] || { echo "::error::AWS health URL must be an HTTPS staging hostname"; exit 1; }
+          [[ "$ECS_CLUSTER" == *staging* && "$ECS_SERVICE" == *staging* ]] || { echo "::error::AWS ECS cluster and service names must explicitly identify staging"; exit 1; }
           test -s "$ECS_TASK_DEFINITION" || { echo "::error::ECS task definition JSON file not found"; exit 1; }
           jq -e --arg container "$ECS_CONTAINER_NAME" '.containerDefinitions | any(.name == $container)' "$ECS_TASK_DEFINITION" >/dev/null || {
             echo "::error::Configured ECS container name is absent from the task definition"; exit 1;
@@ -105,6 +106,20 @@ jobs:
         run: |
           set -euo pipefail
           aws sts get-caller-identity --query Account --output text >/dev/null
+
+      - name: Verify ECS service is tagged and named as staging
+        run: |
+          set -euo pipefail
+          aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --include TAGS > ecs-staging-service.json
+          jq -e --arg service "$ECS_SERVICE" '
+            (.failures | length) == 0
+            and (.services | length) == 1
+            and .services[0].status == "ACTIVE"
+            and .services[0].serviceName == $service
+            and any(.services[0].tags[]?; .key == "Environment" and (.value | ascii_downcase) == "staging")
+          ' ecs-staging-service.json >/dev/null || {
+            echo "::error::Refusing ECS deployment: service must be active and explicitly tagged Environment=staging"; exit 1;
+          }
 
       - name: Log in to Amazon ECR
         id: ecr
