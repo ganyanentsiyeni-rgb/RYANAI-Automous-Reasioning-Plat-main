@@ -1692,3 +1692,8 @@ The existing CI workflow now runs the focused frontend contract tests, an explic
 ### PA delegation dispatch integration
 
 The shared PA/Darkside Copilot delegation panel now submits creation through `useRyanOperations().createPADelegation()`. The panel preserves its request fingerprint and caller-generated delegation UUID across failed attempts, passing that stable ID to the authenticated backend endpoint for duplicate-safe retries. A delegation is shown as accepted only when the API returns the persisted delegation ID, AgentRun task ID, and an approved or pending-approval state. Existing server-side Gen-X policy, approval, and deployment gates remain authoritative.
+
+
+## Admin Console plugin capability catalogue
+
+The Admin Console reads the server-owned plugin metadata from authenticated `GET /api/plugins/registry`. It displays declared capability IDs, risk labels, human-approval flags, data classifications, manifest version and adapter registration status. The endpoint is metadata-only: it does not expose credentials, connection state or adapter execution methods. The UI does not interpret a declaration or registered adapter as a user permission, connected provider, healthy provider or authorization to execute. Gen-X and the server-side execution boundary remain authoritative.
