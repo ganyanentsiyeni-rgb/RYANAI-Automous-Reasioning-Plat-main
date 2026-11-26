@@ -143,3 +143,7 @@ The Admin Console's plugin capability catalogue reads the authenticated, read-on
 ## Command Cockpit AgentRun observability
 
 The Command Cockpit's AgentRun queue panel is a read-only view over the authenticated task-list and operational-awareness endpoints through `useRyanOperations`. Queue counters, task statuses, and approval states are displayed only when returned by the API. Missing fields remain explicitly unreported; an empty list is not treated as proof of queue health. Active-run polling is bounded to the hook's observed non-terminal tasks. The panel does not approve, dispatch, claim, renew, or recover tasks; those operations remain backend-authorized and lease-controlled.
+
+## Admin Console AI Inspector evidence visibility
+
+The Admin Console's AI Inspector panel reads the existing authenticated `GET /api/agent/ops/tasks` response, which returns owner-scoped AgentRuns with persisted evidence records. It selects only `pa.capability.executed` events whose payload capability is `ai-inspector.inspect`, then validates report text, source, digest format, and exit code before rendering. Exit code 1 remains a completed report with findings; exit code 0 is only reported as exit code 0 and is not a clean-audit certification. Missing, malformed, and unavailable evidence are distinct. The view does not start tasks, mutate evidence, verify the hash chain, or authorize execution/remediation.
