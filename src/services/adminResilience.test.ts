@@ -166,6 +166,7 @@ describe('admin resilience backup inventory', () => {
       backupId: 'manifest-unreadable',
       databaseBytes: 128,
       databaseSha256: null,
+      integrityStatus: 'not_verified',
       manifestPresent: false,
     }));
   });
