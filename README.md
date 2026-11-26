@@ -1654,7 +1654,7 @@ The backend module-boundary scanner's regex escaping and path normalization were
 
 ## PA Agent sourced skills
 
-PA now exposes a governed sourced-skill registry with provenance and bounded execution modes. Active capabilities include research/source verification, observability and synthetic verification, correction-to-guardrail proposals, Supabase database governance, edge security watch, and incident evidence/recovery. The provider/model-routing proposal remains catalogued and disabled while the resumed OpenRouter implementation completes its reviewable security, routing, model-catalogue, usage, reliability, privacy, and staging gates. Runtime activation remains disabled until those gates pass. See [RyanAI agent skills](RyanAI.agent.skills.md) and [patches.md](patches.md).
+PA now exposes a governed sourced-skill registry with provenance and bounded execution modes. Active capabilities include research/source verification, observability and synthetic verification, correction-to-guardrail proposals, Supabase database governance, edge security watch, and incident evidence/recovery. The OpenRouter implementation is being resumed in reviewable increments. The first security increment preserves verified actor identity through delegated MCP tokens; the Logic model override now uses the shared API-owned provider adapter and canonical registry after approved-AgentRun and live-lease checks. OpenRouter runtime activation remains disabled until catalogue, usage/cost, reliability, privacy, regional-data and staging gates pass. See [RyanAI agent skills](RyanAI.agent.skills.md) and [patches.md](patches.md).
 
 
 ## Owner access and dashboard workspace preferences
