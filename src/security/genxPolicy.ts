@@ -13,6 +13,8 @@ export interface GenXSecurityEvent {
   actorType?: 'human' | 'agent' | 'service';
   /** Trusted route-only context: true only after requireOwner succeeds. */
   ownerAuthorized?: boolean;
+  /** Internal worker-only context: true only after revalidating an approved AgentRun and its live lease. */
+  approvedAgentRun?: boolean;
   /** True only after the owner has supplied the request-specific confirmation phrase. */
   ownerConfirmed?: boolean;
 }
@@ -98,7 +100,7 @@ export function evaluateGenXSecurityEvent(event: GenXSecurityEvent): GenXPolicyR
   // An approved, owner-bound AgentRun may invoke only the configured reasoning
   // provider through the API-owned gateway. The worker sets ownerAuthorized only
   // after loading the approved run and validating its live lease.
-  if (event.actorType === 'agent' && event.ownerAuthorized === true &&
+  if (event.actorType === 'agent' && event.approvedAgentRun === true &&
       event.toolName === 'api_agent_reasoning_request' && event.action === 'NETWORK' &&
       event.target === 'configured-approved-provider') {
     return { decision: 'ALLOW', ruleId: 'GX-APPROVED-AGENT-REASONING-001', reason: 'A live, owner-bound, approved AgentRun may use the configured reasoning provider through the API-owned gateway; this does not authorize arbitrary network access.', severity: 'HIGH' };
