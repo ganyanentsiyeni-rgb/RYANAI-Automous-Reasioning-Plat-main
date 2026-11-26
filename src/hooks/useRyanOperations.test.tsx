@@ -30,18 +30,16 @@ beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   authenticatedFetch.mockImplementation(async (input: string, init?: RequestInit) => {
     const url = new URL(input, 'https://api.example.test');
-    if (url.pathname === '/api/agent/ops/tasks') {
-      if (init?.method === 'POST') {
-        return response({
-          success: true,
-          delegationId: 'delegation-123',
-          taskId: 'run-123',
-          status: 'approved',
-          createdAt: '2026-11-26T12:00:00.000Z',
-        }, 202);
-      }
-      return response({ tasks: [] });
+    if (url.pathname === '/api/agent/ops/pa/delegations' && init?.method === 'POST') {
+      return response({
+        success: true,
+        delegationId: 'delegation-123',
+        taskId: 'run-123',
+        status: 'approved',
+        createdAt: '2026-11-26T12:00:00.000Z',
+      }, 202);
     }
+    if (url.pathname === '/api/agent/ops/tasks') return response({ tasks: [] });
     if (url.pathname === '/api/agent/ops/awareness') {
       return response({
         status: 'degraded',
