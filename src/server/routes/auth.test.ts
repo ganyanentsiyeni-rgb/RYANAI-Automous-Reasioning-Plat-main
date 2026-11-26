@@ -77,6 +77,10 @@ async function createApp(standaloneApprovals = false) {
 }
 
 beforeEach(() => {
+  // Keep mutable Supabase identity fixtures isolated between tests. Several
+  // cases intentionally mutate these metadata objects to model trusted claims.
+  user.app_metadata = {};
+  user.user_metadata = { role: 'admin' };
   vi.stubEnv('SUPABASE_URL', 'https://project.supabase.co');
   vi.stubEnv('SUPABASE_PUBLISHABLE_KEY', 'synthetic-publishable-key');
   createContextClient.mockReturnValue({
