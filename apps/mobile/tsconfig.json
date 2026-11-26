@@ -3,6 +3,7 @@
   "compilerOptions": {
     "strict": true,
     "noEmit": true,
+    "baseUrl": ".",
     "paths": {
       "@/*": [
         "./*"
@@ -10,6 +11,15 @@
       "@shared/*": [
         "../../src/*"
       ],
+      "react": [
+        "./node_modules/@types/react/index.d.ts"
+      ],
+      "react/*": [
+        "./node_modules/@types/react/*"
+      ],
+      "react-native": [
+        "./node_modules/react-native/types/index.d.ts"
+      ]
     }
   },
   "include": [
