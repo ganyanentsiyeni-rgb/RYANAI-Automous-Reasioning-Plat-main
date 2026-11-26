@@ -33,7 +33,12 @@ for (const context of inventory.contexts) {
   }
 
   const source = fs.readFileSync(workflowPath, "utf8");
-  if (!source.includes(`name: ${name}`) && !source.includes(`name: "${name}"`) && !source.includes(`name: '${name}'`)) {
+  const declared = source.includes(`name: ${name}`) ||
+    source.includes(`name: "${name}"`) ||
+    source.includes(`name: '${name}'`) ||
+    (name.startsWith("Analyze (") && source.includes("name: Analyze (${{ matrix.language }})")) ||
+    (name.startsWith("Upgrade legacy pgvector database safely (") && source.includes("name: Upgrade legacy pgvector database safely (${{ matrix.legacy_session_column }})"));
+  if (!declared) {
     failures.push(`Producer workflow does not declare required check name "${name}": ${workflow}`);
   }
 }
