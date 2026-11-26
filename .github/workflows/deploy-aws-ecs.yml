@@ -74,7 +74,15 @@ jobs:
           for value in "$AWS_REGION" "$ECR_REPOSITORY" "$ECS_SERVICE" "$ECS_CLUSTER" "$ECS_TASK_DEFINITION" "$ECS_CONTAINER_NAME" "$AWS_ROLE_TO_ASSUME"; do
             test -n "$value" || { echo "::error::AWS staging configuration is incomplete"; exit 1; }
           done
-          [[ "$AWS_STAGING_API_URL" == https://*staging* ]] || { echo "::error::AWS health URL must be an HTTPS staging hostname"; exit 1; }
+          python3 - "$AWS_STAGING_API_URL" <<'PY'
+          import sys
+          from urllib.parse import urlparse
+          target = urlparse(sys.argv[1])
+          if (target.scheme != "https" or not target.hostname or "staging" not in target.hostname.lower()
+                  or target.username or target.password or target.path not in ("", "/")
+                  or target.query or target.fragment):
+              raise SystemExit("AWS health URL must use an HTTPS staging hostname with no embedded path, credentials, query, or fragment")
+          PY
           [[ "$ECS_CLUSTER" == *staging* && "$ECS_SERVICE" == *staging* ]] || { echo "::error::AWS ECS cluster and service names must explicitly identify staging"; exit 1; }
           test -s "$ECS_TASK_DEFINITION" || { echo "::error::ECS task definition JSON file not found"; exit 1; }
           jq -e --arg container "$ECS_CONTAINER_NAME" '.containerDefinitions | any(.name == $container)' "$ECS_TASK_DEFINITION" >/dev/null || {
