@@ -450,3 +450,11 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Distinguishes no recent task, task without report evidence, malformed evidence, API/source errors, completed-with-findings (exit code 1), and completed exit code 0.
 - Explicitly does not equate exit code 0 with a clean audit, independently verify the hash chain, prove runtime health, launch audits, or perform remediation.
 - No migrations, credential changes, deployment, or production modifications.
+
+## 2026-11-26 — AgentRun read-only migration compatibility evidence
+
+- Audited the canonical `main` source at `abcecd9c38787f83abcbd8d12eb754412df80b45` without connecting to the production recovery target.
+- Corrected the recovery runbook: the 42-migration / 8-ledger-entry figures are dated 8 November observations, not current production state; the repository currently contains 61 primary Prisma migration directories.
+- Cross-checked the `AgentRun` Prisma model against `database.yml` and the ordered base, execution-scope, trace-context, runtime-contract, queue-classification, lease-heartbeat, and fail-closed approval migrations.
+- Recorded that the runtime-contract migration performs row reclassification as well as DDL, and must not be manually replayed after recovery.
+- Full compatibility remains unverified: the latest exact-SHA database/CI workflows were cancelled, and no isolated clone of the exact production migration ledger was inspected. No production connection, SQL execution, migration, deployment, credential change, or gate bypass was performed.
