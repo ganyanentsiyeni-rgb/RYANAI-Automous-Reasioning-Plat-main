@@ -90,18 +90,10 @@ GRANT EXECUTE ON FUNCTION public.claim_ryanai_orphan_attachment_cleanup(timestam
 
 -- Prevent future SECURITY DEFINER functions created by either migration role
 -- from inheriting browser EXECUTE grants through role-specific default ACLs.
-DO $
-BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'postgres')
-     AND pg_has_role(current_user, 'postgres', 'MEMBER') THEN
-    EXECUTE 'ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated';
-  END IF;
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_admin')
-     AND pg_has_role(current_user, 'supabase_admin', 'MEMBER') THEN
-    EXECUTE 'ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated';
-  END IF;
-END;
-$;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+  REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public
+  REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated;
 
 COMMENT ON COLUMN public.ryanai_attachment_scans.lease_token IS
   'Per-claim generation token; only the worker holding this token may finish the scan.';
