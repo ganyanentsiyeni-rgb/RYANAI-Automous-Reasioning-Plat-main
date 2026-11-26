@@ -5,11 +5,13 @@ on:
     paths:
       - "apps/mobile/**"
       - ".github/workflows/mobile-app.yml"
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
       - "apps/mobile/**"
       - ".github/workflows/mobile-app.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
