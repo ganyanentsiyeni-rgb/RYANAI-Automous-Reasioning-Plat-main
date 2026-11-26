@@ -64,12 +64,12 @@ function splitStatements(sql) {
     }
 
     if (char === '-' && next === '-') {
-      lineComment = true;
+      current += ' ';\n      lineComment = true;
       i += 1;
       continue;
     }
     if (char === '/' && next === '*') {
-      blockCommentDepth = 1;
+      current += ' ';\n      blockCommentDepth = 1;
       i += 1;
       continue;
     }
