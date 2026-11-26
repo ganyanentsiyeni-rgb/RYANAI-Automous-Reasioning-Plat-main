@@ -171,6 +171,7 @@ export default function App() {
         if (active) setVerifiedIdentity({
           userId: authenticatedUserId,
           isOwner: result.user?.isOwner === true,
+          role: result.user?.role,
           displayName: result.user?.displayName,
           serverVerified: Boolean(result.user),
         });
