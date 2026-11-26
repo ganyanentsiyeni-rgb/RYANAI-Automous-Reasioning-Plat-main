@@ -425,15 +425,18 @@ export function recoveryPreflight(): RecoveryPreflight {
     }
     const sourceValue = resolvedSourceDatabaseUrl();
     const sourceUrl = new URL(sourceValue);
-    const sameHost = targetUrl.hostname.toLowerCase() === sourceUrl.hostname.toLowerCase();
-    const sameDatabase = decodeURIComponent(targetUrl.pathname).replace(/^\//, '').toLowerCase() === decodeURIComponent(sourceUrl.pathname).replace(/^\//, '').toLowerCase();
-    if (sameHost || sameDatabase) {
+    const databaseName = (url: URL) => decodeURIComponent(url.pathname).split('/').slice(1).join('/').toLowerCase();
+    const port = (url: URL) => url.port || '5432';
+    const sameEndpoint = targetUrl.hostname.toLowerCase() === sourceUrl.hostname.toLowerCase() &&
+      port(targetUrl) === port(sourceUrl) &&
+      databaseName(targetUrl) === databaseName(sourceUrl);
+    if (sameEndpoint) {
       return {
         status: 'blocked_same_as_source',
         targetLabel,
         productionRestore: 'disabled',
         writesPerformed: false,
-        reason: 'Recovery target resolves to the source database; isolated recovery is blocked.',
+        reason: 'Recovery target matches the source host, port and database; isolated recovery is blocked.',
       };
     }
     if (targetUrl.protocol !== 'postgres:' && targetUrl.protocol !== 'postgresql:') {

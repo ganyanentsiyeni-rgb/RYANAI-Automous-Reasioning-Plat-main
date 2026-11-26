@@ -41,7 +41,7 @@ Required sequence:
 6. Record achieved RPO/RTO, data-integrity report, gaps and rollback path.
 7. Production recovery remains a separate explicit approval and controlled operator action.
 
-No UI control may restore over production by default. A missing or ambiguous target must fail closed. A backup listing, successful dump, or process health response is not proof of recovery.
+No UI control may restore over production by default. A missing or ambiguous target must fail closed. Preflight blocks only an exact host/port/database endpoint match; matching database names on different hosts and all other non-identical URLs remain `identity_unverified` until database identity and network isolation are independently proven. A backup listing, successful dump, or process health response is not proof of recovery.
 
 ### C. RyanAI self-patches
 
