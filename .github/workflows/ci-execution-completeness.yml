@@ -1,0 +1,35 @@
+name: CI execution completeness
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: read
+
+concurrency:
+  group: ci-execution-completeness-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: CI execution completeness
+    runs-on: ubuntu-latest
+    timeout-minutes: 32
+    steps:
+      - name: Checkout candidate SHA
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Verify required CI contexts execute on this exact SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          node scripts/ci/verify-ci-execution.mjs scripts/ci/required-release-checks.json "${GITHUB_SHA}" 1800
