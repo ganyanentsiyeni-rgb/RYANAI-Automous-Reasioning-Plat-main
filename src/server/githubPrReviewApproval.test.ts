@@ -12,7 +12,7 @@ describe('durable WhatsApp GitHub PR review approval', () => {
     const query = vi.fn();
     await expect(recordOwnerGitHubPrReviewDecision(
       { $queryRawUnsafe: query }, {
-        ownerUserId, approvalId, expectedHeadSha: sha, inboundMessageSid: sid, decision: 'approve',
+        ownerUserId, approvalId, expectedHeadSha: sha, inboundMessageSid: sid, decision: 'reject',
       }, env,
     )).rejects.toThrow('genx_authorization_unavailable');
     expect(query).not.toHaveBeenCalled();
