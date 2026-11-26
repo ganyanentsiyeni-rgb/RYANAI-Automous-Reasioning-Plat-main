@@ -355,3 +355,12 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Added a provider-gateway regression test for an allowlisted OpenRouter model, asserting the OpenRouter endpoint, bearer credential isolation, normalized token usage, and response redaction.
 - This is a configuration/documentation/test increment only. The Logic worker's direct `ChatOpenAI` override and actor-type propagation through delegated reasoning remain outstanding; this patch does not claim unified runtime routing or end-to-end completion.
 - No provider API call, live Render/Railway/Vercel configuration change, deployment, merge, migration, billing change, or secret modification.
+
+
+## 2026-11-26 — Preserve trusted actor identity in MCP reasoning delegation
+
+- Added the API-verified `actorType` (`human`, `agent`, or `service`) to the short-lived signed MCP delegation claims.
+- The delegation issuer now derives Gen-X context from the verified Supabase `authUser.actorType`; the execution-time `/api/internal/mcp/authorize` and provider gateway re-evaluate policy using the signed claim rather than forcing `human`.
+- The MCP Node verifier validates the actor claim before accepting a delegated identity. Existing API-issued tokens default to `human` only at the trusted API token-issuance boundary for backward-compatible human sessions; request payloads cannot set the claim.
+- Added regression coverage for human claim preservation, agent/service identity preservation, and denial of an agent's reasoning delegation.
+- This closes the actor-identity hard-coding defect in the MCP reasoning delegation path. It does not yet unify the durable Logic worker's direct `ChatOpenAI` override with the API gateway; that remains the next integration target. No external provider calls, secrets, migrations, live configuration, merge, or deployment.
