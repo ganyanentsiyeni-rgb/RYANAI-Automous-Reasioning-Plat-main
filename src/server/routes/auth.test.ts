@@ -285,6 +285,21 @@ describe('Supabase API authentication', () => {
     expect(response.json().user.isOwner).toBe(false);
   });
 
+  it('always grants the canonical RyanAI owner email owner and administrator access', async () => {
+    getUser.mockResolvedValue({
+      data: { user: { ...user, email: 'rmnganyane@gmail.com' } },
+      error: null,
+    });
+    const app = await createApp();
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/auth/verify',
+      headers: bearer,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().user).toMatchObject({ email: 'rmnganyane@gmail.com', isOwner: true, role: 'admin' });
+  });
+
   it('marks the owner only from the server-side configured email', async () => {
     vi.stubEnv('RYANAI_OWNER_EMAIL', 'member@example.test');
     const app = await createApp();
