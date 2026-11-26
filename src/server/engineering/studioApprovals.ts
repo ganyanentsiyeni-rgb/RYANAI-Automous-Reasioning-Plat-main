@@ -15,9 +15,24 @@ export async function approveStudioTask(taskId: string, ownerUserId: string, act
     });
     if (!task) throw new Error('Studio task not found for this owner.');
     if (!['queued', 'blocked'].includes(task.status)) throw new Error('Only queued or policy-blocked tasks can be approved.');
-    if (task.approvalStatus === 'approved') return { taskId, state: 'already_approved' as const };
 
     const taskContentSha256 = studioTaskApprovalDigest(task);
+    if (task.approvalStatus === 'approved') {
+      const existing = await tx.studioEvent.findFirst({
+        where: { taskId: task.id, ownerUserId, actorId, eventType: 'task.human_approved' },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, payload: true },
+      });
+      const payload = existing?.payload;
+      const payloadRecord = payload && typeof payload === 'object' && !Array.isArray(payload)
+        ? payload as Record<string, unknown>
+        : null;
+      if (payloadRecord?.taskContentDigestVersion === STUDIO_TASK_APPROVAL_DIGEST_VERSION
+        && payloadRecord.taskContentSha256 === taskContentSha256) {
+        return { taskId, state: 'already_approved' as const, approvalReference: existing.id, taskContentSha256 };
+      }
+    }
+
     const updated = await tx.studioTask.updateMany({
       where: {
         id: task.id, ownerUserId, status: task.status,
