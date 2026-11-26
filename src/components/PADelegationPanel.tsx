@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Activity, ArrowRightLeft, CheckCircle2, Clock3, LoaderCircle, RefreshCw, Send, ShieldCheck, XCircle } from 'lucide-react';
 import { authenticatedFetch } from '@/lib/authenticatedFetch';
+import { useRyanOperations } from '@/hooks/useRyanOperations';
 
 type Capability = 'repository.inspect' | 'diagnostics.run' | 'ai-inspector.inspect' | 'patch.propose' | 'evidence.record' | 'comms.task.create' | 'deployment.execute';
 type Handoff = { fromAgent: string; toAgent: string; status: string; output?: string | null; error?: string | null };
@@ -57,6 +58,7 @@ function displayStatus(delegation: Delegation): string {
 }
 
 export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilot' | 'pa' | 'shared' }) {
+  const { createPADelegation } = useRyanOperations();
   const [delegations, setDelegations] = useState<Delegation[]>([]);
   const [objective, setObjective] = useState('');
   const [capabilities, setCapabilities] = useState<Capability[]>(['repository.inspect', 'comms.task.create']);
@@ -105,11 +107,11 @@ export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilo
       if (!createRequestRef.current || createRequestRef.current.fingerprint !== fingerprint) {
         createRequestRef.current = { fingerprint, delegationId: crypto.randomUUID() };
       }
-      const created = await api<{ status?: string }>('/api/agent/ops/pa/delegations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ objective: objective.trim(), capabilities, delegationId: createRequestRef.current.delegationId }),
-      });
+      const created = await createPADelegation(
+        objective,
+        capabilities,
+        createRequestRef.current.delegationId,
+      );
       createRequestRef.current = null;
       setObjective('');
       setNotice(created.status === 'approved' ? 'Gen-X functional approval recorded. PA is queued; its internal Comms task will receive the result. Any Push Deploy still waits for exact-SHA CI/security checks.' : 'Alex received the handoff. This scope is waiting for a functional policy decision before execution.');
