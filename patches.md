@@ -343,6 +343,16 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Tests have not been executed in this environment; exact-head CI remains required. No merge, deployment, migration, credential change, or production modification.
 
 
+## 2026-11-26 — Frontend environment and operational truth increment
+
+- Added a shared browser-environment validator used by Vite build configuration and the runtime API base URL resolver.
+- Rejects server-only credentials under `VITE_*` names, permits only the explicitly browser-safe Supabase anon/publishable key names, rejects URL-embedded credentials, and requires HTTPS/non-loopback API endpoints in staging and production.
+- Added focused regression tests for localhost/loopback, staging HTTPS, missing hosted API configuration, forbidden secret names, safe Supabase public keys, and URL normalization.
+- Added `useRyanOperations` and browser contracts for the API routes that exist today: AgentRun task listing/dispatch, operational awareness, PA observer status, task approval/rejection, and PA delegation.
+- The hook uses authenticated API requests, validates essential response fields, waits for backend-confirmed action results, preserves independent telemetry when one source fails, and polls only while runs are active.
+- Added the standalone `RyanAI Frontend Verification Gate` and integrated its focused environment/health tests, explicit production web build, and compiled-bundle credential/loopback audit into the existing CI workflow so this PR receives pre-merge verification before the new workflow reaches main.
+- Deliberately did not invent detailed health, agent/worker registry, MCP tool, Comms receipt, or capabilities endpoints: the proposed `/api/v1/*` paths are not the current API route contract. These require backend implementation and contract tests before the frontend can truthfully render them.
+- No branch-protection rule was modified, no PR was merged, and no deployment, migration, credential change, provider configuration change, or production operation was performed. Exact-head CI evidence and independent review remain required.
 ## 2026-11-26 — GitHub Integration status refresh feedback
 
 - Refreshing an already-loaded GitHub connection now re-enters a visible checking state and disables repeat refresh while the authenticated status request is pending.
@@ -362,3 +372,21 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Added regression coverage proving the caller signal reaches authenticated transport and aborts do not trigger completion or error callbacks.
 - This is a frontend/request-lifecycle safety repair only; model catalog, provider authorization, backend policy, database schema, credentials, deployment and production configuration are unchanged.
 - Tests have not been executed in this environment; exact-head CI remains required. No merge, deployment, migration, credential change, or production modification.
+
+
+## 2026-11-26 — Resume OpenRouter governance implementation
+
+- Preserved the trusted Supabase actor type (`human`, `agent`, or `service`) in API-issued MCP delegation assertions and re-evaluated Gen-X using that signed actor classification at delegation, execution authorization, and provider dispatch.
+- Removed the hard-coded `actorType: human` assumption from delegated reasoning. Explicit agent/service identities are denied by the existing human-only reasoning policy and cannot inherit owner permissions.
+- Added regression coverage across API delegation, API provider gateway, HMAC token verification, and MCP token verification.
+- OpenRouter remains optional and runtime-disabled pending the remaining catalogue, usage/cost, reliability, privacy, regional-data, and staging acceptance gates. No provider key, billing, hosted environment, deployment, migration, or external API call was changed.
+
+
+## 2026-11-26 — Logic OpenRouter override routed through API gateway
+
+- Replaced the Logic override's direct `ChatOpenAI` construction and direct endpoint/key resolution with `resolveSelectedReasoningModel` backed by the canonical provider registry and `invokeConfiguredProvider` shared API-owned adapter.
+- The worker now requires a persisted approved AgentRun, revalidates its current worker lease immediately before provider dispatch, and evaluates Gen-X using the internal `approvedAgentRun` context. The worker-only context is distinct from route-only `ownerAuthorized` and is never accepted from model/tool input.
+- The API MCP gateway and approved AgentRun worker now share the same provider request shaping, server-held credential resolution, HTTPS/allowlist checks, normalized text response, usage normalization, and no-tool-execution behavior.
+- Existing `gpt-4o` and `gpt-4o-mini` selections continue to use the configured Logic provider. Only the two explicitly catalogued OpenRouter aliases may select the OpenRouter route.
+- Added model selection, provider invocation, and Gen-X policy regression tests. Exact-head CI is still required; tests have not been executed locally in this workflow.
+- OpenRouter remains runtime-disabled. No provider API request, secret/billing change, hosted configuration change, merge, migration, or deployment was performed.
