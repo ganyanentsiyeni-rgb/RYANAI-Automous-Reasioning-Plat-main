@@ -68,7 +68,7 @@ jobs:
           set -euo pipefail
           loopback_matches="$(grep -RhoE 'https?://(localhost|[^/]*\.localhost|127\.[0-9]+\.[0-9]+\.[0-9]+|0\.0\.0\.0)(:[0-9]+)?' dist/ | sort -u || true)"
           if [ -n "$loopback_matches" ]; then
-            unexpected_loopback="$(printf '%s\\n' "$loopback_matches" | grep -vxF 'http://localhost:9999' || true)"
+            unexpected_loopback="$(printf '%s\n' "$loopback_matches" | grep -vxF 'http://localhost:9999' || true)"
           else
             unexpected_loopback=""
           fi
