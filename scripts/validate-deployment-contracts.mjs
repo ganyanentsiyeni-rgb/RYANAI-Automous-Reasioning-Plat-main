@@ -270,6 +270,7 @@ checks.push(
 
 checks.push(
   ['docker-compose builds the MCP service from the canonical mcp-server/Dockerfile', dockerCompose.includes('dockerfile: mcp-server/Dockerfile') && !dockerCompose.includes('Dockerfile.mcp_server')],
+  ['README standalone MCP build command uses the canonical mcp-server/Dockerfile', read('README.md').includes('docker build -f mcp-server/Dockerfile -t ryanai-mcp:local .') && !read('README.md').includes('docker build -f Dockerfile.mcp_server')],
   ['Staging deploy guard accepts exactly the Blueprint staging API name', renderDeploy.includes('startswith("ryanai-api-staging")') && !renderDeploy.includes('startswith("ryanai-staging")') && stagingServiceNames.includes('ryanai-api-staging')],
 );
 
