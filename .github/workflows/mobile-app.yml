@@ -43,6 +43,10 @@ jobs:
           fi
       - name: Install mobile dependencies
         run: npm install --no-audit --no-fund
+      - name: Verify React Native dependency resolution
+        run: |
+          npm ls react-native --depth=0
+          node -e "console.log('react-native resolved to', require.resolve('react-native/package.json'))"
       - name: TypeScript validation
         run: npm run typecheck
       - name: Expo dependency compatibility
