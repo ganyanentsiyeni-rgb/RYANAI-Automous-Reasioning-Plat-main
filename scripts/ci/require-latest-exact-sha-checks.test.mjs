@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { latestChecksByName, validateChecks } from "./require-latest-exact-sha-checks.mjs";
+import { latestChecksByName, parseCheckRuns, validateChecks } from "./require-latest-exact-sha-checks.mjs";
 
 const sha = "a".repeat(40);
 const name = "Validate (typecheck, lint, test, build)";
@@ -31,4 +31,10 @@ test("equal timestamps use the greater check-run ID", () => {
   const checks = [run(10, "2026-11-26T11:00:00Z", { conclusion: "failure" }), run(11, "2026-11-26T11:00:00Z")];
   assert.equal(latestChecksByName(checks).get(name).id, 11);
   assert.deepEqual(validateChecks(checks, [name], sha), []);
+});
+
+test("parses newline-delimited check runs", () => {
+  const checks = [run(10, "2026-11-26T10:00:00Z"), run(11, "2026-11-26T11:00:00Z")];
+  const ndjson = checks.map((check) => JSON.stringify(check)).join("\n");
+  assert.deepEqual(parseCheckRuns(ndjson), checks);
 });

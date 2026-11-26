@@ -104,16 +104,52 @@ function splitStatements(sql) {
   return { statements, unsupported };
 }
 
+function identifierParts(value) {
+  const parts = [];
+  let current = '';
+  let quoted = false;
+  for (let i = 0; i < value.length; i += 1) {
+    const char = value[i];
+    if (char === '"') {
+      if (quoted && value[i + 1] === '"') {
+        current += '""';
+        i += 1;
+      } else {
+        quoted = !quoted;
+        current += char;
+      }
+    } else if (char === '.' && !quoted) {
+      parts.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  parts.push(current.trim());
+  return parts;
+}
+
 function normalizeIdentifier(value) {
-  return value.replace(/"/g, '').split('.').map(part => part.trim().toLowerCase()).join('.');
+  return identifierParts(value).map(part => {
+    if (part.startsWith('"') && part.endsWith('"')) {
+      return part.slice(1, -1).replace(/""/g, '"');
+    }
+    return part.toLowerCase();
+  }).join('.');
 }
 
 function tableNameFromMatch(value) {
-  return normalizeIdentifier(value).replace(/^public\./, '');
+  const parts = identifierParts(value);
+  const normalized = parts.map(part => {
+    if (part.startsWith('"') && part.endsWith('"')) return part.slice(1, -1).replace(/""/g, '"');
+    return part.toLowerCase();
+  });
+  if (normalized.length === 2 && normalized[0] === 'public') return normalized[1];
+  return normalized.join('.');
 }
 
 function isSchemaQualified(value) {
-  return normalizeIdentifier(value).includes('.');
+  return identifierParts(value).length > 1;
 }
 
 function recordUnresolvedTable(migrationId, object, rawTable, findingStatus, externalDependencies, findings) {
@@ -127,6 +163,10 @@ function recordUnresolvedTable(migrationId, object, rawTable, findingStatus, ext
   } else {
     findings.push({ migrationId, object, status: findingStatus });
   }
+}
+
+export function migrationDirectoryIds(entries) {
+  return entries.filter(entry => entry.isDirectory()).map(entry => entry.name).sort();
 }
 
 export function analyzeMigrationDependencies(migrations) {
@@ -233,8 +273,8 @@ async function main() {
   const root = process.cwd();
   const migrationsPath = path.join(root, 'prisma', 'migrations');
   const entries = await readdir(migrationsPath, { withFileTypes: true });
-  const ids = entries.filter(entry => entry.isDirectory() && MIGRATION_ID.test(entry.name))
-    .map(entry => entry.name).sort();
+  // Include every directory so malformed migration IDs are reported instead of silently skipped.
+  const ids = migrationDirectoryIds(entries);
   const migrations = await Promise.all(ids.map(async id => {
     try {
       return { id, sqlContent: await readFile(path.join(migrationsPath, id, 'migration.sql'), 'utf8') };

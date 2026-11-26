@@ -1740,3 +1740,8 @@ Leave the key empty to keep OpenRouter unavailable. The Logic worker uses the sh
 ### Admin Console AI Inspector evidence
 
 The Admin Console includes a read-only AI Inspector report view sourced from the authenticated AgentRun list and its persisted evidence events. It displays the recorded report, source, evidence event, digest, and structured findings when the backend returns a valid `pa.capability.executed` receipt for `ai-inspector.inspect`. A completed report with exit code 1 is shown as completed with findings; exit code 0 is not presented as a clean-audit certification. Missing, malformed, and unavailable evidence remain distinct. The panel does not start audits, verify the hash chain, or authorize remediation.
+
+
+## Application layer architecture
+
+RyanAI's eight-layer application contract, dependency/authority rules, request lifecycle, and static audit tooling are documented in [docs/architecture/RYANAI_APPLICATION_LAYER_INTEGRITY.md](docs/architecture/RYANAI_APPLICATION_LAYER_INTEGRITY.md). Run `npm run audit:application-layers` for a read-only dependency-topology report and `npm run test:application-layers` for its focused tests. The report is static evidence, not runtime or production-readiness certification.

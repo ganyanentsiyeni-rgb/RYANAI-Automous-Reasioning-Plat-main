@@ -16,6 +16,13 @@ export function latestChecksByName(checks) {
   return latestByName;
 }
 
+export function parseCheckRuns(ndjson) {
+  return ndjson.split(/\r?\n/).filter(Boolean).map((line, index) => {
+    try { return JSON.parse(line); }
+    catch { throw new Error("Invalid check-run JSON on line " + (index + 1)); }
+  });
+}
+
 export function validateChecks(checks, required, expectedSha) {
   const latest = latestChecksByName(checks);
   const failures = [];
@@ -37,11 +44,7 @@ async function main() {
     process.exit(2);
   }
   const required = JSON.parse(fs.readFileSync(new URL("./required-release-checks.json", import.meta.url), "utf8"));
-  const lines = fs.readFileSync(inputPath, "utf8").split(/\\r?\\n/).filter(Boolean);
-  const checks = lines.map((line, index) => {
-    try { return JSON.parse(line); }
-    catch { throw new Error("Invalid check-run JSON on line " + (index + 1)); }
-  });
+  const checks = parseCheckRuns(fs.readFileSync(inputPath, "utf8"));
   const failures = validateChecks(checks, required, expectedSha);
   if (failures.length) {
     for (const failure of failures) console.error("::error::" + failure);
