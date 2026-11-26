@@ -78,7 +78,7 @@ jobs:
                           "require_last_push_approval": False,
                           "require_extra_approval_for_unattributed_changes": False,
                           "required_review_thread_resolution": True,
-                          "allowed_merge_methods": ["merge", "squash", "rebase"]
+                          "allowed_merge_methods": ["squash", "rebase"]
                       }
                   },
                   {
@@ -86,7 +86,7 @@ jobs:
                       "parameters": {
                           "strict_required_status_checks_policy": True,
                           "do_not_enforce_on_create": False,
-                          "required_status_checks": [{"context": name} for name in required]
+                          "required_status_checks": [{"context": "Single-owner release gate"}] + [{"context": name} for name in required]
                       }
                   }
               ]
@@ -144,9 +144,10 @@ jobs:
           checks = rules["required_status_checks"].get("required_status_checks", [])
           contexts = [item.get("context") for item in checks]
           assert len(contexts) == len(set(contexts)), "Live ruleset contains duplicate check contexts"
-          assert set(contexts) == set(required) and len(contexts) == 19, (
-              f"Live required checks differ from canonical inventory; missing={sorted(set(required)-set(contexts))}, "
-              f"unexpected={sorted(set(contexts)-set(required))}"
+          expected_contexts = set(required) | {"Single-owner release gate"}
+          assert set(contexts) == expected_contexts and len(contexts) == 20, (
+              f"Live required checks differ from canonical inventory plus independent-review gate; missing={sorted(expected_contexts-set(contexts))}, "
+              f"unexpected={sorted(set(contexts)-expected_contexts)}"
           )
           assert rules["required_status_checks"].get("strict_required_status_checks_policy") is True, "Strict status-check policy is disabled"
           print(json.dumps({
@@ -157,6 +158,7 @@ jobs:
               "stale_reviews_dismissed": pr["dismiss_stale_reviews_on_push"],
               "review_threads_resolved": pr["required_review_thread_resolution"],
               "required_context_count": len(contexts),
+              "independent_review_gate_required": "Single-owner release gate" in contexts,
               "required_contexts": sorted(contexts)
           }, indent=2))
           PY

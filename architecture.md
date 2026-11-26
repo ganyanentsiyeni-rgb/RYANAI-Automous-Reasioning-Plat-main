@@ -220,3 +220,8 @@ Render staging, Railway staging, production database migration, and guarded Rend
 
 The validator only reads GitHub check-run evidence; it does not deploy, migrate, publish images, modify credentials, or change branch rulesets.
 
+
+
+## Application layer integrity contract (2026-11-26)
+
+RyanAI's logical application architecture is documented in `docs/architecture/RYANAI_APPLICATION_LAYER_INTEGRITY.md`. It defines eight layers—experience, application/API, identity/security/governance, orchestration/workforce, reasoning/intelligence, tools/integrations, data/persistence, and runtime/platform—plus their authority, dependency and evidence rules. The read-only `scripts/audit-application-layers.mjs` tool inventories layer roots and relative-import topology; it does not execute code, read environment values, make network calls, or prove runtime health. Cross-layer edges are review evidence, not automatic defects. No speculative module moves or production changes are part of this baseline.
