@@ -60,7 +60,7 @@ export default function PluginCapabilityCatalog({ userId }: { userId: string }) 
         const message = payload && typeof payload === 'object' && typeof (payload as { error?: unknown }).error === 'string'
           ? (payload as { error: string }).error
           : `Capability registry request failed (HTTP ${response.status}).`;
-        throw new Error(message);
+        throw new Error(`Capability registry request failed (HTTP ${response.status}): ${message}`);
       }
       if (!isRegistryResponse(payload)) throw new Error('The API returned an invalid plugin registry contract.');
       if (signal?.aborted || sequence !== requestSequence.current) return;

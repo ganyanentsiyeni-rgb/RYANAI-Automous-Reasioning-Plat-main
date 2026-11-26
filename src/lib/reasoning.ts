@@ -113,7 +113,7 @@ export async function streamReasoning(
     }
     callbacks.onDone?.();
   } catch (err) {
-    if (signal?.aborted) return;
+    if (signal?.aborted || (err instanceof Error && err.name === 'AbortError')) return;
     const message = err instanceof Error ? err.message : 'Unknown error';
     callbacks.onError?.(message);
   }

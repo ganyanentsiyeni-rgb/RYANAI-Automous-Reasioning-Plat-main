@@ -83,7 +83,7 @@ describe('invokeReasoningAgent production orchestration', () => {
       prompt: 'Do not queue this',
       model: '~openai/gpt-latest',
       user: { id: 'user-no-key' },
-    })).rejects.toThrow(/requires an existing OpenRouter credential/);
+    })).rejects.toThrow('Provider openrouter is unconfigured; no provider request was made.');
     expect(state.dispatch).not.toHaveBeenCalled();
   });
 

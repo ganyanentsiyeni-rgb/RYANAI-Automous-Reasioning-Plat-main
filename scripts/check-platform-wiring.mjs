@@ -198,7 +198,8 @@ if (!audiobookPage.includes('cancelEntireBookRender') || !audiobookPage.includes
 }
 if (
   !app.includes("lazy(() => import('@/pages/QuantLab'))") ||
-  !/\{route === 'quant' && <QuantLabPage\b[^>]*\/>\}/.test(app)
+  !app.includes("route === 'quant' && <QuantLabPage") ||
+  !app.includes('userId={user.id}')
 ) {
   fail('Quant Lab route must lazy-load and render the QuantLab page');
 }

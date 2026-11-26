@@ -49,7 +49,7 @@ describe('Self-Patch review approval issuance', () => {
     expect(enqueueCommsAssistRun).toHaveBeenCalledWith(expect.objectContaining({
       ownerUserId,
       idempotencyKey: expect.stringContaining('github-pr-review-approval:'),
-      objective: expect.stringContaining('outbound'),
+      objective: expect.stringContaining('internal RyanAI Comms task'),
     }));
     expect(result).toMatchObject({
       approvalId: issuedRow.id, pullRequestNumber: 42, expectedHeadSha: sha,

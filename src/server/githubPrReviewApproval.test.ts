@@ -59,7 +59,7 @@ describe('durable WhatsApp GitHub PR review approval', () => {
     await expect(recordOwnerGitHubPrReviewDecision(
       { $queryRawUnsafe: query }, {
         ownerUserId, approvalId, expectedHeadSha: sha,
-        inboundMessageSid: sid, decision: 'approve',
+        inboundMessageSid: sid, decision: 'reject',
       }, env,
     )).rejects.toThrow('github_pr_review_approval_not_found_expired_or_already_used');
   });
