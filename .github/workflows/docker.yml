@@ -132,35 +132,40 @@ jobs:
           target: ${{ matrix.target }}
           push: false
           tags: ryanai-${{ matrix.image }}:ci
+          outputs: type=oci,dest=/tmp/ryanai-${{ matrix.image }}.tar
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
 
+      - name: Upload image artifact for downstream checks
+        uses: actions/upload-artifact@v7
+        with:
+          name: docker-image-${{ matrix.image }}
+          path: /tmp/ryanai-${{ matrix.image }}.tar
+          if-no-files-found: error
+          retention-days: 1
+
   scan-api-image:
     name: Scan api image
-    needs: validate
+    needs:
+      - validate
+      - build-pr
     if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
       contents: read
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-      - name: Build API image for security scan
-        uses: docker/build-push-action@v7
+      - name: Download API image artifact
+        uses: actions/download-artifact@v7
         with:
-          context: .
-          file: Dockerfile
-          target: api
-          load: true
-          push: false
-          tags: ryanai-api:security-scan
+          name: docker-image-api
+          path: /tmp
+      - name: Load API image
+        run: docker load --input /tmp/ryanai-api.tar
       - name: Scan API image
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: ryanai-api:security-scan
+          image-ref: ryanai-api:ci
           format: table
           exit-code: '1'
           ignore-unfixed: true
@@ -169,30 +174,26 @@ jobs:
 
   scan-web-image:
     name: Scan web image
-    needs: validate
+    needs:
+      - validate
+      - build-pr
     if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
       contents: read
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-      - name: Build web image for security scan
-        uses: docker/build-push-action@v7
+      - name: Download web image artifact
+        uses: actions/download-artifact@v7
         with:
-          context: .
-          file: Dockerfile
-          target: web
-          load: true
-          push: false
-          tags: ryanai-web:security-scan
+          name: docker-image-web
+          path: /tmp
+      - name: Load web image
+        run: docker load --input /tmp/ryanai-web.tar
       - name: Scan web image
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: ryanai-web:security-scan
+          image-ref: ryanai-web:ci
           format: table
           exit-code: '1'
           ignore-unfixed: true
