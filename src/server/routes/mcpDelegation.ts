@@ -73,7 +73,7 @@ export const mcpDelegationRoutes: FastifyPluginAsync = async (fastify) => {
         toolName: scopeToolNames[scope],
         action: scope === 'reasoning_request' ? 'NETWORK' : 'READ',
         target: scope === 'reasoning_request' ? 'configured-approved-provider' : 'mcp:' + scope,
-        actorType: principal.actorType,
+        ...(scope === 'reasoning_request' ? { actorType: principal.actorType } : {}),
         environment,
       });
       if (policy.decision !== 'ALLOW') {
@@ -142,7 +142,7 @@ export const mcpDelegationRoutes: FastifyPluginAsync = async (fastify) => {
       toolName: scopeToolNames[scope],
       action: scope === 'reasoning_request' ? 'NETWORK' : 'READ',
       target: scope === 'reasoning_request' ? 'configured-approved-provider' : 'mcp:' + scope,
-      actorType: claims.actorType,
+      ...(scope === 'reasoning_request' ? { actorType: claims.actorType } : {}),
       environment,
     });
     if (policy.decision !== 'ALLOW') {
