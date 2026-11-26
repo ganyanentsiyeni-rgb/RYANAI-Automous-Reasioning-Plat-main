@@ -365,26 +365,60 @@ This change is delivered through a reviewable pull request. It does not authoriz
 
 ## 2026-11-26 — Resume OpenRouter governance implementation
 
-- Preserved the trusted Supabase actor type (`human`, `agent`, or `service`) in API-issued MCP delegation assertions and re-evaluated Gen-X using that signed actor classification at delegation, execution authorization, and provider dispatch.
-- Removed the hard-coded `actorType: human` assumption from delegated reasoning. Explicit agent/service identities are denied by the existing human-only reasoning policy and cannot inherit owner permissions.
-- Added regression coverage across API delegation, API provider gateway, HMAC token verification, and MCP token verification.
-- OpenRouter remains optional and runtime-disabled pending the remaining unified-routing, catalogue, usage/cost, reliability, privacy, and staging acceptance gates. No provider key, billing, hosted environment, deployment, migration, or external API call was changed.
-
+- Preserved the trusted Supabase actor type (`human`, `agent`, or
+  `service`) in API-issued MCP delegation assertions and re-evaluated
+  Gen-X using that signed actor classification at delegation, execution
+  authorization, and provider dispatch.
+- Removed the hard-coded `actorType: human` assumption from delegated
+  reasoning. Explicit agent/service identities are denied by the existing
+  human-only reasoning policy and cannot inherit owner permissions.
+- Added regression coverage across API delegation, API provider gateway,
+  HMAC token verification, and MCP token verification.
+- OpenRouter remains optional and runtime-disabled pending the remaining
+  unified-routing, catalogue, usage/cost, reliability, privacy, and staging
+  acceptance gates. No provider key, billing, hosted environment, deployment,
+  migration, or external API call was changed.
 
 ## 2026-11-26 — Logic OpenRouter override routed through API gateway
 
-- Replaced the Logic override's direct `ChatOpenAI` construction and direct endpoint/key resolution with `resolveSelectedReasoningModel` backed by the canonical provider registry and `invokeConfiguredProvider` shared API-owned adapter.
-- The worker now requires a persisted approved AgentRun, revalidates its current worker lease immediately before provider dispatch, and evaluates Gen-X using the internal `approvedAgentRun` context. The worker-only context is distinct from route-only `ownerAuthorized` and is never accepted from model/tool input.
-- The API MCP gateway and approved AgentRun worker now share the same provider request shaping, server-held credential resolution, HTTPS/allowlist checks, normalized text response, usage normalization, and no-tool-execution behavior.
-- Existing `gpt-4o` and `gpt-4o-mini` selections continue to use the configured Logic provider. Only the two explicitly catalogued OpenRouter aliases may select the OpenRouter route.
-- Added model selection, provider invocation, and Gen-X policy regression tests. Exact-head CI is still required; tests have not been executed locally in this workflow.
-- OpenRouter remains runtime-disabled. No provider API request, secret/billing change, hosted configuration change, merge, migration, or deployment was performed.
-
+- Replaced the Logic override's direct `ChatOpenAI` construction and direct
+  endpoint/key resolution with `resolveSelectedReasoningModel` backed by
+  the canonical provider registry and `invokeConfiguredProvider` shared
+  API-owned adapter.
+- The worker now requires a persisted approved AgentRun, revalidates its
+  current worker lease immediately before provider dispatch, and evaluates
+  Gen-X using the internal `approvedAgentRun` context. The worker-only
+  context is distinct from route-only `ownerAuthorized` and is never
+  accepted from model/tool input.
+- The API MCP gateway and approved AgentRun worker now share the same
+  provider request shaping, server-held credential resolution,
+  HTTPS/allowlist checks, normalized text response, usage normalization,
+  and no-tool-execution behavior.
+- Existing `gpt-4o` and `gpt-4o-mini` selections continue to use the
+  configured Logic provider. Only the two explicitly catalogued OpenRouter
+  aliases may select the OpenRouter route.
+- Added model selection, provider invocation, and Gen-X policy regression
+  tests. Exact-head CI is still required; tests have not been executed
+  locally in this workflow.
+- OpenRouter remains runtime-disabled. No provider API request, secret/billing
+  change, hosted configuration change, merge, migration, or deployment was
+  performed.
 
 ## 2026-11-26 — OpenRouter configuration and gateway contract coverage
 
-- Documented the optional server-side OpenRouter variables in `.env.example`: API key, HTTPS endpoint, and explicit model allowlist. The key remains empty by default and is never exposed through a browser-prefixed variable.
-- Declared the same optional variables for the U2EB API in `render.yaml`; the API key remains `sync: false`, and no credential value was added or provisioned.
-- Added a provider-gateway regression test for an allowlisted OpenRouter model, asserting the OpenRouter endpoint, bearer credential isolation, normalized token usage, and response redaction.
-- This configuration/documentation/test increment is now integrated with the trusted actor delegation and shared Logic provider gateway work recorded above. OpenRouter remains runtime-disabled pending the remaining acceptance gates.
-- No provider API call, live Render/Railway/Vercel configuration change, deployment, merge, migration, billing change, or secret modification.
+- Documented the optional server-side OpenRouter variables in
+  `.env.example`: API key, HTTPS endpoint, and explicit model allowlist.
+  The key remains empty by default and is never exposed through a
+  browser-prefixed variable.
+- Declared the same optional variables for the U2EB API in `render.yaml`;
+  the API key remains `sync: false`, and no credential value was added
+  or provisioned.
+- Added a provider-gateway regression test for an allowlisted OpenRouter
+  model, asserting the OpenRouter endpoint, bearer credential isolation,
+  normalized token usage, and response redaction.
+- This configuration/documentation/test increment is now integrated with
+  the trusted actor delegation and shared Logic provider gateway work
+  recorded above. OpenRouter remains runtime-disabled pending the
+  remaining acceptance gates.
+- No provider API call, live Render/Railway/Vercel configuration change,
+  deployment, merge, migration, billing change, or secret modification.
