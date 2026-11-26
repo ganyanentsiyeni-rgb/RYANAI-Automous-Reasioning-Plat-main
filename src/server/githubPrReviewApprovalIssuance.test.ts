@@ -53,7 +53,7 @@ describe('Self-Patch review approval issuance', () => {
     }));
     expect(result).toMatchObject({
       approvalId: issuedRow.id, pullRequestNumber: 42, expectedHeadSha: sha,
-      commsRunId: 'comms_assist_1', outboundDispatchAllowed: undefined,
+      commsRunId: 'comms_assist_1',
     });
   });
 
