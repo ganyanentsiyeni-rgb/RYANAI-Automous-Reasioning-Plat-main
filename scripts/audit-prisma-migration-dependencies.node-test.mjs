@@ -39,7 +39,7 @@ test('fails closed for missing SQL, duplicate IDs, and unsupported procedural SQ
   assert.equal(result.status, 'static_dependencies_incomplete');
   assert.deepEqual(result.duplicateMigrationIds, ['20261101000000_first']);
   assert.deepEqual(result.missingFiles, ['20261101000000_first']);
-  assert.ok(result.unsupported.some(item => item.includes('dollar_quoted_block')));
+  assert.ok(result.unsupported.some(item => item.endsWith(':unsupported_ddl')));
 });
 
 test('flags invalid migration identifiers', () => {
