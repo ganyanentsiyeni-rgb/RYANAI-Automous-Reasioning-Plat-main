@@ -137,7 +137,7 @@ export function analyzeMigrationDependencies(migrations) {
 
   const complete = ordered.length > 0 && duplicateMigrationIds.length === 0 &&
     invalidMigrationIds.length === 0 && missingFiles.length === 0 &&
-    findings.length === 0 && unsupported.length === 0;
+    findings.length === 0 && externalDependencies.length === 0 && unsupported.length === 0;
   return {
     status: complete ? 'static_dependencies_clear' : 'static_dependencies_incomplete',
     scope: 'conservative_static_sql_dependency_scan',
