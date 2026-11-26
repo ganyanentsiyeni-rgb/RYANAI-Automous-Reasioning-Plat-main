@@ -52,6 +52,7 @@ describe('private attachment Storage authorization migrations', () => {
     expect(workerLease).toContain('s.lease_token = p_lease_token');
     expect(workerLease).toContain('s.lease_expires_at > now()');
     expect(workerLease).toContain('lease_token = gen_random_uuid()');
+    expect(workerLease).toContain('ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated');
     expect(workerLease).toContain('DROP FUNCTION IF EXISTS public.finish_ryanai_attachment_scan(text, text, text, text)');
     expect(scannerSource).toContain('lease_token: string');
     expect(scannerSource.match(/p_lease_token: job\.lease_token/g)?.length).toBe(2);
