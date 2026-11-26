@@ -5,7 +5,7 @@
       "root": ".",
       "framework": "vite",
       "installCommand": "npm ci --legacy-peer-deps",
-      "buildCommand": "npm run build:web",
+      "buildCommand": "cross-env VITE_APP_ENV=production npm run build:web",
       "outputDirectory": "dist"
     },
     "api": {
