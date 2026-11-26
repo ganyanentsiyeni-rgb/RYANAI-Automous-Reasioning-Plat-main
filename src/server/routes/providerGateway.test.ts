@@ -166,7 +166,7 @@ describe('governed provider gateway', () => {
     vi.stubEnv('RYANAI_MCP_SERVICE_TOKEN', serviceToken);
     vi.stubEnv('RYANAI_MCP_DELEGATION_SECRET', signingSecret);
     const token = issueMcpDelegationToken({
-      subject: 'verified-user', role: 'user', scopes: ['platform_health'], secret: signingSecret,
+      subject: 'verified-user', role: 'user', actorType: 'human', scopes: ['platform_health'], secret: signingSecret,
     }).token;
     const app = await makeApp();
     const response = await app.inject({
