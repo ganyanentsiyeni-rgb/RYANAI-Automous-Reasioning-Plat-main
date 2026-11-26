@@ -4,9 +4,7 @@ ALTER TABLE public.ryanai_attachment_scans
   ADD COLUMN IF NOT EXISTS lease_token uuid,
   ADD COLUMN IF NOT EXISTS lease_expires_at timestamptz;
 
-DROP FUNCTION IF EXISTS public.claim_ryanai_attachment_scan();
-
-CREATE FUNCTION public.claim_ryanai_attachment_scan()
+CREATE FUNCTION public.claim_ryanai_attachment_scan_v2()
 RETURNS TABLE(bucket_id text, object_name text, attempt integer, lease_token uuid)
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -42,9 +40,7 @@ BEGIN
 END;
 $$;
 
-DROP FUNCTION IF EXISTS public.finish_ryanai_attachment_scan(text, text, text, text);
-
-CREATE FUNCTION public.finish_ryanai_attachment_scan(
+CREATE FUNCTION public.finish_ryanai_attachment_scan_v2(
   p_bucket_id text,
   p_object_name text,
   p_status text,
@@ -83,11 +79,13 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.claim_ryanai_attachment_scan() FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.finish_ryanai_attachment_scan(text, text, text, text, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.claim_ryanai_attachment_scan() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.finish_ryanai_attachment_scan(text, text, text, text) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.claim_ryanai_attachment_scan_v2() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.finish_ryanai_attachment_scan_v2(text, text, text, text, uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.claim_ryanai_orphan_attachment_cleanup(timestamptz, integer) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.claim_ryanai_attachment_scan() TO service_role;
-GRANT EXECUTE ON FUNCTION public.finish_ryanai_attachment_scan(text, text, text, text, uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.claim_ryanai_attachment_scan_v2() TO service_role;
+GRANT EXECUTE ON FUNCTION public.finish_ryanai_attachment_scan_v2(text, text, text, text, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.claim_ryanai_orphan_attachment_cleanup(timestamptz, integer) TO service_role;
 
 -- Prevent future SECURITY DEFINER functions created by either migration role
