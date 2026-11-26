@@ -9,7 +9,7 @@
 - `src/ha/disasterRecovery.ts` is a narrow model-provider failover helper, not a platform disaster-recovery manager.
 - `scripts/backup-on-startup.mjs` optionally runs a PostgreSQL dump and configured Supabase Storage copies. It is disabled unless explicitly configured, does not block API startup on failure, does not implement retention, and does not prove restorability.
 - `docs/startup-backups.md` documents the required private bucket and environment configuration. No credentials or bucket changes are part of this project approval.
-- `src/engine/selfPatchSkill.ts` proposes source changes as isolated GitHub branches and PRs. It does not deploy or merge. `src/components/SelfPatchPanel.tsx` exists but was not previously integrated into AdminConsole.
+- `src/engine/selfPatchSkill.ts` proposes source changes as isolated GitHub branches and PRs. It does not deploy or merge. `src/components/SelfPatchPanel.tsx` is integrated into AdminConsole and rendered only after the API verifies the configured owner. The patch route independently enforces `requireOwner`; the panel requires an explicit confirmation before creating a PR. The form does not retrieve CI/review status, which must be checked against the exact PR head on GitHub.
 - `scripts/pagerduty_manager.py` provides a CI-oriented maintenance-window context manager; there is no complete Admin UI maintenance lifecycle.
 - `src/events/intelligenceEventInbox.ts`, `src/events/eventWorker.ts`, `src/lib/offlineTaskOutbox.ts` and `src/lib/offlineTaskSyncClient.ts` are existing continuity foundations to inspect and reuse.
 

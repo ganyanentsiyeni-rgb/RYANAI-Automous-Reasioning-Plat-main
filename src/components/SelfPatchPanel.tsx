@@ -27,6 +27,12 @@ export default function SelfPatchPanel() {
   async function submitPatch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting || !filePath.trim() || !patchContent.trim()) return;
+    const confirmed = window.confirm(
+      'Create a GitHub pull request proposing this source-file replacement?\\n\\n' +
+      'File: ' + filePath.trim() + '\\n\\n' +
+      'This creates an isolated branch and PR only. It does not merge, deploy, or change a running service. Required CI/security checks and independent human review remain mandatory.',
+    );
+    if (!confirmed) return;
     setSubmitting(true);
     setError('');
     setResult(null);
@@ -103,7 +109,7 @@ export default function SelfPatchPanel() {
           />
         </label>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-slate-500">A successful response means a pull request was created. It is not yet merged or deployed.</p>
+          <p className="text-xs text-slate-500">A successful response means a pull request was created. CI/review results are not retrieved by this form; verify exact-head checks and independent approval on GitHub. It is not yet merged or deployed.</p>
           <button
             type="submit"
             disabled={submitting || !filePath.trim() || !patchContent.trim()}
