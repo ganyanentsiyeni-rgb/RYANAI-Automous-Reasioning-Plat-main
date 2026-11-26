@@ -126,7 +126,7 @@ async function invokeWithRecovery(
             invokeConfiguredProvider({
               providerId: selectedModel.providerId,
               model: selectedModel.model,
-              prompt: systemPrompt + '\\n\\n' + prompt,
+              prompt: systemPrompt + '\n\n' + prompt,
             }, invocationSignal)),
           aborted,
         ]);
