@@ -202,12 +202,13 @@ describe('application authentication boundary', () => {
     await expectContent('Private RyanAI Music workspace');
     expect(container.querySelector('nav a[href="#/music"]')).not.toBeNull();
   });
-  it('keeps a workspace reachable when stale account preferences mark it hidden', async () => {
-    const optedOut = { ...session, user: { ...session.user, user_metadata: { ryanai_dashboard_ui: ['pa'], ryanai_dashboard_ui_preferences: { music: false } } } } as Session;
+  it('hides a disabled workspace from navigation without revoking direct route authorization', async () => {
+    const optedOut = { ...session, user: { ...session.user, user_metadata: { ryanai_dashboard_ui_preferences: { music: false } } } } as Session;
     auth.getSession.mockResolvedValue({ data: { session: optedOut }, error: null });
     await mount('/music');
     await expectContent('Private RyanAI Music workspace');
-    expect(container.textContent).not.toContain('Workspace disabled');
+    expect(container.querySelector('nav[aria-label="Main navigation"] a[href="#/music"]')).toBeNull();
+    expect(container.querySelector('nav[aria-label="Main navigation"] a[href="#/settings"]')).not.toBeNull();
   });
   it('keeps the landing page public', async () => {
     await mount('/');
@@ -237,10 +238,11 @@ describe('application authentication boundary', () => {
     await mount('/dashboard');
     await expectContent('Private dashboard');
 
-    for (const path of ['/dashboard', '/programming', '/quant', '/cockpit', '/workspace', '/audiobook', '/operator', '/operations', '/settings', '/trading', '/studio']) {
+    for (const path of ['/dashboard', '/programming', '/quant', '/cockpit', '/workspace', '/operator', '/operations', '/settings', '/trading', '/studio']) {
       expect(container.querySelector(`nav[aria-label="Main navigation"] a[href="#${path}"]`)).not.toBeNull();
       expect(container.querySelector(`nav[aria-label="Mobile navigation"] a[href="#${path}"]`)).not.toBeNull();
     }
+    expect(container.querySelector('nav[aria-label="Main navigation"] a[href="#/audiobook"]')).toBeNull();
     expect(container.querySelector('nav[aria-label="Main navigation"] a[href="#/comms"]')).toBeNull();
     expect(container.querySelector('nav[aria-label="Main navigation"] a[href="#/admin"]')).toBeNull();
   });
@@ -286,12 +288,13 @@ describe('application authentication boundary', () => {
     }
   });
 
-  it('keeps every registered regular-account workspace visible and directly reachable despite hide preferences', async () => {
+  it('applies workspace visibility preferences to desktop/mobile navigation while keeping Settings available', async () => {
+  it('hides opted-out workspaces from desktop and mobile navigation without revoking direct access', async () => {
     const limitedSession = {
       ...session,
       user: {
         ...session.user,
-        user_metadata: { ryanai_dashboard_ui: ['pa', 'workspace'], ryanai_dashboard_ui_preferences: { cockpit: false, quant: false, audiobook: false } },
+        user_metadata: { ryanai_dashboard_ui_preferences: { pa: true, workspace: true, cockpit: false, quant: false, audiobook: false } },
       },
     } as Session;
     auth.getSession.mockResolvedValue({ data: { session: limitedSession }, error: null });
@@ -299,8 +302,11 @@ describe('application authentication boundary', () => {
     await expectContent('Private dashboard');
 
     for (const navigation of ['Main navigation', 'Mobile navigation']) {
-      for (const path of ['/pa', '/workspace', '/cockpit', '/quant', '/audiobook', '/settings']) {
+      for (const path of ['/pa', '/workspace', '/settings']) {
         expect(container.querySelector(`nav[aria-label="${navigation}"] a[href="#${path}"]`)).not.toBeNull();
+      }
+      for (const path of ['/cockpit', '/quant', '/audiobook']) {
+        expect(container.querySelector(`nav[aria-label="${navigation}"] a[href="#${path}"]`)).toBeNull();
       }
     }
 
@@ -309,7 +315,15 @@ describe('application authentication boundary', () => {
       window.dispatchEvent(new Event('hashchange'));
     });
     await expectContent('Private cockpit');
-    expect(container.textContent).not.toContain('Workspace disabled');
+  });
+
+  it('allows the Dashboard navigation shortcut to be hidden while Settings remains available', async () => {
+    const dashboardHidden = { ...session, user: { ...session.user, user_metadata: { ryanai_dashboard_ui_preferences: { dashboard: false } } } } as Session;
+    auth.getSession.mockResolvedValue({ data: { session: dashboardHidden }, error: null });
+    await mount('/dashboard');
+    await expectContent('Private dashboard');
+    expect(container.querySelector('nav[aria-label="Main navigation"] a[href="#/dashboard"]')).toBeNull();
+    expect(container.querySelector('nav[aria-label="Main navigation"] a[href="#/settings"]')).not.toBeNull();
   });
 
   it('opens Profile & Settings for an authenticated account', async () => {

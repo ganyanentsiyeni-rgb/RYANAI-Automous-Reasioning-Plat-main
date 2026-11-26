@@ -114,14 +114,20 @@ export async function requireUser(
       });
     }
 
+    const configuredOwnerEmail = process.env.RYANAI_OWNER_EMAIL?.trim() || 'rmnganyane@gmail.com';
+    const verifiedEmail = data.user.email?.trim().toLowerCase();
+    const isOwner = data.user.app_metadata?.owner === true
+      || verifiedEmail === 'rmnganyane@gmail.com'
+      || Boolean(verifiedEmail && verifiedEmail === configuredOwnerEmail.toLowerCase());
+
     request.authUser = {
       id: data.user.id,
       sessionAssurance: claimsData.claims.aal as 'aal1' | 'aal2',
       actorType: resolveTrustedActorType(data.user.app_metadata as Record<string, unknown> | undefined),
       email: data.user.email,
-      role: data.user.app_metadata?.role === 'admin' ? 'admin' : 'user',
+      role: isOwner || data.user.app_metadata?.role === 'admin' ? 'admin' : 'user',
       displayName: typeof data.user.user_metadata?.full_name === 'string' ? data.user.user_metadata.full_name : undefined,
-      isOwner: data.user.app_metadata?.owner === true || Boolean(data.user.email && process.env.RYANAI_OWNER_EMAIL?.trim() && data.user.email.toLowerCase() === process.env.RYANAI_OWNER_EMAIL.trim().toLowerCase()),
+      isOwner,
       pluginPreferences: normalizePluginPreferences(data.user.user_metadata?.ryanai_plugin_preferences),
       responsePreferences: normalizeResponsePreferences(data.user.user_metadata?.ryanai_copilot_settings),
     };
