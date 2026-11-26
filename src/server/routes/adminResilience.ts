@@ -49,6 +49,7 @@ export const adminResilienceRoutes: FastifyPluginAsync = async (fastify) => {
     const artifactVerifications = await verifyDatabaseBackupArtifacts(inventory);
     const verificationById = new Map(artifactVerifications.map((item) => [item.backupId, item]));
     const recovery = recoveryPreflight();
+
     return {
       reportId: randomUUID(),
       generatedAt: new Date().toISOString(),
@@ -66,20 +67,23 @@ export const adminResilienceRoutes: FastifyPluginAsync = async (fastify) => {
       backupEvidence: {
         status: inventory.status,
         listedAt: inventory.listedAt,
-        artifacts: inventory.items.map((item) => ({
-          backupId: item.backupId,
-          createdAt: item.createdAt,
-          databaseBytes: item.databaseBytes,
-          manifestPresent: item.manifestPresent,
-          recordedSha256Present: Boolean(item.databaseSha256),
-          artifactBytesRehashed: verificationById.get(item.backupId)?.bytesRehashed ?? false,
-          integrityStatus: verificationById.get(item.backupId)?.status ?? 'not_verified',
-          actualBytes: verificationById.get(item.backupId)?.actualBytes ?? null,
-          verificationReason: verificationById.get(item.backupId)?.reason ?? 'Artifact verification was not performed.',
-          retention: item.retention,
-        })),
+        artifacts: inventory.items.map((item) => {
+          const verification = verificationById.get(item.backupId);
+          return {
+            backupId: item.backupId,
+            createdAt: item.createdAt,
+            databaseBytes: item.databaseBytes,
+            manifestPresent: item.manifestPresent,
+            recordedSha256Present: Boolean(item.databaseSha256),
+            artifactBytesRehashed: verification?.bytesRehashed ?? false,
+            integrityStatus: verification?.status ?? 'not_verified',
+            actualBytes: verification?.actualBytes ?? null,
+            verificationReason: verification?.reason ?? 'Artifact verification was not performed.',
+            retention: item.retention,
+          };
+        }),
         verificationLimit: 'At most 10 artifacts and 256 MiB per artifact are re-downloaded per report.',
-        reason: inventory.reason || 'Artifact bytes are freshly re-downloaded and hashed where bounded manifest evidence is complete.',
+        reason: inventory.reason || 'Artifact bytes are re-downloaded and hashed only where bounded manifest evidence is complete.',
       },
       schemaMigrationEvidence: {
         status: schemaArtifacts.status,
