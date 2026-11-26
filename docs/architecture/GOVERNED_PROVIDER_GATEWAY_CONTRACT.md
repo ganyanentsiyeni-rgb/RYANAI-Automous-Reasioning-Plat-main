@@ -1,6 +1,6 @@
 # RyanAI Governed Provider Gateway Contract
 
-**Status:** Proposed contract and migration plan. Documentation only; no provider routing, credentials, infrastructure, or runtime behavior is changed by this document.
+**Status:** Contract and migration baseline. The API-owned provider registry and governed invocation adapter are implemented; the Logic OpenRouter override now shares the adapter after approved-AgentRun/lease authorization. Provider runtime activation, health/failover, full usage/cost, privacy and staging acceptance remain gated.
 **Baseline:** `main` at `0a55f4f599cd6454a29eaad44493dbcb5fb52803` (8 November 2026).
 
 ## Decision
@@ -15,8 +15,8 @@ The target hosting boundary remains Render for the API and MCP services, with Ra
 | --- | --- | --- |
 | OpenAI | API has `src/server/routes/internalOpenAi.ts`; it invokes the API-owned model client. MCP `routeOpenAIGateway` calls it with a shared service token. The API route is disabled unless `RYANAI_OPENAI_GATEWAY_ENABLED=true`. | Transitional route is service-token-only and has no delegated user identity or Gen-X request context. Keep disabled; replace with delegated gateway contract before enabling. |
 | DeepSeek | `mcp-server/provider-router.js` contains a DeepSeek OpenAI-compatible adapter with a loopback default endpoint and optional remote key. Tests cover local/remote endpoint validation and response parsing. | Direct MCP-to-provider routing bypasses the API-owned provider authority. Move the adapter behind the API registry; MCP must never receive `DEEPSEEK_API_KEY`. |
-| Claude | `models/catalog.json` offers `~anthropic/claude-sonnet-latest`; `src/agent/modelSelection.ts` resolves it through the existing OpenRouter endpoint/key. | This is an OpenRouter-routed model selection, not a native Anthropic adapter or a distinct delegated provider contract. Preserve it only as an explicitly labelled aggregator route. |
-| ChatGPT / GPT | `models/catalog.json` offers `~openai/gpt-latest` through OpenRouter. Existing `gpt-4o` and `gpt-4o-mini` remain on the configured Logic provider. The API's default Logic endpoint is OpenAI-compatible and defaults to the OpenAI API URL. | Separate direct OpenAI API integration from OpenRouter. Do not imply that a ChatGPT subscription is an OpenAI API credential or that RyanAI can invoke a user's ChatGPT app session. |
+| Claude | `models/catalog.json` offers `~anthropic/claude-sonnet-latest`; `src/agent/modelSelection.ts` resolves it through the OpenRouter registry entry and the shared API-owned invocation adapter. | This remains an OpenRouter-routed model selection, not a native Anthropic adapter. Preserve it only as an explicitly labelled aggregator route. |
+| ChatGPT / GPT | `models/catalog.json` offers `~openai/gpt-latest` through OpenRouter. Existing `gpt-4o` and `gpt-4o-mini` remain on the configured Logic provider. The Logic override resolves through the canonical registry and shared API-owned adapter. | Separate direct OpenAI API integration from OpenRouter. Do not imply that a ChatGPT subscription is an OpenAI API credential or that RyanAI can invoke a user's ChatGPT app session. |
 | Vercel AI Gateway | References remain in `src/agent/providerConfig.ts`, its tests, `mcp-server/provider-router.js`, its tests, `.env.example`, and `docker-compose.yml`. | Remove from supported provider selectors, defaults, tests, sample configuration, and deployment manifests in a dedicated code PR. No live configuration or secrets are changed here. |
 
 ## Canonical provider registry contract
@@ -125,3 +125,12 @@ This document does not authorize secret provisioning or modification, provider a
 - The follow-on governed invocation PR adds a delegated MCP `reasoning_request` scope, Gen-X reauthorization at issuance and execution, an API-only provider invocation route, native Anthropic Messages handling, and MCP routing that carries no provider keys or provider endpoints.
 - This invocation increment does not implement provider health probes, circuit breakers/failover, price-schedule-based ZAR cost calculation, or full multimodal/tool capabilities. Those remain explicit later acceptance gates.
 - Runtime configuration on Render/Railway is unchanged. The new service-token and delegation-secret environment wiring must be reviewed and verified in staging before enabling the MCP reasoning tool.
+
+
+## Implementation update — 26 November 2026
+
+- The Logic model override no longer constructs a direct `ChatOpenAI` client for OpenRouter. It resolves the explicitly catalogued alias through `providerRegistry.ts` and calls the shared API-owned `providerInvocation.ts` adapter.
+- The API MCP route and AgentRun worker share endpoint/credential resolution, allowlist enforcement, request shaping, normalized text/usage, and the no-provider-tool-execution boundary.
+- Worker dispatch requires a persisted approved AgentRun and a fresh live-lease check, then uses a distinct worker-only Gen-X `approvedAgentRun` signal. It does not reuse the route-only `ownerAuthorized` flag.
+- `gpt-4o` and `gpt-4o-mini` remain on the configured Logic provider. OpenRouter runtime activation remains disabled pending remaining catalogue, usage/cost, reliability, privacy/data-region and staging gates.
+- Regression tests were added for model selection, shared OpenRouter invocation, allowlist/credential fail-closed behavior, no tool-call execution and Gen-X approved-run authorization. Exact-head CI remains authoritative.
