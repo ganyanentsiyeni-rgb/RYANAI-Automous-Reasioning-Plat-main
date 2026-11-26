@@ -250,4 +250,50 @@ describe('Admin Console request ownership', () => {
     await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/api/admin/users?limit=50&page=1&search=alice', expect.any(Object), 'admin-account-a'));
     expect(container.textContent).toContain('Alice');
   });
+
+  it('does not let an older owner lifecycle ledger response overwrite a newer refresh', async () => {
+    let resolveFirstLedger!: (value: Response) => void;
+    let ledgerReads = 0;
+    apiFetch.mockImplementation(async (input, init) => {
+      const path = String(input);
+      if (path === '/api/auth/verify') return response({ authenticated: true, user: {
+        id: 'admin-account-a', email: 'admin@example.test', role: 'admin', isOwner: true,
+      } });
+      if (path === '/api/admin/audit-events?limit=30') return response({ events: [] });
+      if (path.startsWith('/api/admin/users?limit=50&page=1')) return response(userDirectoryResponse);
+      if (path === '/api/admin/metrics') return response({
+        status: 'ok', uptime: 60, timestamp: '2026-11-26T08:00:00.000Z',
+        database: { status: 'unknown', driver: 'postgresql' },
+        system: { nodeVersion: 'v24.0.0', rssMemoryMB: 128, heapUsedMB: 64 },
+      });
+      if (path === '/api/actions' && !init?.method) return response({ actions: [] });
+      if (path === '/api/engineering/jobs') return response({ jobs: [] });
+      if (path === '/api/admin/account-lifecycle/requests') {
+        ledgerReads += 1;
+        if (ledgerReads === 1) return await new Promise<Response>((resolve) => { resolveFirstLedger = resolve; });
+        return response({ requests: [{
+          id: 'newer-ledger-request', action: 'role_change', requestedRole: 'admin',
+          targetUserId: 'target-new', reason: 'Newest lifecycle ledger result', state: 'PENDING_OWNER_CONFIRMATION',
+          actorId: 'owner-a', createdAt: '2026-11-26T08:01:00.000Z',
+        }] });
+      }
+      throw new Error('Unexpected Admin Console request: ' + path);
+    });
+
+    await mount('admin-account-a');
+    await vi.waitFor(() => expect(ledgerReads).toBe(1));
+    await click([...container.querySelectorAll('button')].find(button =>
+      button.textContent?.includes('Refresh control plane'),
+    ) ?? null);
+    await vi.waitFor(() => expect(container.textContent).toContain('Newest lifecycle ledger result'));
+    resolveFirstLedger(response({ requests: [{
+      id: 'older-ledger-request', action: 'suspend_account', requestedRole: null,
+      targetUserId: 'target-old', reason: 'Stale lifecycle ledger result', state: 'PENDING_OWNER_CONFIRMATION',
+      actorId: 'owner-a', createdAt: '2026-11-26T08:00:00.000Z',
+    }] }));
+    await act(async () => { await Promise.resolve(); });
+    expect(container.textContent).toContain('Newest lifecycle ledger result');
+    expect(container.textContent).not.toContain('Stale lifecycle ledger result');
+  });
+
 });
