@@ -132,8 +132,73 @@ jobs:
           target: ${{ matrix.target }}
           push: false
           tags: ryanai-${{ matrix.image }}:ci
+          outputs: type=oci,dest=/tmp/ryanai-${{ matrix.image }}.tar
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+      - name: Upload image artifact for downstream checks
+        uses: actions/upload-artifact@v7
+        with:
+          name: docker-image-${{ matrix.image }}
+          path: /tmp/ryanai-${{ matrix.image }}.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  scan-api-image:
+    name: Scan api image
+    needs:
+      - validate
+      - build-pr
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - name: Download API image artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: docker-image-api
+          path: /tmp
+      - name: Load API image
+        run: docker load --input /tmp/ryanai-api.tar
+      - name: Scan API image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ryanai-api:ci
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+
+  scan-web-image:
+    name: Scan web image
+    needs:
+      - validate
+      - build-pr
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - name: Download web image artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: docker-image-web
+          path: /tmp
+      - name: Load web image
+        run: docker load --input /tmp/ryanai-web.tar
+      - name: Scan web image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ryanai-web:ci
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
 
   publish:
     name: Build and publish ${{ matrix.image }}
