@@ -52,8 +52,8 @@ describe('private attachment Storage authorization migrations', () => {
     expect(workerLease).toContain('s.lease_token = p_lease_token');
     expect(workerLease).toContain('s.lease_expires_at > now()');
     expect(workerLease).toContain('lease_token = gen_random_uuid()');
-    expect(workerLease).toContain('DO $$');
-    expect(workerLease).toContain("pg_has_role(current_user, 'supabase_admin', 'MEMBER')");
+    expect(workerLease).toContain('ALTER DEFAULT PRIVILEGES IN SCHEMA public');
+    expect(workerLease).toContain('REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated');
     expect(workerLease).toContain('CREATE FUNCTION public.claim_ryanai_attachment_scan_v2()');
     expect(workerLease).toContain('CREATE FUNCTION public.finish_ryanai_attachment_scan_v2(');
     expect(scannerSource).toContain('lease_token: string');
