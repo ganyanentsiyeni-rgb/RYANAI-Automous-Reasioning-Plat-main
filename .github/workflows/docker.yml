@@ -109,6 +109,9 @@ jobs:
   scan-api-image:
     name: Scan api image
     needs: build-pr
+    needs:
+      - validate
+      - build-pr
     if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -135,6 +138,9 @@ jobs:
   scan-web-image:
     name: Scan web image
     needs: build-pr
+    needs:
+      - validate
+      - build-pr
     if: github.event_name == 'pull_request' || github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 25
