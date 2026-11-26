@@ -44,6 +44,7 @@ interface DelegationClaims {
   aud: 'ryanai-mcp';
   sub: string;
   role: DelegatedRole;
+  actorType: 'human' | 'agent' | 'service';
   scope: McpDelegatedScope[];
   iat: number;
   exp: number;
@@ -74,6 +75,7 @@ export function hasValidMcpServiceToken(
 export function issueMcpDelegationToken(input: {
   subject: string;
   role: DelegatedRole;
+  actorType?: 'human' | 'agent' | 'service';
   scopes: readonly string[];
   secret: string;
   nowSeconds?: number;
@@ -103,6 +105,7 @@ export function issueMcpDelegationToken(input: {
     aud: 'ryanai-mcp',
     sub: subject,
     role: input.role,
+    actorType: input.actorType ?? 'human',
     scope: scopes as McpDelegatedScope[],
     iat: now,
     exp: now + ttlSeconds,
@@ -154,6 +157,7 @@ export function verifyMcpDelegationToken(
     value.iss !== 'ryanai-api' || value.aud !== 'ryanai-mcp' ||
     typeof value.sub !== 'string' || !value.sub ||
     !['user', 'admin'].includes(value.role ?? '') ||
+    !['human', 'agent', 'service'].includes(value.actorType ?? '') ||
     !Array.isArray(value.scope) || value.scope.length < 1 ||
     value.scope.some((scope) => !MCP_DELEGATED_SCOPES.includes(scope)) ||
     !Number.isInteger(value.iat) || !Number.isInteger(value.exp) ||
