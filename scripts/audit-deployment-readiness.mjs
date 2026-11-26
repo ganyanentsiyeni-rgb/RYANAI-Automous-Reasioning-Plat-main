@@ -4,12 +4,15 @@ import process from 'node:process';
 const targets = [
   { name: 'Render', role: 'frontend-delivery-and-api', default: true, gate: 'RENDER_STAGING_DEPLOY_ENABLED', required: ['RENDER_API_KEY','RENDER_STAGING_SERVICE_ID','RENDER_STAGING_API_URL','RENDER_STAGING_ISOLATION_CONFIRMED'] },
   { name: 'Railway', role: 'Docker-and-persistent-workloads', default: true, gate: 'RAILWAY_STAGING_DEPLOY_ENABLED', required: ['RAILWAY_STAGING_TOKEN','RAILWAY_STAGING_PROJECT_ID','RAILWAY_STAGING_SERVICE_ID','RAILWAY_STAGING_ENVIRONMENT_ID','RAILWAY_STAGING_ISOLATION_CONFIRMED'] },
-    { name: 'AWS ECS staging', role: 'optional-oidc-container-platform', default: false, gate: 'AWS_ECS_DEPLOY_ENABLED', required: ['AWS_REGION','ECR_REPOSITORY','ECS_SERVICE','ECS_CLUSTER','ECS_TASK_DEFINITION','ECS_CONTAINER_NAME','AWS_ROLE_TO_ASSUME','AWS_STAGING_API_URL','AWS_ECS_STAGING_ISOLATION_CONFIRMED'] },
-    { name: 'Azure AKS staging', role: 'optional-oidc-container-platform', default: false, gate: 'AZURE_AKS_DEPLOY_ENABLED', required: ['AZURE_CONTAINER_REGISTRY','AZURE_CONTAINER_NAME','AZURE_RESOURCE_GROUP','AZURE_CLUSTER_NAME','AZURE_KUSTOMIZE_PATH','AZURE_DEPLOYMENT_NAME','AZURE_NAMESPACE','AZURE_STAGING_API_URL','AZURE_CLIENT_ID','AZURE_TENANT_ID','AZURE_SUBSCRIPTION_ID','AZURE_AKS_STAGING_ISOLATION_CONFIRMED'] },
   { name: 'AWS ECS staging', role: 'optional-oidc-container-platform', default: false, gate: 'AWS_ECS_DEPLOY_ENABLED', required: ['AWS_REGION','ECR_REPOSITORY','ECS_SERVICE','ECS_CLUSTER','ECS_TASK_DEFINITION','ECS_CONTAINER_NAME','AWS_ROLE_TO_ASSUME','AWS_STAGING_API_URL','AWS_ECS_STAGING_ISOLATION_CONFIRMED'] },
   { name: 'Azure AKS staging', role: 'optional-oidc-container-platform', default: false, gate: 'AZURE_AKS_DEPLOY_ENABLED', required: ['AZURE_CONTAINER_REGISTRY','AZURE_CONTAINER_NAME','AZURE_RESOURCE_GROUP','AZURE_CLUSTER_NAME','AZURE_KUSTOMIZE_PATH','AZURE_DEPLOYMENT_NAME','AZURE_NAMESPACE','AZURE_STAGING_API_URL','AZURE_CLIENT_ID','AZURE_TENANT_ID','AZURE_SUBSCRIPTION_ID','AZURE_AKS_STAGING_ISOLATION_CONFIRMED'] },
   { name: 'Datadog Synthetics', role: 'optional-observability', default: false, gate: 'DATADOG_SYNTHETICS_ENABLED', required: ['DD_API_KEY','DD_APP_KEY'] },
 ];
+
+const targetNames = targets.map(({ name }) => name);
+if (new Set(targetNames).size !== targetNames.length) {
+  throw new Error('Deployment readiness target names must be unique.');
+}
 
 function isConfigured(value) {
   if (typeof value === 'boolean') return value;
@@ -41,5 +44,5 @@ for (const item of results) {
   console.log(`${item.status}${primary} | ${item.name} | role: ${item.role} | gate: ${item.gate}${suffix}`);
 }
 const blocked = results.filter((item) => item.status === 'BLOCKED');
-console.log(`\nDeployment readiness: ${results.filter((item) => item.status === 'READY').length} ready, ${blocked.length} blocked, ${results.filter((item) => item.status === 'DISABLED').length} disabled. No deployments were triggered.`);
+console.log(`\\nDeployment readiness: ${results.filter((item) => item.status === 'READY').length} ready, ${blocked.length} blocked, ${results.filter((item) => item.status === 'DISABLED').length} disabled. No deployments were triggered.`);
 if (process.argv.includes('--strict') && blocked.length) process.exitCode = 1;
