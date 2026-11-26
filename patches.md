@@ -346,3 +346,11 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Added a deferred-response UI regression test for the next-page loading state and disabled control.
 - This is a frontend request-feedback repair only. It does not change memory authorization, persistence, retention, or database schema.
 - Tests have not been executed in this environment; exact-head CI remains required. No merge, deployment, migration, credential change, or production modification.
+
+
+## 2026-11-26 — GitHub Integration status refresh feedback
+
+- Refreshing an already-loaded GitHub connection now re-enters a visible checking state and disables repeat refresh while the authenticated status request is pending.
+- Added a deferred-response UI regression test for the pending/disabled state.
+- This is status-feedback only; OAuth, repository permissions, review provenance, GitHub App installation, and authorization behavior are unchanged.
+- Tests have not been executed in this environment; exact-head CI remains required. No merge, deployment, migration, credential change, or production modification.
