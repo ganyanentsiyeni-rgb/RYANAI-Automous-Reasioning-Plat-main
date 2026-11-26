@@ -117,7 +117,7 @@ const destinations = appManifest.routes.map((route) => ({
 const routeUiOptions: Partial<Record<Route, DashboardUiId>> = {
   dashboard: 'dashboard', pa: 'pa', programming: 'programming', operator: 'operator',
   operations: 'operations', admin: 'admin', quant: 'quant', trading: 'trading',
-  cockpit: 'cockpit', studio: 'studio', comms: 'comms', audiobook: 'audiobook', music: 'music', phonelink: 'phonelink', workspace: 'workspace',
+  cockpit: 'cockpit', studio: 'studio', comms: 'comms', music: 'music', phonelink: 'phonelink', workspace: 'workspace',
 };
 
 export default function App() {
