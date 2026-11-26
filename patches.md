@@ -342,7 +342,6 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - This is a frontend request-feedback repair only. It does not change memory authorization, persistence, retention, or database schema.
 - Tests have not been executed in this environment; exact-head CI remains required. No merge, deployment, migration, credential change, or production modification.
 
-
 ## 2026-11-26 — Frontend environment and operational truth increment
 
 - Added a shared browser-environment validator used by Vite build configuration and the runtime API base URL resolver.
@@ -373,14 +372,12 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - This is a frontend/request-lifecycle safety repair only; model catalog, provider authorization, backend policy, database schema, credentials, deployment and production configuration are unchanged.
 - Tests have not been executed in this environment; exact-head CI remains required. No merge, deployment, migration, credential change, or production modification.
 
-
 ## 2026-11-26 — Resume OpenRouter governance implementation
 
 - Preserved the trusted Supabase actor type (`human`, `agent`, or `service`) in API-issued MCP delegation assertions and re-evaluated Gen-X using that signed actor classification at delegation, execution authorization, and provider dispatch.
 - Removed the hard-coded `actorType: human` assumption from delegated reasoning. Explicit agent/service identities are denied by the existing human-only reasoning policy and cannot inherit owner permissions.
 - Added regression coverage across API delegation, API provider gateway, HMAC token verification, and MCP token verification.
 - OpenRouter remains optional and runtime-disabled pending the remaining catalogue, usage/cost, reliability, privacy, regional-data, and staging acceptance gates. No provider key, billing, hosted environment, deployment, migration, or external API call was changed.
-
 
 ## 2026-11-26 — Logic OpenRouter override routed through API gateway
 
@@ -391,7 +388,6 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Added model selection, provider invocation, and Gen-X policy regression tests. Exact-head CI is still required; tests have not been executed locally in this workflow.
 - OpenRouter remains runtime-disabled. No provider API request, secret/billing change, hosted configuration change, merge, migration, or deployment was performed.
 
-
 ## 2026-11-26 — PA delegation UI uses the operational contract hook
 
 - Routed the shared PA/Darkside Copilot delegation creation action through `useRyanOperations().createPADelegation()` rather than maintaining a second raw POST implementation in the panel.
@@ -400,7 +396,6 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Added hook regression coverage for stable ID propagation and a Gen-X/backend 403 denial; denied requests do not report success.
 - This is frontend integration only. Server-side authorization and execution boundaries are unchanged; no deployment, migration, credential change, or production action.
 
-
 ## 2026-11-26 — Command Cockpit AgentRun queue visibility
 
 - Added a dedicated AgentRun queue panel to the Command Cockpit using the shared authenticated `useRyanOperations` hook.
@@ -408,8 +403,6 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Missing counters and approval state render as `Not reported`; an empty task response is not presented as proof of a healthy or empty queue.
 - Reuses the hook's active-run polling behavior; no new API route, registry assertion, approval action, lease mutation, migration, deployment, or production change.
 - Exact-head CI/build/security checks remain required; tests have not been run locally in this workflow.
-
-
 
 ## 2026-11-26 — OpenRouter optional configuration and gateway regression coverage
 
