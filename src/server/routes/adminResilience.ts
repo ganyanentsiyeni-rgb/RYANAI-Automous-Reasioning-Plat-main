@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import type { FastifyPluginAsync } from 'fastify';
 import { requireAdmin, requireOwner } from './auth.js';
-import { backupPreflight, createDatabaseBackup, listDatabaseBackups, listExpectedMigrationIds, recoveryPreflight } from '../../services/adminResilience.js';
+import { backupPreflight, createDatabaseBackup, listDatabaseBackups, listExpectedMigrationIds, recoveryPreflight, verifyDatabaseBackupArtifacts } from '../../services/adminResilience.js';
 
 interface MaintenanceBody {
   action?: 'scheduled' | 'started' | 'completed' | 'cancelled';
@@ -73,7 +73,7 @@ export const adminResilienceRoutes: FastifyPluginAsync = async (fastify) => {
           integrityStatus: 'not_verified',
           retention: item.retention,
         })),
-        reason: inventory.reason || 'Inventory metadata is not a fresh verification of stored dump bytes.',
+        verificationLimit: 'At most 10 artifacts and 256 MiB per artifact are re-downloaded per report.',\n        reason: inventory.reason || 'Eligible artifact bytes are freshly re-downloaded and hashed; incomplete evidence remains unverified.',
       },
       schemaMigrationEvidence: {
         status: 'not_verified',

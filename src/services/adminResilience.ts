@@ -308,7 +308,29 @@ export async function listDatabaseBackups(): Promise<BackupInventory> {
   }
 }
 
-export function backupReadbackMatches(original: Uint8Array, stored: Uint8Array): boolean {
+export interface BackupArtifactVerification { backupId: string; status: 'verified' | 'failed' | 'not_verified'; bytesRehashed: boolean; actualBytes: number | null; reason?: string; }
+const MAX_RECOVERY_VERIFY_ARTIFACTS = 10;
+const MAX_RECOVERY_VERIFY_BYTES = 256 * 1024 * 1024;
+/** Read-only, bounded re-download and SHA-256 verification of private dump objects. */
+export async function verifyDatabaseBackupArtifacts(inventory: BackupInventory, request: typeof storageRequest = storageRequest): Promise<BackupArtifactVerification[]> {
+ const storage = storageConfig();
+ if (!storage || inventory.status !== 'available') return inventory.items.map(item => ({ backupId:item.backupId,status:'not_verified',bytesRehashed:false,actualBytes:null,reason:'Private backup storage or inventory is unavailable.' }));
+ return Promise.all(inventory.items.slice(0,MAX_RECOVERY_VERIFY_ARTIFACTS).map(async item => {
+  if (!item.manifestPresent || !item.databaseSha256 || !/^[a-f0-9]{64}$/i.test(item.databaseSha256) || !Number.isSafeInteger(item.databaseBytes) || (item.databaseBytes ?? 0)<=0 || (item.databaseBytes ?? 0)>MAX_RECOVERY_VERIFY_BYTES)
+   return {backupId:item.backupId,status:'not_verified' as const,bytesRehashed:false,actualBytes:null,reason:'Manifest, SHA-256, or bounded artifact size evidence is missing or invalid.'};
+  try {
+   const objectPath=item.prefix.split('/').map(encodeURIComponent).join('/');
+   const response=await request(storage.baseUrl,storage.key,'/storage/v1/object/authenticated/'+encodeURIComponent(storage.bucket)+'/'+objectPath+'/database.dump');
+   const declared=Number(response.headers.get('content-length'));
+   if(Number.isFinite(declared)&&declared>MAX_RECOVERY_VERIFY_BYTES) return {backupId:item.backupId,status:'failed' as const,bytesRehashed:false,actualBytes:null,reason:'Stored artifact exceeds the verification size limit.'};
+   const bytes=Buffer.from(await response.arrayBuffer());
+   if(bytes.byteLength>MAX_RECOVERY_VERIFY_BYTES) return {backupId:item.backupId,status:'failed' as const,bytesRehashed:false,actualBytes:bytes.byteLength,reason:'Stored artifact exceeds the verification size limit.'};
+   const digest=createHash('sha256').update(bytes).digest('hex'), matches=bytes.byteLength===item.databaseBytes&&digest===item.databaseSha256.toLowerCase();
+   return {backupId:item.backupId,status:matches?'verified' as const:'failed' as const,bytesRehashed:true,actualBytes:bytes.byteLength,...(matches?{}:{reason:'Stored artifact byte count or SHA-256 does not match its manifest.'})};
+  } catch { return {backupId:item.backupId,status:'failed' as const,bytesRehashed:false,actualBytes:null,reason:'Stored artifact could not be downloaded for verification.'}; }
+ }));
+}
+\nexport function backupReadbackMatches(original: Uint8Array, stored: Uint8Array): boolean {
   if (original.byteLength !== stored.byteLength) return false;
   const originalDigest = createHash('sha256').update(original).digest('hex');
   const storedDigest = createHash('sha256').update(stored).digest('hex');

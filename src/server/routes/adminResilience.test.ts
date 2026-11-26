@@ -55,7 +55,7 @@ beforeEach(() => {
     status: 'available', bucket: 'private-backups', retentionDays: 30,
     listedAt: '2026-11-20T00:00:00.000Z', items: [], hasMore: false,
   });
-  resilience.listExpectedMigrationIds.mockResolvedValue({ status: 'available', migrationIds: ['20261124170000_studio_artifact_idempotency'] });
+  resilience.listExpectedMigrationIds.mockResolvedValue({ status: 'available', migrationIds: ['20261124170000_studio_artifact_idempotency'] });\n  resilience.verifyDatabaseBackupArtifacts.mockResolvedValue([]);
   resilience.recoveryPreflight.mockReturnValue({
     status: 'not_configured', targetLabel: null, productionRestore: 'disabled', writesPerformed: false,
   });
