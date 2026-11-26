@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';\nimport { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { backupReadbackMatches, listDatabaseBackups, persistBackupArtifact, recoveryPreflight, verifyDatabaseBackupArtifacts } from './adminResilience.js';
+import { backupReadbackMatches, evaluateSchemaMigrationArtifacts, listDatabaseBackups, persistBackupArtifact, recoveryPreflight, verifyDatabaseBackupArtifacts } from './adminResilience.js';
 
 const originalEnv = { ...process.env };
 
@@ -23,7 +23,38 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-describe('admin resilience backup integrity', () => {
+describe('read-only schema migration source evidence', () => {
+  it('fingerprints a complete ordered schema and migration source set', () => {
+    const result = evaluateSchemaMigrationArtifacts('model Example { id String @id }', [
+      { id: '20261101000000_initial', sqlContent: 'CREATE TABLE example (id text);' },
+      { id: '20261102000000_add_index', sqlContent: 'CREATE INDEX example_id_idx ON example(id);' },
+    ]);
+    expect(result.status).toBe('source_artifacts_complete');
+    expect(result.schemaSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.migrations.every((migration) => migration.sqlSha256?.match(/^[a-f0-9]{64}$/))).toBe(true);
+    expect(result.appliedMigrationLedger).toBeUndefined();
+  });
+
+  it('fails closed for missing schema or migration SQL', () => {
+    const result = evaluateSchemaMigrationArtifacts(null, [
+      { id: '20261101000000_initial', sqlContent: null },
+    ]);
+    expect(result.status).toBe('source_artifacts_incomplete');
+    expect(result.schemaPresent).toBe(false);
+    expect(result.missingMigrationSql).toEqual(['20261101000000_initial']);
+  });
+
+  it('fails closed for duplicate or unordered migration identifiers', () => {
+    const result = evaluateSchemaMigrationArtifacts('schema', [
+      { id: '20261102000000_second', sqlContent: 'SELECT 2;' },
+      { id: '20261101000000_first', sqlContent: 'SELECT 1;' },
+      { id: '20261101000000_first', sqlContent: 'SELECT 1;' },
+    ]);
+    expect(result.status).toBe('source_artifacts_incomplete');
+  });
+});
+
+\ndescribe('admin resilience backup integrity', () => {
   it('accepts a complete read-back only when byte length and SHA-256 match', () => {
     const original = Buffer.from('complete database dump');
     expect(backupReadbackMatches(original, Buffer.from(original))).toBe(true);
