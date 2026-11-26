@@ -19,7 +19,7 @@ it.each([
     'https://primary.example',
   ],
   ['   ', ' https://legacy.example/// ', 'https://legacy.example'],
-  ['', '', 'http://localhost:3000'],
+  ['', '', ''],
 ])(
   'normalizes API configuration (%j, %j)',
   async (primary, legacy, expected) => {
