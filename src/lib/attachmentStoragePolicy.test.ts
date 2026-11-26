@@ -8,6 +8,8 @@ const readMigration = (name: string) => readFileSync(
 const privateStorage = readMigration('20261030120000_private_conversation_attachments.sql');
 const quota = readMigration('20261030130000_attachment_quota_enforcement.sql');
 const quarantine = readMigration('20261030140000_attachment_malware_scan_quarantine.sql');
+const workerLease = readMigration('20261126100000_secure_attachment_worker_leases.sql');
+const scannerSource = readFileSync(new URL('../server/attachments/scanner.ts', import.meta.url), 'utf8');
 
 describe('private attachment Storage authorization migrations', () => {
   it('keeps the attachment bucket private and binds object owner and conversation to auth.uid()', () => {
@@ -40,6 +42,21 @@ describe('private attachment Storage authorization migrations', () => {
     expect(quarantine).toContain('REVOKE ALL ON FUNCTION public.claim_ryanai_attachment_scan() FROM PUBLIC, anon, authenticated');
     expect(quarantine).toContain('GRANT EXECUTE ON FUNCTION public.claim_ryanai_attachment_scan() TO service_role');
     expect(quarantine).toContain('GRANT EXECUTE ON FUNCTION public.finish_ryanai_attachment_scan(text,text,text,text) TO service_role');
+  });
+  it('repairs effective worker RPC grants and requires a per-claim lease token', () => {
+    expect(workerLease).toContain('REVOKE ALL ON FUNCTION public.claim_ryanai_attachment_scan() FROM PUBLIC, anon, authenticated, service_role');
+    expect(workerLease).toContain('REVOKE ALL ON FUNCTION public.finish_ryanai_attachment_scan(text, text, text, text) FROM PUBLIC, anon, authenticated, service_role');
+    expect(workerLease).toContain('REVOKE ALL ON FUNCTION public.claim_ryanai_orphan_attachment_cleanup(timestamptz, integer) FROM PUBLIC, anon, authenticated');
+    expect(workerLease).toContain('GRANT EXECUTE ON FUNCTION public.claim_ryanai_attachment_scan_v2() TO service_role');
+    expect(workerLease).toContain('GRANT EXECUTE ON FUNCTION public.finish_ryanai_attachment_scan_v2(text, text, text, text, uuid) TO service_role');
+    expect(workerLease).toContain('s.lease_token = p_lease_token');
+    expect(workerLease).toContain('s.lease_expires_at > now()');
+    expect(workerLease).toContain('lease_token = gen_random_uuid()');
+    expect(workerLease).toContain('ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated');
+    expect(workerLease).toContain('CREATE FUNCTION public.claim_ryanai_attachment_scan_v2()');
+    expect(workerLease).toContain('CREATE FUNCTION public.finish_ryanai_attachment_scan_v2(');
+    expect(scannerSource).toContain('lease_token: string');
+    expect(scannerSource.match(/p_lease_token: job\.lease_token/g)?.length).toBe(2);
   });
 });
 
