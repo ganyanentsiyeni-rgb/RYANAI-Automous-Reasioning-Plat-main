@@ -36,11 +36,11 @@ type ScannerDatabase = {
     };
     Views: Record<string, never>;
     Functions: {
-      claim_ryanai_attachment_scan: {
+      claim_ryanai_attachment_scan_v2: {
         Args: Record<string, never>;
         Returns: ScanJob[];
       };
-      finish_ryanai_attachment_scan: {
+      finish_ryanai_attachment_scan_v2: {
         Args: {
           p_bucket_id: string;
           p_object_name: string;
@@ -230,7 +230,7 @@ export function startAttachmentScanner(): () => void {
           console.error('[attachment-scanner] quarantine purge cycle failed', error instanceof Error ? error.message : error);
         }
       }
-      const { data, error } = await supabase.rpc('claim_ryanai_attachment_scan');
+      const { data, error } = await supabase.rpc('claim_ryanai_attachment_scan_v2');
       if (error) throw error;
       const job = (data as ScanJob[] | null)?.[0];
       if (!job) return;
@@ -248,7 +248,7 @@ export function startAttachmentScanner(): () => void {
           if (attachmentError || !attachment || !validateCommsFileSignature(attachmentBytes, attachment.mime_type)) throw new Error('Comms attachment signature does not match its reserved MIME type.');
         }
         const result = await scanWithClamAv(attachmentBytes);
-        const { error: finishError } = await supabase.rpc('finish_ryanai_attachment_scan', {
+        const { error: finishError } = await supabase.rpc('finish_ryanai_attachment_scan_v2', {
           p_bucket_id: job.bucket_id,
           p_object_name: job.object_name,
           p_status: result,
@@ -259,7 +259,7 @@ export function startAttachmentScanner(): () => void {
         console.info('[attachment-scanner] scan finished', { outcome: result, attempt: job.attempt });
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown scanner failure';
-        const { error: finishError } = await supabase.rpc('finish_ryanai_attachment_scan', {
+        const { error: finishError } = await supabase.rpc('finish_ryanai_attachment_scan_v2', {
           p_bucket_id: job.bucket_id,
           p_object_name: job.object_name,
           p_status: 'failed',
