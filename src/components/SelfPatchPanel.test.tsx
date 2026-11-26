@@ -29,7 +29,6 @@ beforeEach(() => {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
-  confirmSpy = vi.fn().mockReturnValue(true);\n  window.confirm = confirmSpy;
   originalConfirmDescriptor = Object.getOwnPropertyDescriptor(window, 'confirm');
   confirmSpy = vi.fn().mockReturnValue(true);
   Object.defineProperty(window, 'confirm', { configurable: true, value: confirmSpy });
