@@ -29,17 +29,20 @@ function recordInspectorReport(value: unknown): InspectorReport | null {
     || typeof payload.reportSource !== 'string'
     || typeof payload.reportDigest !== 'string' || !/^[a-f0-9]{64}$/i.test(payload.reportDigest)
     || (payload.reportExitCode !== 0 && payload.reportExitCode !== 1)) return null;
-  const findings = Array.isArray(payload.findings) ? payload.findings.flatMap((item) => {
-    if (!item || typeof item !== 'object') return [];
+  if (!Array.isArray(payload.findings)) return null;
+  const findings: Array<{ id: string; severity: string; message: string; evidenceFiles: string[] }> = [];
+  for (const item of payload.findings) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
     const finding = item as Record<string, unknown>;
-    if (typeof finding.id !== 'string' || typeof finding.severity !== 'string' || typeof finding.message !== 'string') return [];
-    return [{
-      id: finding.id,
-      severity: finding.severity,
-      message: finding.message,
-      evidenceFiles: Array.isArray(finding.evidenceFiles) ? finding.evidenceFiles.filter((path): path is string => typeof path === 'string') : [],
-    }];
-  }) : [];
+    if (typeof finding.id !== 'string' || typeof finding.severity !== 'string'
+      || typeof finding.message !== 'string'
+      || (finding.evidenceFiles !== undefined
+        && (!Array.isArray(finding.evidenceFiles) || !finding.evidenceFiles.every((path) => typeof path === 'string')))) return null;
+    findings.push({
+      id: finding.id, severity: finding.severity, message: finding.message,
+      evidenceFiles: Array.isArray(finding.evidenceFiles) ? finding.evidenceFiles as string[] : [],
+    });
+  }
   return {
     evidenceId: record.id,
     sequence: typeof record.sequence === 'number' ? record.sequence : null,
