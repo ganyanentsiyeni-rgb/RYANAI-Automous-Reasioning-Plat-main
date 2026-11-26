@@ -9,7 +9,7 @@ const SAFE_PUBLIC_KEY_NAMES = new Set([
 ]);
 
 const SECRET_NAME_PATTERN =
-  /(SECRET|PRIVATE[_-]?KEY|PASSWORD|DATABASE_URL|DIRECT_URL|REDIS_URL|AUTH[_-]?TOKEN|ACCESS[_-]?TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|TWILIO_AUTH_TOKEN|API[_-]?KEY)/i;
+  /(SECRET|SERVICE[_-]?ROLE|PRIVATE[_-]?KEY|PASSWORD|DATABASE_URL|DIRECT_URL|REDIS_URL|AUTH[_-]?TOKEN|ACCESS[_-]?TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|TWILIO_AUTH_TOKEN|API[_-]?KEY)/i;
 
 function isLoopbackHostname(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
@@ -84,13 +84,13 @@ export function validateFrontendEnvironment(
   }
 
   if (appEnvironment !== 'development') {
-    if (apiUrl.protocol !== 'https:') {
-      throw new Error('[SECURITY GATE FAILURE] Staging/production API URLs must use HTTPS.');
-    }
     if (isLoopbackHostname(apiUrl.hostname)) {
       throw new Error(
         '[DEPLOY GATE FAILURE] Loopback API endpoints are forbidden in staging/production builds.',
       );
+    }
+    if (apiUrl.protocol !== 'https:') {
+      throw new Error('[SECURITY GATE FAILURE] Staging/production API URLs must use HTTPS.');
     }
   }
 
