@@ -89,9 +89,9 @@ export function useRyanOperations() {
     setRefreshing(true);
     try {
       const [taskResult, awarenessResult, paResult] = await Promise.allSettled([
-        requestJson<unknown>('/api/agent/ops/tasks'),
-        requestJson<OperationalAwareness>('/api/agent/ops/awareness'),
-        requestJson<PAStatusResponse>('/api/agent/ops/pa/status'),
+        requestJson<unknown>('/api/agent/ops/tasks', { signal }),
+        requestJson<OperationalAwareness>('/api/agent/ops/awareness', { signal }),
+        requestJson<PAStatusResponse>('/api/agent/ops/pa/status', { signal }),
       ]);
       if (signal?.aborted || sequence !== requestSequence.current || !mounted.current) return;
 
