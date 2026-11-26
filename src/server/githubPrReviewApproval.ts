@@ -56,7 +56,7 @@ export async function recordOwnerGitHubPrReviewDecision(
     throw new Error('genx_authorization_unavailable');
   }
 
-  const status = input.decision === 'approve' ? 'approved' : 'rejected';
+  const status: ApprovalRow['status'] = 'rejected';
   const rows = await prisma.$queryRawUnsafe<ApprovalRow[]>(
     `UPDATE public.github_pr_review_approvals AS approval
         SET status = $6,
