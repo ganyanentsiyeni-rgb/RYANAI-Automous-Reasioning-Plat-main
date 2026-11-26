@@ -65,7 +65,7 @@ describe('browser credential protection', () => {
   ])('rejects provider credentials configured as %s', (name) => {
     vi.stubEnv(name, 'test-only-not-a-real-secret');
     expect(() => resolveConfig({ command: 'serve', mode: 'development' })).toThrow(
-      'Refusing to build with provider credentials in browser-exposed variables',
+      '[SECURITY GATE FAILURE] Server-only credentials must never use VITE_* names:',
     );
   });
 });
