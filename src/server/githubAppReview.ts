@@ -54,7 +54,7 @@ async function json(response: Response): Promise<Record<string, unknown>> {
   return await response.json().catch(() => ({})) as Record<string, unknown>;
 }
 
-async function getInstallationToken(
+export async function getGitHubReviewInstallationToken(
   config: GitHubReviewAppConfig,
   fetcher: FetchLike,
 ): Promise<string | null> {
@@ -101,7 +101,7 @@ export async function submitOwnerApprovedGitHubReview(
   }
   if (!config) return { status: 'blocked', reason: 'app_not_configured' };
 
-  const token = await getInstallationToken(config, fetcher);
+  const token = await getGitHubReviewInstallationToken(config, fetcher);
   if (!token) return { status: 'blocked', reason: 'installation_unavailable' };
 
   const headers = {

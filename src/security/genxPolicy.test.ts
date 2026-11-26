@@ -67,6 +67,27 @@ describe('Gen-X deterministic security enforcement', () => {
       ownerAuthorized: true,
     })).toMatchObject({ decision: 'ALLOW', ruleId: 'GX-OWNER-LIFECYCLE-REQUEST-001' });
   });
+  it('allows only a verified owner to create a pending Self-Patch review request', () => {
+    const request = {
+      ...base,
+      agentId: 'ryanai-api',
+      principal: 'verified-owner-id',
+      toolName: 'github_self_patch_approval_request',
+      action: 'CREATE' as const,
+      target: 'github-pr-review-request:42',
+      actorType: 'human' as const,
+      ownerAuthorized: true,
+    };
+    expect(evaluateGenXSecurityEvent(request)).toMatchObject({
+      decision: 'ALLOW', ruleId: 'GX-SELF-PATCH-REQUEST-001',
+    });
+    expect(evaluateGenXSecurityEvent({ ...request, ownerAuthorized: false }))
+      .toMatchObject({ decision: 'REQUIRE_APPROVAL' });
+    expect(evaluateGenXSecurityEvent({ ...request, actorType: 'agent' }))
+      .toMatchObject({ decision: 'REQUIRE_APPROVAL' });
+    expect(evaluateGenXSecurityEvent({ ...request, target: 'github-pr-review-request:0' }))
+      .toMatchObject({ decision: 'REQUIRE_APPROVAL' });
+  });
   it('keeps Self-Patch promotion approval-gated even with owner confirmation', () => {
     const promotion = {
       agentId: 'ryanai-self-patch',

@@ -18,6 +18,8 @@ import {
 } from '../plugins/index.js';
 import { approveStudioTask } from '../engineering/studioApprovals.js';
 import { createStudioArtifactDownloadUrl } from '../engineering/studioArtifactStorage.js';
+import { issueOwnerGitHubPrReviewApproval } from '../githubPrReviewApprovalIssuance.js';
+import { evaluateGenXSecurityEvent } from '../../security/genxPolicy.js';
 
 interface StudioProjectBody {
   objective: string;
@@ -75,6 +77,43 @@ const containsSecretMaterial = (value: string) =>
 
 export const engineeringEvidenceRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', requireUser);
+
+  fastify.post<{ Body: { pullRequestNumber: number } }>('/api/engineering/self-patch/review-approvals', {
+    config: { rateLimit: { max: 5, timeWindow: '10 minutes' } },
+    schema: { body: {
+      type: 'object', required: ['pullRequestNumber'], additionalProperties: false,
+      properties: { pullRequestNumber: { type: 'integer', minimum: 1, maximum: 2147483647 } },
+    } },
+  }, async (request, reply) => {
+    const owner = request.authUser;
+    if (!owner?.id || owner.isOwner !== true) {
+      return reply.code(403).send({ error: 'Verified RyanAI owner access is required.' });
+    }
+    const policy = evaluateGenXSecurityEvent({
+      agentId: 'ryanai-api',
+      principal: owner.id,
+      toolName: 'github_self_patch_approval_request',
+      action: 'CREATE',
+      target: 'github-pr-review-request:' + request.body.pullRequestNumber,
+      actorType: 'human',
+      ownerAuthorized: true,
+    });
+    if (policy.decision !== 'ALLOW') {
+      return reply.code(403).send({ error: 'Gen-X did not authorize creation of this review request.', decision: policy.decision, ruleId: policy.ruleId });
+    }
+    try {
+      const issued = await issueOwnerGitHubPrReviewApproval(prisma, {
+        ownerUserId: owner.id,
+        pullRequestNumber: request.body.pullRequestNumber,
+      });
+      return reply.code(201).send({ success: true, ...issued, genX: { decision: policy.decision, ruleId: policy.ruleId }, outboundDispatchAllowed: false });
+    } catch (error) {
+      request.log.warn({ err: error }, 'Self-Patch review approval request could not be issued');
+      return reply.code(409).send({ error: error instanceof Error ? error.message : 'Self-Patch review request could not be issued.' });
+    }
+  });
+
+
 
 
 

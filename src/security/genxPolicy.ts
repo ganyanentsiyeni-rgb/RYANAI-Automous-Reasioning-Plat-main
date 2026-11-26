@@ -135,6 +135,13 @@ export function evaluateGenXSecurityEvent(event: GenXSecurityEvent): GenXPolicyR
       event.ownerConfirmed === true && (event.actorType === 'human' || event.actorType === 'agent')) {
     return { decision: 'ALLOW', ruleId: 'GX-PA-PUSH-DEPLOY-001', reason: 'The owner explicitly requested Push Deploy for the fixed main-branch release workflow; its exact-SHA CI/security gate still decides whether provider jobs may start.', severity: 'CRITICAL' };
   }
+  // An authenticated owner may create a pending review-request record for a canonical main PR.
+  // This only opens a 15-minute consent request; it cannot submit a GitHub review or promote code.
+  if (tool === 'github_self_patch_approval_request' && event.action === 'CREATE' &&
+      event.actorType === 'human' && event.ownerAuthorized === true &&
+      /^github-pr-review-request:[1-9]\d*$/.test(event.target ?? '')) {
+    return { decision: 'ALLOW', ruleId: 'GX-SELF-PATCH-REQUEST-001', reason: 'Verified owner may create an expiring review request; GitHub review submission and Self-Patch promotion remain separately gated.', severity: 'HIGH' };
+  }
   // Self-Patch promotion is a distinct critical operation. Owner confirmation alone
   // is not Gen-X authorization; keep it approval-gated until a dedicated adapter
   // supplies independently verified, exact-PR/SHA/diff authorization evidence.

@@ -587,3 +587,14 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Added canonicalization and regression coverage for changed execution fields, legacy/malformed approvals, and DENY precedence.
 - No database migration, production data change, merge, deployment, credential change, or ruleset modification.
 - Local test execution and exact-SHA CI/security evidence remain pending.
+
+
+## 2026-11-26 — Self-Patch exact-head approval request issuance
+
+- Added an authenticated owner-only endpoint to request a review of an open pull request targeting `main` in the canonical RyanAI repository.
+- The API reads the live PR through the scoped GitHub App installation and records the observed head SHA in a 15-minute pending approval row. Closed PRs, non-main targets, cross-repository heads, invalid PR numbers, and unavailable GitHub App access fail closed.
+- Added a Gen-X rule that permits only a verified human owner to create the pending request record. This permission does not authorize GitHub review submission, merge, deployment, or Self-Patch promotion; promotion remains `REQUIRE_APPROVAL`.
+- The issuance flow creates an idempotent internal Comms AgentRun for PA to coordinate the owner decision. Its objective explicitly prohibits external WhatsApp/SMS/voice/email dispatch. If task creation fails, the pending approval is marked blocked.
+- Added regression tests for eligible PR issuance, ineligible PR rejection, Comms task creation failure, and Gen-X owner-scope enforcement.
+- The existing inbound approval command still fails closed for `APPROVE` until independent Gen-X authorization evidence is available. No GitHub review is submitted by this change.
+- No migration, production data change, credentials change, ruleset change, merge, or deployment. Local test execution and exact-SHA CI/security results are pending.

@@ -230,3 +230,10 @@ RyanAI's logical application architecture is documented in `docs/architecture/RY
 ## Studio task approval evidence (2026-11-26)
 
 Studio-native owner approval is bound to a versioned SHA-256 digest of the exact execution-relevant task content: task/project/owner identity, title, objective, task type, priority, required capabilities, assigned worker, dependencies, and input. The digest is recorded in the append-only `task.human_approved` event. At worker admission, Gen-X `REQUIRE_APPROVAL` is satisfied only when the latest owner event contains the supported digest version and the digest matches the currently claimed task. Legacy, malformed, missing, or stale approval evidence fails closed. Gen-X `DENY` cannot be overridden by owner approval. Runtime status, lease fields, timestamps, attempts, and task output are intentionally excluded from the digest. This contract uses the existing JSON event payload and does not require a database migration.
+
+
+## Self-Patch owner review-request issuance (2026-11-26)
+
+The authenticated owner may open a pending review request through `POST /api/engineering/self-patch/review-approvals`. The API requires the canonical GitHub App installation to read the current PR, and accepts only an open PR targeting `main` whose head repository is the canonical RyanAI repository. It stores the exact observed head SHA and a 15-minute expiry in `github_pr_review_approvals`. Gen-X's `GX-SELF-PATCH-REQUEST-001` authorizes creation of this pending request record only; it is not authorization to submit a GitHub review, merge, deploy, or promote a patch.
+
+Issuance creates an owner-scoped, idempotent internal Comms AgentRun for PA to coordinate the decision. The task explicitly prohibits external provider dispatch. If Comms task creation fails, the approval row is marked `blocked`. The inbound WhatsApp approval handler continues to reject `APPROVE` while independent Gen-X authorization evidence is unavailable. The promotion rule remains `REQUIRE_APPROVAL`. This is a request-issuance capability, not a completed approval-to-GitHub-review lifecycle.
