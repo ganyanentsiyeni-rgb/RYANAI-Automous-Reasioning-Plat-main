@@ -88,6 +88,13 @@ describe('System Dashboard workspace launcher', () => {
     expect(container.querySelector('a[href="#/settings"]')).not.toBeNull();
   });
 
+  it('hides the workspace quick action when the workspace is disabled', async () => {
+    await renderDashboard(false, false, { workspace: false });
+
+    expect(container.querySelector('a[href="#/workspace"]')).toBeNull();
+    expect(container.querySelector('a[href="#/settings"]')).not.toBeNull();
+  });
+
   it('adds the Admin Console only for an administrator session', async () => {
     await renderDashboard(false, true);
     const adminLink = container.querySelector('a[href="#/admin"]');

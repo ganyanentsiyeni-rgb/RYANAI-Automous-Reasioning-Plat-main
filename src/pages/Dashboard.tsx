@@ -342,7 +342,7 @@ export default function DashboardPage({ isOwner = false, isAdmin = false, enable
           </p>
           <div className="mt-5 flex flex-wrap gap-3">
             {cockpitEnabled && <a href="#/cockpit" className="inline-flex rounded-lg border border-white/15 px-4 py-2 text-sm font-semibold text-white hover:bg-white/5">Run a task</a>}
-            <a href="#/workspace" className="inline-flex rounded-lg border border-white/15 px-4 py-2 text-sm font-semibold text-white hover:bg-white/5">Open workspace</a>
+            {enabledModules?.workspace !== false && <a href="#/workspace" className="inline-flex rounded-lg border border-white/15 px-4 py-2 text-sm font-semibold text-white hover:bg-white/5">Open workspace</a>}
           </div>
         </article>
       </div>
