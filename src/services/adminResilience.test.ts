@@ -79,7 +79,8 @@ describe('read-only stored backup verification',()=> {
  it('leaves missing manifest or digest unverified without downloading',async()=>{setup();const req=vi.fn();expect((await verifyDatabaseBackupArtifacts(inv({manifestPresent:false}),req as never))[0].status).toBe('not_verified');expect((await verifyDatabaseBackupArtifacts(inv({databaseSha256:null}),req as never))[0].status).toBe('not_verified');expect(req).not.toHaveBeenCalled();});
  it('redacts storage download errors',async()=>{setup();const req=vi.fn(async()=>{throw new Error('secret private body');});const result=await verifyDatabaseBackupArtifacts(inv(),req as never);expect(result[0].status).toBe('failed');expect(JSON.stringify(result)).not.toContain('secret');});
 });
-\ndescribe('admin resilience backup artifact persistence', () => {
+
+describe('admin resilience backup artifact persistence', () => {
   const storage = { baseUrl: 'https://storage.example.test', key: 'test-key', bucket: 'private-backups' };
   const manifest = { format: 'ryanai-admin-backup-v1', backupId: 'backup-test' };
   const dump = Buffer.from('complete database dump');
