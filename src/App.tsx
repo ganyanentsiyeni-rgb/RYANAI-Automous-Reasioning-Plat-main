@@ -165,12 +165,13 @@ export default function App() {
     void authenticatedFetch('/api/auth/verify')
       .then(async (response) => {
         if (!response.ok) throw new Error('Identity verification unavailable');
-        return response.json() as Promise<{ user?: { isOwner?: boolean; displayName?: string } }>;
+        return response.json() as Promise<{ user?: { isOwner?: boolean; role?: 'user' | 'admin'; displayName?: string } }>;
       })
       .then((result) => {
         if (active) setVerifiedIdentity({
           userId: authenticatedUserId,
           isOwner: result.user?.isOwner === true,
+          role: result.user?.role,
           displayName: result.user?.displayName,
           serverVerified: Boolean(result.user),
         });
@@ -179,6 +180,7 @@ export default function App() {
         if (active) setVerifiedIdentity({
           userId: authenticatedUserId,
           isOwner: authenticatedOwnerClaim,
+          role: authenticatedOwnerClaim ? 'admin' : (user?.app_metadata?.role === 'admin' ? 'admin' : 'user'),
           displayName,
           serverVerified: false,
         });
@@ -188,12 +190,26 @@ export default function App() {
 
   useEffect(() => {
     // Supabase OAuth returns to the origin (no hash) so its URL fragment can
-    // be consumed safely. The initial hash route is therefore "landing";
-    // move a newly restored OAuth session into the authenticated workspace.
-    if (session && (isAuthRoute || route === 'landing')) {
+    // be consumed safely. Honor the explicit login intent only after the
+    // server has verified the user's real role; never trust a browser-selected
+    // admin flag as authorization.
+    if (!session) return;
+    const intent = sessionStorage.getItem('ryanai-login-intent');
+    if (intent === 'admin' && verifiedIdentity?.userId === session.user.id && verifiedIdentity.serverVerified) {
+      sessionStorage.removeItem('ryanai-login-intent');
+      if (verifiedIdentity.role === 'admin' || verifiedIdentity.isOwner) {
+        window.location.hash = '/admin';
+      } else {
+        void signOut();
+        window.location.hash = '/signin';
+      }
+      return;
+    }
+    if (intent === 'user') sessionStorage.removeItem('ryanai-login-intent');
+    if (isAuthRoute || route === 'landing') {
       window.location.hash = '/dashboard';
     }
-  }, [session, isAuthRoute, route]);
+  }, [session, isAuthRoute, route, verifiedIdentity, signOut]);
 
   useEffect(() => {
     const syncRoute = () => {
