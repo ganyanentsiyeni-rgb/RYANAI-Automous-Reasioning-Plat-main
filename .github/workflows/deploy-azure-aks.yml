@@ -1,0 +1,158 @@
+name: Deploy RyanAI API to Azure AKS staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Explicitly authorize a staging deployment of this exact open PR head.
+        type: choice
+        required: true
+        default: "NO"
+        options:
+          - "NO"
+          - "STAGE"
+
+permissions:
+  contents: read
+  checks: read
+  id-token: write
+
+concurrency:
+  group: azure-aks-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build, deploy and verify Azure AKS staging
+    if: >-
+      ${{
+        inputs.confirmation == 'STAGE' &&
+        vars.AZURE_AKS_DEPLOY_ENABLED == 'true' &&
+        vars.AZURE_AKS_STAGING_ISOLATION_CONFIRMED == 'true'
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: azure-staging
+    env:
+      TARGET_SHA: ${{ github.sha }}
+      AZURE_CONTAINER_REGISTRY: ${{ vars.AZURE_CONTAINER_REGISTRY }}
+      AZURE_CONTAINER_NAME: ${{ vars.AZURE_CONTAINER_NAME }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_CLUSTER_NAME: ${{ vars.AZURE_CLUSTER_NAME }}
+      AZURE_KUSTOMIZE_PATH: ${{ vars.AZURE_KUSTOMIZE_PATH }}
+      AZURE_DEPLOYMENT_NAME: ${{ vars.AZURE_DEPLOYMENT_NAME }}
+      AZURE_NAMESPACE: ${{ vars.AZURE_NAMESPACE }}
+      AZURE_STAGING_API_URL: ${{ vars.AZURE_STAGING_API_URL }}
+
+    steps:
+      - name: Check out exact candidate SHA
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Require an open PR whose head is this exact SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/pulls" > linked-prs.json
+          jq -e --arg sha "$TARGET_SHA" '[.[] | select(.state == "open" and .head.sha == $sha)] | length > 0' linked-prs.json >/dev/null
+
+      - name: Require exact-SHA CI and security checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          required=(
+            "Validate (typecheck, lint, test, build)"
+            "MCP server and workflow worker"
+            "Issue 435 migrations and attachment security"
+            "Test agent API contracts"
+            "Dependency audit"
+            "Trivy filesystem scan"
+            "Analyze (javascript-typescript)"
+            "Analyze (python)"
+            "TruffleHog secret audit"
+            "Codacy Security Scan"
+          )
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/check-runs?per_page=100" > check-pages.json
+          jq -s '[.[].check_runs[]]' check-pages.json > checks.json
+          for name in "${required[@]}"; do
+            jq -e --arg name "$name" '[.[] | select(.name == $name)] as $m | ($m|length)>0 and all($m[]; .status=="completed" and .conclusion=="success")' checks.json >/dev/null || {
+              echo "::error::Exact-SHA required check missing or unsuccessful: $name"; exit 1;
+            }
+          done
+
+      - name: Validate Azure staging manifest and settings
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          set -euo pipefail
+          for value in "$AZURE_CLIENT_ID" "$AZURE_TENANT_ID" "$AZURE_SUBSCRIPTION_ID" "$AZURE_CONTAINER_REGISTRY" "$AZURE_CONTAINER_NAME" "$AZURE_RESOURCE_GROUP" "$AZURE_CLUSTER_NAME" "$AZURE_KUSTOMIZE_PATH" "$AZURE_DEPLOYMENT_NAME" "$AZURE_NAMESPACE"; do
+            test -n "$value" || { echo "::error::Azure staging configuration is incomplete"; exit 1; }
+          done
+          [[ "$AZURE_STAGING_API_URL" == https://*staging* ]] || { echo "::error::Azure health URL must be an HTTPS staging hostname"; exit 1; }
+          [[ "$AZURE_RESOURCE_GROUP" == *staging* && "$AZURE_CLUSTER_NAME" == *staging* && "$AZURE_NAMESPACE" == *staging* ]] || {
+            echo "::error::Azure resource group, AKS cluster and namespace must explicitly identify staging"; exit 1;
+          }
+          test -f "$AZURE_KUSTOMIZE_PATH/kustomization.yaml" || test -f "$AZURE_KUSTOMIZE_PATH/kustomization.yml" || {
+            echo "::error::Configured Azure Kustomize directory has no kustomization file"; exit 1;
+          }
+          kubectl kustomize "$AZURE_KUSTOMIZE_PATH" >/dev/null
+
+      - name: Sign in to Azure with GitHub OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push exact-SHA API image to ACR
+        run: |
+          set -euo pipefail
+          REGISTRY_NAME="${AZURE_CONTAINER_REGISTRY%%.*}"
+          az acr login --name "$REGISTRY_NAME"
+          IMAGE="$AZURE_CONTAINER_REGISTRY/$AZURE_CONTAINER_NAME:$TARGET_SHA"
+          docker build --pull --file Dockerfile.api --tag "$IMAGE" .
+          docker push "$IMAGE"
+          echo "AZURE_IMAGE_URI=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Configure AKS context
+        uses: azure/aks-set-context@v4
+        with:
+          resource-group: ${{ env.AZURE_RESOURCE_GROUP }}
+          cluster-name: ${{ env.AZURE_CLUSTER_NAME }}
+
+      - name: Apply staging manifests and update immutable image
+        run: |
+          set -euo pipefail
+          kubectl get namespace "$AZURE_NAMESPACE" >/dev/null
+          kubectl apply -k "$AZURE_KUSTOMIZE_PATH" --namespace "$AZURE_NAMESPACE"
+          kubectl set image "deployment/$AZURE_DEPLOYMENT_NAME" "$AZURE_CONTAINER_NAME=$AZURE_IMAGE_URI" --namespace "$AZURE_NAMESPACE"
+          kubectl rollout status "deployment/$AZURE_DEPLOYMENT_NAME" --namespace "$AZURE_NAMESPACE" --timeout=10m
+
+      - name: Verify Azure staging runtime health
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 18); do
+            if curl --fail --silent --show-error --max-time 10 "$AZURE_STAGING_API_URL/readyz" >/dev/null; then
+              echo "AZURE_STAGING_HEALTH=healthy" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::AKS rollout completed but /readyz did not pass"
+          exit 1
+
+      - name: Record provider deployment evidence
+        if: always()
+        run: |
+          {
+            echo "### Azure AKS staging result"
+            echo "- Candidate SHA: `$TARGET_SHA`"
+            echo "- Workflow run: `$GITHUB_RUN_ID`"
+            echo "- Image: ${AZURE_IMAGE_URI:-not-built}"
+            echo "- Runtime health: ${AZURE_STAGING_HEALTH:-not-verified}"
+          } >> "$GITHUB_STEP_SUMMARY"
