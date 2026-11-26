@@ -44,6 +44,7 @@ export default function MemoryVault({ open, userId, onClose }: MemoryVaultProps)
   const [notice, setNotice] = useState('');
 
   const refresh = useCallback(async (signal?: AbortSignal, append = false, query = activeSearch, cursor?: string) => {
+    if (!signal?.aborted) setLoading(true);
     try {
       const params = new URLSearchParams();
       if (query) params.set('q', query);
