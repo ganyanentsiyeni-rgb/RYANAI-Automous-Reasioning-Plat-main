@@ -38,12 +38,14 @@ for (const scope of MCP_DELEGATED_SCOPES) {
 export type McpReadOnlyScope = (typeof MCP_READ_ONLY_SCOPES)[number];
 export type McpDelegatedScope = (typeof MCP_DELEGATED_SCOPES)[number];
 export type DelegatedRole = 'user' | 'admin';
+export type DelegatedActorType = 'human' | 'agent' | 'service';
 
 interface DelegationClaims {
   iss: 'ryanai-api';
   aud: 'ryanai-mcp';
   sub: string;
   role: DelegatedRole;
+  actorType: DelegatedActorType;
   scope: McpDelegatedScope[];
   iat: number;
   exp: number;
@@ -74,6 +76,7 @@ export function hasValidMcpServiceToken(
 export function issueMcpDelegationToken(input: {
   subject: string;
   role: DelegatedRole;
+  actorType: DelegatedActorType;
   scopes: readonly string[];
   secret: string;
   nowSeconds?: number;
@@ -103,6 +106,7 @@ export function issueMcpDelegationToken(input: {
     aud: 'ryanai-mcp',
     sub: subject,
     role: input.role,
+    actorType: input.actorType,
     scope: scopes as McpDelegatedScope[],
     iat: now,
     exp: now + ttlSeconds,
@@ -154,6 +158,7 @@ export function verifyMcpDelegationToken(
     value.iss !== 'ryanai-api' || value.aud !== 'ryanai-mcp' ||
     typeof value.sub !== 'string' || !value.sub ||
     !['user', 'admin'].includes(value.role ?? '') ||
+    !['human', 'agent', 'service'].includes(value.actorType ?? '') ||
     !Array.isArray(value.scope) || value.scope.length < 1 ||
     value.scope.some((scope) => !MCP_DELEGATED_SCOPES.includes(scope)) ||
     !Number.isInteger(value.iat) || !Number.isInteger(value.exp) ||
