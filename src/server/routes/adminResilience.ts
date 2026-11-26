@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import type { FastifyPluginAsync } from 'fastify';
 import { requireAdmin, requireOwner } from './auth.js';
-import { backupPreflight, createDatabaseBackup, listDatabaseBackups, listExpectedMigrationIds, inspectSchemaMigrationArtifacts, recoveryPreflight, verifyDatabaseBackupArtifacts } from '../../services/adminResilience.js';
+import { backupPreflight, createDatabaseBackup, listDatabaseBackups, listExpectedMigrationIds, inspectSchemaMigrationArtifacts, recoveryPreflight } from '../../services/adminResilience.js';
 
 interface MaintenanceBody {
   action?: 'scheduled' | 'started' | 'completed' | 'cancelled';
