@@ -458,3 +458,14 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Cross-checked the `AgentRun` Prisma model against `database.yml` and the ordered base, execution-scope, trace-context, runtime-contract, queue-classification, lease-heartbeat, and fail-closed approval migrations.
 - Recorded that the runtime-contract migration performs row reclassification as well as DDL, and must not be manually replayed after recovery.
 - Full compatibility remains unverified: the latest exact-SHA database/CI workflows were cancelled, and no isolated clone of the exact production migration ledger was inspected. No production connection, SQL execution, migration, deployment, credential change, or gate bypass was performed.
+
+
+## Optional AWS ECS and Azure AKS staging workflows
+
+Added two manual-only provider lanes on this repair branch:
+
+- `.github/workflows/deploy-aws-ecs.yml`: exact-SHA open-PR validation, completed CI/security check gate, dedicated `aws-staging` environment, GitHub OIDC role assumption, immutable ECR image, ECS task-definition render/deploy, ECS staging-tag verification and stability wait, and HTTPS `/readyz` verification.
+- `.github/workflows/deploy-azure-aks.yml`: exact-SHA open-PR validation, completed CI/security check gate, dedicated `azure-staging` environment, Azure federated login, immutable ACR image, Kustomize apply in an explicit staging namespace, named Deployment image update, rollout wait, and HTTPS `/readyz` verification.
+- Updated `scripts/audit-deployment-readiness.mjs` and the CI readiness environment mapping to audit OIDC-based AWS configuration and Azure staging deployment/health/isolation settings. Static AWS access keys are no longer the expected AWS identity mechanism.
+
+Both lanes are disabled unless their provider enablement and staging-isolation variables are explicitly set to `true`, and each manual dispatch requires `STAGE`. They are not part of the existing three-provider PUSH DEPLOY fan-out. No cloud account, role, registry, cluster, service, environment secret, production resource, or deployment was created or modified. Workflow execution and live provider readiness remain unverified.
