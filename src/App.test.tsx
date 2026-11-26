@@ -45,7 +45,7 @@ vi.mock('@/pages/AdminConsole', () => ({
   default: ({ userId }: { userId: string }) => <div>Private admin console {userId}</div>,
 }));
 vi.mock('@/pages/QuantLab', () => ({
-  default: () => <div>Private quant lab</div>,
+  default: ({ userId }: { userId: string }) => <div data-testid="private-quant-lab">Private quant lab {userId}</div>,
 }));
 vi.mock('@/pages/TradingTerminal', () => ({
   default: () => <div>Private trading terminal</div>,
@@ -202,6 +202,20 @@ describe('application authentication boundary', () => {
     await mount('/dashboard');
     await expectContent('Private dashboard');
     expect(container.querySelector('[data-testid="global-ryanai-voice"]')).toBeNull();
+  });
+
+  it('remounts Quant Lab when the authenticated account changes', async () => {
+    auth.getSession.mockResolvedValue({ data: { session }, error: null });
+    await mount('/quant');
+    await expectContent('Private quant lab alice');
+
+    const nextSession = {
+      user: { id: 'bob', email: 'bob@example.com', user_metadata: {} },
+    } as Session;
+    await act(async () => auth.listener?.('SIGNED_IN', nextSession));
+    await expectContent('Private quant lab bob');
+    expect(container.querySelector('[data-testid="private-quant-lab"]')?.textContent).toContain('bob');
+    expect(container.textContent).not.toContain('Private quant lab alice');
   });
 
   it('opens RyanAI Music for an authenticated user with the workspace enabled', async () => {
