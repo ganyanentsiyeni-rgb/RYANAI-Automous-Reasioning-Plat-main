@@ -94,6 +94,7 @@ const renderDeploy = read('.github/workflows/deploy-render.yml');
 const ciWorkflow = read('.github/workflows/ci.yml');
 const railwayDeploy = read('.github/workflows/deploy-railway.yml');
 const dockerCompose = read('docker-compose.yml');
+const composeConfig = parseYaml(dockerCompose);
 const databaseContract = read('database.yml');
 
 function dockerStage(source, preferredNames) {
@@ -307,12 +308,12 @@ checks.push(
 
 
 checks.push(
-  ['Compose API waits for healthy local PostgreSQL and Redis', /api:[\\s\\S]*?depends_on:[\\s\\S]*?postgres:[\\s\\S]*?condition: service_healthy[\\s\\S]*?redis:[\\s\\S]*?condition: service_healthy/.test(dockerCompose)],
-  ['Compose migrations are opt-in, local-only, and never part of API startup', /migrate:[\\s\\S]*?profiles: \\[migrations\\][\\s\\S]*?condition: service_healthy/.test(dockerCompose) && dockerCompose.includes('NODE_ENV: test') && databaseContract.includes('startup_must_not_run_ddl: true') && !/api:[\\s\\S]*?prisma migrate deploy/.test(dockerCompose)],
-  ['Compose web and MCP wait for API health and probe role-appropriate endpoints', /web:[\\s\\S]*?condition: service_healthy/.test(dockerCompose) && /mcp-server:[\\s\\S]*?condition: service_healthy/.test(dockerCompose) && dockerCompose.includes('/livez') && dockerCompose.includes('/health')],
-  ['Compose MCPJungle services and Cloudflare edge remain opt-in profiles', /mcpjungle-db:[\\s\\S]*?profiles: \\[mcp-gateway\\]/.test(dockerCompose) && /mcpjungle:[\\s\\S]*?profiles: \\[mcp-gateway\\]/.test(dockerCompose) && /cloudflared:[\\s\\S]*?profiles: \\[cloudflare-edge\\]/.test(dockerCompose)],
-  ['Compose MCPJungle database credentials are mandatory and never default to empty', dockerCompose.includes('MCPJUNGLE_DB_PASSWORD:?Set MCPJUNGLE_DB_PASSWORD in .env') && !dockerCompose.includes('MCPJUNGLE_DB_PASSWORD:-')],
-  ['Compose local PostgreSQL and Redis publish host ports only on loopback', dockerCompose.includes('127.0.0.1:5432:5432') && dockerCompose.includes('127.0.0.1:6379:6379')],
+  ['Compose API waits for healthy local PostgreSQL and Redis', composeConfig.services.api.depends_on.postgres.condition === 'service_healthy' && composeConfig.services.api.depends_on.redis.condition === 'service_healthy'],
+  ['Compose migrations are opt-in, local-only, and never part of API startup', composeConfig.services.migrate.profiles.includes('migrations') && composeConfig.services.migrate.environment.NODE_ENV === 'test' && composeConfig.services.migrate.depends_on.postgres.condition === 'service_healthy' && !composeConfig.services.api.depends_on.migrate && databaseContract.includes('startup_must_not_run_ddl: true')],
+  ['Compose web and MCP wait for API health and use role-appropriate probes', composeConfig.services.web.depends_on.api.condition === 'service_healthy' && composeConfig.services['mcp-server'].depends_on.api.condition === 'service_healthy' && composeConfig.services.api.healthcheck.test.join(' ').includes('/livez') && composeConfig.services['mcp-server'].healthcheck.test.join(' ').includes('/health')],
+  ['Compose MCPJungle and Cloudflare edge remain opt-in profiles', composeConfig.services['mcpjungle-db'].profiles.includes('mcp-gateway') && composeConfig.services.mcpjungle.profiles.includes('mcp-gateway') && composeConfig.services.cloudflared.profiles.includes('cloudflare-edge')],
+  ['Compose MCPJungle database credentials are mandatory and never default to empty', composeConfig.services['mcpjungle-db'].environment.POSTGRES_PASSWORD.includes(':?Set MCPJUNGLE_DB_PASSWORD') && composeConfig.services.mcpjungle.environment.DATABASE_URL.includes(':?Set MCPJUNGLE_DB_PASSWORD') && !dockerCompose.includes('MCPJUNGLE_DB_PASSWORD:-')],
+  ['Compose local PostgreSQL and Redis publish host ports only on loopback', composeConfig.services.postgres.ports.includes('127.0.0.1:5432:5432') && composeConfig.services.redis.ports.includes('127.0.0.1:6379:6379')],
 );
 
 for (const [name, passed] of checks) console.log((passed ? 'PASS' : 'FAIL') + ' | ' + name);
