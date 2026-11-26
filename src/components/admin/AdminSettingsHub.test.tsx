@@ -20,7 +20,7 @@ describe('AdminSettingsHub directory', () => {
     document.body.appendChild(container);
     root = createRoot(container);
     await act(async () => root.render(<AdminSettingsHub />));
-    expect(container.querySelectorAll('a[href^="#/"]')).toHaveLength(12);
+    expect(container.querySelectorAll('[data-testid="workspace-area-link"]')).toHaveLength(12);
     expect(container.textContent).toContain('12 product areas');
     expect(container.textContent).toContain('Settings & workspace control');
   });
