@@ -88,28 +88,26 @@ export async function auditApplicationLayers({
   signal,
 } = {}) {
   const root = path.resolve(rootDir);
+  const repositoryPaths = [];
+  await walk(root, root, 0, signal, repositoryPaths);
+  const allFiles = repositoryPaths.map((file) => ({ path: file, layer: layerFor(file, layers) }));
   const layerResults = [];
-  const allFiles = [];
   for (const layer of layers) {
     abortIfNeeded(signal);
     const roots = [];
-    let fileCount = 0;
     for (const relativeRoot of layer.roots) {
       const absolute = path.resolve(root, relativeRoot);
       if (!absolute.startsWith(root + path.sep)) throw new Error(`Layer root escapes repository: ${relativeRoot}`);
       try {
         const { stat } = await import('node:fs/promises');
         const info = await stat(absolute);
-        if (!info.isDirectory()) continue;
-        roots.push(relativeRoot);
-        const files = [];
-        await walk(root, absolute, 0, signal, files);
-        fileCount += files.length;
-        allFiles.push(...files.map((file) => ({ path: file, layer: layer.id })));
+        if (info.isDirectory()) roots.push(relativeRoot);
       } catch (error) {
         if (error?.code !== 'ENOENT' && error?.code !== 'ENOTDIR') throw error;
       }
     }
+    const fileCount = allFiles.filter((item) => roots.some((relativeRoot) =>
+      item.path === relativeRoot || item.path.startsWith(relativeRoot + '/'))).length;
     layerResults.push({
       id: layer.id,
       name: layer.name,
@@ -123,13 +121,14 @@ export async function auditApplicationLayers({
   const layerByPath = new Map(allFiles.map((item) => [item.path, item.layer]));
   const crossLayerEdges = new Map();
   const unresolvedRelativeImports = [];
+  const oversizedSourceFilesSkipped = [];
   const unclassifiedSourceFiles = allFiles.filter((item) => item.layer === 'unclassified').map((item) => item.path);
 
   for (const item of allFiles) {
     abortIfNeeded(signal);
     const absolute = path.join(root, item.path);
     const { size } = await import('node:fs/promises').then(({ stat }) => stat(absolute));
-    if (size > MAX_FILE_BYTES) continue;
+    if (size > MAX_FILE_BYTES) { oversizedSourceFilesSkipped.push(item.path); continue; }
     const source = await readFile(absolute, { encoding: 'utf8', signal });
     IMPORT_PATTERN.lastIndex = 0;
     for (const match of source.matchAll(IMPORT_PATTERN)) {
@@ -164,6 +163,7 @@ export async function auditApplicationLayers({
     layers: layerResults,
     crossLayerDependencies: [...crossLayerEdges.values()].sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to)),
     unresolvedRelativeImports,
+    oversizedSourceFilesSkipped,
     unclassifiedSourceFiles,
     missingLayers,
     interpretation: {
