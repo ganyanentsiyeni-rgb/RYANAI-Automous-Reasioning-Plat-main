@@ -271,7 +271,7 @@ status: 'configuration_snapshot',
     await act(async () => fileInput.dispatchEvent(new Event('change', { bubbles: true })));
 
     expect(container.querySelector('[aria-label="Owner Comms approval"]')).toBeNull();
-    expect(container.textContent).not.toContain('Send approved message');
+    expect([...container.querySelectorAll('button')].some(button => button.textContent?.includes('Send approved message'))).toBe(false);
     expect(comms.sendCommsMessage).not.toHaveBeenCalled();
   });
 

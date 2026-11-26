@@ -205,11 +205,19 @@ describe('Plugin integrations centre', () => {
     expect(auth.updateUser).not.toHaveBeenCalled();
   });
 
-  it('allows owner and admin accounts to request WhatsApp and Twilio worker availability', async () => {
+  it('allows admins to request WhatsApp while keeping owner-only Twilio restricted', async () => {
     await mount({ isAdmin: true });
     const whatsapp = container.querySelector('[aria-label="Request WhatsApp Business for eligible workers"]') as HTMLInputElement;
     const twilio = container.querySelector('[aria-label="Request Twilio for eligible workers"]') as HTMLInputElement;
     expect(whatsapp.disabled).toBe(false);
+    expect(twilio.disabled).toBe(true);
+  });
+
+  it('allows owners to request Twilio while keeping admin-only WhatsApp restricted', async () => {
+    await mount({ isOwner: true });
+    const whatsapp = container.querySelector('[aria-label="Request WhatsApp Business for eligible workers"]') as HTMLInputElement;
+    const twilio = container.querySelector('[aria-label="Request Twilio for eligible workers"]') as HTMLInputElement;
+    expect(whatsapp.disabled).toBe(true);
     expect(twilio.disabled).toBe(false);
   });
   it('persists preferences only after verifying the authenticated account', async () => {
