@@ -375,7 +375,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
             Every mutation is sent to an administrator-protected API and requires an explicit confirmation.
           </p>
         </div>
-        <button type="button" onClick={() => void refresh()} disabled={loading} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/25 px-4 py-2 text-sm text-cyan-100 hover:bg-cyan-300/10 disabled:opacity-50">
+        <button type="button" onClick={() => void refresh()} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/25 px-4 py-2 text-sm text-cyan-100 hover:bg-cyan-300/10 disabled:opacity-50">
           <RefreshCw className={'h-4 w-4 ' + (loading ? 'animate-spin' : '')} /> Refresh control plane
         </button>
       </header>
