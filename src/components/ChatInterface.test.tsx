@@ -106,6 +106,7 @@ describe('Inference Console progress and result states', () => {
       undefined,
       undefined,
       copilotSettings,
+      expect.any(AbortSignal),
     );
   });
 
