@@ -64,6 +64,7 @@ export function analyzeMigrationDependencies(migrations) {
   const seenIds = new Set();
   const createdTables = new Set();
   const findings = [];
+  const externalDependencies = [];
   const unsupported = [];
   const duplicateMigrationIds = [];
   const invalidMigrationIds = [];
@@ -98,7 +99,10 @@ export function analyzeMigrationDependencies(migrations) {
         const references = [...sql.matchAll(/REFERENCES\s+([\w".]+)\s*\(/gi)];
         for (const ref of references) {
           const target = tableNameFromMatch(ref[1]);
-          if (!createdTables.has(target)) findings.push({ migrationId: migration.id, object: table, dependency: target, status: 'referenced_table_not_yet_created' });
+          if (!createdTables.has(target)) {
+            if (target.includes('.')) externalDependencies.push({ migrationId: migration.id, object: table, dependency: target, status: 'external_dependency_not_verified' });
+            else findings.push({ migrationId: migration.id, object: table, dependency: target, status: 'referenced_table_not_yet_created' });
+          }
         }
         continue;
       }
@@ -110,7 +114,10 @@ export function analyzeMigrationDependencies(migrations) {
         const refs = [...sql.matchAll(/REFERENCES\s+([\w".]+)\s*\(/gi)];
         for (const ref of refs) {
           const target = tableNameFromMatch(ref[1]);
-          if (!createdTables.has(target)) findings.push({ migrationId: migration.id, object: table, dependency: target, status: 'referenced_table_not_yet_created' });
+          if (!createdTables.has(target)) {
+            if (target.includes('.')) externalDependencies.push({ migrationId: migration.id, object: table, dependency: target, status: 'external_dependency_not_verified' });
+            else findings.push({ migrationId: migration.id, object: table, dependency: target, status: 'referenced_table_not_yet_created' });
+          }
         }
         continue;
       }
@@ -143,6 +150,7 @@ export function analyzeMigrationDependencies(migrations) {
     invalidMigrationIds,
     missingFiles,
     findings,
+    externalDependencies,
     unsupported: [...new Set(unsupported)],
     compatibility: 'not_verified',
     reason: complete
