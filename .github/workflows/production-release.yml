@@ -45,38 +45,11 @@ jobs:
           [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Release SHA is not a full commit SHA"; exit 1; }
           main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
           [[ "$TARGET_SHA" == "$main_sha" ]] || { echo "::error::Release SHA is no longer current main"; exit 1; }
-          required=(
-            "Validate (typecheck, lint, test, build)"
-            "MCP server and workflow worker"
-            "Integration and end-to-end checks"
-            "PostgreSQL 19 compatibility"
-            "Issue 435 migrations and attachment security"
-            "Audit Render API configuration (read-only)"
-            "validate-database"
-            "Upgrade legacy pgvector database safely (quoted)"
-            "Upgrade legacy pgvector database safely (unquoted)"
-            "Test agent API contracts"
-            "Dependency audit"
-            "Trivy filesystem scan"
-            "Analyze (javascript-typescript)"
-            "Analyze (python)"
-            "TruffleHog secret audit"
-            "Codacy Security Scan"
-            "Scan api image"
-            "Scan web image"
-            "Generate & Upload SBOMs"
-          )
           gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/check-runs?per_page=100" --jq '.check_runs[]' > check-runs.ndjson
-          jq -s . check-runs.ndjson > checks.json
-          for name in "${required[@]}"; do
-            matches="$(jq --arg name "$name" '[.[] | select(.name == $name)]' checks.json)"
-            count="$(jq 'length' <<< "$matches")"
-            [[ "$count" -gt 0 ]] || { echo "::error::Required exact-SHA check is missing: $name"; exit 1; }
-            jq -e 'all(.[]; .status == "completed" and .conclusion == "success")' <<< "$matches" >/dev/null || {
-              echo "::error::Required exact-SHA check is pending or unsuccessful: $name"; exit 1;
-            }
-          done
-          echo "All required CI and security check attempts passed for $TARGET_SHA"
+          node --test scripts/ci/require-latest-exact-sha-checks.test.mjs
+          node scripts/ci/require-latest-exact-sha-checks.mjs check-runs.ndjson "$TARGET_SHA"
+
+
 
   release-production:
     needs: release-gate
