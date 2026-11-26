@@ -78,6 +78,9 @@ jobs:
           - image: mcp
             file: mcp-server/Dockerfile
             target: ''
+          - image: studio-worker
+            file: Dockerfile
+            target: studio-worker
           - image: migrate
             file: Dockerfile
             target: migrate
@@ -172,7 +175,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [standalone-api, mcp, migrate]
+        image: [standalone-api, mcp, studio-worker, migrate]
     steps:
       # The artifact is absent when the image failed to build, in which case
       # there is nothing to upload and the scan job already reports the failure.
