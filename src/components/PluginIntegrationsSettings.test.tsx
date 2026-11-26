@@ -205,6 +205,13 @@ describe('Plugin integrations centre', () => {
     expect(auth.updateUser).not.toHaveBeenCalled();
   });
 
+  it('allows owner and admin accounts to request WhatsApp and Twilio worker availability', async () => {
+    await mount({ isAdmin: true });
+    const whatsapp = container.querySelector('[aria-label="Request WhatsApp Business for eligible workers"]') as HTMLInputElement;
+    const twilio = container.querySelector('[aria-label="Request Twilio for eligible workers"]') as HTMLInputElement;
+    expect(whatsapp.disabled).toBe(false);
+    expect(twilio.disabled).toBe(false);
+  });
   it('persists preferences only after verifying the authenticated account', async () => {
     await mount({ isOwner: true });
     const toggle = container.querySelector('[aria-label="Request WhatsApp Business for eligible workers"]') as HTMLInputElement;

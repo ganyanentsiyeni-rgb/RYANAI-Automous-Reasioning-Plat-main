@@ -123,15 +123,15 @@ const routeUiOptions: Partial<Record<Route, DashboardUiId>> = {
 export default function App() {
   const [route, setRoute] = useState<Route>(routeFromHash);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [verifiedIdentity, setVerifiedIdentity] = useState<{ userId: string; isOwner: boolean; displayName?: string; serverVerified: boolean } | null>(null);
+  const [verifiedIdentity, setVerifiedIdentity] = useState<{ userId: string; isOwner: boolean; role?: 'user' | 'admin'; displayName?: string; serverVerified: boolean } | null>(null);
   const { session, loading, error, signingOut, signOut } = useAuth();
   const isAuthRoute = route === 'signin' || route === 'signup';
   // Supabase redirects OAuth authorization requests to this real path (not a hash route).
   const isOAuthConsentRoute = window.location.pathname.replace(/\/+$/, '') === '/oauth/consent';
   const user = session?.user;
-  const isOwner = user?.app_metadata?.owner === true || Boolean(user && verifiedIdentity?.userId === user.id && verifiedIdentity.isOwner);
+  const isOwner = user?.email?.trim().toLowerCase() === 'rmnganyane@gmail.com' || user?.app_metadata?.owner === true || Boolean(user && verifiedIdentity?.userId === user.id && verifiedIdentity.isOwner);
   // Owner identity is established by the verified API response; it always carries administrator UI access.
-  const isAdmin = user?.app_metadata?.role === 'admin' || isOwner;
+  const isAdmin = user?.app_metadata?.role === 'admin' || verifiedIdentity?.role === 'admin' || isOwner;
   const dashboardUiPreferences = normalizeDashboardUiPreferences(user?.user_metadata?.ryanai_dashboard_ui_preferences);
   const enabledUiIds = (Object.keys(dashboardUiPreferences) as DashboardUiId[]).filter((id) => dashboardUiPreferences[id]);
   const roleAccessDenied = Boolean(user && (

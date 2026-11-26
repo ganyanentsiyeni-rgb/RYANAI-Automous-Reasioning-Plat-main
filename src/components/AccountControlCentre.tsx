@@ -61,7 +61,7 @@ export default function AccountControlCentre({
       {open && (
         <>
           <button type="button" aria-label="Close account menu overlay" className="fixed inset-0 z-40 cursor-default" onClick={() => setOpen(false)} />
-          <section id="ryanai-account-menu" aria-label="Account and personal control centre" className={`absolute z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-cyan-300/15 bg-[#0b111c] shadow-2xl shadow-black/50 ${compact ? 'right-0' : 'left-0'}`}>
+          <section id="ryanai-account-menu" aria-label="Account and personal control centre" className={`absolute z-50 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-cyan-300/15 bg-[#0b111c] shadow-2xl shadow-black/50 ${compact ? 'right-0 top-full mt-2' : 'bottom-full left-0 mb-2'}`}>
             <div className="border-b border-white/10 bg-white/[0.03] p-4">
               <div className="flex items-center gap-3">
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-cyan-300/20 bg-cyan-300/10 text-base font-bold text-cyan-100">{initials}</span>
