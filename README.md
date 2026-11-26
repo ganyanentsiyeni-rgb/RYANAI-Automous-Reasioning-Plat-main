@@ -1677,3 +1677,7 @@ Account-level Dashboard UI preferences control whether registered workspaces app
 - This repository change does not update an existing Render workspace or service by itself. Verify the exact Render workspace, service IDs, linked repository, branch, root, Dockerfile, plan, region, and latest deployment before claiming the live service is aligned.
 - Railway service source/build settings are provider-side configuration. The current live Railway service must be verified against this repository before it can be considered aligned. Never accept staged changes or deploy before exact-SHA CI/CD and security gates pass.
 - Render, Railway, and Vercel remain independent provider jobs after the explicit Push Deploy gate. Provider failure is recorded separately and does not block attempts to the other providers.
+
+- Fixed the browser TauriBridge health fallback import and added regression coverage.
+- The disposable PostgreSQL agent queue/notification integration now explicitly runs in test mode; this avoids applying hosted-production Supabase project requirements to the loopback CI database.
+- The memory uniqueness migration's duplicate-pair failure is an intentional negative fixture, not a production-data issue.
