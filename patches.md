@@ -332,6 +332,13 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - This is a frontend request-feedback repair only. It does not change memory authorization, persistence, retention, or database schema.
 - Tests have not been executed in this environment; exact-head CI remains required. No merge, deployment, migration, credential change, or production modification.
 
+
+## 2026-11-26 — Reset Quant Lab state on account changes
+
+- Keyed the Quant Lab page by the authenticated user ID so an account switch remounts the workspace and clears in-memory experiments, imported dataset selection, signals, backtest results, and related notices from the prior account.
+- Added an application-level regression test that switches the authenticated session while remaining on the Quant Lab route and verifies the page is remounted for the new user.
+- This is a frontend state-isolation safeguard; authenticated API scoping remains authoritative. No brokerage connection, live order capability, database migration, credential change, deployment, or production configuration was changed.
+- Tests have not been executed locally; exact-head CI and security checks remain required before any merge or deployment.
 ## 2026-11-26 — Inference Console cancellation safety
 
 - Added an explicit Cancel control to the Inference Console while a reasoning stream is running.
