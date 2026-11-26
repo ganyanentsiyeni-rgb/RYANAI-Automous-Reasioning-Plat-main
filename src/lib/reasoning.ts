@@ -21,6 +21,7 @@ export async function streamReasoning(
   preferredLanguage?: string,
   expectedUserId?: string,
   responsePreferences?: unknown,
+  signal?: AbortSignal,
 ): Promise<void> {
   try {
     const language = preferredLanguage && isRyanLanguage(preferredLanguage) ? preferredLanguage : DEFAULT_LANGUAGE;
@@ -37,6 +38,7 @@ export async function streamReasoning(
           language,
           ...(responsePreferences !== undefined ? { responsePreferences: normalizeResponsePreferences(responsePreferences) } : {}),
         }),
+        signal,
       },
       expectedUserId,
     );
@@ -111,6 +113,7 @@ export async function streamReasoning(
     }
     callbacks.onDone?.();
   } catch (err) {
+    if (signal?.aborted) return;
     const message = err instanceof Error ? err.message : 'Unknown error';
     callbacks.onError?.(message);
   }
