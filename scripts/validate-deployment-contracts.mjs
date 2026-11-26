@@ -304,6 +304,16 @@ checks.push(
   ['Staging deploy guard accepts exactly the Blueprint staging API name', renderDeploy.includes('startswith("ryanai-api-staging")') && !renderDeploy.includes('startswith("ryanai-staging")') && stagingServiceNames.includes('ryanai-api-staging')],
 );
 
+
+checks.push(
+  ['Compose API waits for healthy local PostgreSQL and Redis', /api:[\\s\\S]*?depends_on:[\\s\\S]*?postgres:[\\s\\S]*?condition: service_healthy[\\s\\S]*?redis:[\\s\\S]*?condition: service_healthy/.test(dockerCompose)],
+  ['Compose migrations are opt-in, local-only, and never part of API startup', /migrate:[\\s\\S]*?profiles: \\[migrations\\][\\s\\S]*?condition: service_healthy/.test(dockerCompose) && dockerCompose.includes('NODE_ENV: test') && dockerCompose.includes('startup_must_not_run_ddl: true') && !/api:[\\s\\S]*?prisma migrate deploy/.test(dockerCompose)],
+  ['Compose web and MCP wait for API health and probe role-appropriate endpoints', /web:[\\s\\S]*?condition: service_healthy/.test(dockerCompose) && /mcp-server:[\\s\\S]*?condition: service_healthy/.test(dockerCompose) && dockerCompose.includes('/livez') && dockerCompose.includes('/health')],
+  ['Compose MCPJungle services and Cloudflare edge remain opt-in profiles', /mcpjungle-db:[\\s\\S]*?profiles: \\[mcp-gateway\\]/.test(dockerCompose) && /mcpjungle:[\\s\\S]*?profiles: \\[mcp-gateway\\]/.test(dockerCompose) && /cloudflared:[\\s\\S]*?profiles: \\[cloudflare-edge\\]/.test(dockerCompose)],
+  ['Compose MCPJungle database credentials are mandatory and never default to empty', dockerCompose.includes('MCPJUNGLE_DB_PASSWORD:?Set MCPJUNGLE_DB_PASSWORD in .env') && !dockerCompose.includes('MCPJUNGLE_DB_PASSWORD:-')],
+  ['Compose local PostgreSQL and Redis publish host ports only on loopback', dockerCompose.includes('127.0.0.1:5432:5432') && dockerCompose.includes('127.0.0.1:6379:6379')],
+);
+
 for (const [name, passed] of checks) console.log((passed ? 'PASS' : 'FAIL') + ' | ' + name);
 const failed = checks.filter(([, passed]) => !passed);
 console.log('\nDeployment contract validation: ' + (checks.length - failed.length) + '/' + checks.length + ' passed.');
