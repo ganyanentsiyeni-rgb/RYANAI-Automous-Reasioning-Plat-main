@@ -8,26 +8,14 @@ const sid = 'SM' + '1'.repeat(32);
 const env = { RYANAI_OWNER_PHONE: '+15555550123' } as NodeJS.ProcessEnv;
 
 describe('durable WhatsApp GitHub PR review approval', () => {
-  it('records an approval only through a conditional exact-owner, exact-SHA update', async () => {
-    const query = vi.fn().mockResolvedValue([{
-      id: approvalId, pull_request_number: 42, expected_head_sha: sha, status: 'approved',
-    }]);
-    const result = await recordOwnerGitHubPrReviewDecision(
+  it('fails closed on approval until independent Gen-X authorization is available', async () => {
+    const query = vi.fn();
+    await expect(recordOwnerGitHubPrReviewDecision(
       { $queryRawUnsafe: query }, {
         ownerUserId, approvalId, expectedHeadSha: sha, inboundMessageSid: sid, decision: 'approve',
       }, env,
-    );
-    expect(result.status).toBe('approved');
-    expect(query).toHaveBeenCalledOnce();
-    expect(query.mock.calls[0][0]).toContain("approval.status = 'pending'");
-    expect(query.mock.calls[0][0]).toContain('approval.expected_head_sha = $5');
-    expect(query.mock.calls[0][0]).toContain('comms_verified_destinations');
-    expect(query.mock.calls[0][0]).toContain('approval.inbound_message_sid IS NULL');
-    expect(query.mock.calls[0].slice(1)).toEqual([
-      approvalId, ownerUserId,
-      'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main',
-      sid, sha, 'approved', '+15555550123',
-    ]);
+    )).rejects.toThrow('genx_authorization_unavailable');
+    expect(query).not.toHaveBeenCalled();
   });
 
   it('records a rejection without setting approved or consumed timestamps', async () => {
