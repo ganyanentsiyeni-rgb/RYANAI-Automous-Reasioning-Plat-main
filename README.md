@@ -46,6 +46,8 @@ AWS ECS/Fargate and Azure AKS are separate, opt-in staging deployment workflows;
 
 - **AWS:** build the API image from `Dockerfile.api`, publish an immutable SHA-tagged image to ECR, assume a narrowly scoped AWS role through GitHub OIDC, verify the ECS service is active and tagged `Environment=staging`, update the configured task definition/service, wait for service stability, and verify the configured HTTPS staging `/readyz` endpoint.
 - **Azure:** build the same API image, publish an immutable SHA-tagged image to ACR using Azure federated identity, apply the configured AKS Kustomize overlay in a staging namespace, update the named Deployment container, wait for rollout, and verify the configured HTTPS staging `/readyz` endpoint.
+- **AWS:** build the API image from `Dockerfile.api`, publish an immutable SHA-tagged image to ECR, assume a narrowly scoped AWS role through GitHub OIDC, update the configured ECS task definition/service, wait for service stability, and verify the configured HTTPS `/readyz` endpoint.
+- **Azure:** build the same API image, publish an immutable SHA-tagged image to ACR using Azure federated identity, apply the configured AKS Kustomize overlay, update the named Deployment container, wait for rollout, and verify the configured HTTPS `/readyz` endpoint.
 - **Credentials:** AWS uses `AWS_ROLE_TO_ASSUME` (no static access keys). Azure uses federated `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID`. Scope each identity to the staging registry and target service/cluster only.
 - **Required configuration:** set the corresponding `AWS_ECS_DEPLOY_ENABLED` or `AZURE_AKS_DEPLOY_ENABLED` repository variable to `true` only after staging isolation, OIDC trust, registry permissions, task definition/manifests, health URL, and environment protection are verified. Until then, the lanes remain disabled or fail closed.
 - **Evidence:** each workflow records candidate SHA, immutable image URI, workflow run, provider rollout result, and runtime health separately. A successful image build or control-plane rollout alone is not a health pass.
@@ -1123,7 +1125,7 @@ docker build -f Dockerfile --target studio-worker -t ryanai-studio-worker:local 
 
 # Build the standalone API and MCP images.
 docker build -f Dockerfile.api -t ryanai-api:local .
-docker build -f Dockerfile.mcp_server -t ryanai-mcp:local .
+docker build -f mcp-server/Dockerfile -t ryanai-mcp:local .
 
 # Generic production Dockerfile example.
 docker build -f docker/Dockerfile.prod -t myapp:prod .

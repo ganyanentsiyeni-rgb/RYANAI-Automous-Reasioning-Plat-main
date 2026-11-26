@@ -10,7 +10,7 @@ on:
     paths:
       - 'Dockerfile'
       - 'Dockerfile.api'
-      - 'Dockerfile.studio-worker'
+      - 'Dockerfile'
       - 'index.html'
       - 'mcp-server/**'
       - 'docker-compose.yml'
@@ -109,8 +109,8 @@ jobs:
             file: Dockerfile.api
             target: api
           - image: studio-worker
-            file: Dockerfile.studio-worker
-            target: ''
+            file: Dockerfile
+            target: studio-worker
           - image: web
             file: Dockerfile
             target: web
