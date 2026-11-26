@@ -502,3 +502,10 @@ Both lanes are disabled unless their provider enablement and staging-isolation v
 - Removed the remaining empty-password fallback from the MCPJungle PostgreSQL initializer, matching the gateway connection requirement.
 - Extended static contracts to protect API liveness (`/livez`, `/health`) from dependency readiness (`/readyz`), MCP's liveness-based startup ordering, its explicit API readiness target, and local-only migration URL routing.
 - CI's Docker workflow includes `docker compose --file docker-compose.yml config --quiet`; execution on the exact PR SHA is pending. No local Docker daemon/runtime validation is claimed.
+
+
+### AWS ECS and Azure AKS staging gate alignment (2026-11-26)
+
+- Expanded both staging workflows to require the full configured application, database compatibility, dependency, static-analysis, secret-audit, image-scan, and SBOM check set on the candidate commit before credentials, image publication, or cluster/service mutation can occur.
+- Existing explicit `STAGE` confirmation, disabled-by-default provider flags, staging-isolation confirmation, OIDC authentication, immutable SHA image tags, and runtime `/readyz` verification remain in place.
+- This is workflow-level defense in depth; it does not activate AWS/Azure, configure cloud credentials, deploy, or replace repository branch protection.
