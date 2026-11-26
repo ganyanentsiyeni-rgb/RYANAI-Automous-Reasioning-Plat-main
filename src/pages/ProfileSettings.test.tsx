@@ -146,6 +146,7 @@ describe('RyanAI Settings', () => {
 
   it('allows the verified owner to access administrator workspace preferences', async () => {
     await mount({ isOwner: true });
+    expect(container.textContent).toContain('Assigned access roleOwner');
     expect((container.querySelector('[data-testid="ui-toggle-admin"]') as HTMLInputElement).disabled).toBe(false);
     expect((container.querySelector('[data-testid="ui-toggle-comms"]') as HTMLInputElement).disabled).toBe(false);
   });
