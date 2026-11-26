@@ -330,7 +330,8 @@ export async function verifyDatabaseBackupArtifacts(inventory: BackupInventory, 
   } catch { return {backupId:item.backupId,status:'failed' as const,bytesRehashed:false,actualBytes:null,reason:'Stored artifact could not be downloaded for verification.'}; }
  }));
 }
-\nexport function backupReadbackMatches(original: Uint8Array, stored: Uint8Array): boolean {
+
+export function backupReadbackMatches(original: Uint8Array, stored: Uint8Array): boolean {
   if (original.byteLength !== stored.byteLength) return false;
   const originalDigest = createHash('sha256').update(original).digest('hex');
   const storedDigest = createHash('sha256').update(stored).digest('hex');
