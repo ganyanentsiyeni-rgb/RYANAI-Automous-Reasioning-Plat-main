@@ -401,6 +401,14 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - This is frontend integration only. Server-side authorization and execution boundaries are unchanged; no deployment, migration, credential change, or production action.
 
 
+## 2026-11-26 — Admin Console backend plugin capability catalogue
+
+- Added a read-only Admin Console view backed by the authenticated `GET /api/plugins/registry` endpoint.
+- Displays server-declared provider metadata, capability IDs, risk classifications, human-approval flags, data classifications, manifest versions and adapter registration state.
+- Validates the response shape and visibly distinguishes API/contract failures from a confirmed empty catalogue.
+- Explicitly does not infer user permissions, provider connection/health, or executable authority from catalogue metadata. No credentials, connection records or adapter methods are exposed by the route.
+- Added component tests for authenticated loading, manifest rendering, invalid payloads and HTTP 403. Tests/build have not been run locally in this workflow; exact-head CI remains required.
+- No backend authorization policy, provider credential, database schema, deployment, merge or production configuration was changed.
 ## 2026-11-26 — Command Cockpit AgentRun queue visibility
 
 - Added a dedicated AgentRun queue panel to the Command Cockpit using the shared authenticated `useRyanOperations` hook.
