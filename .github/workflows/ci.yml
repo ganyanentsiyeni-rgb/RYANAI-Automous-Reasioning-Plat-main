@@ -60,6 +60,9 @@ jobs:
       - name: Test read-only Prisma migration ledger audit
         run: node --test scripts/audit-prisma-migration-readiness.node-test.mjs
 
+      - name: Test offline PostgreSQL migration dependency audit (no database connection)
+        run: npm run test:offline-migration-dependencies
+
       - name: Install all standalone Node.js workspaces
         run: npm --prefix mcp-server ci --include=dev && npm --prefix workflows-ryanai ci --include=dev
 
