@@ -30,6 +30,12 @@ jobs:
     env:
       TARGET_SHA: ${{ inputs.commit_sha }}
     steps:
+      - name: Check out exact target SHA for canonical release validator
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA || github.sha }}
+          persist-credentials: false
+
       - name: Validate exact current main SHA
         env:
           GH_TOKEN: ${{ github.token }}
