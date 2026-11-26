@@ -233,7 +233,8 @@ async function main() {
   const root = process.cwd();
   const migrationsPath = path.join(root, 'prisma', 'migrations');
   const entries = await readdir(migrationsPath, { withFileTypes: true });
-  const ids = entries.filter(entry => entry.isDirectory() && MIGRATION_ID.test(entry.name))
+  // Include every directory so malformed migration IDs are reported instead of silently skipped.
+  const ids = entries.filter(entry => entry.isDirectory())
     .map(entry => entry.name).sort();
   const migrations = await Promise.all(ids.map(async id => {
     try {
