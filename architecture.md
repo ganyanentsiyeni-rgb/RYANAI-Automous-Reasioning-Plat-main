@@ -172,3 +172,8 @@ AWS uses GitHub OIDC to assume a scoped IAM role, pushes an immutable SHA-tagged
 Azure uses workload federation through Azure Login, pushes an immutable SHA-tagged API image to ACR, applies a configured AKS Kustomize overlay in a staging namespace, updates a named Kubernetes Deployment container, waits for rollout, and checks the HTTPS staging API `/readyz` endpoint.
 
 Each provider emits independent run, candidate SHA, image URI, rollout and health evidence. Neither cloud lane provisions infrastructure, changes secrets, runs migrations, or deploys to production. Provider identity trust, least-privilege permissions, registry resources, task definitions/manifests, staging network isolation and environment protection must be provisioned and reviewed separately before enabling either lane.
+
+
+## Docker API and worker image parity (2026-11-26)
+
+The root multi-target `Dockerfile` and standalone `Dockerfile.api` are separate build entrypoints for the API runtime. Their security and startup contracts must remain aligned: system/Supabase CA roots, strict certificate validation wrapper, non-root execution, liveness healthcheck, init process, and the optional non-blocking startup backup before the API launcher. The standalone API file also provides a `studio-worker` target; it must remain behaviorally aligned with the root Dockerfile worker target. Static deployment-contract assertions guard the declared directives and required copied artifacts. They do not substitute for successful image builds or live runtime checks.

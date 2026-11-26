@@ -480,3 +480,11 @@ Added two manual-only provider lanes on this repair branch:
 - Updated `scripts/audit-deployment-readiness.mjs` and the CI readiness environment mapping to audit OIDC-based AWS configuration and Azure staging deployment/health/isolation settings. Static AWS access keys are no longer the expected AWS identity mechanism.
 
 Both lanes are disabled unless their provider enablement and staging-isolation variables are explicitly set to `true`, and each manual dispatch requires `STAGE`. They are not part of the existing three-provider PUSH DEPLOY fan-out. No cloud account, role, registry, cluster, service, environment secret, production resource, or deployment was created or modified. Workflow execution and live provider readiness remain unverified.
+
+
+## 2026-11-26 — Docker API and Studio Worker runtime parity guard
+
+- Extended deployment-contract validation to compare the root multi-target Dockerfile and standalone API Dockerfile runtime healthcheck, entrypoint, and startup command.
+- Added required-runtime-artifact checks for package metadata, database configuration, dependencies, server output, source/scripts, quant engine, startup backup, and CA verification wrapper.
+- Added parity checks for the Studio Worker target's disabled HTTP healthcheck and exact worker process command.
+- Static contract assertions only; Docker builds and runtime behavior remain subject to exact-SHA CI verification. No image publishing, deployment, migration, secret change, or production access.
