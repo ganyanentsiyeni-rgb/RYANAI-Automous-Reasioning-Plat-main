@@ -1525,3 +1525,12 @@ The backend module-boundary scanner's regex escaping and path normalization were
 ## PA Agent sourced skills
 
 PA now exposes a governed sourced-skill registry with provenance and bounded execution modes. Active capabilities include research/source verification, observability and synthetic verification, correction-to-guardrail proposals, Supabase database governance, edge security watch, and incident evidence/recovery. The provider/model-routing proposal remains catalogued but disabled while OpenRouter work is paused. See [RyanAI agent skills](RyanAI.agent.skills.md) and [patches.md](patches.md).
+
+
+## Owner access and dashboard workspace preferences
+
+The Supabase-verified account `rmnganyane@gmail.com` is the canonical RyanAI owner. The API resolves that verified email to both `isOwner: true` and `role: admin`; the optional `RYANAI_OWNER_EMAIL` may designate an additional owner but cannot displace the canonical owner. Browser-editable user metadata is never an authorization source.
+
+The fourteen Dashboard UI options control navigation and dashboard-shortcut visibility only. Settings remains available. Hiding a workspace does not revoke its server-side permission, and enabling a preference does not grant access. Admin Console and RyanAI Communications retain their separate verified administrator/owner authorization checks. Desktop and mobile navigation use the same visibility rules.
+
+This change is delivered through a reviewable pull request. It does not authorize production deployment, database migrations, credential changes, or a bypass of required CI/security checks.
