@@ -36,7 +36,12 @@ jobs:
           node-version: 22.13.1
           cache: npm
           cache-dependency-path: apps/mobile/package.json
-      - name: Install pinned mobile dependencies
+      - name: Warn when mobile lockfile is missing
+        run: |
+          if [ ! -f package-lock.json ]; then
+            echo "::warning title=Mobile lockfile missing::apps/mobile/package-lock.json is not committed, so this install is not reproducible. Commit a lockfile and switch this step to npm ci."
+          fi
+      - name: Install mobile dependencies
         run: npm install --no-audit --no-fund
       - name: TypeScript validation
         run: npm run typecheck
