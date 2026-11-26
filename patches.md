@@ -355,3 +355,7 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - This is a repository Blueprint correction only. It does not mutate the inaccessible live Render workspace, existing service settings, or deployments.
 - Railway source/build alignment remains blocked by Railway account suspension. No service, source, volume, variable, or deployment changes were applied.
 - Required exact-SHA CI/security checks, a recorded human approval, and explicit Push Deploy remain mandatory before any provider deployment.
+
+- Fixed the missing `fetchSystemHealth` import in the browser fallback of `TauriBridge` and added a regression test for browser system-health checks.
+- Corrected the disposable PostgreSQL notification/queue CI step to run with `NODE_ENV=test` and explicit disposable-database flags. The previous job imported the Prisma singleton with its production default and incorrectly required a hosted Supabase project mapping for loopback CI PostgreSQL.
+- The duplicate `(user_id, key)` migration preflight is an intentional negative test; it passed. No production memory records were changed.
