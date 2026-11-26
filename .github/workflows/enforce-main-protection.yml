@@ -20,6 +20,9 @@ jobs:
     name: Apply and verify reviewed main protection
     runs-on: ubuntu-latest
     steps:
+      - name: Check out the exact workflow revision
+        uses: actions/checkout@v4
+
       - name: Validate confirmation and administrator credential
         env:
           CONFIRMATION: ${{ inputs.confirmation }}
@@ -35,72 +38,77 @@ jobs:
             exit 1
           }
 
-      - name: Build complete reviewed ruleset payload
+      - name: Build ruleset from canonical release-check inventory
         run: |
           set -euo pipefail
-          cat > ruleset.json <<'JSON'
-          {
-            "name": "main-protection",
-            "target": "branch",
-            "enforcement": "active",
-            "bypass_actors": [],
-            "conditions": {
-              "ref_name": {
-                "include": ["refs/heads/main"],
-                "exclude": []
-              }
-            },
-            "rules": [
-              { "type": "deletion" },
-              { "type": "non_fast_forward" },
-              { "type": "required_linear_history" },
-              {
-                "type": "pull_request",
-                "parameters": {
-                  "required_approving_review_count": 1,
-                  "dismiss_stale_reviews_on_push": true,
-                  "require_code_owner_review": false,
-                  "require_last_push_approval": false,
-                  "require_extra_approval_for_unattributed_changes": false,
-                  "required_review_thread_resolution": true,
-                  "allowed_merge_methods": ["merge", "squash", "rebase"]
-                }
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          catalog_path = Path("scripts/ci/required-release-checks.json")
+          required = json.loads(catalog_path.read_text(encoding="utf-8"))
+          if not isinstance(required, list) or len(required) != 19:
+              raise SystemExit("Expected exactly 19 canonical release check contexts")
+          if any(not isinstance(name, str) or not name.strip() for name in required):
+              raise SystemExit("Release check contexts must be non-empty strings")
+          if len(set(required)) != len(required):
+              raise SystemExit("Canonical release check inventory contains duplicates")
+
+          payload = {
+              "name": "main-protection",
+              "target": "branch",
+              "enforcement": "active",
+              "bypass_actors": [],
+              "conditions": {
+                  "ref_name": {
+                      "include": ["refs/heads/main"],
+                      "exclude": []
+                  }
               },
-              {
-                "type": "required_status_checks",
-                "parameters": {
-                  "strict_required_status_checks_policy": true,
-                  "do_not_enforce_on_create": false,
-                  "required_status_checks": [
-                    { "context": "Single-owner release gate" },
-                    { "context": "Validate (typecheck, lint, test, build)" },
-                    { "context": "MCP server and workflow worker" },
-                    { "context": "Issue 435 migrations and attachment security" },
-                    { "context": "Analyze (javascript-typescript)" },
-                    { "context": "Analyze (python)" },
-                    { "context": "TruffleHog secret audit" }
-                  ]
-                }
-              }
-            ]
+              "rules": [
+                  {"type": "deletion"},
+                  {"type": "non_fast_forward"},
+                  {"type": "required_linear_history"},
+                  {
+                      "type": "pull_request",
+                      "parameters": {
+                          "required_approving_review_count": 1,
+                          "dismiss_stale_reviews_on_push": True,
+                          "require_code_owner_review": False,
+                          "require_last_push_approval": False,
+                          "require_extra_approval_for_unattributed_changes": False,
+                          "required_review_thread_resolution": True,
+                          "allowed_merge_methods": ["merge", "squash", "rebase"]
+                      }
+                  },
+                  {
+                      "type": "required_status_checks",
+                      "parameters": {
+                          "strict_required_status_checks_policy": True,
+                          "do_not_enforce_on_create": False,
+                          "required_status_checks": [{"context": name} for name in required]
+                      }
+                  }
+              ]
           }
-          JSON
+          Path("ruleset.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+          print(f"Prepared {len(required)} unique exact required contexts")
+          PY
           python3 -m json.tool ruleset.json >/dev/null
 
-      - name: Locate and update the existing main ruleset
+      - name: Update the existing main ruleset
         env:
           GH_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
         run: |
           set -euo pipefail
-          RULESET_ID="27357206"
           gh api --method PUT \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "/repos/${GITHUB_REPOSITORY}/rulesets/${RULESET_ID}" \
+            "/repos/${GITHUB_REPOSITORY}/rulesets/27357206" \
             --input ruleset.json > ruleset-updated.json
           python3 -m json.tool ruleset-updated.json >/dev/null
 
-      - name: Verify the live ruleset after update
+      - name: Verify live ruleset against canonical inventory
         env:
           GH_TOKEN: ${{ secrets.GH_ADMIN_TOKEN }}
         run: |
@@ -112,10 +120,10 @@ jobs:
 
           python3 - <<'PY'
           import json
+          from pathlib import Path
 
-          with open("ruleset-final.json", encoding="utf-8") as source:
-              data = json.load(source)
-
+          data = json.loads(Path("ruleset-final.json").read_text(encoding="utf-8"))
+          required = json.loads(Path("scripts/ci/required-release-checks.json").read_text(encoding="utf-8"))
           assert data.get("id") == 27357206, "Unexpected ruleset ID"
           assert data.get("name") == "main-protection", "Unexpected ruleset name"
           assert data.get("enforcement") == "active", "Ruleset is not active"
@@ -123,39 +131,32 @@ jobs:
           assert "refs/heads/main" in data.get("conditions", {}).get("ref_name", {}).get("include", []), "main branch condition missing"
 
           rules = {rule["type"]: rule.get("parameters", {}) for rule in data.get("rules", [])}
-          assert {"deletion", "non_fast_forward", "required_linear_history", "pull_request", "required_status_checks"} <= set(rules), "A required protection rule is missing"
+          expected_types = {"deletion", "non_fast_forward", "required_linear_history", "pull_request", "required_status_checks"}
+          assert expected_types <= set(rules), "A required protection rule is missing"
 
           pr = rules["pull_request"]
-          assert pr.get("required_approving_review_count") == 1, "At least one independent approving review is required for main"
-          assert pr.get("dismiss_stale_reviews_on_push") is True, "Stale review dismissal must be enabled"
-          assert pr.get("require_code_owner_review") is False, "Code-owner approval must not block a reviewed repository"
-          assert pr.get("require_last_push_approval") is False, "Last-push approval cannot be required without a second reviewer"
-          assert pr.get("require_extra_approval_for_unattributed_changes") is False, "Extra approval for unattributed changes cannot be required in reviewed mode"
-          assert pr.get("required_review_thread_resolution") is True, "Review thread resolution must be required"
+          assert pr.get("required_approving_review_count") == 1, "One independent approval is required"
+          assert pr.get("dismiss_stale_reviews_on_push") is True, "Stale approvals must be dismissed after pushes"
+          assert pr.get("required_review_thread_resolution") is True, "Review threads must be resolved"
+          assert pr.get("require_code_owner_review") is False, "Unexpected code-owner approval requirement"
+          assert pr.get("require_last_push_approval") is False, "Unexpected last-push approval requirement"
 
           checks = rules["required_status_checks"].get("required_status_checks", [])
-          contexts = {item.get("context") for item in checks}
-          required = {
-              "Single-owner release gate",
-              "Validate (typecheck, lint, test, build)",
-              "MCP server and workflow worker",
-              "Issue 435 migrations and attachment security",
-              "Analyze (javascript-typescript)",
-              "Analyze (python)",
-              "TruffleHog secret audit",
-          }
-          assert len(checks) == len(required), "Required check list contains duplicates or unexpected entries"
-          assert contexts == required, (
-              f"Required check contexts differ; missing={sorted(required - contexts)}, "
-              f"unexpected={sorted(contexts - required)}"
+          contexts = [item.get("context") for item in checks]
+          assert len(contexts) == len(set(contexts)), "Live ruleset contains duplicate check contexts"
+          assert set(contexts) == set(required) and len(contexts) == 19, (
+              f"Live required checks differ from canonical inventory; missing={sorted(set(required)-set(contexts))}, "
+              f"unexpected={sorted(set(contexts)-set(required))}"
           )
           assert rules["required_status_checks"].get("strict_required_status_checks_policy") is True, "Strict status-check policy is disabled"
-
-          print("Verified reviewed ruleset 27357206:")
           print(json.dumps({
+              "ruleset_id": data["id"],
               "enforcement": data["enforcement"],
               "bypass_actors": data.get("bypass_actors", []),
-              "pull_request": pr,
-              "required_status_checks": sorted(contexts),
+              "approvals_required": pr["required_approving_review_count"],
+              "stale_reviews_dismissed": pr["dismiss_stale_reviews_on_push"],
+              "review_threads_resolved": pr["required_review_thread_resolution"],
+              "required_context_count": len(contexts),
+              "required_contexts": sorted(contexts)
           }, indent=2))
           PY
