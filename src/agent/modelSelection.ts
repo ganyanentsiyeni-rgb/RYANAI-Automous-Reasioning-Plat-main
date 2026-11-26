@@ -18,7 +18,7 @@ export function resolveSelectedReasoningModel(
   model: string | undefined,
   env: Record<string, string | undefined> = process.env,
 ): SelectedReasoningModel | null {
-  if (!model) return null;
+  if (!model || model === 'gpt-4o' || model === 'gpt-4o-mini') return null;
   if (!OPENROUTER_MODEL_IDS.has(model)) {
     throw new Error('Unsupported reasoning model selection.');
   }
