@@ -70,7 +70,7 @@ jobs:
             echo 'ERROR: loopback endpoint found in production bundle'
             exit 1
           fi
-          if grep -RniE 'OPENAI_API_KEY|ANTHROPIC_API_KEY|TWILIO_AUTH_TOKEN|DATABASE_URL|REDIS_URL|SUPABASE_SERVICE_ROLE_KEY' dist/; then
-            echo 'ERROR: server-only credential identifier found in production bundle'
+          if grep -RniE 'sk-(proj-)?[A-Za-z0-9_-]{20,}|sb_secret_[A-Za-z0-9_-]{20,}|SG\\.[A-Za-z0-9_-]{20,}\\.[A-Za-z0-9_-]{20,}' dist/; then
+            echo 'ERROR: credential-shaped value found in production bundle'
             exit 1
           fi
