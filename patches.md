@@ -346,3 +346,15 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Added a deferred-response UI regression test for the next-page loading state and disabled control.
 - This is a frontend request-feedback repair only. It does not change memory authorization, persistence, retention, or database schema.
 - Tests have not been executed in this environment; exact-head CI remains required. No merge, deployment, migration, credential change, or production modification.
+
+
+## 2026-11-26 — Frontend environment and operational truth increment
+
+- Added a shared browser-environment validator used by Vite build configuration and the runtime API base URL resolver.
+- Rejects server-only credentials under `VITE_*` names, permits only the explicitly browser-safe Supabase anon/publishable key names, rejects URL-embedded credentials, and requires HTTPS/non-loopback API endpoints in staging and production.
+- Added focused regression tests for localhost/loopback, staging HTTPS, missing hosted API configuration, forbidden secret names, safe Supabase public keys, and URL normalization.
+- Added `useRyanOperations` and browser contracts for the API routes that exist today: AgentRun task listing/dispatch, operational awareness, PA observer status, task approval/rejection, and PA delegation.
+- The hook uses authenticated API requests, validates essential response fields, waits for backend-confirmed action results, preserves independent telemetry when one source fails, and polls only while runs are active.
+- Added the exact-head `RyanAI Frontend Verification Gate` for lint, typecheck, focused contract tests, production web build, and compiled-bundle leak checks.
+- Deliberately did not invent detailed health, agent/worker registry, MCP tool, Comms receipt, or capabilities endpoints: the proposed `/api/v1/*` paths are not the current API route contract. These require backend implementation and contract tests before the frontend can truthfully render them.
+- No branch-protection rule was modified, no PR was merged, and no deployment, migration, credential change, provider configuration change, or production operation was performed. Exact-head CI evidence and independent review remain required.
