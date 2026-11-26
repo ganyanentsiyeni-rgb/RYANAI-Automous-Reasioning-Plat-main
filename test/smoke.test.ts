@@ -23,6 +23,7 @@ describe("RyanAI platform smoke checks", () => {
       routes: Array<{ id: string; label: string; path: string }>;
     };
     expect(routes.routes).toContainEqual({ id: "quant", label: "Quant Lab", path: "/quant" });
+    expect(app).toMatch(/\{route === 'quant' && <QuantLabPage(?: key=\{user\.id\})? userId=\{user\.id\} \/>\}/);
     expect(app).toContain("route === 'quant' && <QuantLabPage");
     expect(app).toContain('userId={user.id}');
     for (const entrypoint of [
