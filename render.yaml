@@ -57,6 +57,13 @@ projects:
                 sync: false
               - key: OPENAI_API_KEY
                 sync: false
+              # OpenRouter is optional and server-side only; adding declarations does not provision credentials or enable a model.
+              - key: OPENROUTER_API_KEY
+                sync: false
+              - key: OPENROUTER_API_ENDPOINT
+                value: https://openrouter.ai/api/v1
+              - key: OPENROUTER_MODEL_ALLOWLIST
+                value: ~openai/gpt-latest,~anthropic/claude-sonnet-latest
               # Shared MCP signing/service credentials must match the MCP service; set from the existing Render test environment group.
               - key: RYANAI_MCP_DELEGATION_SECRET
                 sync: false
