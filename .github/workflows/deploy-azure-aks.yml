@@ -41,6 +41,7 @@ jobs:
       AZURE_CLUSTER_NAME: ${{ vars.AZURE_CLUSTER_NAME }}
       AZURE_KUSTOMIZE_PATH: ${{ vars.AZURE_KUSTOMIZE_PATH }}
       AZURE_DEPLOYMENT_NAME: ${{ vars.AZURE_DEPLOYMENT_NAME }}
+      AZURE_NAMESPACE: ${{ vars.AZURE_NAMESPACE }}
       AZURE_STAGING_API_URL: ${{ vars.AZURE_STAGING_API_URL }}
 
     steps:
@@ -87,10 +88,13 @@ jobs:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
           set -euo pipefail
-          for value in "$AZURE_CLIENT_ID" "$AZURE_TENANT_ID" "$AZURE_SUBSCRIPTION_ID" "$AZURE_CONTAINER_REGISTRY" "$AZURE_CONTAINER_NAME" "$AZURE_RESOURCE_GROUP" "$AZURE_CLUSTER_NAME" "$AZURE_KUSTOMIZE_PATH" "$AZURE_DEPLOYMENT_NAME"; do
+          for value in "$AZURE_CLIENT_ID" "$AZURE_TENANT_ID" "$AZURE_SUBSCRIPTION_ID" "$AZURE_CONTAINER_REGISTRY" "$AZURE_CONTAINER_NAME" "$AZURE_RESOURCE_GROUP" "$AZURE_CLUSTER_NAME" "$AZURE_KUSTOMIZE_PATH" "$AZURE_DEPLOYMENT_NAME" "$AZURE_NAMESPACE"; do
             test -n "$value" || { echo "::error::Azure staging configuration is incomplete"; exit 1; }
           done
-          [[ "$AZURE_STAGING_API_URL" == https://* ]] || { echo "::error::Azure staging health URL must be HTTPS"; exit 1; }
+          [[ "$AZURE_STAGING_API_URL" == https://*staging* ]] || { echo "::error::Azure health URL must be an HTTPS staging hostname"; exit 1; }
+          [[ "$AZURE_RESOURCE_GROUP" == *staging* && "$AZURE_CLUSTER_NAME" == *staging* && "$AZURE_NAMESPACE" == *staging* ]] || {
+            echo "::error::Azure resource group, AKS cluster and namespace must explicitly identify staging"; exit 1;
+          }
           test -f "$AZURE_KUSTOMIZE_PATH/kustomization.yaml" || test -f "$AZURE_KUSTOMIZE_PATH/kustomization.yml" || {
             echo "::error::Configured Azure Kustomize directory has no kustomization file"; exit 1;
           }
@@ -122,9 +126,10 @@ jobs:
       - name: Apply staging manifests and update immutable image
         run: |
           set -euo pipefail
-          kubectl apply -k "$AZURE_KUSTOMIZE_PATH"
-          kubectl set image "deployment/$AZURE_DEPLOYMENT_NAME" "$AZURE_CONTAINER_NAME=$AZURE_IMAGE_URI"
-          kubectl rollout status "deployment/$AZURE_DEPLOYMENT_NAME" --timeout=10m
+          kubectl get namespace "$AZURE_NAMESPACE" >/dev/null
+          kubectl apply -k "$AZURE_KUSTOMIZE_PATH" --namespace "$AZURE_NAMESPACE"
+          kubectl set image "deployment/$AZURE_DEPLOYMENT_NAME" "$AZURE_CONTAINER_NAME=$AZURE_IMAGE_URI" --namespace "$AZURE_NAMESPACE"
+          kubectl rollout status "deployment/$AZURE_DEPLOYMENT_NAME" --namespace "$AZURE_NAMESPACE" --timeout=10m
 
       - name: Verify Azure staging runtime health
         run: |
