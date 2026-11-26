@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalCursor, cursorKey } from './useRealtimeEvents';
+import { canonicalCursor, cursorKey, websocketUrl } from './useRealtimeEvents';
 
 describe('useRealtimeEvents cursor protocol', () => {
   it('accepts canonical decimal strings beyond JavaScript safe integer range', () => {
@@ -19,5 +19,20 @@ describe('useRealtimeEvents cursor protocol', () => {
   it('keeps cursor storage names channel-scoped', () => {
     expect(cursorKey('tasks.updates')).toBe('ryanai:realtime-cursor:tasks.updates');
     expect(cursorKey('comms.inbox')).not.toBe(cursorKey('tasks.updates'));
+  });
+});
+
+
+describe('useRealtimeEvents WebSocket URL resolution', () => {
+  it('converts configured HTTPS API origins to secure WebSocket URLs', () => {
+    expect(websocketUrl('https://api.example.test')).toBe('wss://api.example.test/ws');
+  });
+
+  it('converts configured HTTP API origins to WebSocket URLs', () => {
+    expect(websocketUrl('http://localhost:3001')).toBe('ws://localhost:3001/ws');
+  });
+
+  it('rejects missing runtime origins instead of falling back to loopback', () => {
+    expect(() => websocketUrl('')).toThrow('Realtime WebSocket base URL is not available');
   });
 });
