@@ -343,6 +343,11 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Tests have not been executed in this environment; exact-head CI remains required. No merge, deployment, migration, credential change, or production modification.
 
 
+## 2026-11-26 — GitHub Integration status refresh feedback
+
+- Refreshing an already-loaded GitHub connection now re-enters a visible checking state and disables repeat refresh while the authenticated status request is pending.
+- Added a deferred-response UI regression test for the pending/disabled state.
+- This is status-feedback only; OAuth, repository permissions, review provenance, GitHub App installation, and authorization behavior are unchanged.
 ## 2026-11-26 — Reset Quant Lab state on account changes
 
 - Keyed the Quant Lab page by the authenticated user ID so an account switch remounts the workspace and clears in-memory experiments, imported dataset selection, signals, backtest results, and related notices from the prior account.

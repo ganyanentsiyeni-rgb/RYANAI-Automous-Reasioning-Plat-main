@@ -66,6 +66,7 @@ export default function GithubModal({ open, onClose }: GitHubModalProps) {
 
 
   const refreshStatus = useCallback(async () => {
+    setChecking(true);
     try {
       const response = await authenticatedFetch('/api/github/status');
       const payload = await response.json().catch(() => ({})) as GitHubStatus & { error?: string };
