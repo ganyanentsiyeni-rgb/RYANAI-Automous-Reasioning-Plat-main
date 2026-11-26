@@ -495,3 +495,10 @@ Both lanes are disabled unless their provider enablement and staging-isolation v
 - Added static Compose contract checks for API dependencies on healthy local PostgreSQL and Redis, web/MCP health ordering, local-only opt-in migrations, loopback-only database/cache host ports, and opt-in MCPJungle/Cloudflare profiles.
 - Made the optional MCPJungle PostgreSQL password mandatory at Compose interpolation time for both database initialization and the gateway connection string; removed the empty-password fallback.
 - Compose remains a local development topology. No production database, credential, deployment, image publication, or migration was changed. These are source-level checks pending exact-SHA CI.
+
+
+### Compose follow-up — credential symmetry and health semantics (2026-11-26)
+
+- Removed the remaining empty-password fallback from the MCPJungle PostgreSQL initializer, matching the gateway connection requirement.
+- Extended static contracts to protect API liveness (`/livez`, `/health`) from dependency readiness (`/readyz`), MCP's liveness-based startup ordering, its explicit API readiness target, and local-only migration URL routing.
+- CI's Docker workflow includes `docker compose --file docker-compose.yml config --quiet`; execution on the exact PR SHA is pending. No local Docker daemon/runtime validation is claimed.
