@@ -125,3 +125,8 @@ This document does not authorize secret provisioning or modification, provider a
 - The follow-on governed invocation PR adds a delegated MCP `reasoning_request` scope, Gen-X reauthorization at issuance and execution, an API-only provider invocation route, native Anthropic Messages handling, and MCP routing that carries no provider keys or provider endpoints.
 - This invocation increment does not implement provider health probes, circuit breakers/failover, price-schedule-based ZAR cost calculation, or full multimodal/tool capabilities. Those remain explicit later acceptance gates.
 - Runtime configuration on Render/Railway is unchanged. The new service-token and delegation-secret environment wiring must be reviewed and verified in staging before enabling the MCP reasoning tool.
+
+
+### OpenRouter delegation identity update — 26 November 2026
+
+MCP delegation tokens now carry the API-verified actor classification (`human`, `agent`, or `service`). The API checks the verified actor at token issuance and re-evaluates Gen-X with the signed actor claim at MCP execution and provider-gateway invocation. Agent/service identities are not promoted to human. This closes the actor-identity hard-coding gap for the delegated MCP reasoning path. The durable Logic worker's direct `ChatOpenAI` override remains an outstanding bypass of the shared gateway and must be removed before OpenRouter is considered fully governed.
