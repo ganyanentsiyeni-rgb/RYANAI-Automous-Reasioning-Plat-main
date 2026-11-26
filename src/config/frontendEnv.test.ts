@@ -24,6 +24,13 @@ describe('frontend environment security boundary', () => {
     },
   );
 
+  it('treats the staging Vite mode as a hosted environment', () => {
+    expect(() => validateFrontendEnvironment(
+      { VITE_API_BASE_URL: 'http://api.example.com' },
+      'staging',
+    )).toThrow(/must use HTTPS/);
+  });
+
   it('requires a hosted API URL outside development', () => {
     expect(() => validateFrontendEnvironment({}, 'production'))
       .toThrow(/VITE_API_BASE_URL is required/);
