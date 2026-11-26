@@ -57,10 +57,14 @@ export default defineConfig(({ mode }) => {
   const configuredApiUrl = primaryApiUrl?.trim() || legacyApiUrl?.trim();
   const frontendEnvironment =
     env.VITE_APP_ENV?.trim() || process.env.VITE_APP_ENV?.trim();
+  const isHostedProductionBuild =
+    frontendEnvironment === 'production' ||
+    frontendEnvironment === 'staging' ||
+    (mode === 'production' && process.env.VERCEL === '1');
 
-  // Production static builds must not silently publish a sign-in page with no
+  // Hosted production builds must not silently publish a sign-in page with no
   // Supabase client or an API URL that falls back to the frontend origin.
-  if (frontendEnvironment === 'production' || frontendEnvironment === 'staging') {
+  if (isHostedProductionBuild) {
     const supabaseUrl =
       env.VITE_SUPABASE_URL?.trim() || process.env.VITE_SUPABASE_URL?.trim();
     const supabaseKey =
@@ -78,12 +82,17 @@ export default defineConfig(({ mode }) => {
         `Hosted frontend configuration is incomplete: ${missing.join(', ')}. Refusing to publish an unusable sign-in/API build.`,
       );
     }
+    if (supabaseKey!.startsWith('sb_secret_')) {
+      throw new Error(
+        'VITE_SUPABASE_PUBLISHABLE_KEY must be a browser-safe publishable/anon key, never an sb_secret_ key.',
+      );
+    }
 
     const apiUrl = new URL(normalizeApiUrl(configuredApiUrl!));
     const authUrl = new URL(supabaseUrl!);
     if (apiUrl.protocol !== 'https:' || authUrl.protocol !== 'https:') {
       throw new Error(
-        'Production frontend API and Supabase URLs must both use HTTPS.',
+        'Hosted frontend API and Supabase URLs must both use HTTPS.',
       );
     }
   }
