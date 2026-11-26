@@ -565,3 +565,14 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Removed only those two duplicate matrix entries from `container-security.yml`; standalone API, MCP, and migration image scans remain intact.
 - The canonical 19 release-check contexts are unchanged and continue to be produced by their designated workflows.
 - No image publication, deployment, migration, credential change, or ruleset change was performed.
+
+
+## 2026-11-26 — RyanAI application layer integrity baseline
+
+- Established a canonical eight-layer application contract covering Experience, Application/API, Identity/Security/Governance, Orchestration/Workforce, Reasoning/Intelligence, Tools/Integrations, Data/Persistence, and Runtime/Platform.
+- Documented intended dependency direction, Gen-X authority boundaries, the PA objective end-to-end lifecycle, evidence semantics, and the distinction between static inventory and live runtime proof.
+- Added a bounded read-only audit that inventories declared layer roots, counts source files, maps resolvable relative-import edges, and reports unresolved relative imports and unclassified source files.
+- Added focused Node tests for layer discovery, cross-layer dependency reporting, unresolved imports, ignored dependency directories, repository-root confinement, and cancellation.
+- Added `audit:application-layers` and `test:application-layers` package scripts and wired the focused tests into `npm run validate`.
+- The audit does not execute discovered code, read environment values, make network calls, inspect credentials, connect to services, run migrations, or claim runtime health. Static baseline output is not a clean-architecture or production-readiness certification.
+- No speculative source-module moves, authorization-policy changes, database/schema/migration changes, credential changes, provider changes, production mutations, merges, or deployments.
