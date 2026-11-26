@@ -20,7 +20,7 @@ projects:
             rootDir: .
             dockerContext: .
             dockerfilePath: ./Dockerfile.api
-            healthCheckPath: /health
+            healthCheckPath: /readyz
             autoDeployTrigger: checksPass
             envVars:
               - key: NODE_ENV
