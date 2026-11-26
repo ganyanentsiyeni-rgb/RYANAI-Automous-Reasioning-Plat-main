@@ -29,6 +29,7 @@ import { DEFAULT_MODEL } from '@/lib/models';
 import { getSnapshotFreshness } from '@/lib/healthFreshness';
 import TelemetryMetricCard from '@/components/telemetry/TelemetryMetricCard';
 import { createTelemetryMetricSnapshot } from '@/lib/telemetry/contracts';
+import AgentRunQueuePanel from '@/components/operations/AgentRunQueuePanel';
 
 type BrainId = 'primary' | 'secondary' | 'logic';
 
@@ -810,6 +811,8 @@ export default function RyanAICockpit({
           snapshot={providerReadinessSnapshot}
         />
       </div>
+
+      <AgentRunQueuePanel />
 
       <section className="mt-7 rounded-2xl border border-cyan-400/20 bg-slate-950/80 p-4 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
