@@ -399,3 +399,12 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - The UI continues to wait for backend-confirmed `success`, `delegationId`, `taskId`, and `approved | pending_approval` before clearing the draft or displaying an accepted notice.
 - Added hook regression coverage for stable ID propagation and a Gen-X/backend 403 denial; denied requests do not report success.
 - This is frontend integration only. Server-side authorization and execution boundaries are unchanged; no deployment, migration, credential change, or production action.
+
+
+## 2026-11-26 — Command Cockpit AgentRun queue visibility
+
+- Added a dedicated AgentRun queue panel to the Command Cockpit using the shared authenticated `useRyanOperations` hook.
+- Exposes API-reported queued/running/failed/cancelled/total counters, recent persisted AgentRuns, approval state when present, last confirmed snapshot time, and manual refresh.
+- Missing counters and approval state render as `Not reported`; an empty task response is not presented as proof of a healthy or empty queue.
+- Reuses the hook's active-run polling behavior; no new API route, registry assertion, approval action, lease mutation, migration, deployment, or production change.
+- Exact-head CI/build/security checks remain required; tests have not been run locally in this workflow.
