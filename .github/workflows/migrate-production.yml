@@ -38,6 +38,12 @@ jobs:
       TARGET_SHA: ${{ github.sha }}
 
     steps:
+      - name: Check out exact target SHA for canonical release validator
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA || github.sha }}
+          persist-credentials: false
+
       - name: Require explicit migration authorization and current main
         id: verify
         env:
@@ -65,37 +71,15 @@ jobs:
           }
           echo "target_sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
 
-      - name: Require successful CI and security checks for the exact commit
+      - name: Require canonical exact-SHA CI and security checks
         env:
           GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ env.TARGET_SHA || github.sha }}
         run: |
           set -euo pipefail
-          required=(
-            "Validate (typecheck, lint, test, build)"
-            "MCP server and workflow worker"
-            "Issue 435 migrations and attachment security"
-            "Test agent API contracts"
-            "Dependency audit"
-            "Trivy filesystem scan"
-            "Analyze (javascript-typescript)"
-            "Analyze (python)"
-            "TruffleHog secret audit"
-            "Codacy Security Scan"
-          )
-          gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/check-runs?per_page=100" > checks-pages.json
-          jq -s '[.[].check_runs[]] | group_by(.name) | map(sort_by(.started_at // .completed_at // "") | last)' checks-pages.json > checks.json
-          for name in "${required[@]}"; do
-            jq -e --arg n "$name" '
-              [.[] | select(.name == $n)]
-              | length == 1 and
-                .[0].status == "completed" and
-                .[0].conclusion == "success"
-            ' checks.json > /dev/null || {
-              echo "::error::Required exact-commit check is missing or not successful: $name"
-              exit 1
-            }
-          done
-          echo "All required CI and security checks passed for $TARGET_SHA."
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Target SHA must be a full commit SHA"; exit 1; }
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/check-runs?per_page=100" --jq '.check_runs[]' > check-runs.ndjson
+          node scripts/ci/require-latest-exact-sha-checks.mjs check-runs.ndjson "$TARGET_SHA"
 
       - name: Require isolated provider verification for the exact commit
         env:

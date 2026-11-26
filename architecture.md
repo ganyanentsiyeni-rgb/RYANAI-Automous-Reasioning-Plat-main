@@ -206,3 +206,17 @@ The governed release, AWS ECS staging, and Azure AKS staging workflows share one
 Release checks are an execution contract. The canonical `scripts/ci/required-release-checks.json` catalogue names the contexts that must actually execute for a candidate SHA. The `CI execution completeness` workflow polls GitHub check runs for that exact SHA and requires the newest attempt for every catalogue context to complete successfully on the same SHA. This prevents a green-looking release gate caused by stale, missing, pending, or differently-SHA check evidence.
 
 The completeness workflow is evidence-only: it does not deploy, publish images, perform shared/production migrations, change credentials, or modify branch protection.
+
+## Canonical CI release-check producer inventory (2026-11-26)
+
+The release evidence contract now has a canonical producer inventory at `scripts/ci/required-release-check-producers.json`. Each required context has one declared workflow producer and job ownership. A CI validation script rejects duplicate contexts, missing workflow files, undeclared context names, and drift from `required-release-checks.json`.
+
+The manual PUSH DEPLOY gate consumes this inventory rather than carrying a second hard-coded list. Image-security contexts are now independently produced by Docker CI: `Scan api image` and `Scan web image` build non-published images and scan them with Trivy for HIGH/CRITICAL vulnerabilities. These scans are evidence only; they do not publish or deploy images.
+
+The producer inventory is an architectural control against duplicate or phantom release checks. CI must still execute and complete successfully on the exact candidate SHA before deployment or production migration is eligible.
+## Release-gate validator normalization (2026-11-26)
+
+Render staging, Railway staging, production database migration, and guarded Render repair now use the same canonical latest-attempt/exact-SHA validator as the other governed release lanes. This removes divergent subset check lists from those workflows and makes the 19-context release evidence contract authoritative across release and repair paths.
+
+The validator only reads GitHub check-run evidence; it does not deploy, migrate, publish images, modify credentials, or change branch rulesets.
+

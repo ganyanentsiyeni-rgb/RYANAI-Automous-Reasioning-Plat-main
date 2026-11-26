@@ -53,6 +53,12 @@ jobs:
     outputs:
       sha: ${{ steps.sha.outputs.sha }}
     steps:
+      - name: Check out release-gate scripts
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
       - name: Validate requested SHA
         id: sha
         env:
@@ -80,27 +86,10 @@ jobs:
           set -euo pipefail
           current_suite="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CURRENT_RUN_ID}" --jq '.check_suite_id // empty')"
           [[ -n "$current_suite" ]] || { echo "::error::Cannot identify Push Deploy check suite"; exit 1; }
-          required=(
-            "Validate (typecheck, lint, test, build)"
-            "MCP server and workflow worker"
-            "Integration and end-to-end checks"
-            "PostgreSQL 19 compatibility"
-            "Issue 435 migrations and attachment security"
-            "Audit Render API configuration (read-only)"
-            "validate-database"
-            "Upgrade legacy pgvector database safely (quoted)"
-            "Upgrade legacy pgvector database safely (unquoted)"
-            "Test agent API contracts"
-            "Dependency audit"
-            "Trivy filesystem scan"
-            "Analyze (javascript-typescript)"
-            "Analyze (python)"
-            "TruffleHog secret audit"
-            "Codacy Security Scan"
-            "Scan api image"
-            "Scan web image"
-            "Generate & Upload SBOMs"
-          )
+          mapfile -t required < <(jq -r '.contexts[].name' scripts/ci/required-release-check-producers.json)
+          [[ $(printf '%s\\n' "${required[@]}" | wc -l) -eq 19 ]] || {
+            echo "::error::Canonical release-check producer inventory must contain exactly 19 contexts"; exit 1;
+          }
           for attempt in $(seq 1 90); do
             gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs?per_page=100" --jq '.check_runs[]' > check-runs.ndjson
             jq -s --arg suite "$current_suite" '[.[] | select((.check_suite.id | tostring) != $suite)]' check-runs.ndjson > checks.json
