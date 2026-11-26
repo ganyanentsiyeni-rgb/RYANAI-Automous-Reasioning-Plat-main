@@ -546,3 +546,9 @@ This verifier does not deploy, publish images, run migrations against shared/pro
 - Updated the manual PUSH DEPLOY gate to read the canonical producer inventory instead of maintaining a second hard-coded 19-context list.
 - Added independent Docker CI producers named `Scan api image` and `Scan web image`; they build the non-published API/web images and run Trivy HIGH/CRITICAL vulnerability scans before release evidence can pass.
 - No deployment, image publication, migration, credential change, or branch-ruleset change was performed. Exact-SHA CI execution remains required.
+
+## 2026-11-26 — Release-gate validator normalization
+
+- Normalized Render staging, Railway staging, production migration, and guarded Render repair workflows to use the canonical `scripts/ci/require-latest-exact-sha-checks.mjs` validator instead of maintaining smaller, divergent required-check lists.
+- Those gates now require the complete 19-context release evidence contract on the exact target SHA. The gates remain fail-closed and no provider deployment, migration, credential change, or ruleset change was performed.
+
