@@ -153,7 +153,7 @@ export function analyzeMigrationDependencies(migrations) {
     for (const statement of parsed.statements) {
       statementCount += 1;
       const sql = statement.replace(/\s+/g, ' ').trim();
-      if (/^(CREATE|ALTER|DROP)\s+TYPE\b/i.test(sql) ||
+      if (/^(CREATE|ALTER|DROP)\s+TYPE\b/i.test(sql) || /^DO\b/i.test(sql) ||
           /\bEXECUTE\s+|\bCREATE\s+FUNCTION\b|\bCREATE\s+TRIGGER\b|\bCREATE\s+VIEW\b/i.test(sql)) {
         unsupported.push(migration.id + ':unsupported_ddl');
         continue;
