@@ -139,7 +139,7 @@ export function evaluateGenXSecurityEvent(event: GenXSecurityEvent): GenXPolicyR
   // This only opens a 15-minute consent request; it cannot submit a GitHub review or promote code.
   if (tool === 'github_self_patch_approval_request' && event.action === 'CREATE' &&
       event.actorType === 'human' && event.ownerAuthorized === true &&
-      /^github-pr-review-request:[1-9]\\d*$/.test(event.target ?? '')) {
+      /^github-pr-review-request:[1-9]\d*$/.test(event.target ?? '')) {
     return { decision: 'ALLOW', ruleId: 'GX-SELF-PATCH-REQUEST-001', reason: 'Verified owner may create an expiring review request; GitHub review submission and Self-Patch promotion remain separately gated.', severity: 'HIGH' };
   }
   // Self-Patch promotion is a distinct critical operation. Owner confirmation alone
