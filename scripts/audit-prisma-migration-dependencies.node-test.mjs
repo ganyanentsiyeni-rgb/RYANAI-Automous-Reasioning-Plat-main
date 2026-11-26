@@ -56,3 +56,46 @@ test('keeps cross-schema dependencies explicitly unverified', () => {
   assert.equal(result.externalDependencies[0].dependency, 'auth.users');
   assert.equal(result.externalDependencies[0].status, 'external_dependency_not_verified');
 });
+
+
+test('preserves supported DDL around dollar-quoted procedural statements', () => {
+  const result = analyzeMigrationDependencies([
+    {
+      id: '20261101000000_mixed_procedural',
+      sqlContent: [
+        'CREATE TABLE before_fn (id text PRIMARY KEY);',
+        'CREATE FUNCTION public.example_fn() RETURNS void AS $body$ BEGIN PERFORM 1; PERFORM 2; END; $body$ LANGUAGE plpgsql;',
+        'CREATE TABLE after_fn (id text PRIMARY KEY);',
+        'DO $guard$ BEGIN PERFORM 1; END; $guard$;',
+      ].join('\\n'),
+    },
+  ]);
+  assert.equal(result.createdTableCount, 2);
+  assert.ok(result.statementCount >= 4);
+  assert.ok(result.unsupported.some(item => item.endsWith(':unsupported_ddl')));
+  assert.equal(result.status, 'static_dependencies_incomplete');
+  assert.equal(result.databaseQueried, false);
+  assert.equal(result.sqlExecuted, false);
+});
+
+test('classifies unresolved explicitly qualified ALTER targets as unverified external prerequisites', () => {
+  const result = analyzeMigrationDependencies([
+    { id: '20261101000000_bridge_existing_users', sqlContent: 'ALTER TABLE public.users ADD COLUMN IF NOT EXISTS profile_name text;' },
+  ]);
+  assert.equal(result.findings.length, 0);
+  assert.equal(result.externalDependencies[0].dependency, 'public.users');
+  assert.equal(result.externalDependencies[0].status, 'external_dependency_not_verified');
+  assert.equal(result.compatibility, 'not_verified');
+});
+
+test('does not split on semicolons or comment markers inside quoted SQL text', () => {
+  const result = analyzeMigrationDependencies([
+    {
+      id: '20261101000000_quoted_literals',
+      sqlContent: "CREATE TABLE notes (id text, body text DEFAULT 'keep; -- this text'); /* ; ignored */ CREATE INDEX notes_id_idx ON notes(id);",
+    },
+  ]);
+  assert.equal(result.statementCount, 2);
+  assert.equal(result.createdTableCount, 1);
+  assert.equal(result.status, 'static_dependencies_clear');
+});
