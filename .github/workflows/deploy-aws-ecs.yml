@@ -65,7 +65,13 @@ jobs:
           required=(
             "Validate (typecheck, lint, test, build)"
             "MCP server and workflow worker"
+            "Integration and end-to-end checks"
+            "PostgreSQL 19 compatibility"
             "Issue 435 migrations and attachment security"
+            "Audit Render API configuration (read-only)"
+            "validate-database"
+            "Upgrade legacy pgvector database safely (quoted)"
+            "Upgrade legacy pgvector database safely (unquoted)"
             "Test agent API contracts"
             "Dependency audit"
             "Trivy filesystem scan"
@@ -73,6 +79,9 @@ jobs:
             "Analyze (python)"
             "TruffleHog secret audit"
             "Codacy Security Scan"
+            "Scan api image"
+            "Scan web image"
+            "Generate & Upload SBOMs"
           )
           gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/check-runs?per_page=100" > check-pages.json
           jq -s '[.[].check_runs[]]' check-pages.json > checks.json
