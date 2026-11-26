@@ -9,7 +9,7 @@ export interface GenXSecurityEvent {
   target?: string;
   command?: string;
   environment?: 'development' | 'staging' | 'production';
-  /** Set only by trusted API handlers after Supabase verification; never from model/tool input. */
+  /** Trusted actor classification from API-verified identity or an internal worker; never from model/tool input. */
   actorType?: 'human' | 'agent' | 'service';
   /** Trusted route-only context: true only after requireOwner succeeds. */
   ownerAuthorized?: boolean;
