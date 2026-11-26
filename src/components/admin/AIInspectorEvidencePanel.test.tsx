@@ -18,4 +18,11 @@ describe('AIInspectorEvidencePanel', () => {
  it('distinguishes missing from malformed evidence', async () => { hook.mockReturnValue({ ...base, tasks: [{ id: 'r3', objective: 'AI Inspector audit', status: 'running', evidence: [] }, { id: 'r4', objective: 'AI Inspector follow-up', status: 'completed', evidence: [{ ...evidence, payload: { capability: 'ai-inspector.inspect', report: 'partial' } }] }] } as unknown as ReturnType<typeof useRyanOperations>); await act(async () => root.render(<AIInspectorEvidencePanel />)); expect(container.textContent).toContain('No persisted Inspector report evidence'); expect(container.textContent).toContain('incomplete or malformed'); });
  it('limits absence claims to the recent AgentRun window', async () => { hook.mockReturnValue({ ...base, tasks: [{ id: 'r5', objective: 'Queue telemetry', status: 'completed' }] } as unknown as ReturnType<typeof useRyanOperations>); await act(async () => root.render(<AIInspectorEvidencePanel />)); expect(container.textContent).toContain('latest AgentRun window'); expect(container.textContent).not.toContain('No AI Inspector audit has ever run'); });
  it('shows loading and API errors independently', async () => { hook.mockReturnValue({ ...base, loading: true, error: 'HTTP 403' } as unknown as ReturnType<typeof useRyanOperations>); await act(async () => root.render(<AIInspectorEvidencePanel />)); expect(container.textContent).toContain('HTTP 403'); expect(container.textContent).toContain('Loading authenticated AgentRun evidence'); });
+  it('rejects malformed finding records instead of silently dropping them', async () => {
+    const malformed = { ...evidence, payload: { ...evidence.payload, findings: [{ id: 'F-1', severity: 'high' }] } };
+    hook.mockReturnValue({ ...base, tasks: [{ id: 'r6', objective: 'AI Inspector audit', status: 'completed', evidence: [malformed] }] } as unknown as ReturnType<typeof useRyanOperations>);
+    await act(async () => root.render(<AIInspectorEvidencePanel />));
+    expect(container.textContent).toContain('incomplete or malformed');
+    expect(container.textContent).not.toContain('Completed — findings reported');
+  });
 });
