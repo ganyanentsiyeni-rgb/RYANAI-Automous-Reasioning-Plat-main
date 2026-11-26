@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import type { FastifyPluginAsync } from 'fastify';
 import { requireAdmin, requireOwner } from './auth.js';
-import { backupPreflight, createDatabaseBackup, listDatabaseBackups, listExpectedMigrationIds, recoveryPreflight } from '../../services/adminResilience.js';
+import { backupPreflight, createDatabaseBackup, listDatabaseBackups, listExpectedMigrationIds, recoveryPreflight, verifyDatabaseBackupArtifacts } from '../../services/adminResilience.js';
 
 interface MaintenanceBody {
   action?: 'scheduled' | 'started' | 'completed' | 'cancelled';
@@ -45,6 +45,8 @@ export const adminResilienceRoutes: FastifyPluginAsync = async (fastify) => {
       listDatabaseBackups(),
       listExpectedMigrationIds(),
     ]);
+    const [artifactVerifications] = await Promise.all([verifyDatabaseBackupArtifacts(inventory)]);
+    const verificationById = new Map(artifactVerifications.map((item) => [item.backupId, item]));
     const recovery = recoveryPreflight();
     return {
       reportId: randomUUID(),
@@ -69,11 +71,14 @@ export const adminResilienceRoutes: FastifyPluginAsync = async (fastify) => {
           databaseBytes: item.databaseBytes,
           manifestPresent: item.manifestPresent,
           recordedSha256Present: Boolean(item.databaseSha256),
-          artifactBytesRehashed: false,
-          integrityStatus: 'not_verified',
+          artifactBytesRehashed: verificationById.get(item.backupId)?.bytesRehashed ?? false,
+          integrityStatus: verificationById.get(item.backupId)?.status ?? 'not_verified',
+          actualBytes: verificationById.get(item.backupId)?.actualBytes ?? null,
+          verificationReason: verificationById.get(item.backupId)?.reason ?? 'Artifact verification was not performed.',
           retention: item.retention,
         })),
-        reason: inventory.reason || 'Inventory metadata is not a fresh verification of stored dump bytes.',
+        verificationLimit: 'At most 10 artifacts and 256 MiB per artifact are re-downloaded per report.',
+        reason: inventory.reason || 'Artifact bytes are freshly re-downloaded and hashed where bounded manifest evidence is complete.',
       },
       schemaMigrationEvidence: {
         status: 'not_verified',
