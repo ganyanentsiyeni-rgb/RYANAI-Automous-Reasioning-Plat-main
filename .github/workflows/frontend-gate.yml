@@ -1,0 +1,76 @@
+name: RyanAI Frontend Verification Gate
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'index.html'
+      - 'vite.config.ts'
+      - 'tsconfig*.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/frontend-gate.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'index.html'
+      - 'vite.config.ts'
+      - 'tsconfig*.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/frontend-gate.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify-frontend:
+    name: Frontend verification (lint, typecheck, tests, secure build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Frontend environment and health contract tests
+        run: npx vitest run src/config/frontendEnv.test.ts src/lib/platformHealth.test.ts
+
+      - name: Production web build with non-secret placeholder configuration
+        env:
+          VITE_API_BASE_URL: https://api.ryanai.invalid
+        run: npm run build:web
+
+      - name: Audit browser bundle for loopback endpoints and server-only credential identifiers
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RniE 'https?://(localhost|[^/]*\.localhost|127\.[0-9]+\.[0-9]+\.[0-9]+|0\.0\.0\.0)(:[0-9]+)?' dist/; then
+            echo 'ERROR: loopback endpoint found in production bundle'
+            exit 1
+          fi
+          if grep -RniE 'OPENAI_API_KEY|ANTHROPIC_API_KEY|TWILIO_AUTH_TOKEN|DATABASE_URL|REDIS_URL|SUPABASE_SERVICE_ROLE_KEY' dist/; then
+            echo 'ERROR: server-only credential identifier found in production bundle'
+            exit 1
+          fi
