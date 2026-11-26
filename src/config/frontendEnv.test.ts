@@ -24,6 +24,15 @@ describe('frontend environment security boundary', () => {
     },
   );
 
+  it('allows non-hosted CI production builds without an API URL when no URL can leak', () => {
+    expect(validateFrontendEnvironment({}, 'production').apiBaseUrl).toBe('');
+  });
+
+  it('requires the API URL for Vercel production builds', () => {
+    expect(() => validateFrontendEnvironment({ VERCEL: '1' }, 'production'))
+      .toThrow(/VITE_API_BASE_URL is required/);
+  });
+
   it('treats the staging Vite mode as a hosted environment', () => {
     expect(() => validateFrontendEnvironment(
       { VITE_API_BASE_URL: 'http://api.example.com' },
