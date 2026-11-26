@@ -274,7 +274,7 @@ export default function App() {
                 {route === 'operator' && <OperatorConsole userId={user.id} />}
                 {route === 'operations' && <OperationsCenter userId={user.id} isAdmin={isAdmin} />}
                 {route === 'admin' && (isAdmin ? <AdminConsole key={user.id} userId={user.id} /> : <p role="alert" className="p-8 text-sm text-rose-200">Administrator access is required to open the RyanAI Admin Console.</p>)}
-                {route === 'quant' && <QuantLabPage userId={user.id} />}
+                {route === 'quant' && <QuantLabPage key={user.id} userId={user.id} />}
                 {route === 'trading' && <TradingTerminalPage />}
                 {route === 'programming' && <BasicProgrammingToolsPage />}
                 {route === 'comms' && (isOwner ? <CommunicationsCenter userId={user.id} phoneLinkSettings={phoneLinkSettings} /> : <p role="alert" className="p-8 text-sm text-rose-200">Owner access is required to open RyanAI Comms.</p>)}

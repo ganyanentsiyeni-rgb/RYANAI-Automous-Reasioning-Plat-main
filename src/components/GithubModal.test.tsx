@@ -167,4 +167,34 @@ describe('GitHub App integration modal', () => {
     expect(api).toHaveBeenCalledWith('/api/github/disconnect', { method: 'POST' });
     expect(container.textContent).toContain('Not connected');
   });
+
+  it('shows a pending state while refreshing an already-loaded connection', async () => {
+    api.mockResolvedValueOnce(response({
+      status: 'connected',
+      connected: true,
+      account: { login: 'synthetic-owner' },
+      repository: { fullName: 'RyanAI-Automated/RYANAI-Automous-Reasioning-Plat' },
+    }));
+    let resolveRefresh!: (value: Response) => void;
+    api.mockImplementationOnce(() => new Promise<Response>((resolve) => {
+      resolveRefresh = resolve;
+    }));
+
+    await mount();
+    await vi.waitFor(() => expect(container.textContent).toContain('Connected · verified'));
+    const refresh = Array.from(container.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Refresh status'));
+    await click(refresh ?? null);
+    expect((refresh as HTMLButtonElement).disabled).toBe(true);
+    expect(refresh?.textContent).toContain('Checking…');
+
+    await act(async () => resolveRefresh(response({
+      status: 'connected',
+      connected: true,
+      account: { login: 'synthetic-owner' },
+      repository: { fullName: 'RyanAI-Automated/RYANAI-Automous-Reasioning-Plat' },
+    })));
+    await vi.waitFor(() => expect((refresh as HTMLButtonElement).disabled).toBe(false));
+  });
+
 });
