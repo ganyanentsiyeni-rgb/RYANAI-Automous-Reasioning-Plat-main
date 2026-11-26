@@ -135,6 +135,12 @@ export function evaluateGenXSecurityEvent(event: GenXSecurityEvent): GenXPolicyR
       event.ownerConfirmed === true && (event.actorType === 'human' || event.actorType === 'agent')) {
     return { decision: 'ALLOW', ruleId: 'GX-PA-PUSH-DEPLOY-001', reason: 'The owner explicitly requested Push Deploy for the fixed main-branch release workflow; its exact-SHA CI/security gate still decides whether provider jobs may start.', severity: 'CRITICAL' };
   }
+  // Self-Patch promotion is a distinct critical operation. Owner confirmation alone
+  // is not Gen-X authorization; keep it approval-gated until a dedicated adapter
+  // supplies independently verified, exact-PR/SHA/diff authorization evidence.
+  if (tool === 'github_self_patch_promotion' && event.action === 'UPDATE') {
+    return { decision: 'REQUIRE_APPROVAL', ruleId: 'GX-SELF-PATCH-PROMOTION-001', reason: 'Self-Patch promotion requires independent Gen-X authorization bound to the canonical PR, exact head SHA and proposed diff; owner confirmation alone is insufficient.', severity: 'CRITICAL' };
+  }
   if (event.action === 'CREATE' || event.action === 'UPDATE' || event.action === 'DELETE' || event.action === 'NETWORK') {
     return { decision: 'REQUIRE_APPROVAL', ruleId: 'GX-HIL-001', reason: 'Mutating or network actions require an authenticated human approval and scoped credentials.', severity: 'HIGH' };
   }
