@@ -114,3 +114,8 @@ The Supabase-verified account `rmnganyane@gmail.com` is the canonical RyanAI own
 The fourteen Dashboard UI options control navigation and dashboard-shortcut visibility only. Settings remains available. Hiding a workspace does not revoke its server-side permission, and enabling a preference does not grant access. Admin Console and RyanAI Communications retain their separate verified administrator/owner authorization checks. Desktop and mobile navigation use the same visibility rules.
 
 This change is delivered through a reviewable pull request. It does not authorize production deployment, database migrations, credential changes, or a bypass of required CI/security checks.
+
+
+## Frontend navigation and dashboard preferences
+
+The account preference record is a presentation setting consumed by both desktop/mobile navigation and Dashboard shortcuts. Settings is deliberately not user-hideable. The Dashboard option controls its navigation shortcut. A hidden workspace may still be reached by a direct route when the authenticated account is otherwise authorized; the API and route guards remain the security boundary. Visibility preferences never grant Admin, Owner, or other privileged capabilities.
