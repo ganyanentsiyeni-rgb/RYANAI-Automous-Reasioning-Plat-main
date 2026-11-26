@@ -32,6 +32,14 @@ A PA deployment receipt is only workflow-dispatch acceptance. It is not evidence
 - No secret creation, rotation, or exposure is performed by this patch.
 - No database migration is performed by Push Deploy.
 
+### Supabase OAuth 2.1 / U2EB repair
+
+- Corrected the OAuth server documentation from the retired Supabase project reference to the active U2EB project `omqavyppdoniehseokvx`.
+- Confirmed the repository consent route is `/oauth/consent` and is implemented as a real browser path for Supabase Auth redirects.
+- Documented the U2EB hosted Site URL `https://ryanai-web-u2eb.onrender.com` and the resulting preview consent URL.
+- Documented the public authorization, token, JWKS, OAuth authorization-server metadata, and OIDC discovery endpoints.
+- Kept dynamic client registration disabled until the reviewed MCP dynamic-registration implementation is deployed; this avoids enabling an unrestricted client-registration surface prematurely.
+
 ## 4. Comms contract
 
 A PA objective can create a durable internal Comms child task directly; an existing Comms conversation is not required.
