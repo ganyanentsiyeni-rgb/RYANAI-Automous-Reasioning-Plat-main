@@ -270,7 +270,7 @@ status: 'configuration_snapshot',
     Object.defineProperty(fileInput, 'files', { configurable: true, value: [file] });
     await act(async () => fileInput.dispatchEvent(new Event('change', { bubbles: true })));
 
-    expect(container.textContent).not.toContain('Owner approval requested.');
+    expect(container.querySelector('[aria-label="Owner Comms approval"]')).toBeNull();
     expect(container.textContent).not.toContain('Send approved message');
     expect(comms.sendCommsMessage).not.toHaveBeenCalled();
   });
