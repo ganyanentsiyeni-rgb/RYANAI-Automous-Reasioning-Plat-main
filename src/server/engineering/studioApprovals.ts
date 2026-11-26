@@ -27,7 +27,7 @@ export async function approveStudioTask(taskId: string, ownerUserId: string, act
       const payloadRecord = payload && typeof payload === 'object' && !Array.isArray(payload)
         ? payload as Record<string, unknown>
         : null;
-      if (payloadRecord?.taskContentDigestVersion === STUDIO_TASK_APPROVAL_DIGEST_VERSION
+      if (existing && payloadRecord?.taskContentDigestVersion === STUDIO_TASK_APPROVAL_DIGEST_VERSION
         && payloadRecord.taskContentSha256 === taskContentSha256) {
         return { taskId, state: 'already_approved' as const, approvalReference: existing.id, taskContentSha256 };
       }
