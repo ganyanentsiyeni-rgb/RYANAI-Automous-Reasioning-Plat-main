@@ -177,3 +177,8 @@ Each provider emits independent run, candidate SHA, image URI, rollout and healt
 ## Docker API and worker image parity (2026-11-26)
 
 The root multi-target `Dockerfile` and standalone `Dockerfile.api` are separate build entrypoints for the API runtime. Their security and startup contracts must remain aligned: system/Supabase CA roots, strict certificate validation wrapper, non-root execution, liveness healthcheck, init process, and the optional non-blocking startup backup before the API launcher. The standalone API file also provides a `studio-worker` target; it must remain behaviorally aligned with the root Dockerfile worker target. Static deployment-contract assertions guard the declared directives and required copied artifacts. They do not substitute for successful image builds or live runtime checks.
+
+
+## Docker Compose startup and optional gateway boundary (2026-11-26)
+
+The local Compose API starts only after the disposable local PostgreSQL and Redis healthchecks pass. Web and MCP start after API health; their probes remain role-specific. The one-shot Prisma migration service is explicitly profile-gated and targets only the local Compose database; API startup must not execute DDL. MCPJungle and Cloudflare edge services remain opt-in profiles and are not part of the default stack. MCPJungle database credentials are mandatory rather than silently defaulting to an empty password. Static contract checks protect these declarations but do not replace Compose config validation or runtime startup tests.

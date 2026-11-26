@@ -488,3 +488,10 @@ Both lanes are disabled unless their provider enablement and staging-isolation v
 - Added required-runtime-artifact checks for package metadata, database configuration, dependencies, server output, source/scripts, quant engine, startup backup, and CA verification wrapper.
 - Added parity checks for the Studio Worker target's disabled HTTP healthcheck and exact worker process command.
 - Static contract assertions only; Docker builds and runtime behavior remain subject to exact-SHA CI verification. No image publishing, deployment, migration, secret change, or production access.
+
+
+## 2026-11-26 — Compose startup and optional gateway credential boundary
+
+- Added static Compose contract checks for API dependencies on healthy local PostgreSQL and Redis, web/MCP health ordering, local-only opt-in migrations, loopback-only database/cache host ports, and opt-in MCPJungle/Cloudflare profiles.
+- Made the optional MCPJungle PostgreSQL password mandatory at Compose interpolation time for both database initialization and the gateway connection string; removed the empty-password fallback.
+- Compose remains a local development topology. No production database, credential, deployment, image publication, or migration was changed. These are source-level checks pending exact-SHA CI.
