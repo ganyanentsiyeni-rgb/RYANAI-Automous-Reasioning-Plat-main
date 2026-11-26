@@ -89,9 +89,9 @@ export function useRyanOperations() {
     setRefreshing(true);
     try {
       const [taskResult, awarenessResult, paResult] = await Promise.allSettled([
-        requestJson<unknown>('/api/agent/ops/tasks'),
-        requestJson<OperationalAwareness>('/api/agent/ops/awareness'),
-        requestJson<PAStatusResponse>('/api/agent/ops/pa/status'),
+        requestJson<unknown>('/api/agent/ops/tasks', { signal }),
+        requestJson<OperationalAwareness>('/api/agent/ops/awareness', { signal }),
+        requestJson<PAStatusResponse>('/api/agent/ops/pa/status', { signal }),
       ]);
       if (signal?.aborted || sequence !== requestSequence.current || !mounted.current) return;
 
@@ -210,6 +210,7 @@ export function useRyanOperations() {
   const createPADelegation = useCallback(async (
     objective: string,
     capabilities: PADelegationCapability[],
+    delegationId?: string,
   ): Promise<CreatePADelegationResponse> => {
     if (objective.trim().length < 5) throw new Error('Delegation objective must contain at least five characters.');
     if (capabilities.length === 0) throw new Error('Select at least one PA capability.');
@@ -217,7 +218,7 @@ export function useRyanOperations() {
     try {
       const result = await requestJson<CreatePADelegationResponse>('/api/agent/ops/pa/delegations', {
         method: 'POST',
-        body: JSON.stringify({ objective: objective.trim(), capabilities }),
+        body: JSON.stringify({ objective: objective.trim(), capabilities, ...(delegationId ? { delegationId } : {}) }),
       });
       if (result.success !== true || !result.delegationId || !result.taskId
         || !['approved', 'pending_approval'].includes(result.status)) {

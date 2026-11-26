@@ -130,3 +130,8 @@ Vite build configuration and browser runtime share `src/config/frontendEnv.ts` a
 The detailed multi-subsystem health, fixed 12-agent/10-worker registry, five-stage MCP tool verification, complete Comms receipt state machine, and backend capabilities manifest are not represented as live frontend contracts until corresponding API endpoints and backend runtime schemas exist. Frontend types must describe confirmed backend payloads, not create an apparent implementation by declaring interfaces alone.
 
 The focused frontend contract tests, explicit production web build, and compiled-bundle audit are integrated into the existing pull-request CI job for pre-merge execution. The standalone workflow becomes independently active once merged into the base branch. Merge remains governed by the existing required exact-SHA CI/security checks and independent review; production deployment remains behind the explicit Push Deploy trigger and the independent Render/Railway/Vercel release jobs.
+
+
+## PA delegation frontend dispatch boundary (2026-11-26)
+
+The shared `PADelegationPanel` creates delegations through `useRyanOperations`, which sends the authenticated request to the existing `/api/agent/ops/pa/delegations` route. The panel's fingerprinted UUID is carried as the backend `delegationId` so retries retain the same request identity. UI acceptance requires the backend's persisted delegation and AgentRun references plus its explicit approval state. Gen-X policy evaluation, owner scoping, approval recording, and execution authorization remain server-side.

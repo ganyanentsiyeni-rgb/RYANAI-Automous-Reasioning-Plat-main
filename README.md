@@ -1687,3 +1687,8 @@ npm run build:web
 ```
 
 The existing CI workflow now runs the focused frontend contract tests, an explicit production web build, and a compiled-bundle audit on this pull request's exact head SHA. The standalone `RyanAI Frontend Verification Gate` is also added for subsequent pull requests after its workflow definition reaches the base branch. Neither workflow changes branch protection, authorizes merging, or triggers deployment. The existing explicit **PUSH DEPLOY** release gate remains authoritative.
+
+
+### PA delegation dispatch integration
+
+The shared PA/Darkside Copilot delegation panel now submits creation through `useRyanOperations().createPADelegation()`. The panel preserves its request fingerprint and caller-generated delegation UUID across failed attempts, passing that stable ID to the authenticated backend endpoint for duplicate-safe retries. A delegation is shown as accepted only when the API returns the persisted delegation ID, AgentRun task ID, and an approved or pending-approval state. Existing server-side Gen-X policy, approval, and deployment gates remain authoritative.
