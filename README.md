@@ -1686,3 +1686,8 @@ Leave the key empty to keep OpenRouter unavailable. The model allowlist is not a
 **Implementation status:** provider registry and API gateway support exist, and gateway request/usage coverage is being extended. The Logic worker still has a direct `ChatOpenAI` override path that must be unified with the governed API gateway; trusted actor-type propagation, streaming/tool capability policy, reliability/failover, price-schedule-based ZAR attribution, and staging proof remain acceptance gates. Do not treat this increment as production-ready.
 
 No provider credential is provisioned by this documentation. No live provider configuration, production deployment, or billing setting is changed by this patch.
+
+
+### OpenRouter delegation identity update — 26 November 2026
+
+MCP delegation tokens now carry the API-verified actor classification (`human`, `agent`, or `service`). The API checks the verified actor at token issuance and re-evaluates Gen-X with the signed actor claim at MCP execution and provider-gateway invocation. Agent/service identities are not promoted to human. This closes the actor-identity hard-coding gap for the delegated MCP reasoning path. The durable Logic worker's direct `ChatOpenAI` override remains an outstanding bypass of the shared gateway and must be removed before OpenRouter is considered fully governed.
