@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { backupReadbackMatches, listDatabaseBackups, persistBackupArtifact, recoveryPreflight } from './adminResilience.js';
+import { backupReadbackMatches, listDatabaseBackups, persistBackupArtifact, recoveryPreflight, verifyDatabaseBackupArtifacts } from './adminResilience.js';
 
 const originalEnv = { ...process.env };
 
@@ -36,6 +37,74 @@ describe('admin resilience backup integrity', () => {
     expect(backupReadbackMatches(original, partial)).toBe(false);
   });
 });
+
+describe('admin resilience stored artifact verification', () => {
+  const inventory = (overrides: Record<string, unknown> = {}) => ({
+    status: 'available' as const, bucket: 'private-backups', retentionDays: 30,
+    listedAt: new Date().toISOString(), hasMore: false,
+    items: [{
+      backupId: 'backup-verify', prefix: 'ryanai-admin/backup-verify',
+      createdAt: '2026-11-20T00:00:00.000Z', databaseBytes: 7,
+      databaseSha256: createHashForTest('payload'), manifestPresent: true,
+      integrityStatus: 'not_verified' as const, retention: 'within_policy' as const,
+    }],
+    ...overrides,
+  });
+  const payload = Buffer.from('payload');
+  const storageRequest = vi.fn(async () => new Response(new Uint8Array(payload)));
+
+  it('re-downloads and verifies matching artifact bytes', async () => {
+    configureStorage();
+    const result = await verifyDatabaseBackupArtifacts(inventory(), storageRequest as never);
+    expect(result).toEqual([expect.objectContaining({
+      backupId: 'backup-verify', status: 'verified', bytesRehashed: true, actualBytes: 7,
+    })]);
+    expect(storageRequest).toHaveBeenCalledWith(
+      'https://example.supabase.co', 'service-role-test-key',
+      '/storage/v1/object/authenticated/private-backups/ryanai-admin/backup-verify/database.dump',
+    );
+  });
+
+  it('fails closed when stored bytes do not match the manifest digest', async () => {
+    configureStorage();
+    const request = vi.fn(async () => new Response(new Uint8Array(Buffer.from('tampered'))));
+    const result = await verifyDatabaseBackupArtifacts(inventory(), request as never);
+    expect(result[0]).toMatchObject({ status: 'failed', bytesRehashed: true, actualBytes: 8 });
+  });
+
+  it('does not download artifacts with missing manifest evidence', async () => {
+    configureStorage();
+    const request = vi.fn();
+    const result = await verifyDatabaseBackupArtifacts(inventory({
+      items: [{ ...inventory().items[0], manifestPresent: false }],
+    }), request as never);
+    expect(result[0]).toMatchObject({ status: 'not_verified', bytesRehashed: false });
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('does not download artifacts with missing or invalid digest metadata', async () => {
+    configureStorage();
+    const request = vi.fn();
+    const result = await verifyDatabaseBackupArtifacts(inventory({
+      items: [{ ...inventory().items[0], databaseSha256: null }],
+    }), request as never);
+    expect(result[0].status).toBe('not_verified');
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('reports download failures without exposing storage credentials or object contents', async () => {
+    configureStorage();
+    const request = vi.fn(async () => { throw new Error('secret-key and private object body'); });
+    const result = await verifyDatabaseBackupArtifacts(inventory(), request as never);
+    expect(result[0]).toMatchObject({ status: 'failed', bytesRehashed: false });
+    expect(JSON.stringify(result)).not.toContain('secret-key');
+    expect(JSON.stringify(result)).not.toContain('private object body');
+  });
+});
+
+function createHashForTest(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
 
 describe('admin resilience backup artifact persistence', () => {
   const storage = { baseUrl: 'https://storage.example.test', key: 'test-key', bucket: 'private-backups' };
