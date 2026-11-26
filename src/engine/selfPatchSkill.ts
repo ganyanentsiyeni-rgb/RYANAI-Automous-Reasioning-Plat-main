@@ -39,6 +39,7 @@ function containsSensitiveAssignment(content: string): boolean {
   return false;
 }
 const ALLOWED_PREFIXES = ['src/', 'mcp-server/', 'scripts/'];
+const CANONICAL_REPOSITORY = 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main';
 
 function validatePatch(request: PatchRequest): string | null {
   if (!request || typeof request.filePath !== 'string' || typeof request.patchContent !== 'string') {
@@ -95,10 +96,16 @@ export class SelfPatchSkill {
     const token = process.env.RYANAI_GITHUB_TOKEN?.trim();
     const repository = process.env.RYANAI_GITHUB_REPOSITORY?.trim();
     const baseBranch = process.env.RYANAI_GITHUB_BASE_BRANCH?.trim() || 'main';
-    if (!token || !repository || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) {
+    if (!token || !repository) {
       return {
         status: 'unavailable',
         error: 'GitHub patch integration is not configured. Set a repository-scoped RYANAI_GITHUB_TOKEN and RYANAI_GITHUB_REPOSITORY.',
+      };
+    }
+    if (repository !== CANONICAL_REPOSITORY) {
+      return {
+        status: 'rejected',
+        error: 'Self-patching is restricted to the canonical RyanAI repository.',
       };
     }
     if (!/^[A-Za-z0-9._/-]{1,100}$/.test(baseBranch) || baseBranch.startsWith('/') || baseBranch.includes('..')) {
