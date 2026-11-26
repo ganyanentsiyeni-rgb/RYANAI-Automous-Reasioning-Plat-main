@@ -131,7 +131,7 @@ describe('Admin resilience routes', () => {
     expect(resilience.listDatabaseBackups).not.toHaveBeenCalled();
   });
 
-  it('keeps backup checksum metadata explicitly unverified in the recovery report', async () => {
+  it('reports backup checksum metadata as verified only after artifact bytes are rehashed', async () => {
     resilience.listDatabaseBackups.mockResolvedValueOnce({
       status: 'available', bucket: 'private-backups', retentionDays: 30,
       listedAt: '2026-11-20T00:00:00.000Z', hasMore: false,
@@ -147,8 +147,7 @@ describe('Admin resilience routes', () => {
       recordedSha256Present: true,
       artifactBytesRehashed: true,
       integrityStatus: 'verified',
-      artifactBytesRehashed: false,
-      integrityStatus: 'not_verified',
+      actualBytes: 100,
     });
   });
 
