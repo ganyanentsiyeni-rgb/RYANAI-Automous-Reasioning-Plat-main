@@ -6,6 +6,7 @@ const resilience = vi.hoisted(() => ({
   createDatabaseBackup: vi.fn(),
   listDatabaseBackups: vi.fn(),
   listExpectedMigrationIds: vi.fn(),
+  verifyDatabaseBackupArtifacts: vi.fn(),
   inspectSchemaMigrationArtifacts: vi.fn(),
   recoveryPreflight: vi.fn(),
 }));
@@ -139,10 +140,13 @@ describe('Admin resilience routes', () => {
         databaseBytes: 100, databaseSha256: 'recorded-digest', manifestPresent: true, retention: 'within_policy',
       }],
     });
+    resilience.verifyDatabaseBackupArtifacts.mockResolvedValueOnce([{ backupId: 'backup-1', status: 'verified', bytesRehashed: true, actualBytes: 100 }]);
     const response = await app.inject({ method: 'GET', url: '/api/admin/resilience/recovery/report', headers: adminHeaders });
     expect(response.statusCode).toBe(200);
     expect(response.json().backupEvidence.artifacts[0]).toMatchObject({
       recordedSha256Present: true,
+      artifactBytesRehashed: true,
+      integrityStatus: 'verified',
       artifactBytesRehashed: false,
       integrityStatus: 'not_verified',
     });

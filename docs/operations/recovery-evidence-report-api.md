@@ -8,6 +8,8 @@
 
 The endpoint returns a timestamped report containing:
 
+- Backup inventory metadata plus a bounded, read-only re-download of eligible private dump objects. The report compares actual byte count and SHA-256 with manifest metadata; results are `verified`, `failed`, or `not_verified`.
+- The migration directory inventory shipped with the running application build. This is expected repository state only, not the target's applied migration ledger.
 - Backup inventory metadata plus a bounded read-only re-download of eligible private dump objects. Actual byte count and SHA-256 are compared with manifest metadata; results are `verified`, `failed`, or `not_verified`.
 - A read-only fingerprint of `prisma/schema.prisma` and every ordered migration SQL file shipped with the running build. Missing/empty files, duplicate IDs, or invalid ordering fail the source-artifact check. This does not establish that a database applied the migrations.
 - Recovery preflight status and target label, without returning database URLs or credentials.
@@ -18,6 +20,11 @@ The report intentionally returns `evidence_incomplete`. It does not claim schema
 
 ## Explicit non-goals
 
+This endpoint does not connect to the recovery target, query `_prisma_migrations`, inspect target schema, execute SQL, restore a database, or write audit/database/storage records. Its only artifact access is authenticated read-only download from the configured private backup bucket; dump bytes are hashed in memory and never returned. Verification is bounded to the first 10 listed artifacts and 256 MiB per artifact. Missing/invalid manifest evidence remains `not_verified`; download failures or digest/size mismatches are `failed`.
+
+## Validation
+
+Route and service tests cover administrator authorization, unauthenticated rejection, migration inventory presence, read-only safety invariants, matching and tampered bytes, missing manifest/digest evidence, download failures, and credential/content redaction.
 This endpoint does not connect to the recovery target, query `_prisma_migrations`, inspect target schema, execute SQL, restore a database, or write audit/database/storage records.
 
 Schema/migration evidence currently covers repository file presence, migration identifier uniqueness/order, byte counts, and SHA-256 fingerprints only. It does **not** parse migration SQL, prove DDL dependency order, compare the Prisma model graph with the complete SQL migration history, or establish which migrations a database has applied. Those checks and target database compatibility remain `not_verified`.
