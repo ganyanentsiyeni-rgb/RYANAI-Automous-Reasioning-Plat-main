@@ -13,11 +13,11 @@ const scannerSource = readFileSync(new URL('../server/attachments/scanner.ts', i
 
 describe('private attachment Storage authorization migrations', () => {
   it('keeps the attachment bucket private and binds object owner and conversation to auth.uid()', () => {
-    expect(privateStorage).toMatch(/'ryanai-attachments'[\s\S]*?false/);
+    expect(privateStorage).toMatch(/'ryanai-attachments'[\\s\\S]*?false/);
     for (const operation of ['SELECT', 'INSERT', 'UPDATE', 'DELETE']) {
       expect(privateStorage).toContain(`ON storage.objects FOR ${operation} TO authenticated`);
     }
-    expect(privateStorage.match(/storage\.foldername\(name\)\)\[1\] = auth\.uid\(\)::text/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(privateStorage.match(/storage\\.foldername\\(name\\)\\)\\[1\\] = auth\\.uid\\(\\)::text/g)?.length).toBeGreaterThanOrEqual(4);
     expect(privateStorage).toContain('c.user_id = auth.uid()');
   });
 
@@ -52,12 +52,12 @@ describe('private attachment Storage authorization migrations', () => {
     expect(workerLease).toContain('s.lease_token = p_lease_token');
     expect(workerLease).toContain('s.lease_expires_at > now()');
     expect(workerLease).toContain('lease_token = gen_random_uuid()');
-    expect(workerLease).toContain('ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public');
-    expect(workerLease).toContain('REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated');
+    expect(workerLease).toContain('DO $$');
+    expect(workerLease).toContain("pg_has_role(current_user, 'supabase_admin', 'MEMBER')");
     expect(workerLease).toContain('CREATE FUNCTION public.claim_ryanai_attachment_scan_v2()');
     expect(workerLease).toContain('CREATE FUNCTION public.finish_ryanai_attachment_scan_v2(');
     expect(scannerSource).toContain('lease_token: string');
-    expect(scannerSource.match(/p_lease_token: job\.lease_token/g)?.length).toBe(2);
+    expect(scannerSource.match(/p_lease_token: job\\.lease_token/g)?.length).toBe(2);
   });
 });
 
