@@ -9,6 +9,7 @@ const comms = vi.hoisted(() => ({
   getCommsConversations: vi.fn(),
   sendCommsMessage: vi.fn(),
   requestCommsApproval: vi.fn(),
+  getCommsApprovalStatus: vi.fn(),
   assistCommsConversation: vi.fn(),
   prepareCommsAttachments: vi.fn(),
   uploadCommsAttachment: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock('@/lib/commsApi', () => ({
   getCommsConversations: comms.getCommsConversations,
   sendCommsMessage: comms.sendCommsMessage,
   requestCommsApproval: comms.requestCommsApproval,
+  getCommsApprovalStatus: comms.getCommsApprovalStatus,
   assistCommsConversation: comms.assistCommsConversation,
   prepareCommsAttachments: comms.prepareCommsAttachments,
   uploadCommsAttachment: comms.uploadCommsAttachment,
@@ -185,6 +187,35 @@ describe('RyanAI Comms inbox controls', () => {
     }), 'synthetic-user-a');
     expect(container.textContent).toContain('Owner approval requested.');
     expect(comms.sendCommsMessage).not.toHaveBeenCalled();
+  });
+
+  it('dispatches an external message only after the verified approval status is approved', async () => {
+    comms.getCommsApprovalStatus.mockResolvedValue({ approvalId: 'approval-1', status: 'approved' });
+    await render();
+    const textarea = container.querySelector('textarea') as HTMLTextAreaElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+      setter?.call(textarea, 'Approved delivery update.');
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const form = container.querySelector('form') as HTMLFormElement;
+    await act(async () => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    const requestApproval = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Request owner approval'));
+    await act(async () => requestApproval?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(comms.sendCommsMessage).not.toHaveBeenCalled();
+
+    const checkApproval = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Check approval status'));
+    await act(async () => checkApproval?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(comms.getCommsApprovalStatus).toHaveBeenCalledWith('approval-1', 'synthetic-user-a');
+    expect(container.textContent).toContain('approved this exact message');
+
+    const sendApproved = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Send approved message'));
+    await act(async () => sendApproved?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(comms.sendCommsMessage).toHaveBeenCalledWith(expect.objectContaining({
+      channel: 'whatsapp',
+      message: 'Approved delivery update.',
+      approvalId: 'approval-1',
+    }), 'synthetic-user-a');
   });
 
   it('runs owner-scoped conversation intelligence without dispatching a message', async () => {
