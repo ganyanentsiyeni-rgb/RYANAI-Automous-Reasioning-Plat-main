@@ -41,7 +41,7 @@ describe('frontend environment security boundary', () => {
   });
 
   it('requires a hosted API URL outside development', () => {
-    expect(() => validateFrontendEnvironment({}, 'production'))
+    expect(() => validateFrontendEnvironment({ VITE_APP_ENV: 'production' }, 'production'))
       .toThrow(/VITE_API_BASE_URL is required/);
   });
 
