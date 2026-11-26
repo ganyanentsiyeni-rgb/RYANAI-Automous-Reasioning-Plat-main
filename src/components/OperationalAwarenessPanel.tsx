@@ -7,6 +7,19 @@ interface AwarenessTask {
   moduleId: string;
   updatedAt: string;
   progress?: { completed: number; total: number };
+  approvalRequired: boolean;
+  approvalGranted: boolean;
+  lease?: {
+    state: 'unleased' | 'active' | 'expired';
+    workerId: string | null;
+    lockedAt: string | null;
+    expiresAt: string | null;
+    heartbeatAt: string | null;
+    nextAttemptAt: string | null;
+    attempts: number;
+    maxAttempts: number | null;
+  };
+  recovery?: { recovered: boolean; recoveryCount: number; lastRecoveredAt: string | null };
   indicator: { icon: string; label: string; warning: string; explanation: string };
 }
 interface AwarenessSnapshot {
@@ -103,7 +116,7 @@ export default function OperationalAwarenessPanel({ compact = false }: { compact
           <Metric label="Attention" value={report.attentionRequired + report.offlineBlocked} alert={report.attentionRequired + report.offlineBlocked > 0}/>
         </div>
         <p className="mt-3 text-xs text-slate-400">{report.total} tasks · {report.completedVerified} independently verified completions · Snapshot {formatTime(snapshot.generatedAt)} · Recovery sweep {formatTime(snapshot.worker.lastRecoverySweepAt)}</p>
-        {!compact && <div className="mt-4 space-y-2">{snapshot.tasks.slice(0, 8).map((task) => <article key={task.id} className="rounded-lg border border-white/10 bg-slate-950/50 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="min-w-0 flex-1 truncate text-sm text-slate-100">{task.title}</p><span className={'rounded-full border px-2 py-1 text-[10px] ' + (task.indicator.warning === 'critical' ? 'border-rose-300/25 text-rose-100' : task.indicator.warning === 'warning' ? 'border-amber-300/25 text-amber-100' : 'border-emerald-300/20 text-emerald-100')}>{task.indicator.icon} {task.indicator.label}</span></div><p className="mt-1 text-[11px] text-slate-500">Module: {task.moduleId} · {task.progress ? 'Handoffs ' + task.progress.completed + '/' + task.progress.total + ' · ' : ''}Updated {formatTime(task.updatedAt)}</p>{task.indicator.warning !== 'none' && <p className="mt-2 text-xs text-amber-100">⚠ {task.indicator.explanation}</p>}</article>)}</div>}
+        {!compact && <div className="mt-4 space-y-2">{snapshot.tasks.slice(0, 8).map((task) => <article key={task.id} className="rounded-lg border border-white/10 bg-slate-950/50 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="min-w-0 flex-1 truncate text-sm text-slate-100">{task.title}</p><span className={'rounded-full border px-2 py-1 text-[10px] ' + (task.indicator.warning === 'critical' ? 'border-rose-300/25 text-rose-100' : task.indicator.warning === 'warning' ? 'border-amber-300/25 text-amber-100' : 'border-emerald-300/20 text-emerald-100')}>{task.indicator.icon} {task.indicator.label}</span></div><p className="mt-1 text-[11px] text-slate-500">Module: {task.moduleId} · {task.progress ? 'Handoffs ' + task.progress.completed + '/' + task.progress.total + ' · ' : ''}Updated {formatTime(task.updatedAt)}</p><p className="mt-2 text-[11px] text-slate-400">Approval: {task.approvalRequired && !task.approvalGranted ? 'Human approval required' : task.approvalGranted ? 'Approved' : 'Not required / status unavailable'}</p><p className="mt-1 text-[11px] text-slate-400">Lease: {task.lease?.state ?? 'Not reported'} · Worker {task.lease?.workerId ?? 'unassigned'} · Attempts {task.lease?.attempts ?? 0}/{task.lease?.maxAttempts ?? '—'}</p><p className="mt-1 text-[11px] text-slate-500">Locked {formatTime(task.lease?.lockedAt)} · Expires {formatTime(task.lease?.expiresAt)} · Heartbeat {formatTime(task.lease?.heartbeatAt)} · Next attempt {formatTime(task.lease?.nextAttemptAt)}</p><p className="mt-1 text-[11px] text-slate-400">Recovery: {task.recovery?.recovered ? task.recovery.recoveryCount + ' recovery event(s), latest ' + formatTime(task.recovery.lastRecoveredAt) : 'No recovery evidence reported'}</p>{task.indicator.warning !== 'none' && <p className="mt-2 text-xs text-amber-100">⚠ {task.indicator.explanation}</p>}</article>)}</div>}
       </>}
       <p className="mt-3 text-[11px] text-slate-500">Read-only telemetry. Completion is not marked verified without verification evidence.</p>
     </section>
