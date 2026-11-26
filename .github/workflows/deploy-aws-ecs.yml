@@ -1,0 +1,180 @@
+name: Deploy RyanAI API to AWS ECS staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Explicitly authorize a staging deployment of this exact open PR head.
+        type: choice
+        required: true
+        default: "NO"
+        options:
+          - "NO"
+          - "STAGE"
+
+permissions:
+  contents: read
+  checks: read
+  id-token: write
+
+concurrency:
+  group: aws-ecs-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build, deploy and verify AWS ECS staging
+    if: >-
+      ${{
+        inputs.confirmation == 'STAGE' &&
+        vars.AWS_ECS_DEPLOY_ENABLED == 'true' &&
+        vars.AWS_ECS_STAGING_ISOLATION_CONFIRMED == 'true'
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: aws-staging
+    env:
+      TARGET_SHA: ${{ github.sha }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+      ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+      ECS_TASK_DEFINITION: ${{ vars.ECS_TASK_DEFINITION }}
+      ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME }}
+      AWS_STAGING_API_URL: ${{ vars.AWS_STAGING_API_URL }}
+
+    steps:
+      - name: Check out exact candidate SHA
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Require an open PR whose head is this exact SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/pulls" > linked-prs.json
+          jq -e --arg sha "$TARGET_SHA" '[.[] | select(.state == "open" and .head.sha == $sha)] | length > 0' linked-prs.json >/dev/null
+
+      - name: Require exact-SHA CI and security checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          required=(
+            "Validate (typecheck, lint, test, build)"
+            "MCP server and workflow worker"
+            "Issue 435 migrations and attachment security"
+            "Test agent API contracts"
+            "Dependency audit"
+            "Trivy filesystem scan"
+            "Analyze (javascript-typescript)"
+            "Analyze (python)"
+            "TruffleHog secret audit"
+            "Codacy Security Scan"
+          )
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/check-runs?per_page=100" > check-pages.json
+          jq -s '[.[].check_runs[]]' check-pages.json > checks.json
+          for name in "${required[@]}"; do
+            jq -e --arg name "$name" '[.[] | select(.name == $name)] as $m | ($m|length)>0 and all($m[]; .status=="completed" and .conclusion=="success")' checks.json >/dev/null || {
+              echo "::error::Exact-SHA required check missing or unsuccessful: $name"; exit 1;
+            }
+          done
+
+      - name: Validate AWS staging target and task definition
+        env:
+          AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+        run: |
+          set -euo pipefail
+          for value in "$AWS_REGION" "$ECR_REPOSITORY" "$ECS_SERVICE" "$ECS_CLUSTER" "$ECS_TASK_DEFINITION" "$ECS_CONTAINER_NAME" "$AWS_ROLE_TO_ASSUME"; do
+            test -n "$value" || { echo "::error::AWS staging configuration is incomplete"; exit 1; }
+          done
+          [[ "$AWS_STAGING_API_URL" == https://*staging* ]] || { echo "::error::AWS health URL must be an HTTPS staging hostname"; exit 1; }
+          [[ "$ECS_CLUSTER" == *staging* && "$ECS_SERVICE" == *staging* ]] || { echo "::error::AWS ECS cluster and service names must explicitly identify staging"; exit 1; }
+          test -s "$ECS_TASK_DEFINITION" || { echo "::error::ECS task definition JSON file not found"; exit 1; }
+          jq -e --arg container "$ECS_CONTAINER_NAME" '.containerDefinitions | any(.name == $container)' "$ECS_TASK_DEFINITION" >/dev/null || {
+            echo "::error::Configured ECS container name is absent from the task definition"; exit 1;
+          }
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: RyanAI-GitHubActions-${{ github.run_id }}
+
+      - name: Verify AWS account identity
+        run: |
+          set -euo pipefail
+          aws sts get-caller-identity --query Account --output text >/dev/null
+
+      - name: Verify ECS service is tagged and named as staging
+        run: |
+          set -euo pipefail
+          aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --include TAGS > ecs-staging-service.json
+          jq -e --arg service "$ECS_SERVICE" '
+            (.failures | length) == 0
+            and (.services | length) == 1
+            and .services[0].status == "ACTIVE"
+            and .services[0].serviceName == $service
+            and any(.services[0].tags[]?; .key == "Environment" and (.value | ascii_downcase) == "staging")
+          ' ecs-staging-service.json >/dev/null || {
+            echo "::error::Refusing ECS deployment: service must be active and explicitly tagged Environment=staging"; exit 1;
+          }
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push exact-SHA API image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          set -euo pipefail
+          IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:$TARGET_SHA"
+          docker build --pull --file Dockerfile.api --tag "$IMAGE" .
+          docker push "$IMAGE"
+          echo "AWS_IMAGE_URI=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Render ECS task definition with immutable image
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ env.ECS_TASK_DEFINITION }}
+          container-name: ${{ env.ECS_CONTAINER_NAME }}
+          image: ${{ env.AWS_IMAGE_URI }}
+
+      - name: Deploy ECS service and wait for stability
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      - name: Verify AWS staging runtime health
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 18); do
+            if curl --fail --silent --show-error --max-time 10 "$AWS_STAGING_API_URL/readyz" >/dev/null; then
+              echo "AWS_STAGING_HEALTH=healthy" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::AWS ECS service stabilized but /readyz did not pass"
+          exit 1
+
+      - name: Record provider deployment evidence
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "### AWS ECS staging result"
+            echo "- Candidate SHA: `$TARGET_SHA`"
+            echo "- Workflow run: `$GITHUB_RUN_ID`"
+            echo "- Image: ${AWS_IMAGE_URI:-not-built}"
+            echo "- Runtime health: ${AWS_STAGING_HEALTH:-not-verified}"
+          } >> "$GITHUB_STEP_SUMMARY"
