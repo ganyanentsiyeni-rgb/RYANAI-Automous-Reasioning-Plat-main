@@ -1710,3 +1710,15 @@ The Admin Console reads the server-owned plugin metadata from authenticated `GET
 ### Command Cockpit AgentRun telemetry
 
 The Command Cockpit includes an AgentRun queue panel backed by `useRyanOperations`. It displays only API-confirmed queue counts and persisted task records, exposes manual refresh, and shows missing/unavailable telemetry as unreported rather than healthy. Active-run polling stops when all observed runs are terminal. This is read-only UI telemetry; approval, dispatch, worker leases, and execution remain server-authorized.
+
+## Optional OpenRouter model overrides
+
+OpenRouter is an optional server-side provider for the explicitly catalogued Logic synthesis aliases. Configure these values only in the API runtime; never expose provider credentials through browser `VITE_*` variables:
+
+```dotenv
+OPENROUTER_API_KEY=
+OPENROUTER_API_ENDPOINT=https://openrouter.ai/api/v1
+OPENROUTER_MODEL_ALLOWLIST=~openai/gpt-latest,~anthropic/claude-sonnet-latest
+```
+
+Leave the key empty to keep OpenRouter unavailable. The Logic worker uses the shared API-owned provider invocation adapter after approved-AgentRun and live-lease checks. Runtime activation remains disabled pending catalogue review, versioned pricing and ZAR attribution, streaming/tool capability policy, reliability/failover, privacy/data-region review, and staging evidence. Model announcements are discovery input only and do not automatically activate models.
