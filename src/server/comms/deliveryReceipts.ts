@@ -24,6 +24,16 @@ export async function appendCommsDeliveryReceipt(
     throw new Error('Provider message ID, status, and delivery state are required.');
   }
 
+  const dispatch = await prisma.outboundCommsDispatch.findUnique({
+    where: { id: input.dispatchId },
+    select: { communicationMessageId: true, providerMessageId: true },
+  });
+  if (!dispatch
+    || dispatch.communicationMessageId !== input.communicationMessageId
+    || dispatch.providerMessageId !== input.providerMessageId) {
+    throw new Error('Delivery receipt does not match the accepted outbound dispatch.');
+  }
+
   const providerEventKey = buildCommsProviderEventKey({
     providerMessageId: input.providerMessageId,
     providerStatus: input.providerStatus,

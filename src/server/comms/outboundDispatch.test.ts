@@ -98,6 +98,7 @@ describe('append-only Comms delivery receipts', () => {
     const existing = vi.fn().mockResolvedValue(null);
     const create = vi.fn().mockResolvedValue({ id: 'receipt-1' });
     const prisma = {
+      outboundCommsDispatch: { findUnique: vi.fn().mockResolvedValue({ communicationMessageId: 'message-1', providerMessageId: 'SM' + 'a'.repeat(32) }) },
       commsDeliveryReceipt: { findUnique: existing, create },
     } as unknown as PrismaClient;
 
@@ -131,7 +132,7 @@ describe('append-only Comms delivery receipts', () => {
       providerMessageId: 'SM' + 'a'.repeat(32),
       providerStatus: 'delivered',
       deliveryState: 'delivered',
-      metadata: { errorCode: null },
+      metadata: { callbackAttempt: 2 },
     }));
   });
 });
