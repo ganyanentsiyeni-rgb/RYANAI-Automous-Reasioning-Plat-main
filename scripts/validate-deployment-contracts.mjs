@@ -94,6 +94,7 @@ const renderDeploy = read('.github/workflows/deploy-render.yml');
 const ciWorkflow = read('.github/workflows/ci.yml');
 const railwayDeploy = read('.github/workflows/deploy-railway.yml');
 const dockerCompose = read('docker-compose.yml');
+const databaseContract = read('database.yml');
 
 function dockerStage(source, preferredNames) {
   const stages = [...source.matchAll(/^FROM\s+.+?\s+AS\s+([\w-]+)\s*$/gim)];
@@ -307,7 +308,7 @@ checks.push(
 
 checks.push(
   ['Compose API waits for healthy local PostgreSQL and Redis', /api:[\\s\\S]*?depends_on:[\\s\\S]*?postgres:[\\s\\S]*?condition: service_healthy[\\s\\S]*?redis:[\\s\\S]*?condition: service_healthy/.test(dockerCompose)],
-  ['Compose migrations are opt-in, local-only, and never part of API startup', /migrate:[\\s\\S]*?profiles: \\[migrations\\][\\s\\S]*?condition: service_healthy/.test(dockerCompose) && dockerCompose.includes('NODE_ENV: test') && dockerCompose.includes('startup_must_not_run_ddl: true') && !/api:[\\s\\S]*?prisma migrate deploy/.test(dockerCompose)],
+  ['Compose migrations are opt-in, local-only, and never part of API startup', /migrate:[\\s\\S]*?profiles: \\[migrations\\][\\s\\S]*?condition: service_healthy/.test(dockerCompose) && dockerCompose.includes('NODE_ENV: test') && databaseContract.includes('startup_must_not_run_ddl: true') && !/api:[\\s\\S]*?prisma migrate deploy/.test(dockerCompose)],
   ['Compose web and MCP wait for API health and probe role-appropriate endpoints', /web:[\\s\\S]*?condition: service_healthy/.test(dockerCompose) && /mcp-server:[\\s\\S]*?condition: service_healthy/.test(dockerCompose) && dockerCompose.includes('/livez') && dockerCompose.includes('/health')],
   ['Compose MCPJungle services and Cloudflare edge remain opt-in profiles', /mcpjungle-db:[\\s\\S]*?profiles: \\[mcp-gateway\\]/.test(dockerCompose) && /mcpjungle:[\\s\\S]*?profiles: \\[mcp-gateway\\]/.test(dockerCompose) && /cloudflared:[\\s\\S]*?profiles: \\[cloudflare-edge\\]/.test(dockerCompose)],
   ['Compose MCPJungle database credentials are mandatory and never default to empty', dockerCompose.includes('MCPJUNGLE_DB_PASSWORD:?Set MCPJUNGLE_DB_PASSWORD in .env') && !dockerCompose.includes('MCPJUNGLE_DB_PASSWORD:-')],
