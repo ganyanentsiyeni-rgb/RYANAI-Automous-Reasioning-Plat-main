@@ -441,6 +441,59 @@ This starts both package scripts concurrently and stops the other process if eit
 
 The API development entrypoint is src/server/launcher.ts. The Vite client is served by the web development script. The MCP server has its own package and scripts under mcp-server/.
 
+### Windows PowerShell + WSL 2 Docker preflight
+
+For Windows development, the following PowerShell and WSL checks establish the repository, local environment file, Docker CLI, WSL distribution, and Docker Compose prerequisites before starting the RyanAI stack. Run PowerShell commands in **Windows PowerShell** and WSL commands in the **Ubuntu/WSL terminal** as indicated.
+
+#### Windows PowerShell
+
+~~~powershell
+# 1. Equivalent of: test -f docker-compose.yml
+Test-Path -Path .\\docker-compose.yml -PathType Leaf
+
+# 2. Equivalent of: test -f .env || cp .env.example .env
+if (-not (Test-Path -Path .\\.env -PathType Leaf)) { Copy-Item .\\.env.example .\\.env }
+
+# 3. Equivalent of: chmod 600 .env (restrict .env permissions to your Windows user only)
+icacls .\\.env /inheritance:r /grant:r "$($env:USERNAME):(R,W)"
+
+# Verify .env exists and check Docker CLI availability
+Test-Path -Path .\\.env -PathType Leaf
+Get-Command docker -ErrorAction SilentlyContinue
+
+# If Docker is installed but not yet on PATH for this PowerShell session
+$env:Path += ";C:\\Program Files\\Docker\\Docker\\resources\\bin"
+docker version
+
+# Inspect/install WSL. If Ubuntu is already installed, do not reinstall it.
+wsl --list --online
+wsl --install -d Ubuntu
+wsl --list --verbose
+
+# Validate the Compose file and inspect current containers
+# Run these from the repository root after Docker Desktop/Docker Engine is available.
+docker compose config --quiet
+docker compose ps -a
+
+# Start the local Compose stack and wait for its configured health checks
+docker compose up -d --wait
+
+# If PATH was changed only for this session, keep Docker available explicitly:
+$env:Path = "C:\\Program Files\\Docker\\Docker\\resources\\bin;" + $env:Path
+~~~
+
+#### WSL validation from PowerShell
+
+Use the actual distribution name reported by `wsl --list --verbose`. The example below uses `Ubuntu-26.04`; if your installed distribution has a different name, substitute that name rather than installing another distribution unnecessarily.
+
+~~~powershell
+wsl -d Ubuntu-26.04 --cd /mnt/c/Users/General/RYANAI-Automous-Reasioning-Plat-main -- bash -lc "ls -la .env && docker compose version"
+~~~
+
+If Docker is provided by Docker Desktop with WSL integration, the Docker CLI should be available inside the integrated WSL distribution. If Docker is installed directly inside Ubuntu, start that Linux Docker daemon according to the WSL Docker instructions below. Do not run competing Docker daemons for the same development environment.
+
+The Windows `.env` permission command above is the Windows equivalent of `chmod 600`; it removes inherited ACLs and grants the current Windows user read/write access. Never commit `.env` or expose its contents. `docker compose config --quiet` validates Compose configuration without starting services; `docker compose ps -a` reports current container state; `docker compose up -d --wait` starts the stack and waits for configured health conditions.
+
 ### 5. Build
 
 ~~~bash

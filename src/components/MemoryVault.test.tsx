@@ -179,6 +179,29 @@ describe('persistent Memory Vault', () => {
     );
   });
 
+  it('disables pagination and shows progress while the next page is loading', async () => {
+    let resolvePage: ((value: Response) => void) | undefined;
+    api.mockImplementation(async (input) => {
+      const url = new URL(String(input), 'http://localhost');
+      if (url.pathname === '/api/user/memory' && url.searchParams.has('cursor')) {
+        return await new Promise<Response>((resolve) => { resolvePage = resolve; });
+      }
+      return response({ entries: [entry], limit: 50, hasMore: true, nextCursor: entry.id });
+    });
+
+    await mount();
+    await vi.waitFor(() => expect(container.textContent).toContain(entry.value));
+    await click(Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('Load more memories')) ?? null);
+
+    const loadingButton = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.includes('Loading…'));
+    expect(loadingButton).toBeTruthy();
+    expect((loadingButton as HTMLButtonElement).disabled).toBe(true);
+    expect(api).toHaveBeenCalledTimes(2);
+
+    await act(async () => resolvePage?.(response({ entries: [secondEntry], limit: 50, hasMore: false, nextCursor: null })));
+    await vi.waitFor(() => expect(container.textContent).toContain(secondEntry.value));
+  });
+
   it('shows API failures instead of pretending a memory was saved', async () => {
     api.mockRejectedValueOnce(new Error('Private memory storage is unavailable.'));
     await mount();

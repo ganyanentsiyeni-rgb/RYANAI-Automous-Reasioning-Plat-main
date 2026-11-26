@@ -329,3 +329,11 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Added a regression test proving a previously approved message cannot retain its Send approved message action after the attachment selection changes.
 - This is a frontend state-integrity guard; the backend approval and owner authorization checks remain authoritative.
 - No external message was sent, no production deployment, migration, credential change, or merge was performed.
+
+
+## 2026-11-26 — Memory Vault pagination feedback
+
+- Memory Vault now enters a visible loading state for refresh, search, and next-page requests; pagination controls remain disabled while the request is pending, preventing repeated clicks from issuing duplicate page fetches.
+- Added a deferred-response UI regression test for the next-page loading state and disabled control.
+- This is a frontend request-feedback repair only. It does not change memory authorization, persistence, retention, or database schema.
+- Tests have not been executed in this environment; exact-head CI remains required. No merge, deployment, migration, credential change, or production modification.
