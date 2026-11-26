@@ -9,6 +9,7 @@
 !.vercelignore
 !apps/
 !apps/mobile/
+!apps/mobile/package-lock.json
 # Read-only inventory contract test referenced by package.json (test:repository-inventory).
 !scripts/
 !scripts/repository-inventory.test.mjs
