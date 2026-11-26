@@ -1697,3 +1697,6 @@ The shared PA/Darkside Copilot delegation panel now submits creation through `us
 ## Admin Console plugin capability catalogue
 
 The Admin Console reads the server-owned plugin metadata from authenticated `GET /api/plugins/registry`. It displays declared capability IDs, risk labels, human-approval flags, data classifications, manifest version and adapter registration status. The endpoint is metadata-only: it does not expose credentials, connection state or adapter execution methods. The UI does not interpret a declaration or registered adapter as a user permission, connected provider, healthy provider or authorization to execute. Gen-X and the server-side execution boundary remain authoritative.
+### Command Cockpit AgentRun telemetry
+
+The Command Cockpit includes an AgentRun queue panel backed by `useRyanOperations`. It displays only API-confirmed queue counts and persisted task records, exposes manual refresh, and shows missing/unavailable telemetry as unreported rather than healthy. Active-run polling stops when all observed runs are terminal. This is read-only UI telemetry; approval, dispatch, worker leases, and execution remain server-authorized.
