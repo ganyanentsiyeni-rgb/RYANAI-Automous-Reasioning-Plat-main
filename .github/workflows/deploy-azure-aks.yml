@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
   checks: read
   id-token: write
 
@@ -63,25 +64,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          required=(
-            "Validate (typecheck, lint, test, build)"
-            "MCP server and workflow worker"
-            "Issue 435 migrations and attachment security"
-            "Test agent API contracts"
-            "Dependency audit"
-            "Trivy filesystem scan"
-            "Analyze (javascript-typescript)"
-            "Analyze (python)"
-            "TruffleHog secret audit"
-            "Codacy Security Scan"
-          )
-          gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/check-runs?per_page=100" > check-pages.json
-          jq -s '[.[].check_runs[]]' check-pages.json > checks.json
-          for name in "${required[@]}"; do
-            jq -e --arg name "$name" '[.[] | select(.name == $name)] as $m | ($m|length)>0 and all($m[]; .status=="completed" and .conclusion=="success")' checks.json >/dev/null || {
-              echo "::error::Exact-SHA required check missing or unsuccessful: $name"; exit 1;
-            }
-          done
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/check-runs?per_page=100" --jq '.check_runs[]' > check-runs.ndjson
+          node --test scripts/ci/require-latest-exact-sha-checks.test.mjs
+          node scripts/ci/require-latest-exact-sha-checks.mjs check-runs.ndjson "$TARGET_SHA"
 
       - name: Validate Azure staging manifest and settings
         env:
@@ -93,14 +78,42 @@ jobs:
           for value in "$AZURE_CLIENT_ID" "$AZURE_TENANT_ID" "$AZURE_SUBSCRIPTION_ID" "$AZURE_CONTAINER_REGISTRY" "$AZURE_CONTAINER_NAME" "$AZURE_RESOURCE_GROUP" "$AZURE_CLUSTER_NAME" "$AZURE_KUSTOMIZE_PATH" "$AZURE_DEPLOYMENT_NAME" "$AZURE_NAMESPACE"; do
             test -n "$value" || { echo "::error::Azure staging configuration is incomplete"; exit 1; }
           done
-          [[ "$AZURE_STAGING_API_URL" == https://*staging* ]] || { echo "::error::Azure health URL must be an HTTPS staging hostname"; exit 1; }
+          python3 - "$AZURE_STAGING_API_URL" <<'PY'
+          import sys
+          from urllib.parse import urlparse
+          target = urlparse(sys.argv[1])
+          if (target.scheme != "https" or not target.hostname or "staging" not in target.hostname.lower()
+                  or target.username or target.password or target.path not in ("", "/")
+                  or target.query or target.fragment):
+              raise SystemExit("Azure health URL must use an HTTPS staging hostname with no embedded path, credentials, query, or fragment")
+          PY
           [[ "$AZURE_RESOURCE_GROUP" == *staging* && "$AZURE_CLUSTER_NAME" == *staging* && "$AZURE_NAMESPACE" == *staging* ]] || {
             echo "::error::Azure resource group, AKS cluster and namespace must explicitly identify staging"; exit 1;
           }
           test -f "$AZURE_KUSTOMIZE_PATH/kustomization.yaml" || test -f "$AZURE_KUSTOMIZE_PATH/kustomization.yml" || {
             echo "::error::Configured Azure Kustomize directory has no kustomization file"; exit 1;
           }
-          kubectl kustomize "$AZURE_KUSTOMIZE_PATH" >/dev/null
+          kubectl kustomize "$AZURE_KUSTOMIZE_PATH" > rendered-staging-manifests.yaml
+          ruby -ryaml -e '
+            documents = YAML.load_stream(File.read(ARGV.fetch(0))).compact
+            documents.each do |document|
+              next unless document.is_a?(Hash)
+              namespace = document.dig("metadata", "namespace")
+              if namespace && namespace != ENV.fetch("AZURE_NAMESPACE")
+                abort "Refusing AKS apply: manifest namespace #{namespace} is outside the configured staging namespace"
+              end
+            end
+            deployment = documents.find do |document|
+              document.is_a?(Hash) &&
+                document["kind"] == "Deployment" &&
+                document.dig("metadata", "name") == ENV.fetch("AZURE_DEPLOYMENT_NAME")
+            end
+            abort "Configured staging Deployment is absent from rendered Kustomize output" unless deployment
+            containers = deployment.dig("spec", "template", "spec", "containers") || []
+            unless containers.any? { |container| container["name"] == ENV.fetch("AZURE_CONTAINER_NAME") }
+              abort "Configured API container is absent from the staging Deployment"
+            end
+          ' rendered-staging-manifests.yaml
 
       - name: Sign in to Azure with GitHub OIDC
         uses: azure/login@v2

@@ -172,3 +172,51 @@ AWS uses GitHub OIDC to assume a scoped IAM role, pushes an immutable SHA-tagged
 Azure uses workload federation through Azure Login, pushes an immutable SHA-tagged API image to ACR, applies a configured AKS Kustomize overlay in a staging namespace, updates a named Kubernetes Deployment container, waits for rollout, and checks the HTTPS staging API `/readyz` endpoint.
 
 Each provider emits independent run, candidate SHA, image URI, rollout and health evidence. Neither cloud lane provisions infrastructure, changes secrets, runs migrations, or deploys to production. Provider identity trust, least-privilege permissions, registry resources, task definitions/manifests, staging network isolation and environment protection must be provisioned and reviewed separately before enabling either lane.
+
+
+## Docker API and worker image parity (2026-11-26)
+
+The root multi-target `Dockerfile` and standalone `Dockerfile.api` are separate build entrypoints for the API runtime. Their security and startup contracts must remain aligned: system/Supabase CA roots, strict certificate validation wrapper, non-root execution, liveness healthcheck, init process, and the optional non-blocking startup backup before the API launcher. The standalone API file also provides a `studio-worker` target; it must remain behaviorally aligned with the root Dockerfile worker target. Static deployment-contract assertions guard the declared directives and required copied artifacts. They do not substitute for successful image builds or live runtime checks.
+
+
+## Docker Compose startup and optional gateway boundary (2026-11-26)
+
+The local Compose API starts only after the disposable local PostgreSQL and Redis healthchecks pass. Web and MCP start after API health; their probes remain role-specific. The one-shot Prisma migration service is explicitly profile-gated and targets only the local Compose database; API startup must not execute DDL. MCPJungle and Cloudflare edge services remain opt-in profiles and are not part of the default stack. MCPJungle database credentials are mandatory rather than silently defaulting to an empty password. Static contract checks protect these declarations but do not replace Compose config validation or runtime startup tests.
+
+
+### Compose health semantics follow-up (2026-11-26)
+
+API `/livez` and `/health` report process liveness independently of PostgreSQL/Redis availability; `/readyz` evaluates live dependencies and agent queue/checkpointer readiness. Compose uses liveness to avoid restart loops during dependency recovery. MCP's own `/health` is a process probe, while its platform-health tool targets API `/readyz` for dependency status. The local migration profile's `DATABASE_URL` points to the Compose PostgreSQL service only. Both MCPJungle database initialization and gateway connection require the same non-empty password.
+
+
+### AWS and Azure staging release gates (2026-11-26)
+
+AWS ECS and Azure AKS staging workflows require the complete configured exact-commit CI/security check set before any cloud authentication, image publication, or workload mutation. Deployment remains disabled unless the explicit staging confirmation and provider-specific staging-isolation flags are enabled. OIDC and runtime `/readyz` verification remain required. These controls do not replace GitHub branch rulesets and no cloud deployment is initiated by the gate patch.
+### Manual release gate (2026-11-26)
+
+The manual staging/production release workflow now has a fail-closed exact-SHA preflight. It confirms the candidate is current `main` and requires the full configured CI/security check set to be present and successful before either release job can start. Production migration approval remains separate. This workflow-level guard is defense in depth and does not replace restoring GitHub branch ruleset required checks and approval requirements. Pending or missing checks block release; no deployment is initiated by the preflight.
+
+
+### Exact-SHA latest-attempt check semantics (2026-11-26)
+
+The governed release, AWS ECS staging, and Azure AKS staging workflows share one required-check catalogue and validator. For each required check name on the exact candidate commit, the validator selects the newest check run by `started_at` (using the monotonically increasing check-run ID as a tie-breaker). It evaluates only that latest attempt: completed success passes; missing, pending, cancelled, failed, skipped, or SHA-mismatched latest attempts block. A prior failed attempt is superseded only by a newer successful attempt. Automated unit tests cover these semantics. This workflow-level control does not replace GitHub branch protection or establish that CI has passed.
+
+## CI execution evidence boundary
+
+Release checks are an execution contract. The canonical `scripts/ci/required-release-checks.json` catalogue names the contexts that must actually execute for a candidate SHA. The `CI execution completeness` workflow polls GitHub check runs for that exact SHA and requires the newest attempt for every catalogue context to complete successfully on the same SHA. This prevents a green-looking release gate caused by stale, missing, pending, or differently-SHA check evidence.
+
+The completeness workflow is evidence-only: it does not deploy, publish images, perform shared/production migrations, change credentials, or modify branch protection.
+
+## Canonical CI release-check producer inventory (2026-11-26)
+
+The release evidence contract now has a canonical producer inventory at `scripts/ci/required-release-check-producers.json`. Each required context has one declared workflow producer and job ownership. A CI validation script rejects duplicate contexts, missing workflow files, undeclared context names, and drift from `required-release-checks.json`.
+
+The manual PUSH DEPLOY gate consumes this inventory rather than carrying a second hard-coded list. Image-security contexts are now independently produced by Docker CI: `Scan api image` and `Scan web image` build non-published images and scan them with Trivy for HIGH/CRITICAL vulnerabilities. These scans are evidence only; they do not publish or deploy images.
+
+The producer inventory is an architectural control against duplicate or phantom release checks. CI must still execute and complete successfully on the exact candidate SHA before deployment or production migration is eligible.
+## Release-gate validator normalization (2026-11-26)
+
+Render staging, Railway staging, production database migration, and guarded Render repair now use the same canonical latest-attempt/exact-SHA validator as the other governed release lanes. This removes divergent subset check lists from those workflows and makes the 19-context release evidence contract authoritative across release and repair paths.
+
+The validator only reads GitHub check-run evidence; it does not deploy, migrate, publish images, modify credentials, or change branch rulesets.
+

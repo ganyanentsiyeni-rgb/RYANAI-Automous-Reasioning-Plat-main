@@ -72,12 +72,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - image: api
-            file: Dockerfile
-            target: api
-          - image: web
-            file: Dockerfile
-            target: web
           - image: standalone-api
             file: Dockerfile.api
             target: api
@@ -178,7 +172,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        image: [api, web, standalone-api, mcp, migrate]
+        image: [standalone-api, mcp, migrate]
     steps:
       # The artifact is absent when the image failed to build, in which case
       # there is nothing to upload and the scan job already reports the failure.

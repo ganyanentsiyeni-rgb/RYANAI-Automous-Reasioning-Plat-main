@@ -274,7 +274,7 @@ services:
     container_name: ryanai-mcpjungle-db
     environment:
       POSTGRES_USER: mcpjungle
-      POSTGRES_PASSWORD: ${MCPJUNGLE_DB_PASSWORD:-}
+      POSTGRES_PASSWORD: ${MCPJUNGLE_DB_PASSWORD:?Set MCPJUNGLE_DB_PASSWORD in .env}
       POSTGRES_DB: mcpjungle
       POSTGRES_HOST_AUTH_METHOD: scram-sha-256
     networks: [ryanai-net]
@@ -292,7 +292,7 @@ services:
     image: ghcr.io/mcpjungle/mcpjungle:${MCPJUNGLE_IMAGE_TAG:-0.4.6}
     container_name: ryanai-mcpjungle
     environment:
-      DATABASE_URL: postgres://mcpjungle:${MCPJUNGLE_DB_PASSWORD:-}@mcpjungle-db:5432/mcpjungle?sslmode=disable
+      DATABASE_URL: postgres://mcpjungle:${MCPJUNGLE_DB_PASSWORD:?Set MCPJUNGLE_DB_PASSWORD in .env}@mcpjungle-db:5432/mcpjungle?sslmode=disable
       SERVER_MODE: enterprise
       OTEL_ENABLED: "true"
     networks: [ryanai-net]

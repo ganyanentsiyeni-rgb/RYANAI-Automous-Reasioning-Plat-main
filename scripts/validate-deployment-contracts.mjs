@@ -94,6 +94,9 @@ const renderDeploy = read('.github/workflows/deploy-render.yml');
 const ciWorkflow = read('.github/workflows/ci.yml');
 const railwayDeploy = read('.github/workflows/deploy-railway.yml');
 const dockerCompose = read('docker-compose.yml');
+const composeConfig = parseYaml(dockerCompose);
+const databaseContract = read('database.yml');
+const apiLauncher = read('src/server/launcher.ts');
 
 function dockerStage(source, preferredNames) {
   const stages = [...source.matchAll(/^FROM\s+.+?\s+AS\s+([\w-]+)\s*$/gim)];
@@ -109,6 +112,33 @@ function dockerStage(source, preferredNames) {
 
 const rootApiStage = dockerStage(rootDockerfile, ['api']);
 const standaloneApiStage = dockerStage(apiDockerfile, ['api-runtime', 'api']);
+const rootStudioWorkerStage = dockerStage(rootDockerfile, ['studio-worker']);
+const standaloneStudioWorkerStage = dockerStage(apiDockerfile, ['studio-worker']);
+const directive = (stage, name) => stage.split(/\r?\n/).find((line) => new RegExp('^\\s*' + name + '(?:\\s|$)').test(line))?.trim() ?? '';
+const matchingApiRuntimeDirectives = ['HEALTHCHECK', 'ENTRYPOINT', 'CMD'].every((name) =>
+  directive(rootApiStage, name) === directive(standaloneApiStage, name) && directive(rootApiStage, name) !== ''
+);
+const requiredApiRuntimeArtifacts = [
+  'COPY --from=api-builder --chown=node:node /app/package.json ./package.json',
+  'COPY --from=api-builder --chown=node:node /app/package-lock.json ./package-lock.json',
+  'COPY --from=api-builder --chown=node:node /app/database.yml ./database.yml',
+  'COPY --from=api-builder --chown=node:node /app/node_modules ./node_modules',
+  'COPY --from=api-builder --chown=node:node /app/dist/server ./dist/server',
+  'COPY --from=api-builder --chown=node:node /app/src ./src',
+  'COPY --from=api-builder --chown=node:node /app/scripts ./scripts',
+  'COPY --chown=node:node quant-engine ./quant-engine',
+  'COPY --chown=node:node scripts/backup-on-startup.mjs ./scripts/backup-on-startup.mjs',
+  'COPY --chown=node:node scripts/verify-node-ca.sh ./scripts/verify-node-ca.sh',
+];
+const hasRequiredApiRuntimeArtifacts = [rootApiStage, standaloneApiStage].every((stage) =>
+  requiredApiRuntimeArtifacts.every((artifact) => stage.includes(artifact))
+);
+const hasStudioWorkerParity =
+  rootStudioWorkerStage.includes('HEALTHCHECK NONE')
+  && standaloneStudioWorkerStage.includes('HEALTHCHECK NONE')
+  && directive(rootStudioWorkerStage, 'CMD') === directive(standaloneStudioWorkerStage, 'CMD')
+  && directive(rootStudioWorkerStage, 'CMD') === 'CMD ["node", "dist/server/server/engineering/studioWorker.js"]';
+
 const hasVerifiedCaContract = (stage) =>
   stage.includes('NODE_USE_SYSTEM_CA=1')
   && stage.includes('NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/supabase-prod-ca-2021.crt')
@@ -217,6 +247,9 @@ const checks = [
   ['Render keeps communication attachments disabled by default', isFalse(renderApi, 'COMMUNICATION_ATTACHMENTS_ENABLED', renderConfig)],
   ['Render keeps malware scanning and orphan cleanup disabled by default', isFalse(renderApi, 'ATTACHMENT_SCANNER_ENABLED', renderConfig) && isFalse(renderApi, 'ATTACHMENT_ORPHAN_CLEANUP_ENABLED', renderConfig)],
   ['Both production API Docker targets use system and Supabase CA roots with verified TLS', hasVerifiedCaContract(rootApiStage) && hasVerifiedCaContract(standaloneApiStage)],
+  ['Root and standalone API images carry the same runtime healthcheck, entrypoint, and startup command', matchingApiRuntimeDirectives],
+  ['Root and standalone API images copy the same required runtime assets', hasRequiredApiRuntimeArtifacts],
+  ['Root and standalone Studio Worker targets disable HTTP healthchecks and run the same worker entrypoint', hasStudioWorkerParity],
   ['Neither API runtime image disables TLS certificate verification', !rootApiStage.includes('NODE_TLS_REJECT_UNAUTHORIZED') && !standaloneApiStage.includes('NODE_TLS_REJECT_UNAUTHORIZED')],
   ['Both API runtime images execute the CA validation wrapper before the server', rootApiStage.includes('exec sh scripts/verify-node-ca.sh') && standaloneApiStage.includes('exec sh scripts/verify-node-ca.sh')],
   ['Supabase Session Pooler uses full TLS and strict certificate acceptance', poolerAdapter.includes("database.searchParams.set('sslmode', 'verify-full')") && poolerAdapter.includes("database.searchParams.set('sslaccept', 'strict')")],
@@ -272,6 +305,19 @@ checks.push(
   ['docker-compose builds the MCP service from the canonical mcp-server/Dockerfile', dockerCompose.includes('dockerfile: mcp-server/Dockerfile') && !dockerCompose.includes('Dockerfile.mcp_server')],
   ['README standalone MCP build command uses the canonical mcp-server/Dockerfile', read('README.md').includes('docker build -f mcp-server/Dockerfile -t ryanai-mcp:local .') && !read('README.md').includes('docker build -f Dockerfile.mcp_server')],
   ['Staging deploy guard accepts exactly the Blueprint staging API name', renderDeploy.includes('startswith("ryanai-api-staging")') && !renderDeploy.includes('startswith("ryanai-staging")') && stagingServiceNames.includes('ryanai-api-staging')],
+);
+
+
+checks.push(
+  ['Compose API waits for healthy local PostgreSQL and Redis', composeConfig.services.api.depends_on.postgres.condition === 'service_healthy' && composeConfig.services.api.depends_on.redis.condition === 'service_healthy'],
+  ['Compose migrations are opt-in, local-only, and never part of API startup', composeConfig.services.migrate.profiles.includes('migrations') && composeConfig.services.migrate.environment.NODE_ENV === 'test' && composeConfig.services.migrate.depends_on.postgres.condition === 'service_healthy' && !composeConfig.services.api.depends_on.migrate && databaseContract.includes('startup_must_not_run_ddl: true')],
+  ['Compose web and MCP wait for API health and use role-appropriate probes', composeConfig.services.web.depends_on.api.condition === 'service_healthy' && composeConfig.services['mcp-server'].depends_on.api.condition === 'service_healthy' && composeConfig.services.api.healthcheck.test.join(' ').includes('/livez') && composeConfig.services['mcp-server'].healthcheck.test.join(' ').includes('/health')],
+  ['Compose MCPJungle and Cloudflare edge remain opt-in profiles', composeConfig.services['mcpjungle-db'].profiles.includes('mcp-gateway') && composeConfig.services.mcpjungle.profiles.includes('mcp-gateway') && composeConfig.services.cloudflared.profiles.includes('cloudflare-edge')],
+  ['Compose MCPJungle database credentials are mandatory and never default to empty', composeConfig.services['mcpjungle-db'].environment.POSTGRES_PASSWORD.includes(':?Set MCPJUNGLE_DB_PASSWORD') && composeConfig.services.mcpjungle.environment.DATABASE_URL.includes(':?Set MCPJUNGLE_DB_PASSWORD') && !dockerCompose.includes('MCPJUNGLE_DB_PASSWORD:-')],
+  ['Compose local PostgreSQL and Redis publish host ports only on loopback', composeConfig.services.postgres.ports.includes('127.0.0.1:5432:5432') && composeConfig.services.redis.ports.includes('127.0.0.1:6379:6379')],
+  ['Compose API liveness stays independent from dependency readiness', apiLauncher.includes("fastify.get('/livez', livenessCheck)") && apiLauncher.includes("fastify.get('/health', livenessCheck)") && apiLauncher.includes("fastify.get('/readyz', healthCheck)") && apiLauncher.includes('Liveness is deliberately independent of dependency readiness')],
+  ['Compose MCP starts on API liveness while its platform health tool checks API readiness', composeConfig.services['mcp-server'].depends_on.api.condition === 'service_healthy' && composeConfig.services['mcp-server'].environment.RYANAI_API_HEALTH_URL === 'http://api:3000/readyz' && composeConfig.services['mcp-server'].healthcheck.test.join(' ').includes('/health')],
+  ['Compose migrations target only the disposable local PostgreSQL service', composeConfig.services.migrate.environment.DATABASE_URL.includes('@postgres:5432/ryanai_db') && !composeConfig.services.migrate.environment.DATABASE_URL.includes('supabase.co') && !composeConfig.services.migrate.environment.DATABASE_URL.includes('pooler.supabase.com')],
 );
 
 for (const [name, passed] of checks) console.log((passed ? 'PASS' : 'FAIL') + ' | ' + name);

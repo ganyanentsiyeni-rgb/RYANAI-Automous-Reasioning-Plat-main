@@ -10,45 +10,98 @@ import { fileURLToPath } from 'node:url';
 
 const MIGRATION_ID = /^\d{14}_[a-z0-9_]+$/i;
 
-function stripComments(sql) {
-  return sql
-    .replace(/--[^\r\n]*/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '');
-}
-
 function splitStatements(sql) {
-  // Deliberately conservative: dollar-quoted procedural blocks are not parsed.
-  if (/\$[a-zA-Z_0-9]*\$[\s\S]*?\$[a-zA-Z_0-9]*\$/m.test(sql)) {
-    return { statements: [], unsupported: ['dollar_quoted_block'] };
-  }
-  const cleaned = stripComments(sql);
+  // Tokenize PostgreSQL statements without treating comment markers or semicolons
+  // inside quoted strings/identifiers and dollar-quoted bodies as syntax.
   const statements = [];
+  const unsupported = [];
   let current = '';
   let quote = null;
-  for (let i = 0; i < cleaned.length; i += 1) {
-    const char = cleaned[i];
+  let dollarTag = null;
+  let blockCommentDepth = 0;
+  let lineComment = false;
+
+  for (let i = 0; i < sql.length; i += 1) {
+    const char = sql[i];
+    const next = sql[i + 1];
+
+    if (lineComment) {
+      if (char === '\n') {
+        lineComment = false;
+        current += char;
+      }
+      continue;
+    }
+    if (blockCommentDepth > 0) {
+      if (char === '/' && next === '*') {
+        blockCommentDepth += 1;
+        i += 1;
+      } else if (char === '*' && next === '/') {
+        blockCommentDepth -= 1;
+        i += 1;
+      }
+      continue;
+    }
+    if (dollarTag) {
+      if (sql.startsWith(dollarTag, i)) {
+        current += dollarTag;
+        i += dollarTag.length - 1;
+        dollarTag = null;
+      } else {
+        current += char;
+      }
+      continue;
+    }
     if (quote) {
       current += char;
-      if (char === quote && cleaned[i + 1] === quote) {
-        current += cleaned[i + 1];
+      if (char === quote && next === quote) {
+        current += next;
         i += 1;
-      } else if (char === quote && cleaned[i - 1] !== '\\') {
+      } else if (char === quote && sql[i - 1] !== '\\') {
         quote = null;
       }
+      continue;
+    }
+
+    if (char === '-' && next === '-') {
+      current += ' ';
+      lineComment = true;
+      i += 1;
+      continue;
+    }
+    if (char === '/' && next === '*') {
+      current += ' ';
+      blockCommentDepth = 1;
+      i += 1;
       continue;
     }
     if (char === "'" || char === '"') {
       quote = char;
       current += char;
-    } else if (char === ';') {
+      continue;
+    }
+    if (char === '$') {
+      const match = sql.slice(i).match(/^\$[a-zA-Z_0-9]*\$/);
+      if (match) {
+        dollarTag = match[0];
+        current += dollarTag;
+        i += dollarTag.length - 1;
+        continue;
+      }
+    }
+    if (char === ';') {
       if (current.trim()) statements.push(current.trim());
       current = '';
     } else {
       current += char;
     }
   }
+
+  if (quote) unsupported.push('unterminated_quoted_string');
+  if (dollarTag) unsupported.push('unterminated_dollar_quoted_block');
+  if (blockCommentDepth > 0) unsupported.push('unterminated_block_comment');
   if (current.trim()) statements.push(current.trim());
-  return { statements, unsupported: quote ? ['unterminated_quoted_string'] : [] };
+  return { statements, unsupported };
 }
 
 function normalizeIdentifier(value) {
@@ -57,6 +110,23 @@ function normalizeIdentifier(value) {
 
 function tableNameFromMatch(value) {
   return normalizeIdentifier(value).replace(/^public\./, '');
+}
+
+function isSchemaQualified(value) {
+  return normalizeIdentifier(value).includes('.');
+}
+
+function recordUnresolvedTable(migrationId, object, rawTable, findingStatus, externalDependencies, findings) {
+  if (isSchemaQualified(rawTable)) {
+    externalDependencies.push({
+      migrationId,
+      object,
+      dependency: normalizeIdentifier(rawTable),
+      status: 'external_dependency_not_verified',
+    });
+  } else {
+    findings.push({ migrationId, object, status: findingStatus });
+  }
 }
 
 export function analyzeMigrationDependencies(migrations) {
@@ -85,7 +155,7 @@ export function analyzeMigrationDependencies(migrations) {
     for (const statement of parsed.statements) {
       statementCount += 1;
       const sql = statement.replace(/\s+/g, ' ').trim();
-      if (/^(CREATE|ALTER|DROP)\s+TYPE\b/i.test(sql) ||
+      if (/^(CREATE|ALTER|DROP)\s+TYPE\b/i.test(sql) || /^DO\b/i.test(sql) ||
           /\bEXECUTE\s+|\bCREATE\s+FUNCTION\b|\bCREATE\s+TRIGGER\b|\bCREATE\s+VIEW\b/i.test(sql)) {
         unsupported.push(migration.id + ':unsupported_ddl');
         continue;
@@ -100,7 +170,7 @@ export function analyzeMigrationDependencies(migrations) {
         for (const ref of references) {
           const target = tableNameFromMatch(ref[1]);
           if (!createdTables.has(target)) {
-            if (target.includes('.')) externalDependencies.push({ migrationId: migration.id, object: table, dependency: target, status: 'external_dependency_not_verified' });
+            if (isSchemaQualified(ref[1])) externalDependencies.push({ migrationId: migration.id, object: table, dependency: normalizeIdentifier(ref[1]), status: 'external_dependency_not_verified' });
             else findings.push({ migrationId: migration.id, object: table, dependency: target, status: 'referenced_table_not_yet_created' });
           }
         }
@@ -110,12 +180,12 @@ export function analyzeMigrationDependencies(migrations) {
       const alter = sql.match(/^ALTER\s+TABLE\s+(?:ONLY\s+)?([\w".]+)/i);
       if (alter) {
         const table = tableNameFromMatch(alter[1]);
-        if (!createdTables.has(table)) findings.push({ migrationId: migration.id, object: table, status: 'alter_before_create_or_external_dependency' });
+        if (!createdTables.has(table)) recordUnresolvedTable(migration.id, table, alter[1], 'alter_before_create_or_external_dependency', externalDependencies, findings);
         const refs = [...sql.matchAll(/REFERENCES\s+([\w".]+)\s*\(/gi)];
         for (const ref of refs) {
           const target = tableNameFromMatch(ref[1]);
           if (!createdTables.has(target)) {
-            if (target.includes('.')) externalDependencies.push({ migrationId: migration.id, object: table, dependency: target, status: 'external_dependency_not_verified' });
+            if (isSchemaQualified(ref[1])) externalDependencies.push({ migrationId: migration.id, object: table, dependency: normalizeIdentifier(ref[1]), status: 'external_dependency_not_verified' });
             else findings.push({ migrationId: migration.id, object: table, dependency: target, status: 'referenced_table_not_yet_created' });
           }
         }
@@ -125,7 +195,7 @@ export function analyzeMigrationDependencies(migrations) {
       const index = sql.match(/^CREATE\s+(?:UNIQUE\s+)?INDEX\b[\s\S]*?\bON\s+([\w".]+)/i);
       if (index) {
         const table = tableNameFromMatch(index[1]);
-        if (!createdTables.has(table)) findings.push({ migrationId: migration.id, object: table, status: 'index_before_create_or_external_dependency' });
+        if (!createdTables.has(table)) recordUnresolvedTable(migration.id, table, index[1], 'index_before_create_or_external_dependency', externalDependencies, findings);
         continue;
       }
 

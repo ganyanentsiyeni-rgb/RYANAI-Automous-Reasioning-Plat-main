@@ -30,6 +30,12 @@ jobs:
     env:
       TARGET_SHA: ${{ inputs.commit_sha }}
     steps:
+      - name: Check out exact target SHA for canonical release validator
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA || github.sha }}
+          persist-credentials: false
+
       - name: Validate exact current main SHA
         env:
           GH_TOKEN: ${{ github.token }}
@@ -43,51 +49,15 @@ jobs:
           MAIN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
           [[ "$TARGET_SHA" == "$MAIN_SHA" ]] || { echo "::error::Repair commit is no longer current main"; exit 1; }
 
-      - name: Require successful CI and security checks for the exact commit
+      - name: Require canonical exact-SHA CI and security checks
         env:
           GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ env.TARGET_SHA || github.sha }}
         run: |
           set -euo pipefail
-          required=(
-            "Validate (typecheck, lint, test, build)"
-            "MCP server and workflow worker"
-            "Integration and end-to-end checks"
-            "Issue 435 migrations and attachment security"
-            "Test agent API contracts"
-            "Dependency audit"
-            "Trivy filesystem scan"
-            "Analyze (javascript-typescript)"
-            "Analyze (python)"
-            "TruffleHog secret audit"
-            "Codacy Security Scan"
-          )
-          ready=false
-          for attempt in $(seq 1 60); do
-            gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/check-runs?per_page=100" > checks-pages.json
-            jq -s '[.[].check_runs[]]' checks-pages.json > checks.json
-            missing=0
-            pending=0
-            failed=0
-            for name in "${required[@]}"; do
-              count="$(jq --arg n "$name" '[.[] | select(.name == $n)] | length' checks.json)"
-              if [[ "$count" -eq 0 ]]; then
-                missing=$((missing + 1))
-                continue
-              fi
-              bad="$(jq --arg n "$name" '[.[] | select(.name == $n) | select(.status == "completed" and .conclusion != "success")] | length' checks.json)"
-              wait="$(jq --arg n "$name" '[.[] | select(.name == $n) | select(.status != "completed")] | length' checks.json)"
-              failed=$((failed + bad))
-              pending=$((pending + wait))
-            done
-            [[ "$failed" -eq 0 ]] || { echo "::error::A required CI/security check failed"; jq '[.[] | select(.conclusion == "failure" or .conclusion == "cancelled") | {name,conclusion}]' checks.json; exit 1; }
-            if [[ "$missing" -eq 0 && "$pending" -eq 0 ]]; then
-              ready=true
-              break
-            fi
-            echo "Waiting for required checks: $missing missing, $pending pending (attempt $attempt/60)"
-            sleep 30
-          done
-          [[ "$ready" == true ]] || { echo "::error::Required CI/security checks did not all complete successfully"; exit 1; }
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Target SHA must be a full commit SHA"; exit 1; }
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/check-runs?per_page=100" --jq '.check_runs[]' > check-runs.ndjson
+          node scripts/ci/require-latest-exact-sha-checks.mjs check-runs.ndjson "$TARGET_SHA"
 
       - name: Confirm Render credential is available
         env:

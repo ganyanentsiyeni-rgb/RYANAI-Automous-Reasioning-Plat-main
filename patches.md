@@ -480,3 +480,88 @@ Added two manual-only provider lanes on this repair branch:
 - Updated `scripts/audit-deployment-readiness.mjs` and the CI readiness environment mapping to audit OIDC-based AWS configuration and Azure staging deployment/health/isolation settings. Static AWS access keys are no longer the expected AWS identity mechanism.
 
 Both lanes are disabled unless their provider enablement and staging-isolation variables are explicitly set to `true`, and each manual dispatch requires `STAGE`. They are not part of the existing three-provider PUSH DEPLOY fan-out. No cloud account, role, registry, cluster, service, environment secret, production resource, or deployment was created or modified. Workflow execution and live provider readiness remain unverified.
+
+
+## 2026-11-26 — Docker API and Studio Worker runtime parity guard
+
+- Extended deployment-contract validation to compare the root multi-target Dockerfile and standalone API Dockerfile runtime healthcheck, entrypoint, and startup command.
+- Added required-runtime-artifact checks for package metadata, database configuration, dependencies, server output, source/scripts, quant engine, startup backup, and CA verification wrapper.
+- Added parity checks for the Studio Worker target's disabled HTTP healthcheck and exact worker process command.
+- Static contract assertions only; Docker builds and runtime behavior remain subject to exact-SHA CI verification. No image publishing, deployment, migration, secret change, or production access.
+
+
+## 2026-11-26 — Compose startup and optional gateway credential boundary
+
+- Added static Compose contract checks for API dependencies on healthy local PostgreSQL and Redis, web/MCP health ordering, local-only opt-in migrations, loopback-only database/cache host ports, and opt-in MCPJungle/Cloudflare profiles.
+- Made the optional MCPJungle PostgreSQL password mandatory at Compose interpolation time for both database initialization and the gateway connection string; removed the empty-password fallback.
+- Compose remains a local development topology. No production database, credential, deployment, image publication, or migration was changed. These are source-level checks pending exact-SHA CI.
+
+
+### Compose follow-up — credential symmetry and health semantics (2026-11-26)
+
+- Removed the remaining empty-password fallback from the MCPJungle PostgreSQL initializer, matching the gateway connection requirement.
+- Extended static contracts to protect API liveness (`/livez`, `/health`) from dependency readiness (`/readyz`), MCP's liveness-based startup ordering, its explicit API readiness target, and local-only migration URL routing.
+- CI's Docker workflow includes `docker compose --file docker-compose.yml config --quiet`; execution on the exact PR SHA is pending. No local Docker daemon/runtime validation is claimed.
+
+
+### AWS ECS and Azure AKS staging gate alignment (2026-11-26)
+
+- Expanded both staging workflows to require the full configured application, database compatibility, dependency, static-analysis, secret-audit, image-scan, and SBOM check set on the candidate commit before credentials, image publication, or cluster/service mutation can occur.
+- Existing explicit `STAGE` confirmation, disabled-by-default provider flags, staging-isolation confirmation, OIDC authentication, immutable SHA image tags, and runtime `/readyz` verification remain in place.
+- This is workflow-level defense in depth; it does not activate AWS/Azure, configure cloud credentials, deploy, or replace repository branch protection.
+### Governed release exact-SHA gate (2026-11-26)
+
+- Added a fail-closed preflight to the manual staging/production release workflow. It verifies the dispatched commit is still current `main` and requires every configured application, database, dependency, code-scanning, secret-scanning, image-scan, and SBOM check context to exist and have completed successfully on that exact SHA.
+- Both staging and production release jobs now depend on this preflight. The production migration approval input remains an additional independent requirement.
+- The preflight does not wait for checks or alter branch rules; if evidence is pending, missing, stale, or unsuccessful, the operator must not release. No deployment or migration was run as part of this patch.
+
+
+### Exact-SHA latest-attempt check selection (2026-11-26)
+
+- Centralized the required release check names in `scripts/ci/required-release-checks.json` and the validator in `scripts/ci/require-latest-exact-sha-checks.mjs`.
+- Release, AWS ECS staging, and Azure AKS staging gates now select the newest check run for each required context by start time (check-run ID breaks timestamp ties), then require that selected run to be completed successfully and to reference the exact candidate SHA.
+- Older failed/cancelled attempts no longer permanently block a context after a newer successful rerun; a newer pending/failed/cancelled attempt still blocks. Missing contexts and mismatched SHAs remain fail-closed.
+- Added automated tests for reruns, pending latest attempts, missing contexts, SHA mismatch, and duplicate timestamps. No deployment, cloud authentication, image publication, migration, or branch-ruleset change is performed by this patch.
+
+# CI execution completeness
+
+The release-check catalogue is now treated as an execution contract, not only a list of names.
+
+`CI execution completeness` runs on every main push and pull request and waits for the catalogue contexts to appear for the candidate SHA. For each context it selects the newest check attempt by `started_at` (check-run ID as the tie-breaker), then requires:
+
+- the check exists for the candidate SHA;
+- the newest attempt is completed;
+- the conclusion is `success`;
+- the check's `head_sha` exactly matches the candidate SHA.
+
+A missing workflow, a workflow that never starts, a pending check, a failed/cancelled/skipped check, or a check attached to another SHA therefore remains a release blocker.
+
+This verifier does not deploy, publish images, run migrations against shared/production databases, change credentials, or modify branch rulesets. It is diagnostic/gating evidence for CI execution itself.
+
+
+## 2026-11-26 — Canonical CI release-check producer inventory
+
+- Added `scripts/ci/required-release-check-producers.json` as the canonical producer map for all 19 release-gate contexts, including workflow and job ownership.
+- Added `scripts/ci/validate-release-check-producers.mjs` to reject duplicate contexts, missing producer workflows, undeclared check names, and drift between the producer inventory and `required-release-checks.json`.
+- Updated the manual PUSH DEPLOY gate to read the canonical producer inventory instead of maintaining a second hard-coded 19-context list.
+- Added independent Docker CI producers named `Scan api image` and `Scan web image`; they build the non-published API/web images and run Trivy HIGH/CRITICAL vulnerability scans before release evidence can pass.
+- No deployment, image publication, migration, credential change, or branch-ruleset change was performed. Exact-SHA CI execution remains required.
+
+## 2026-11-26 — Release-gate validator normalization
+
+- Normalized Render staging, Railway staging, production migration, and guarded Render repair workflows to use the canonical `scripts/ci/require-latest-exact-sha-checks.mjs` validator instead of maintaining smaller, divergent required-check lists.
+- Those gates now require the complete 19-context release evidence contract on the exact target SHA. The gates remain fail-closed and no provider deployment, migration, credential change, or ruleset change was performed.
+
+
+
+## 2026-11-26 — Docker CI fan-out deduplication
+
+The PR Docker workflow no longer runs a separate application/MCP/Compose validation job. Those checks duplicated authoritative CI work already produced by `ci.yml` (`Validate (typecheck, lint, test, build)` and `MCP server and workflow worker`). Docker PR scanning now consumes the images built by `build-pr` directly. The required `Scan api image` and `Scan web image` contexts remain unchanged; the release gate still obtains application validation from the canonical CI producers.
+
+
+## 2026-11-26 — Container security duplicate scan removal
+
+- Audited the PR-triggered container security fan-out and confirmed that its api and web matrix entries rebuilt and scanned the same runtime images already built once by the canonical Docker workflow and scanned by the required `Scan api image` and `Scan web image` producers.
+- Removed only those two duplicate matrix entries from `container-security.yml`; standalone API, MCP, and migration image scans remain intact.
+- The canonical 19 release-check contexts are unchanged and continue to be produced by their designated workflows.
+- No image publication, deployment, migration, credential change, or ruleset change was performed.
