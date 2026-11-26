@@ -195,3 +195,8 @@ AWS ECS and Azure AKS staging workflows require the complete configured exact-co
 ### Manual release gate (2026-11-26)
 
 The manual staging/production release workflow now has a fail-closed exact-SHA preflight. It confirms the candidate is current `main` and requires the full configured CI/security check set to be present and successful before either release job can start. Production migration approval remains separate. This workflow-level guard is defense in depth and does not replace restoring GitHub branch ruleset required checks and approval requirements. Pending or missing checks block release; no deployment is initiated by the preflight.
+
+
+### Exact-SHA latest-attempt check semantics (2026-11-26)
+
+The governed release, AWS ECS staging, and Azure AKS staging workflows share one required-check catalogue and validator. For each required check name on the exact candidate commit, the validator selects the newest check run by `started_at` (using the monotonically increasing check-run ID as a tie-breaker). It evaluates only that latest attempt: completed success passes; missing, pending, cancelled, failed, skipped, or SHA-mismatched latest attempts block. A prior failed attempt is superseded only by a newer successful attempt. Automated unit tests cover these semantics. This workflow-level control does not replace GitHub branch protection or establish that CI has passed.
