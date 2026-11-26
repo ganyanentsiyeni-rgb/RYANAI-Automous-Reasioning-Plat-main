@@ -95,6 +95,14 @@ export function evaluateGenXSecurityEvent(event: GenXSecurityEvent): GenXPolicyR
       event.action === 'NETWORK' && event.target === 'configured-approved-provider') {
     return { decision: 'ALLOW', ruleId: 'GX-HUMAN-REASONING-001', reason: 'Verified user requested reasoning through the configured provider policy.', severity: 'LOW' };
   }
+  // An approved, owner-bound AgentRun may invoke only the configured reasoning
+  // provider through the API-owned gateway. The worker sets ownerAuthorized only
+  // after loading the approved run and validating its live lease.
+  if (event.actorType === 'agent' && event.ownerAuthorized === true &&
+      event.toolName === 'api_agent_reasoning_request' && event.action === 'NETWORK' &&
+      event.target === 'configured-approved-provider') {
+    return { decision: 'ALLOW', ruleId: 'GX-APPROVED-AGENT-REASONING-001', reason: 'A live, owner-bound, approved AgentRun may use the configured reasoning provider through the API-owned gateway; this does not authorize arbitrary network access.', severity: 'HIGH' };
+  }
   // Aerial development inference is an explicit authenticated-human request against
   // the configured development runtime. Staging/production remains approval-gated.
   if (event.actorType === 'human' && event.toolName === 'aerial_ai_ran_inference' &&
