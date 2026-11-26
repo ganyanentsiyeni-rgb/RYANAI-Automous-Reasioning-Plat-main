@@ -63,7 +63,7 @@ export function resolveApiBaseUrl(
     }
   }
 
-  return normalized || browserOrigin || 'http://localhost:3000';
+  return normalized || browserOrigin || '';
 }
 
 export const API_BASE_URL = resolveApiBaseUrl(

@@ -9,7 +9,7 @@ export interface AgentStep {
 export class LangGraphReActAgent {
   private modelEndpoint: string;
 
-  constructor(endpoint: string = "http://localhost:3000") {
+  constructor(endpoint: string) {
     this.modelEndpoint = endpoint;
   }
 
