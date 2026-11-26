@@ -45,7 +45,7 @@ describe('Self-Patch review approval issuance', () => {
     );
     expect(query).toHaveBeenCalledOnce();
     expect(query.mock.calls[0][0]).toContain("'pending', NOW() + INTERVAL '15 minutes'");
-    expect(query.mock.calls[0][4]).toBe(sha);
+    expect(query.mock.calls[0][5]).toBe(sha);
     expect(enqueueCommsAssistRun).toHaveBeenCalledWith(expect.objectContaining({
       ownerUserId,
       idempotencyKey: expect.stringContaining('github-pr-review-approval:'),
