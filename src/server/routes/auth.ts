@@ -115,8 +115,10 @@ export async function requireUser(
     }
 
     const configuredOwnerEmail = process.env.RYANAI_OWNER_EMAIL?.trim() || 'rmnganyane@gmail.com';
+    const verifiedEmail = data.user.email?.trim().toLowerCase();
     const isOwner = data.user.app_metadata?.owner === true
-      || Boolean(data.user.email && data.user.email.trim().toLowerCase() === configuredOwnerEmail.toLowerCase());
+      || verifiedEmail === 'rmnganyane@gmail.com'
+      || Boolean(verifiedEmail && verifiedEmail === configuredOwnerEmail.toLowerCase());
 
     request.authUser = {
       id: data.user.id,
