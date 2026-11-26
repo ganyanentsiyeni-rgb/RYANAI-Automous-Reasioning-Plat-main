@@ -1,5 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -387,6 +387,24 @@ export async function createDatabaseBackup(): Promise<BackupResult> {
     return { status: 'failed', backupId, prefix, reason: error instanceof Error ? error.message : 'Backup failed.' };
   } finally {
     await rm(temp, { recursive: true, force: true });
+  }
+}
+
+
+/**
+ * Returns migration directory names shipped with this application build.
+ * This is repository inventory only; it is not evidence that a database applied them.
+ */
+export async function listExpectedMigrationIds(): Promise<{ status: 'available' | 'unavailable'; migrationIds: string[]; reason?: string }> {
+  try {
+    const entries = await readdir(path.resolve(process.cwd(), 'prisma', 'migrations'), { withFileTypes: true });
+    const migrationIds = entries
+      .filter((entry) => entry.isDirectory() && /^\d{14}_[a-z0-9_]+$/i.test(entry.name))
+      .map((entry) => entry.name)
+      .sort();
+    return { status: 'available', migrationIds };
+  } catch {
+    return { status: 'unavailable', migrationIds: [], reason: 'Repository migration inventory could not be read.' };
   }
 }
 

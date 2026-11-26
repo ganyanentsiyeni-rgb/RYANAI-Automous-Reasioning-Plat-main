@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import type { FastifyPluginAsync } from 'fastify';
 import { requireAdmin, requireOwner } from './auth.js';
-import { backupPreflight, createDatabaseBackup, listDatabaseBackups, recoveryPreflight } from '../../services/adminResilience.js';
+import { backupPreflight, createDatabaseBackup, listDatabaseBackups, listExpectedMigrationIds, recoveryPreflight } from '../../services/adminResilience.js';
 
 interface MaintenanceBody {
   action?: 'scheduled' | 'started' | 'completed' | 'cancelled';
@@ -39,6 +39,70 @@ export const adminResilienceRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.get('/api/admin/resilience/backups', { preHandler: requireAdmin }, async () => listDatabaseBackups());
+
+  fastify.get('/api/admin/resilience/recovery/report', { preHandler: requireAdmin }, async () => {
+    const [inventory, migrations] = await Promise.all([
+      listDatabaseBackups(),
+      listExpectedMigrationIds(),
+    ]);
+    const recovery = recoveryPreflight();
+    return {
+      reportId: randomUUID(),
+      generatedAt: new Date().toISOString(),
+      sourceCommit: process.env.RENDER_GIT_COMMIT || process.env.GITHUB_SHA || null,
+      sourceDatabaseLabel: process.env.RYANAI_SOURCE_DATABASE_LABEL?.trim() || 'unknown',
+      recoveryTargetLabel: recovery.targetLabel,
+      mode: 'read_only',
+      overallStatus: 'evidence_incomplete',
+      safety: {
+        productionRestore: 'disabled',
+        writesPerformed: false,
+        migrationsExecuted: false,
+        targetDatabaseQueried: false,
+      },
+      backupEvidence: {
+        status: inventory.status,
+        listedAt: inventory.listedAt,
+        artifacts: inventory.items.map((item) => ({
+          backupId: item.backupId,
+          createdAt: item.createdAt,
+          databaseBytes: item.databaseBytes,
+          manifestPresent: item.manifestPresent,
+          recordedSha256Present: Boolean(item.databaseSha256),
+          artifactBytesRehashed: false,
+          integrityStatus: 'not_verified',
+          retention: item.retention,
+        })),
+        reason: inventory.reason || 'Inventory metadata is not a fresh verification of stored dump bytes.',
+      },
+      schemaMigrationEvidence: {
+        status: 'not_verified',
+        expectedMigrationInventory: migrations,
+        appliedMigrationLedger: 'not_inspected',
+        requiredSchema: 'not_inspected',
+        compatibility: 'not_verified',
+        reason: 'The recovery target migration ledger and schema have not been queried. This endpoint does not connect to the target or execute SQL.',
+      },
+      targetEvidence: {
+        preflightStatus: recovery.status,
+        identityStatus: recovery.status === 'blocked_same_as_source' ? 'blocked' : 'identity_unverified',
+        networkIsolation: 'not_verified',
+        nonProductionDesignation: 'not_verified',
+        reason: recovery.reason || 'Independent database identity and network isolation evidence is unavailable.',
+      },
+      acceptanceCriteria: [
+        { id: 'artifact_integrity', status: 'not_verified' },
+        { id: 'schema_migration_compatibility', status: 'not_verified' },
+        { id: 'target_identity_and_isolation', status: 'not_verified' },
+        { id: 'authentication_and_rls', status: 'not_verified' },
+        { id: 'critical_workflows_and_event_continuity', status: 'not_verified' },
+        { id: 'data_integrity', status: 'not_verified' },
+        { id: 'rpo_rto_measurement', status: 'not_verified' },
+        { id: 'audit_receipt_and_rollback_plan', status: 'not_verified' },
+      ],
+    };
+  });
+
 
   fastify.get('/api/admin/resilience/maintenance', { preHandler: requireAdmin }, async () => {
     const events = await fastify.prisma.jarvisAuditEvent.findMany({
