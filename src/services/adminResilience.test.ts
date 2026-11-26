@@ -113,6 +113,7 @@ describe('admin resilience backup inventory', () => {
         prefix: 'ryanai-admin/2026-11-20-backup',
         databaseBytes: 42,
         databaseSha256: 'abc123',
+        integrityStatus: 'not_verified',
         manifestPresent: true,
         retention: 'within_policy',
       }),
@@ -139,6 +140,7 @@ describe('admin resilience backup inventory', () => {
       createdAt: '2026-11-20T11:00:00.000Z',
       databaseBytes: 84,
       databaseSha256: null,
+      integrityStatus: 'not_verified',
       manifestPresent: false,
       retention: 'within_policy',
     }));
@@ -164,6 +166,7 @@ describe('admin resilience backup inventory', () => {
       backupId: 'manifest-unreadable',
       databaseBytes: 128,
       databaseSha256: null,
+      integrityStatus: 'not_verified',
       manifestPresent: false,
     }));
   });

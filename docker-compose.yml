@@ -105,7 +105,7 @@ services:
       RYANAI_OPENAI_GATEWAY_TOKEN: ${RYANAI_OPENAI_GATEWAY_TOKEN:-}
       RYANAI_MCP_SERVICE_TOKEN: ${RYANAI_MCP_SERVICE_TOKEN:-}
       RYANAI_MCP_DELEGATION_SECRET: ${RYANAI_MCP_DELEGATION_SECRET:-}
-      SUPABASE_URL: ${SUPABASE_URL:-https://narsvpwymvlrhurqbthu.supabase.co}
+      SUPABASE_URL: ${SUPABASE_URL:-https://omqavyppdoniehseokvx.supabase.co}
       SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
       SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:-}
       SUPABASE_SESSION_POOLER_HOST: ${SUPABASE_SESSION_POOLER_HOST:-}
@@ -337,7 +337,7 @@ services:
       target: web
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
-        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-https://narsvpwymvlrhurqbthu.supabase.co}
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-https://omqavyppdoniehseokvx.supabase.co}
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
         VITE_SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY:-}
     container_name: ryanai-web

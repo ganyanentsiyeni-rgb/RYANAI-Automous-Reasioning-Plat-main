@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react';
-import { AlertCircle, LoaderCircle, Send, Terminal } from 'lucide-react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { AlertCircle, LoaderCircle, Send, Square, Terminal } from 'lucide-react';
 import { getAvailableModels, DEFAULT_MODEL } from '@/lib/models';
 import type { ModelId } from '@/lib/types';
 import type { CopilotSettings } from '@/lib/settingsPreferences';
@@ -17,11 +17,18 @@ export default function ChatInterface({ initialModel = DEFAULT_MODEL, copilotSet
   const [running, setRunning] = useState(false);
   const [lastRun, setLastRun] = useState<string | null>(null);
   const [progress, setProgress] = useState('');
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => {
+    abortRef.current?.abort();
+  }, []);
 
   async function runInference(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const request = prompt.trim();
     if (!request || running) return;
+    const controller = new AbortController();
+    abortRef.current = controller;
     setRunning(true);
     setError('');
     setOutput('');
@@ -36,12 +43,23 @@ export default function ChatInterface({ initialModel = DEFAULT_MODEL, copilotSet
           setLastRun(new Date().toLocaleTimeString());
         },
         onError: (message) => setError(message),
-      }, undefined, undefined, copilotSettings);
+      }, undefined, undefined, copilotSettings, controller.signal);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'The inference request failed.');
+      if (!controller.signal.aborted) {
+        setError(cause instanceof Error ? cause.message : 'The inference request failed.');
+      }
     } finally {
-      setRunning(false);
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+        setRunning(false);
+      }
     }
+  }
+
+  function cancelInference() {
+    abortRef.current?.abort();
+    setProgress('Cancelled');
+    setRunning(false);
   }
 
   return (
@@ -71,11 +89,17 @@ export default function ChatInterface({ initialModel = DEFAULT_MODEL, copilotSet
           className="w-full resize-y rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-sm text-white placeholder:text-ink-600 focus:border-cyan-400 focus:outline-none disabled:opacity-60" />
         <div className="flex items-center justify-between gap-2">
           <span className="text-[10px] text-ink-500">{prompt.length.toLocaleString()} / 20,000</span>
-          <button type="submit" disabled={running || !prompt.trim()}
-            className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-3 py-2 text-xs font-semibold text-ink-950 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50">
-            {running ? <LoaderCircle size={14} className="animate-spin" /> : <Send size={14} />}
-            {running ? 'Running inference…' : 'Run inference'}
-          </button>
+          <div className="flex items-center gap-2">
+            {running && <button type="button" onClick={cancelInference}
+              className="inline-flex items-center gap-2 rounded-lg border border-rose-300/20 px-3 py-2 text-xs font-semibold text-rose-100 hover:bg-rose-300/10">
+              <Square size={13} />Cancel
+            </button>}
+            <button type="submit" disabled={running || !prompt.trim()}
+              className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-3 py-2 text-xs font-semibold text-ink-950 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50">
+              {running ? <LoaderCircle size={14} className="animate-spin" /> : <Send size={14} />}
+              {running ? 'Running inference…' : 'Run inference'}
+            </button>
+          </div>
         </div>
       </form>
 

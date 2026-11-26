@@ -8,6 +8,7 @@ interface BackupInventoryItem {
   createdAt: string | null;
   databaseBytes: number | null;
   databaseSha256: string | null;
+  integrityStatus: 'not_verified';
   manifestPresent: boolean;
   retention: 'within_policy' | 'outside_policy' | 'unknown';
 }
@@ -171,7 +172,8 @@ export default function ResiliencePanel({ userId }: { userId: string }) {
               <li key={item.backupId} className="rounded-lg border border-slate-800 p-2 text-xs">
                 <div className="flex justify-between gap-2"><span>{item.backupId}</span><span>{item.retention.replace('_', ' ')}</span></div>
                 <p className="mt-1 text-slate-400">{item.createdAt ? new Date(item.createdAt).toLocaleString() : 'Timestamp unknown'} · {item.databaseBytes == null ? 'Size unknown' : item.databaseBytes.toLocaleString() + ' bytes'}</p>
-                <p className="break-all text-slate-500">SHA-256: {item.databaseSha256 || 'unavailable'} · manifest {item.manifestPresent ? 'present' : 'missing/unreadable'}</p>
+                <p className="break-all text-slate-500">Manifest SHA-256 (recorded, not revalidated): {item.databaseSha256 || 'unavailable'} · manifest {item.manifestPresent ? 'present' : 'missing/unreadable'}</p>
+                <p className="mt-1 text-amber-200">Integrity: {item.integrityStatus.replace('_', ' ')} — stored object has not been re-hashed during inventory.</p>
               </li>
             ))}
           </ul>

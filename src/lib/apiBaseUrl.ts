@@ -1,5 +1,12 @@
+import { validateFrontendEnvironment } from '@/config/frontendEnv';
+
+const frontendEnvironment = validateFrontendEnvironment(
+  import.meta.env as Record<string, string | boolean | undefined>,
+  import.meta.env.MODE,
+);
+
 const configuredApiBaseUrl =
-  import.meta.env.VITE_API_BASE_URL?.trim() ||
+  frontendEnvironment.apiBaseUrl ||
   import.meta.env.VITE_API_URL?.trim();
 
 function isLoopbackHostname(hostname: string): boolean {

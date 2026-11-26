@@ -119,3 +119,14 @@ This change is delivered through a reviewable pull request. It does not authoriz
 ## Frontend navigation and dashboard preferences
 
 The account preference record is a presentation setting consumed by both desktop/mobile navigation and Dashboard shortcuts. Settings is deliberately not user-hideable. The Dashboard option controls its navigation shortcut. A hidden workspace may still be reached by a direct route when the authenticated account is otherwise authorized; the API and route guards remain the security boundary. Visibility preferences never grant Admin, Owner, or other privileged capabilities.
+
+
+## Frontend trust and operational API boundary (2026-11-26)
+
+Vite build configuration and browser runtime share `src/config/frontendEnv.ts` as the frontend environment policy. It rejects server-only credentials exposed through `VITE_*`, allows only the named public Supabase anon/publishable keys, and requires HTTPS non-loopback API origins for staging/production. The legacy `VITE_API_URL` alias remains temporarily accepted; `VITE_API_BASE_URL` is canonical.
+
+`src/hooks/useRyanOperations.ts` is an authenticated UI adapter over the existing Agent Operations routes. It does not synthesize successful task creation or approval state. Task/awareness/PA telemetry is fetched independently so a failed observer does not erase another observer's last confirmed snapshot. Active task polling stops when all observed runs are terminal.
+
+The detailed multi-subsystem health, fixed 12-agent/10-worker registry, five-stage MCP tool verification, complete Comms receipt state machine, and backend capabilities manifest are not represented as live frontend contracts until corresponding API endpoints and backend runtime schemas exist. Frontend types must describe confirmed backend payloads, not create an apparent implementation by declaring interfaces alone.
+
+The focused frontend contract tests, explicit production web build, and compiled-bundle audit are integrated into the existing pull-request CI job for pre-merge execution. The standalone workflow becomes independently active once merged into the base branch. Merge remains governed by the existing required exact-SHA CI/security checks and independent review; production deployment remains behind the explicit Push Deploy trigger and the independent Render/Railway/Vercel release jobs.
