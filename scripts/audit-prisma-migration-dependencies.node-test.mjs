@@ -47,3 +47,12 @@ test('flags invalid migration identifiers', () => {
   assert.deepEqual(result.invalidMigrationIds, ['bad_id']);
   assert.equal(result.status, 'static_dependencies_incomplete');
 });
+
+test('keeps cross-schema dependencies explicitly unverified', () => {
+  const result = analyzeMigrationDependencies([
+    { id: '20261101000000_create_bridge', sqlContent: 'CREATE TABLE bridge (user_id text REFERENCES auth.users(id));' },
+  ]);
+  assert.equal(result.status, 'static_dependencies_incomplete');
+  assert.equal(result.externalDependencies[0].dependency, 'auth.users');
+  assert.equal(result.externalDependencies[0].status, 'external_dependency_not_verified');
+});
