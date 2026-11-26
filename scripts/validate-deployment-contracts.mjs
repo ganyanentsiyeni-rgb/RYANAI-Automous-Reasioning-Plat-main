@@ -111,7 +111,7 @@ const rootApiStage = dockerStage(rootDockerfile, ['api']);
 const standaloneApiStage = dockerStage(apiDockerfile, ['api-runtime', 'api']);
 const rootStudioWorkerStage = dockerStage(rootDockerfile, ['studio-worker']);
 const standaloneStudioWorkerStage = dockerStage(apiDockerfile, ['studio-worker']);
-const directive = (stage, name) => stage.split(/\\r?\\n/).find((line) => new RegExp('^\\\\s*' + name + '(?:\\\\s|$)').test(line.trim()))?.trim() ?? '';
+const directive = (stage, name) => stage.split(/\r?\n/).find((line) => new RegExp('^\\s*' + name + '(?:\\s|$)').test(line))?.trim() ?? '';
 const matchingApiRuntimeDirectives = ['HEALTHCHECK', 'ENTRYPOINT', 'CMD'].every((name) =>
   directive(rootApiStage, name) === directive(standaloneApiStage, name) && directive(rootApiStage, name) !== ''
 );
