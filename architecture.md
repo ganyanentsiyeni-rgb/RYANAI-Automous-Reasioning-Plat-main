@@ -143,3 +143,16 @@ The Admin Console's plugin capability catalogue reads the authenticated, read-on
 ## Command Cockpit AgentRun observability
 
 The Command Cockpit's AgentRun queue panel is a read-only view over the authenticated task-list and operational-awareness endpoints through `useRyanOperations`. Queue counters, task statuses, and approval states are displayed only when returned by the API. Missing fields remain explicitly unreported; an empty list is not treated as proof of queue health. Active-run polling is bounded to the hook's observed non-terminal tasks. The panel does not approve, dispatch, claim, renew, or recover tasks; those operations remain backend-authorized and lease-controlled.
+
+
+## 4. Optional cloud staging lanes
+
+AWS ECS/Fargate and Azure AKS are optional, independently operated staging lanes. They do not alter the existing Render/Railway/Vercel PUSH DEPLOY release contract.
+
+Both lanes are manual-only and fail closed unless (a) the provider deployment flag is enabled, (b) a separate staging-isolation confirmation is enabled, (c) the dispatch explicitly selects STAGE, (d) the candidate is the exact head of an open PR, and (e) the required CI/security checks for that exact SHA have completed successfully.
+
+AWS uses GitHub OIDC to assume a scoped IAM role, pushes an immutable SHA-tagged API image to ECR, updates an ECS service from a repository task-definition template, waits for ECS stability, and checks the staging API `/readyz` endpoint.
+
+Azure uses workload federation through Azure Login, pushes an immutable SHA-tagged API image to ACR, applies a configured AKS Kustomize overlay, updates a named Kubernetes Deployment container, waits for rollout, and checks the staging API `/readyz` endpoint.
+
+Each provider emits independent run, candidate SHA, image URI, rollout and health evidence. Neither cloud lane provisions infrastructure, changes secrets, runs migrations, or deploys to production. Provider identity trust, least-privilege permissions, registry resources, task definitions/manifests, staging network isolation and environment protection must be provisioned and reviewed separately before enabling either lane.
