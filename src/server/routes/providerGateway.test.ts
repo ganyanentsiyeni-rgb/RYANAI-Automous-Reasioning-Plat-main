@@ -6,10 +6,11 @@ import { providerGatewayRoutes } from './providerGateway.js';
 const serviceToken = 'provider-gateway-service-token-with-at-least-32-bytes';
 const signingSecret = 'provider-gateway-signing-secret-with-at-least-32-bytes';
 
-function delegatedToken() {
+function delegatedToken(actorType: 'human' | 'agent' | 'service' = 'human') {
   return issueMcpDelegationToken({
     subject: 'verified-user',
     role: 'user',
+    actorType,
     scopes: ['reasoning_request'],
     secret: signingSecret,
   }).token;
@@ -143,11 +144,29 @@ describe('governed provider gateway', () => {
     await app.close();
   });
 
+  it('does not let delegated agent or service identities inherit human reasoning permission', async () => {
+    vi.stubEnv('RYANAI_MCP_SERVICE_TOKEN', serviceToken);
+    vi.stubEnv('RYANAI_MCP_DELEGATION_SECRET', signingSecret);
+    vi.stubEnv('OPENAI_API_KEY', 'openai-provider-secret');
+    vi.stubEnv('OPENAI_MODEL_ALLOWLIST', 'gpt-4o-mini');
+    const app = await makeApp();
+    for (const actorType of ['agent', 'service'] as const) {
+      const response = await app.inject({
+        method: 'POST', url: '/api/internal/mcp/reasoning',
+        headers: headers(delegatedToken(actorType)),
+        payload: { providerId: 'openai', model: 'gpt-4o-mini', prompt: 'hello' },
+      });
+      expect(response.statusCode).toBe(403);
+      expect(response.json().error).toContain('Gen-X denied');
+    }
+    await app.close();
+  });
+
   it('rejects provider calls when the delegated token has no reasoning scope', async () => {
     vi.stubEnv('RYANAI_MCP_SERVICE_TOKEN', serviceToken);
     vi.stubEnv('RYANAI_MCP_DELEGATION_SECRET', signingSecret);
     const token = issueMcpDelegationToken({
-      subject: 'verified-user', role: 'user', scopes: ['platform_health'], secret: signingSecret,
+      subject: 'verified-user', role: 'user', actorType: 'human', scopes: ['platform_health'], secret: signingSecret,
     }).token;
     const app = await makeApp();
     const response = await app.inject({

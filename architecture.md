@@ -104,7 +104,7 @@ The initial active set includes:
 - edge security advisory review;
 - incident evidence and recovery.
 
-Provider/model routing remains catalogued but disabled while the previously reviewed OpenRouter proposal is paused. A registry entry is not an external integration or permission grant. Active skills remain read-only or proposal-only and must continue through the existing Gen-X, AgentRun, evidence, and execution boundaries.
+Provider/model routing remains catalogued but runtime-disabled while the resumed OpenRouter implementation completes its remaining catalogue, usage/cost, reliability, privacy, regional-data, and staging acceptance gates. The Logic override now routes through the shared API-owned provider adapter only after a persisted approved AgentRun and live worker lease are revalidated by the API worker. A registry entry is not an external integration or permission grant. Active skills remain read-only or proposal-only and must continue through the existing Gen-X, AgentRun, evidence, and execution boundaries.
 
 
 ## Owner access and dashboard workspace preferences

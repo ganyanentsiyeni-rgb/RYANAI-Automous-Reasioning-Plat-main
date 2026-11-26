@@ -372,3 +372,21 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - Added regression coverage proving the caller signal reaches authenticated transport and aborts do not trigger completion or error callbacks.
 - This is a frontend/request-lifecycle safety repair only; model catalog, provider authorization, backend policy, database schema, credentials, deployment and production configuration are unchanged.
 - Tests have not been executed in this environment; exact-head CI remains required. No merge, deployment, migration, credential change, or production modification.
+
+
+## 2026-11-26 — Resume OpenRouter governance implementation
+
+- Preserved the trusted Supabase actor type (`human`, `agent`, or `service`) in API-issued MCP delegation assertions and re-evaluated Gen-X using that signed actor classification at delegation, execution authorization, and provider dispatch.
+- Removed the hard-coded `actorType: human` assumption from delegated reasoning. Explicit agent/service identities are denied by the existing human-only reasoning policy and cannot inherit owner permissions.
+- Added regression coverage across API delegation, API provider gateway, HMAC token verification, and MCP token verification.
+- OpenRouter remains optional and runtime-disabled pending the remaining catalogue, usage/cost, reliability, privacy, regional-data, and staging acceptance gates. No provider key, billing, hosted environment, deployment, migration, or external API call was changed.
+
+
+## 2026-11-26 — Logic OpenRouter override routed through API gateway
+
+- Replaced the Logic override's direct `ChatOpenAI` construction and direct endpoint/key resolution with `resolveSelectedReasoningModel` backed by the canonical provider registry and `invokeConfiguredProvider` shared API-owned adapter.
+- The worker now requires a persisted approved AgentRun, revalidates its current worker lease immediately before provider dispatch, and evaluates Gen-X using the internal `approvedAgentRun` context. The worker-only context is distinct from route-only `ownerAuthorized` and is never accepted from model/tool input.
+- The API MCP gateway and approved AgentRun worker now share the same provider request shaping, server-held credential resolution, HTTPS/allowlist checks, normalized text response, usage normalization, and no-tool-execution behavior.
+- Existing `gpt-4o` and `gpt-4o-mini` selections continue to use the configured Logic provider. Only the two explicitly catalogued OpenRouter aliases may select the OpenRouter route.
+- Added model selection, provider invocation, and Gen-X policy regression tests. Exact-head CI is still required; tests have not been executed locally in this workflow.
+- OpenRouter remains runtime-disabled. No provider API request, secret/billing change, hosted configuration change, merge, migration, or deployment was performed.
