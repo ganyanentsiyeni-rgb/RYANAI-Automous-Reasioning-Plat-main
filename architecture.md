@@ -187,3 +187,8 @@ The local Compose API starts only after the disposable local PostgreSQL and Redi
 ### Compose health semantics follow-up (2026-11-26)
 
 API `/livez` and `/health` report process liveness independently of PostgreSQL/Redis availability; `/readyz` evaluates live dependencies and agent queue/checkpointer readiness. Compose uses liveness to avoid restart loops during dependency recovery. MCP's own `/health` is a process probe, while its platform-health tool targets API `/readyz` for dependency status. The local migration profile's `DATABASE_URL` points to the Compose PostgreSQL service only. Both MCPJungle database initialization and gateway connection require the same non-empty password.
+
+
+### AWS and Azure staging release gates (2026-11-26)
+
+AWS ECS and Azure AKS staging workflows require the complete configured exact-commit CI/security check set before any cloud authentication, image publication, or workload mutation. Deployment remains disabled unless the explicit staging confirmation and provider-specific staging-isolation flags are enabled. OIDC and runtime `/readyz` verification remain required. These controls do not replace GitHub branch rulesets and no cloud deployment is initiated by the gate patch.
