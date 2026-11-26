@@ -247,4 +247,32 @@ status: 'configuration_snapshot',
     expect(input).not.toBeNull();
     expect(input.disabled).toBe(false);
   });
+
+  it('invalidates an approved draft when its attachment selection changes', async () => {
+    comms.getCommsApprovalStatus.mockResolvedValue({ approvalId: 'approval-1', status: 'approved' });
+    await render();
+    const textarea = container.querySelector('textarea') as HTMLTextAreaElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+      setter?.call(textarea, 'Approved delivery update.');
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const form = container.querySelector('form') as HTMLFormElement;
+    await act(async () => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    const requestApproval = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Request owner approval'));
+    await act(async () => requestApproval?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    const checkApproval = Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Check approval status'));
+    await act(async () => checkApproval?.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(container.textContent).toContain('approved this exact message');
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['attachment'], 'updated.pdf', { type: 'application/pdf' });
+    Object.defineProperty(fileInput, 'files', { configurable: true, value: [file] });
+    await act(async () => fileInput.dispatchEvent(new Event('change', { bubbles: true })));
+
+    expect(container.querySelector('[aria-label="Owner Comms approval"]')).toBeNull();
+    expect(container.textContent).not.toContain('Send approved message');
+    expect(comms.sendCommsMessage).not.toHaveBeenCalled();
+  });
+
 });
