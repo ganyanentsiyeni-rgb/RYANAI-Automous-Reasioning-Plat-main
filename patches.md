@@ -407,3 +407,18 @@ This change is delivered through a reviewable pull request. It does not authoriz
 - This corrects the validator drift introduced when the example was expanded to document frontend and audiobook runtime configuration.
 - The patch changes validation only; it does not populate credentials, alter provider configuration, run migrations, or deploy.
 - PR #953 must pass all required exact-head CI/security checks and required review before merge. Vercel checks are currently failing with the team's Hobby build-rate limit; this is a provider/account capacity block, not a successful deployment.
+## 2026-11-26 — Admin Console backend plugin capability catalogue
+
+- Added a read-only Admin Console view backed by the authenticated `GET /api/plugins/registry` endpoint.
+- Displays server-declared provider metadata, capability IDs, risk classifications, human-approval flags, data classifications, manifest versions and adapter registration state.
+- Validates the response shape and visibly distinguishes API/contract failures from a confirmed empty catalogue.
+- Explicitly does not infer user permissions, provider connection/health, or executable authority from catalogue metadata. No credentials, connection records or adapter methods are exposed by the route.
+- Added component tests for authenticated loading, manifest rendering, invalid payloads and HTTP 403. Tests/build have not been run locally in this workflow; exact-head CI remains required.
+- No backend authorization policy, provider credential, database schema, deployment, merge or production configuration was changed.
+## 2026-11-26 — Command Cockpit AgentRun queue visibility
+
+- Added a dedicated AgentRun queue panel to the Command Cockpit using the shared authenticated `useRyanOperations` hook.
+- Exposes API-reported queued/running/failed/cancelled/total counters, recent persisted AgentRuns, approval state when present, last confirmed snapshot time, and manual refresh.
+- Missing counters and approval state render as `Not reported`; an empty task response is not presented as proof of a healthy or empty queue.
+- Reuses the hook's active-run polling behavior; no new API route, registry assertion, approval action, lease mutation, migration, deployment, or production change.
+- Exact-head CI/build/security checks remain required; tests have not been run locally in this workflow.
