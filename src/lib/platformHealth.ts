@@ -5,7 +5,33 @@ export interface PlatformHealth {
   status: 'online' | 'degraded';
   service?: string;
   timestamp?: string;
-  services?: Record<string, boolean>;
+  services?: {
+    api?: boolean;
+    database?: boolean;
+    redis?: boolean;
+    agentCheckpointer?: boolean;
+    agentQueueListener?: boolean;
+    [service: string]: boolean | undefined;
+  };
+  agentQueue?: {
+    state?: string;
+    recoveryIntervalMs?: number;
+    listener?: {
+      state?: string;
+      connected?: boolean;
+      subscribed?: boolean;
+      reconnectAttempts?: number;
+      backoffMs?: number;
+      lastConnectedAt?: string | null;
+      lastErrorCode?: string | null;
+    } | null;
+    lastNotificationAt?: string | null;
+    lastRecoverySweepAt?: string | null;
+    queueClaimState?: string;
+    lastClaimAttemptAt?: string | null;
+    lastSuccessfulClaimAt?: string | null;
+    lastClaimErrorCode?: string | null;
+  };
   engine?: string;
   activeGraph?: string;
 }
