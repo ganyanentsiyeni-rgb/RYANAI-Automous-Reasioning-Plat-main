@@ -1,4 +1,5 @@
-import { createHash } from 'node:crypto';\nimport { afterEach, describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { backupReadbackMatches, evaluateSchemaMigrationArtifacts, listDatabaseBackups, persistBackupArtifact, recoveryPreflight, verifyDatabaseBackupArtifacts } from './adminResilience.js';
 
@@ -54,7 +55,8 @@ describe('read-only schema migration source evidence', () => {
   });
 });
 
-\ndescribe('admin resilience backup integrity', () => {
+
+describe('admin resilience backup integrity', () => {
   it('accepts a complete read-back only when byte length and SHA-256 match', () => {
     const original = Buffer.from('complete database dump');
     expect(backupReadbackMatches(original, Buffer.from(original))).toBe(true);
