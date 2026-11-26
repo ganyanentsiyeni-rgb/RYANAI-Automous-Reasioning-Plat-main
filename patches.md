@@ -514,3 +514,11 @@ Both lanes are disabled unless their provider enablement and staging-isolation v
 - Added a fail-closed preflight to the manual staging/production release workflow. It verifies the dispatched commit is still current `main` and requires every configured application, database, dependency, code-scanning, secret-scanning, image-scan, and SBOM check context to exist and have completed successfully on that exact SHA.
 - Both staging and production release jobs now depend on this preflight. The production migration approval input remains an additional independent requirement.
 - The preflight does not wait for checks or alter branch rules; if evidence is pending, missing, stale, or unsuccessful, the operator must not release. No deployment or migration was run as part of this patch.
+
+
+### Exact-SHA latest-attempt check selection (2026-11-26)
+
+- Centralized the required release check names in `scripts/ci/required-release-checks.json` and the validator in `scripts/ci/require-latest-exact-sha-checks.mjs`.
+- Release, AWS ECS staging, and Azure AKS staging gates now select the newest check run for each required context by start time (check-run ID breaks timestamp ties), then require that selected run to be completed successfully and to reference the exact candidate SHA.
+- Older failed/cancelled attempts no longer permanently block a context after a newer successful rerun; a newer pending/failed/cancelled attempt still blocks. Missing contexts and mismatched SHAs remain fail-closed.
+- Added automated tests for reruns, pending latest attempts, missing contexts, SHA mismatch, and duplicate timestamps. No deployment, cloud authentication, image publication, migration, or branch-ruleset change is performed by this patch.
