@@ -182,3 +182,8 @@ The root multi-target `Dockerfile` and standalone `Dockerfile.api` are separate 
 ## Docker Compose startup and optional gateway boundary (2026-11-26)
 
 The local Compose API starts only after the disposable local PostgreSQL and Redis healthchecks pass. Web and MCP start after API health; their probes remain role-specific. The one-shot Prisma migration service is explicitly profile-gated and targets only the local Compose database; API startup must not execute DDL. MCPJungle and Cloudflare edge services remain opt-in profiles and are not part of the default stack. MCPJungle database credentials are mandatory rather than silently defaulting to an empty password. Static contract checks protect these declarations but do not replace Compose config validation or runtime startup tests.
+
+
+### Compose health semantics follow-up (2026-11-26)
+
+API `/livez` and `/health` report process liveness independently of PostgreSQL/Redis availability; `/readyz` evaluates live dependencies and agent queue/checkpointer readiness. Compose uses liveness to avoid restart loops during dependency recovery. MCP's own `/health` is a process probe, while its platform-health tool targets API `/readyz` for dependency status. The local migration profile's `DATABASE_URL` points to the Compose PostgreSQL service only. Both MCPJungle database initialization and gateway connection require the same non-empty password.
