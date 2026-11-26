@@ -147,3 +147,16 @@ The Command Cockpit's AgentRun queue panel is a read-only view over the authenti
 ## Admin Console AI Inspector evidence visibility
 
 The Admin Console's AI Inspector panel reads the existing authenticated `GET /api/agent/ops/tasks` response, which returns owner-scoped AgentRuns with persisted evidence records. It selects only `pa.capability.executed` events whose payload capability is `ai-inspector.inspect`, then validates report text, source, digest format, and exit code before rendering. Exit code 1 remains a completed report with findings; exit code 0 is only reported as exit code 0 and is not a clean-audit certification. Missing, malformed, and unavailable evidence are distinct. The view does not start tasks, mutate evidence, verify the hash chain, or authorize execution/remediation.
+
+
+## Optional AWS and Azure staging lanes
+
+AWS ECS/Fargate and Azure AKS are optional, independently operated staging lanes. They do not alter the existing Render/Railway/Vercel PUSH DEPLOY release contract.
+
+Both lanes are manual-only and fail closed unless (a) the provider deployment flag is enabled, (b) a separate staging-isolation confirmation is enabled, (c) the dispatch explicitly selects STAGE, (d) the candidate is the exact head of an open PR, and (e) the required CI/security checks for that exact SHA have completed successfully.
+
+AWS uses GitHub OIDC to assume a scoped IAM role, pushes an immutable SHA-tagged API image to ECR, verifies the ECS service is active and explicitly tagged `Environment=staging`, updates the service from a repository task-definition template, waits for ECS stability, and checks the HTTPS staging API `/readyz` endpoint.
+
+Azure uses workload federation through Azure Login, pushes an immutable SHA-tagged API image to ACR, applies a configured AKS Kustomize overlay in a staging namespace, updates a named Kubernetes Deployment container, waits for rollout, and checks the HTTPS staging API `/readyz` endpoint.
+
+Each provider emits independent run, candidate SHA, image URI, rollout and health evidence. Neither cloud lane provisions infrastructure, changes secrets, runs migrations, or deploys to production. Provider identity trust, least-privilege permissions, registry resources, task definitions/manifests, staging network isolation and environment protection must be provisioned and reviewed separately before enabling either lane.
