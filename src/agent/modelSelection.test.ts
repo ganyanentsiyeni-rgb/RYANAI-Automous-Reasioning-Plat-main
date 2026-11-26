@@ -16,7 +16,7 @@ describe('optional OpenRouter Logic model selection', () => {
     },
   );
 
-  it('fails closed when the existing OpenRouter credential is unavailable', () => {
+  it('keeps existing GPT-4o model selections on the configured Logic provider', () => {\n    expect(resolveSelectedReasoningModel('gpt-4o', {})).toBeNull();\n    expect(resolveSelectedReasoningModel('gpt-4o-mini', {})).toBeNull();\n  });\n\n  it('fails closed when the existing OpenRouter credential is unavailable', () => {
     expect(() => resolveSelectedReasoningModel('~openai/gpt-latest', {})).toThrow(/unconfigured/);
   });
 
