@@ -1,6 +1,6 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { supabase } from '@/lib/supabase';
-import { executeAgentReasoning } from './api';
+import { executeAgentReasoning, fetchSystemHealth, type SystemHealth } from './api';
 
 export interface AgentResponse {
   status: string;
@@ -64,7 +64,7 @@ export class TauriBridge {
   }
 
   /** Read native telemetry in Tauri; use the API health endpoint in browser mode. */
-  public static async checkSystemHealth(): Promise<HardwareTelemetry | unknown> {
+  public static async checkSystemHealth(): Promise<HardwareTelemetry | SystemHealth> {
     if (isTauri()) return invoke<HardwareTelemetry>('get_hardware_telemetry');
     return fetchSystemHealth();
   }
