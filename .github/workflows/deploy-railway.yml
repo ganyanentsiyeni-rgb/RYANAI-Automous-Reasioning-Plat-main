@@ -52,35 +52,15 @@ jobs:
             exit 1
           }
 
-      - name: Require exact-head CI and security checks
+      - name: Require canonical exact-SHA CI and security checks
         env:
           GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ env.TARGET_SHA || github.sha }}
         run: |
           set -euo pipefail
-          required=(
-            "Validate (typecheck, lint, test, build)"
-            "MCP server and workflow worker"
-            "Issue 435 migrations and attachment security"
-            "Test agent API contracts"
-            "Dependency audit"
-            "Trivy filesystem scan"
-            "Analyze (javascript-typescript)"
-            "Analyze (python)"
-            "TruffleHog secret audit"
-            "Codacy Security Scan"
-          )
-          gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/check-runs?per_page=100" > check-pages.json
-          jq -s '[.[].check_runs[]]' check-pages.json > checks.json
-          for name in "${required[@]}"; do
-            jq -e --arg name "$name" '
-              [.[] | select(.name == $name)] as $matches
-              | ($matches | length) > 0
-                and all($matches[]; .status == "completed" and .conclusion == "success")
-            ' checks.json >/dev/null || {
-              echo "::error::Required check is missing, queued, skipped, cancelled, or failed: $name"
-              exit 1
-            }
-          done
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Target SHA must be a full commit SHA"; exit 1; }
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/check-runs?per_page=100" --jq '.check_runs[]' > check-runs.ndjson
+          node scripts/ci/require-latest-exact-sha-checks.mjs check-runs.ndjson "$TARGET_SHA"
 
       - name: Validate isolated Railway staging target
         env:
