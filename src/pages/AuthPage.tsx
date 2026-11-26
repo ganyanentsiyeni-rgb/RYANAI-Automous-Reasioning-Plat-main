@@ -187,7 +187,7 @@ export default function AuthPage({ mode = 'signin', loginAs: initialLoginAs = 'u
               disabled={loading}
               className="w-full rounded-lg border border-white/15 bg-white/[0.04] p-3 font-semibold text-slate-100 hover:bg-white/[0.08] disabled:opacity-60"
             >
-              {loading ? 'Please wait…' : 'Continue with Google'}
+              {loading ? 'Please wait…' : loginAs === 'admin' ? 'Continue with Google as Admin' : 'Continue with Google as User'}
             </button>
             <button
               type="button"
@@ -196,7 +196,7 @@ export default function AuthPage({ mode = 'signin', loginAs: initialLoginAs = 'u
               disabled={loading}
               className="w-full rounded-lg border border-white/15 bg-white/[0.04] p-3 font-semibold text-slate-100 hover:bg-white/[0.08] disabled:opacity-60"
             >
-              {loading ? 'Please wait…' : 'Continue with GitHub'}
+              {loading ? 'Please wait…' : loginAs === 'admin' ? 'Continue with GitHub as Admin' : 'Continue with GitHub as User'}
             </button>
           </div>
           {error && (
