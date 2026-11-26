@@ -32,6 +32,15 @@ A PA deployment receipt is only workflow-dispatch acceptance. It is not evidence
 - No secret creation, rotation, or exposure is performed by this patch.
 - No database migration is performed by Push Deploy.
 
+### 3.1 Owner/admin access UI repair
+
+- `rmnganyane@gmail.com` remains the canonical RyanAI owner identity and therefore also receives administrator access through the server-side owner mapping.
+- Admin Console visibility requires verified administrator access; dashboard preferences cannot grant that access.
+- RyanAI Communications visibility requires verified owner access; dashboard preferences cannot grant that access.
+- WhatsApp Business and Twilio worker-availability preferences are owner/admin controlled; adapter registration, provider authorization and outbound human approval remain separate gates.
+- The signed-in account control centre opens upward from the desktop sidebar so it is not clipped below the viewport.
+- Profile access-role display uses the verified owner/admin identity instead of presenting the canonical owner as a standard user.
+
 ## 4. Comms contract
 
 A PA objective can create a durable internal Comms child task directly; an existing Comms conversation is not required.
