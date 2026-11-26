@@ -70,7 +70,7 @@ jobs:
             echo 'ERROR: loopback endpoint found in production bundle'
             exit 1
           fi
-          if grep -RniE 'sk-(proj-)?[A-Za-z0-9_-]{20,}|sb_secret_[A-Za-z0-9_-]{20,}|SG\\.[A-Za-z0-9_-]{20,}\\.[A-Za-z0-9_-]{20,}' dist/; then
+          if grep -RniE 'sk-(proj-)?[A-Za-z0-9_-]{20,}|sb_secret_[A-Za-z0-9_-]{20,}|SG\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}' dist/; then
             echo 'ERROR: credential-shaped value found in production bundle'
             exit 1
           fi
