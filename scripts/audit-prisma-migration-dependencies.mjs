@@ -168,7 +168,7 @@ export function analyzeMigrationDependencies(migrations) {
         for (const ref of references) {
           const target = tableNameFromMatch(ref[1]);
           if (!createdTables.has(target)) {
-            if (target.includes('.')) externalDependencies.push({ migrationId: migration.id, object: table, dependency: target, status: 'external_dependency_not_verified' });
+            if (isSchemaQualified(ref[1])) externalDependencies.push({ migrationId: migration.id, object: table, dependency: normalizeIdentifier(ref[1]), status: 'external_dependency_not_verified' });
             else findings.push({ migrationId: migration.id, object: table, dependency: target, status: 'referenced_table_not_yet_created' });
           }
         }
@@ -183,7 +183,7 @@ export function analyzeMigrationDependencies(migrations) {
         for (const ref of refs) {
           const target = tableNameFromMatch(ref[1]);
           if (!createdTables.has(target)) {
-            if (target.includes('.')) externalDependencies.push({ migrationId: migration.id, object: table, dependency: target, status: 'external_dependency_not_verified' });
+            if (isSchemaQualified(ref[1])) externalDependencies.push({ migrationId: migration.id, object: table, dependency: normalizeIdentifier(ref[1]), status: 'external_dependency_not_verified' });
             else findings.push({ migrationId: migration.id, object: table, dependency: target, status: 'referenced_table_not_yet_created' });
           }
         }
