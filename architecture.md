@@ -225,3 +225,8 @@ The validator only reads GitHub check-run evidence; it does not deploy, migrate,
 ## Application layer integrity contract (2026-11-26)
 
 RyanAI's logical application architecture is documented in `docs/architecture/RYANAI_APPLICATION_LAYER_INTEGRITY.md`. It defines eight layers—experience, application/API, identity/security/governance, orchestration/workforce, reasoning/intelligence, tools/integrations, data/persistence, and runtime/platform—plus their authority, dependency and evidence rules. The read-only `scripts/audit-application-layers.mjs` tool inventories layer roots and relative-import topology; it does not execute code, read environment values, make network calls, or prove runtime health. Cross-layer edges are review evidence, not automatic defects. No speculative module moves or production changes are part of this baseline.
+
+
+## Studio task approval evidence (2026-11-26)
+
+Studio-native owner approval is bound to a versioned SHA-256 digest of the exact execution-relevant task content: task/project/owner identity, title, objective, task type, priority, required capabilities, assigned worker, dependencies, and input. The digest is recorded in the append-only `task.human_approved` event. At worker admission, Gen-X `REQUIRE_APPROVAL` is satisfied only when the latest owner event contains the supported digest version and the digest matches the currently claimed task. Legacy, malformed, missing, or stale approval evidence fails closed. Gen-X `DENY` cannot be overridden by owner approval. Runtime status, lease fields, timestamps, attempts, and task output are intentionally excluded from the digest. This contract uses the existing JSON event payload and does not require a database migration.
