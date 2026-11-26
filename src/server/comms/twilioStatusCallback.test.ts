@@ -14,6 +14,7 @@ const prisma = {
     findUnique: vi.fn().mockResolvedValue({
       id: 'dispatch-1',
       communicationMessageId: 'message-1',
+      providerMessageId: sid,
       state: 'accepted',
       agentRunId: 'run-1',
       channel: 'sms',

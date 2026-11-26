@@ -12,6 +12,7 @@ const fetchMock = vi.mocked(authenticatedFetch);
 let container: HTMLDivElement;
 let root: Root;
 let confirmSpy: ReturnType<typeof vi.fn>;
+let originalConfirmDescriptor: PropertyDescriptor | undefined;
 
 function setInputValue(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
   const setter = Object.getOwnPropertyDescriptor(
@@ -29,12 +30,17 @@ beforeEach(() => {
   document.body.appendChild(container);
   root = createRoot(container);
   confirmSpy = vi.fn().mockReturnValue(true);\n  window.confirm = confirmSpy;
+  originalConfirmDescriptor = Object.getOwnPropertyDescriptor(window, 'confirm');
+  confirmSpy = vi.fn().mockReturnValue(true);
+  Object.defineProperty(window, 'confirm', { configurable: true, value: confirmSpy });
 });
 
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
   delete (window as Partial<Window>).confirm;
+  if (originalConfirmDescriptor) Object.defineProperty(window, 'confirm', originalConfirmDescriptor);
+  else Reflect.deleteProperty(window, 'confirm');
 });
 
 describe('SelfPatchPanel', () => {

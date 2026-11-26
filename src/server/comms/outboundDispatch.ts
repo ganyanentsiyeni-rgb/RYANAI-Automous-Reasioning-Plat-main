@@ -229,7 +229,6 @@ export function buildCommsProviderEventKey(input: {
       providerMessageId: input.providerMessageId,
       providerStatus: input.providerStatus,
       deliveryState: input.deliveryState,
-      metadata: input.metadata ?? null,
     }))
     .digest('hex');
 }

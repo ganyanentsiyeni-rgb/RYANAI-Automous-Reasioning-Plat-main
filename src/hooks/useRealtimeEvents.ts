@@ -27,8 +27,9 @@ interface ServerMessage {
   error?: { code?: string; message?: string };
 }
 
-function websocketUrl(baseUrl?: string): string {
-  const base = baseUrl ?? API_BASE_URL ?? (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+export function websocketUrl(baseUrl?: string): string {
+  const base = baseUrl || API_BASE_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+  if (!base) throw new Error('Realtime WebSocket base URL is not available in this runtime.');
   const url = new URL('/ws', base);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   return url.toString();
