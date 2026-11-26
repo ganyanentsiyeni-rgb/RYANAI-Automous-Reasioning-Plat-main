@@ -119,25 +119,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          negative_env="$(mktemp)"
-          trap 'docker compose --project-name mcpjungle-negative --env-file "$negative_env" --profile mcp-gateway down --volumes --remove-orphans >/dev/null 2>&1 || true; rm -f "$negative_env"' EXIT
-          cat > "$negative_env" <<'EOF'
-          DB_PASSWORD=ci_db_password_1234567890
-          REDIS_PASSWORD=ci_redis_password_1234567890
-          JWT_SECRET=ci_only_jwt_secret_1234567890_abcdefgh
-          MCP_AUTH_TOKEN=ci_only_mcp_token_1234567890_abcdefgh
-          MCP_PROXY_DELEGATION_TOKEN=ci_only_negative_test_placeholder
-          EOF
-          docker compose --project-name mcpjungle-negative --env-file "$negative_env" --profile mcp-gateway up -d mcpjungle-db
+          container_name="mcpjungle-negative-db"
+          trap 'docker rm -f "$container_name" >/dev/null 2>&1 || true' EXIT
+          # Test the official PostgreSQL image directly: Compose correctly rejects
+          # a missing required MCPJUNGLE_DB_PASSWORD during interpolation, before
+          # the database container can exercise PostgreSQL's own fail-closed guard.
+          docker run --detach --name "$container_name" \
+            -e POSTGRES_USER=mcpjungle \
+            -e POSTGRES_DB=mcpjungle \
+            -e POSTGRES_HOST_AUTH_METHOD=scram-sha-256 \
+            postgres:17-alpine
 
-          # The negative test intentionally omits MCPJUNGLE_DB_PASSWORD.
-          # Wait for both the expected PostgreSQL initialization error and a
-          # failed/restarting container state. Docker can expose either signal first.
+          # Wait for the expected PostgreSQL initialization error and failed state.
           container_logs=""
           state=""
           for attempt in $(seq 1 30); do
-            container_logs="$(docker logs ryanai-mcpjungle-db 2>&1 || true)"
-            state="$(docker inspect --format '{{.State.Status}}' ryanai-mcpjungle-db 2>/dev/null || true)"
+            container_logs="$(docker logs "$container_name" 2>&1 || true)"
+            state="$(docker inspect --format '{{.State.Status}}' "$container_name" 2>/dev/null || true)"
             if grep -Eqi 'superuser password is not specified' <<< "$container_logs"; then
               break
             fi
@@ -147,8 +145,8 @@ jobs:
             sleep 1
           done
 
-          state="$(docker inspect --format '{{.State.Status}}' ryanai-mcpjungle-db 2>/dev/null || true)"
-          container_logs="$(docker logs ryanai-mcpjungle-db 2>&1 || true)"
+          state="$(docker inspect --format '{{.State.Status}}' "$container_name" 2>/dev/null || true)"
+          container_logs="$(docker logs "$container_name" 2>&1 || true)"
 
           if [ "$state" != "exited" ] && [ "$state" != "restarting" ]; then
             echo "Expected MCPJungle Postgres to fail closed when its password is unset; state=$state"
