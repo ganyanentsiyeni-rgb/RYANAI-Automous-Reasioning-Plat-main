@@ -88,27 +88,54 @@ export function useRyanOperations() {
     const sequence = ++requestSequence.current;
     setRefreshing(true);
     try {
-      const [taskPayload, awarenessPayload, paPayload] = await Promise.all([
+      const [taskResult, awarenessResult, paResult] = await Promise.allSettled([
         requestJson<unknown>('/api/agent/ops/tasks'),
         requestJson<OperationalAwareness>('/api/agent/ops/awareness'),
         requestJson<PAStatusResponse>('/api/agent/ops/pa/status'),
       ]);
       if (signal?.aborted || sequence !== requestSequence.current || !mounted.current) return;
-      if (!isTaskList(taskPayload)) {
-        throw new RyanOperationsError('Task endpoint returned an invalid task list.', 200, 'INVALID_TASK_CONTRACT');
+
+      const diagnostics: string[] = [];
+      let confirmedAnySource = false;
+
+      if (taskResult.status === 'fulfilled' && isTaskList(taskResult.value)) {
+        setTasks(taskResult.value.tasks);
+        confirmedAnySource = true;
+      } else {
+        diagnostics.push(taskResult.status === 'rejected'
+          ? taskResult.reason instanceof Error ? taskResult.reason.message : 'Task telemetry unavailable'
+          : 'Task endpoint returned an invalid task list.');
       }
-      if (!awarenessPayload || !['online', 'degraded'].includes(awarenessPayload.status)
-        || !awarenessPayload.sources || !awarenessPayload.globalQueue) {
-        throw new RyanOperationsError('Operational awareness response did not match its contract.', 200, 'INVALID_AWARENESS_CONTRACT');
+
+      if (awarenessResult.status === 'fulfilled'
+        && awarenessResult.value
+        && ['online', 'degraded'].includes(awarenessResult.value.status)
+        && awarenessResult.value.sources
+        && awarenessResult.value.globalQueue) {
+        setAwareness(awarenessResult.value);
+        confirmedAnySource = true;
+      } else {
+        diagnostics.push(awarenessResult.status === 'rejected'
+          ? awarenessResult.reason instanceof Error ? awarenessResult.reason.message : 'Operational awareness unavailable'
+          : 'Operational awareness response did not match its contract.');
       }
-      if (!paPayload || !paPayload.pa || typeof paPayload.pa !== 'object') {
-        throw new RyanOperationsError('PA status response did not match its contract.', 200, 'INVALID_PA_CONTRACT');
+
+      if (paResult.status === 'fulfilled'
+        && paResult.value?.pa
+        && typeof paResult.value.pa === 'object') {
+        setPaStatus(paResult.value.pa);
+        confirmedAnySource = true;
+      } else {
+        setPaStatus(null);
+        diagnostics.push(paResult.status === 'rejected'
+          ? paResult.reason instanceof RyanOperationsError && paResult.reason.status === 503
+            ? 'PA observer unavailable (HTTP 503).'
+            : paResult.reason instanceof Error ? paResult.reason.message : 'PA status unavailable'
+          : 'PA status response did not match its contract.');
       }
-      setTasks(taskPayload.tasks);
-      setAwareness(awarenessPayload);
-      setPaStatus(paPayload.pa);
-      setLastConfirmedAt(new Date().toISOString());
-      setError(null);
+
+      if (confirmedAnySource) setLastConfirmedAt(new Date().toISOString());
+      setError(diagnostics.length ? diagnostics.join(' ') : null);
     } catch (cause) {
       if (!signal?.aborted && sequence === requestSequence.current && mounted.current) {
         setError(cause instanceof Error ? cause.message : 'Operational refresh failed.');
