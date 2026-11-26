@@ -210,6 +210,7 @@ export function useRyanOperations() {
   const createPADelegation = useCallback(async (
     objective: string,
     capabilities: PADelegationCapability[],
+    delegationId?: string,
   ): Promise<CreatePADelegationResponse> => {
     if (objective.trim().length < 5) throw new Error('Delegation objective must contain at least five characters.');
     if (capabilities.length === 0) throw new Error('Select at least one PA capability.');
@@ -217,7 +218,7 @@ export function useRyanOperations() {
     try {
       const result = await requestJson<CreatePADelegationResponse>('/api/agent/ops/pa/delegations', {
         method: 'POST',
-        body: JSON.stringify({ objective: objective.trim(), capabilities }),
+        body: JSON.stringify({ objective: objective.trim(), capabilities, ...(delegationId ? { delegationId } : {}) }),
       });
       if (result.success !== true || !result.delegationId || !result.taskId
         || !['approved', 'pending_approval'].includes(result.status)) {
