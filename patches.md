@@ -598,3 +598,12 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Added regression tests for eligible PR issuance, ineligible PR rejection, Comms task creation failure, and Gen-X owner-scope enforcement.
 - The existing inbound approval command still fails closed for `APPROVE` until independent Gen-X authorization evidence is available. No GitHub review is submitted by this change.
 - No migration, production data change, credentials change, ruleset change, merge, or deployment. Local test execution and exact-SHA CI/security results are pending.
+
+
+## 2026-11-26 — Remove hard-coded MongoDB connectivity target
+
+- Replaced the optional `test_mongo.py` example's embedded Atlas hostname and username with the server-side `MONGODB_URI` environment variable.
+- Added a clear missing-configuration failure, bounded server-selection/connect timeouts, and guaranteed client closure.
+- Kept MongoDB as a distinct optional integration; this change does not assign collection ownership, alter Neon/Supabase PostgreSQL schemas, or add a production MongoDB dependency.
+- No credentials, production data, database migrations, deployment settings, or governance rules were changed.
+- Exact-SHA CI validation is pending.
