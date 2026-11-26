@@ -67,7 +67,7 @@ test('preserves supported DDL around dollar-quoted procedural statements', () =>
         'CREATE FUNCTION public.example_fn() RETURNS void AS $body$ BEGIN PERFORM 1; PERFORM 2; END; $body$ LANGUAGE plpgsql;',
         'CREATE TABLE after_fn (id text PRIMARY KEY);',
         'DO $guard$ BEGIN PERFORM 1; END; $guard$;',
-      ].join('\\n'),
+      ].join('\n'),
     },
   ]);
   assert.equal(result.createdTableCount, 2);
