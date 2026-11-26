@@ -26,7 +26,7 @@ function splitStatements(sql) {
     const next = sql[i + 1];
 
     if (lineComment) {
-      if (char === '\\n') {
+      if (char === '\n') {
         lineComment = false;
         current += char;
       }
@@ -57,7 +57,7 @@ function splitStatements(sql) {
       if (char === quote && next === quote) {
         current += next;
         i += 1;
-      } else if (char === quote && sql[i - 1] !== '\\\\') {
+      } else if (char === quote && sql[i - 1] !== '\\') {
         quote = null;
       }
       continue;
@@ -79,7 +79,7 @@ function splitStatements(sql) {
       continue;
     }
     if (char === '$') {
-      const match = sql.slice(i).match(/^\\$[a-zA-Z_0-9]*\\$/);
+      const match = sql.slice(i).match(/^\$[a-zA-Z_0-9]*\$/);
       if (match) {
         dollarTag = match[0];
         current += dollarTag;
@@ -108,6 +108,23 @@ function normalizeIdentifier(value) {
 
 function tableNameFromMatch(value) {
   return normalizeIdentifier(value).replace(/^public\./, '');
+}
+
+function isSchemaQualified(value) {
+  return normalizeIdentifier(value).includes('.');
+}
+
+function recordUnresolvedTable(migrationId, object, rawTable, findingStatus, externalDependencies, findings) {
+  if (isSchemaQualified(rawTable)) {
+    externalDependencies.push({
+      migrationId,
+      object,
+      dependency: normalizeIdentifier(rawTable),
+      status: 'external_dependency_not_verified',
+    });
+  } else {
+    findings.push({ migrationId, object, status: findingStatus });
+  }
 }
 
 export function analyzeMigrationDependencies(migrations) {
