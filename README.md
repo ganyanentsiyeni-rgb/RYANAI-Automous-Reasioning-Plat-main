@@ -1669,3 +1669,20 @@ This change is delivered through a reviewable pull request. It does not authoriz
 ## Frontend workspace visibility contract
 
 Account-level Dashboard UI preferences control whether registered workspaces appear in desktop navigation, mobile navigation, and Dashboard shortcuts. The Dashboard preference controls its navigation entry; **Settings remains available** as the recovery path. Hiding a workspace changes presentation only: it does not revoke route/API authorization, and enabling a workspace does not grant permissions. Admin Console and RyanAI Comms remain subject to server-verified role/owner checks. The frontend regression suite covers default visibility, hidden workspace behavior, direct-route authorization, and Settings availability.
+
+
+## Optional OpenRouter model overrides
+
+OpenRouter is an optional server-side provider for the explicitly catalogued Logic synthesis models only. Configure it in the API runtime (never in browser `VITE_*` variables):
+
+```dotenv
+OPENROUTER_API_KEY=
+OPENROUTER_API_ENDPOINT=https://openrouter.ai/api/v1
+OPENROUTER_MODEL_ALLOWLIST=~openai/gpt-latest,~anthropic/claude-sonnet-latest
+```
+
+Leave the key empty to keep OpenRouter unavailable. The model allowlist is not a recommendation to enable every catalogue entry; each model must be reviewed for capability, privacy, availability, licensing, and ZAR cost before selection. The OpenRouter announcement email is discovery input only and does not automatically add or activate models.
+
+**Implementation status:** provider registry and API gateway support exist, and gateway request/usage coverage is being extended. The Logic worker still has a direct `ChatOpenAI` override path that must be unified with the governed API gateway; trusted actor-type propagation, streaming/tool capability policy, reliability/failover, price-schedule-based ZAR attribution, and staging proof remain acceptance gates. Do not treat this increment as production-ready.
+
+No provider credential is provisioned by this documentation. No live provider configuration, production deployment, or billing setting is changed by this patch.
