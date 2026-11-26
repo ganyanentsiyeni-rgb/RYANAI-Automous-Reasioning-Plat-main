@@ -3,6 +3,7 @@ import WebSocket from 'ws';
 import { createHash, randomBytes } from 'node:crypto';
 import { requireUser } from './auth.js';
 import { prisma } from '../../lib/prisma.js';
+import { parseCorsOrigins } from '../corsOrigins.js';
 import { createAlpacaStockStream, type MarketDataSocket, type StreamedMarketBar } from '../quant/marketDataStream.js';
 import { createMarketDataFanout, createMarketDataStreamSupervisor, type StreamSupervisorState } from '../quant/marketDataSupervisor.js';
 
@@ -88,11 +89,15 @@ async function persistMarketBar(userId: string, bar: StreamedMarketBar): Promise
 
 function allowedOrigin(origin: string | undefined): boolean {
   if (!origin) return true;
-  const configured = (process.env.CORS_ORIGINS ?? '').split(',').map((value) => value.trim()).filter(Boolean);
-  if (process.env.NODE_ENV !== 'production') {
-    configured.push('http://localhost:1420', 'http://127.0.0.1:1420', 'http://localhost:9090', 'http://127.0.0.1:9090');
-  }
-  return configured.includes(origin);
+  const developmentOrigins = process.env.NODE_ENV !== 'production'
+    ? [
+        'http://localhost:1420',
+        'http://127.0.0.1:1420',
+        'http://localhost:9090',
+        'http://127.0.0.1:9090',
+      ]
+    : [];
+  return parseCorsOrigins(process.env.CORS_ORIGINS, ...developmentOrigins).has(origin);
 }
 
 function safeState(state: StreamSupervisorState): Record<string, unknown> {
