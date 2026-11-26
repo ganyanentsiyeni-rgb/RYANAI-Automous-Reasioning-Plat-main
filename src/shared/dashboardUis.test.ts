@@ -25,6 +25,8 @@ describe('RyanAI dashboard UI preferences', () => {
     expect(regular.some(({ id }) => id === 'admin' || id === 'comms')).toBe(false);
     expect(getAvailableDashboardUiOptions(false, true).some(({ id }) => id === 'admin')).toBe(true);
     expect(getAvailableDashboardUiOptions(true, false).some(({ id }) => id === 'comms')).toBe(true);
+    expect(getAvailableDashboardUiOptions(false, true).find(({ id }) => id === 'admin')?.description).toContain('Requires admin access; preferences cannot grant access.');
+    expect(getAvailableDashboardUiOptions(true, false).find(({ id }) => id === 'comms')?.description).toContain('Requires owner access; preferences cannot grant access.');
   });
 
   it('filters stored preferences against the current authorised workspace set', () => {
