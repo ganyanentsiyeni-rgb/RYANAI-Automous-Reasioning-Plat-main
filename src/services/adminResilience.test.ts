@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';\nimport { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { backupReadbackMatches, listDatabaseBackups, persistBackupArtifact, recoveryPreflight } from './adminResilience.js';
+import { backupReadbackMatches, listDatabaseBackups, persistBackupArtifact, recoveryPreflight, verifyDatabaseBackupArtifacts } from './adminResilience.js';
 
 const originalEnv = { ...process.env };
 
@@ -37,7 +37,16 @@ describe('admin resilience backup integrity', () => {
   });
 });
 
-describe('admin resilience backup artifact persistence', () => {
+describe('read-only stored backup verification',()=> {
+ const data=Buffer.from('payload');
+ const inv=(extra:Record<string,unknown>={})=>({status:'available' as const,bucket:'private-backups',retentionDays:30,listedAt:new Date().toISOString(),hasMore:false,items:[{backupId:'b1',prefix:'ryanai-admin/b1',createdAt:null,databaseBytes:7,databaseSha256:createHash('sha256').update(data).digest('hex'),manifestPresent:true,integrityStatus:'not_verified' as const,retention:'unknown' as const,...extra}]});
+ const setup=()=>{process.env.SUPABASE_URL='https://example.supabase.co';process.env.SUPABASE_SERVICE_ROLE_KEY='service-role-test-key';process.env.SUPABASE_BACKUP_BUCKET='private-backups';};
+ it('verifies exact downloaded bytes',async()=>{setup();const req=vi.fn(async()=>new Response(new Uint8Array(data)));expect((await verifyDatabaseBackupArtifacts(inv(),req as never))[0]).toMatchObject({status:'verified',bytesRehashed:true,actualBytes:7});});
+ it('fails a tampered artifact',async()=>{setup();const req=vi.fn(async()=>new Response(new Uint8Array(Buffer.from('tampered'))));expect((await verifyDatabaseBackupArtifacts(inv(),req as never))[0]).toMatchObject({status:'failed',bytesRehashed:true});});
+ it('leaves missing manifest or digest unverified without downloading',async()=>{setup();const req=vi.fn();expect((await verifyDatabaseBackupArtifacts(inv({manifestPresent:false}),req as never))[0].status).toBe('not_verified');expect((await verifyDatabaseBackupArtifacts(inv({databaseSha256:null}),req as never))[0].status).toBe('not_verified');expect(req).not.toHaveBeenCalled();});
+ it('redacts storage download errors',async()=>{setup();const req=vi.fn(async()=>{throw new Error('secret private body');});const result=await verifyDatabaseBackupArtifacts(inv(),req as never);expect(result[0].status).toBe('failed');expect(JSON.stringify(result)).not.toContain('secret');});
+});
+\ndescribe('admin resilience backup artifact persistence', () => {
   const storage = { baseUrl: 'https://storage.example.test', key: 'test-key', bucket: 'private-backups' };
   const manifest = { format: 'ryanai-admin-backup-v1', backupId: 'backup-test' };
   const dump = Buffer.from('complete database dump');
