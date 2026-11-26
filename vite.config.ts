@@ -136,6 +136,10 @@ export default defineConfig(({ mode }) => {
         'scripts/pg-dump-connection.test.mjs',
         // Migration-readiness tests use node:test and run via `npm run test:migration:audit`.
         'scripts/audit-prisma-migration-readiness.test.mjs',
+        // These audit and CI contract suites use node:test and run in their dedicated Node workflows.
+        'scripts/audit-application-layers.test.mjs',
+        'scripts/audit-deployment-readiness.test.mjs',
+        'scripts/ci/require-latest-exact-sha-checks.test.mjs',
       ],
       env: {
         RYAN_PATCH_VERIFIER_IMAGE:

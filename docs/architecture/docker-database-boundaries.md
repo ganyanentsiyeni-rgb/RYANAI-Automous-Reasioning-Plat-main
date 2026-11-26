@@ -2,15 +2,18 @@
 
 This repository's Compose stack is a local development and integration-test topology. It is not a declaration that hosted databases should be rebuilt as containers.
 
-## Three application data services
+## Three application databases
 
-| Logical service | Hosted authority | Container policy | Boundary |
+| Database | Hosted authority | Intended boundary | Repository wiring evidence |
 | --- | --- | --- | --- |
-| Core application database | Supabase PostgreSQL | Do not create a production database Dockerfile or copy production data into Compose. Local pgvector Postgres is disposable/test-only. | Supabase Auth and the core application schema remain authoritative. |
-| Audiobook database | Neon PostgreSQL | Managed externally; do not create a local production replacement. | Use only `AUDIOBOOK_DATABASE_URL` and `AUDIOBOOK_DATABASE_URL_UNPOOLED`; keep audiobook migrations separate from core migrations. |
-| Cache and queue transport | Railway Redis/Valkey in hosted environments | Use the platform-managed service. The Compose Redis container is local-only and isolated by its own volume and password. | Never store authoritative identity or durable business records only in Redis. |
+| Core relational database | Supabase PostgreSQL | Supabase Auth and the core application schema remain authoritative. The local pgvector Postgres container is disposable/test-only; never copy production data into Compose. | Primary Prisma datasource uses `DATABASE_URL`; staging/production startup validates the Supabase project and Session Pooler mapping. |
+| Audiobook relational database | Neon PostgreSQL | Managed externally; audiobook persistence and migrations remain separate from the core Supabase schema. | Uses `AUDIOBOOK_DATABASE_URL` and optional `AUDIOBOOK_DATABASE_URL_UNPOOLED` with a separate Prisma schema/migration directory. |
+| Document database | MongoDB Atlas | Keep document collections and credentials separate from both PostgreSQL databases; do not substitute MongoDB for relational migrations or Supabase Auth. | **Integration gap found in this repository snapshot:** MongoDB appears in `requirements.txt` and a standalone `test_mongo.py` connectivity example, but no application-level MongoDB URI resolver, client lifecycle, or Node runtime consumer was found. Do not report the Atlas database as connected to RyanAI until that wiring and its health check are implemented and verified. |
 
-The optional MCPJungle PostgreSQL service is an infrastructure dependency for the opt-in `mcp-gateway` Compose profile; it is not one of the three RyanAI application data services.
+## Cache and infrastructure databases
+
+- **Redis/Valkey** is cache and queue transport, not a fourth application database. Hosted environments use the platform-managed service; Compose Redis is local-only and isolated by its own volume and password. Never store authoritative identity or durable business records only in Redis.
+- The optional MCPJungle PostgreSQL service is an infrastructure dependency for the opt-in `mcp-gateway` Compose profile; it is not one of the three RyanAI application databases.
 
 ## Image responsibilities
 
