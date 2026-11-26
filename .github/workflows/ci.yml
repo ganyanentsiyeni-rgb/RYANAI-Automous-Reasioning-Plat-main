@@ -99,6 +99,28 @@ jobs:
       - name: Validate application
         run: npm run validate
 
+      - name: Validate frontend environment and health contracts
+        run: npx vitest run src/config/frontendEnv.test.ts src/lib/platformHealth.test.ts
+
+      - name: Build production frontend with explicit hosted API configuration
+        env:
+          VITE_API_BASE_URL: https://api.ryanai.invalid
+        run: npm run build:web
+
+      - name: Audit production frontend bundle for loopback endpoints and credential-shaped values
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RniE 'https?://(localhost|[^/]*\.localhost|127\.[0-9]+\.[0-9]+\.[0-9]+|0\.0\.0\.0)(:[0-9]+)?' dist/; then
+            echo 'ERROR: loopback endpoint found in production bundle'
+            exit 1
+          fi
+          if grep -RniE 'sk-(proj-)?[A-Za-z0-9_-]{20,}|sb_secret_[A-Za-z0-9_-]{20,}|SG\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}' dist/; then
+            echo 'ERROR: credential-shaped value found in production bundle'
+            exit 1
+          fi
+
+
       - name: Validate Python tooling
         run: npm run core:check
 

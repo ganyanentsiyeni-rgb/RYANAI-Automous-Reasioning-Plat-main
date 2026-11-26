@@ -1669,3 +1669,21 @@ This change is delivered through a reviewable pull request. It does not authoriz
 ## Frontend workspace visibility contract
 
 Account-level Dashboard UI preferences control whether registered workspaces appear in desktop navigation, mobile navigation, and Dashboard shortcuts. The Dashboard preference controls its navigation entry; **Settings remains available** as the recovery path. Hiding a workspace changes presentation only: it does not revoke route/API authorization, and enabling a workspace does not grant permissions. Admin Console and RyanAI Comms remain subject to server-verified role/owner checks. The frontend regression suite covers default visibility, hidden workspace behavior, direct-route authorization, and Settings availability.
+
+
+## Frontend environment and operational truth boundary
+
+The Vite browser build validates all exposed `VITE_*` variable names before bundling. Provider credentials, database/Redis URLs, private keys, passwords, and server auth tokens must remain server-only; only the explicitly browser-safe Supabase anon/publishable key names are allowed. Hosted staging/production builds require an absolute HTTPS API URL and reject loopback endpoints. Set `VITE_APP_ENV=staging` or `VITE_APP_ENV=production` for non-Vercel hosted builds; Vercel production is detected automatically. The legacy `VITE_API_URL` alias remains accepted during migration. Local development may continue to use a loopback API URL.
+
+The authenticated operational hooks in `src/hooks/useRyanOperations.ts` consume the existing `/api/agent/ops/tasks`, `/api/agent/ops/awareness`, `/api/agent/ops/pa/status`, task approval, and PA delegation routes. They display only backend-confirmed responses, preserve independently available telemetry when one observer is unavailable, and poll only while a task remains active. They do not infer an agent/worker inventory, MCP availability, or Comms delivery status from frontend constants.
+
+Run the focused frontend checks with:
+
+```bash
+npm run lint
+npm run typecheck
+npx vitest run src/config/frontendEnv.test.ts src/lib/platformHealth.test.ts
+npm run build:web
+```
+
+The existing CI workflow now runs the focused frontend contract tests, an explicit production web build, and a compiled-bundle audit on this pull request's exact head SHA. The standalone `RyanAI Frontend Verification Gate` is also added for subsequent pull requests after its workflow definition reaches the base branch. Neither workflow changes branch protection, authorizes merging, or triggers deployment. The existing explicit **PUSH DEPLOY** release gate remains authoritative.
