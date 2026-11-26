@@ -56,6 +56,6 @@ describe('Ryan Copilot preferences', () => {
     await vi.waitFor(() => expect(authenticatedFetch).toHaveBeenCalledOnce());
     expect(interval).toHaveBeenCalledWith(expect.any(Function), 60_000);
     expect(container.textContent).toContain('Alex · Monitoring');
-    expect(container.querySelector('[data-testid="delegation-panel"]')).not.toBeNull();
+    expect(container.querySelectorAll('[data-testid="delegation-panel"]')).toHaveLength(1);
   });
 });

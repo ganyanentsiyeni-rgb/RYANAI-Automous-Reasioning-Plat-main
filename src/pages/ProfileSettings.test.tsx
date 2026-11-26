@@ -107,6 +107,20 @@ describe('RyanAI Settings', () => {
     expect(container.querySelector('[data-testid="copilot-account-memory"]')).not.toBeNull();
   });
 
+
+  it('renders exactly the fourteen requested dashboard options and keeps Settings permanent', async () => {
+    await mount();
+    const optionIds = [...container.querySelectorAll<HTMLInputElement>('input[data-testid^="ui-toggle-"]')]
+      .map(input => input.dataset.testid?.replace('ui-toggle-', ''));
+    expect(optionIds).toEqual([
+      'dashboard', 'pa', 'operator', 'operations', 'admin', 'quant', 'trading',
+      'cockpit', 'studio', 'programming', 'comms', 'workspace', 'music', 'phonelink',
+    ]);
+    expect(container.textContent).toContain('Settings always stays available.');
+    expect(container.querySelector('[data-testid="ui-toggle-audiobook"]')).toBeNull();
+    expect(container.querySelector('[data-testid="ui-toggle-inferenceConsole"]')).toBeNull();
+  });
+
   it('keeps voice-enabled fallback preferences scoped to the signed-in account', async () => {
     window.localStorage.setItem('ryanai:voice-enabled', 'false');
     window.localStorage.setItem('ryanai:voice-enabled:user-a', 'false');

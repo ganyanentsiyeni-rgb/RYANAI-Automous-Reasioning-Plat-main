@@ -146,10 +146,11 @@ export default function AdminConsole({ userId }: { userId: string }) {
     if (requestId !== refreshRequestId.current) return;
     const nextErrors: string[] = [];
     const nextResourceErrors: Record<string, string> = {};
+    let nextLifecycleRequests: LifecycleRequest[] = [];
     if (results[0].status === 'fulfilled' && results[0].value.authenticated && results[0].value.user?.id === userId && results[0].value.user.isOwner) {
       try {
         const ledger = await readJson<{ requests: LifecycleRequest[] }>('/api/admin/account-lifecycle/requests', userId);
-        setLifecycleRequests(ledger.requests ?? []);
+        nextLifecycleRequests = ledger.requests ?? [];
       } catch (cause) {
         nextResourceErrors.lifecycle = String(cause);
         nextErrors.push('Owner lifecycle ledger: ' + String(cause));
@@ -157,6 +158,8 @@ export default function AdminConsole({ userId }: { userId: string }) {
     } else {
       setLifecycleRequests([]);
     }
+    if (requestId !== refreshRequestId.current) return;
+    setLifecycleRequests(nextLifecycleRequests);
     if (results[0].status === 'fulfilled' && results[0].value.authenticated && results[0].value.user?.id === userId) {
       setIdentity(results[0].value);
     } else {

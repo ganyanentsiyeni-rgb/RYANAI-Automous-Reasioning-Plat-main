@@ -297,4 +297,15 @@ This change is delivered through a reviewable pull request. It does not authoriz
 
 - Removed the legacy Audiobook Studio shortcut from the Commander Dashboard so the dashboard shortcuts match the fourteen user-selected workspace options.
 - Updated navigation regression assertions: hidden legacy Audiobook Studio is not a navigation destination, while enabled workspaces remain visible and hidden workspaces remain directly addressable without changing authorization.
+## Frontend dashboard and workspace visibility
+
+- Workspace visibility preferences are applied consistently to desktop navigation, mobile navigation, and Dashboard shortcut cards.
+- The Dashboard visibility option controls its navigation entry; Settings remains available so users can restore hidden workspaces.
+- Hiding a workspace affects presentation only and does not revoke direct-route or API authorization. Enabling a workspace does not grant permissions.
+- Admin Console and RyanAI Comms remain role/owner gated independently of visibility preferences.
+- Regression coverage verifies hidden workspaces, the Settings recovery path, Dashboard visibility, and direct-route authorization.
+## 2026-11-26 — Align dashboard shortcuts with the fourteen workspace options
+
+- Removed the legacy Audiobook Studio shortcut from the Commander Dashboard so dashboard shortcuts match the fourteen user-selected workspace options.
+- Updated navigation regression assertions to exclude the legacy audiobook destination while preserving direct-route access and permission boundaries.
 - No backend permission, deployment, database, credential, or production configuration was changed.

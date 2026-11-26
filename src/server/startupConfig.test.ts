@@ -32,9 +32,13 @@ describe('production and staging connection configuration', () => {
   });
 
   it('identifies only the missing production variable', () => {
-    expect(() => resolveConnectionUrls('production', 'postgresql://db/app')).toThrow(
-      'REDIS_URL',
-    );
+    expect(() => resolveConnectionUrls(
+      'production',
+      supabaseDatabaseUrl(`db.${supabaseProjectRef}.supabase.co`),
+      undefined,
+      supabaseProjectUrl,
+      supabasePoolerHost,
+    )).toThrow('REDIS_URL');
     expect(() => resolveConnectionUrls('production', undefined, 'redis://cache')).toThrow(
       'DATABASE_URL',
     );
@@ -54,24 +58,45 @@ describe('production and staging connection configuration', () => {
     )).toThrow('Invalid DATABASE_URL: expected a PostgreSQL URI with a hostname');
   });
 
-  it('accepts explicitly configured staging URLs without production defaults', () => {
-    expect(resolveConnectionUrls('staging', 'postgresql://staging-db/app', 'redis://staging-cache')).toEqual({
-      databaseUrl: 'postgresql://staging-db/app',
-      redisUrl: 'redis://staging-cache',
-    });
+  it('accepts staging only when the primary database is bound to the configured Supabase project', () => {
+    const result = resolveConnectionUrls(
+      'staging',
+      supabaseDatabaseUrl(`db.${supabaseProjectRef}.supabase.co`),
+      'redis://staging-cache',
+      supabaseProjectUrl,
+      supabasePoolerHost,
+    );
+    expect(new URL(result.databaseUrl).hostname).toBe(supabasePoolerHost);
+    expect(result.redisUrl).toBe('redis://staging-cache');
   });
 
-  it('accepts explicitly configured production URLs', () => {
-    expect(
-      resolveConnectionUrls(
-        'production',
-        'postgresql://db/app',
-        'redis://cache/0',
-      ),
-    ).toEqual({
-      databaseUrl: 'postgresql://db/app',
-      redisUrl: 'redis://cache/0',
-    });
+  it('accepts production only when the primary database is bound to the configured Supabase project', () => {
+    const result = resolveConnectionUrls(
+      'production',
+      supabaseDatabaseUrl(`db.${supabaseProjectRef}.supabase.co`),
+      'redis://cache/0',
+      supabaseProjectUrl,
+      supabasePoolerHost,
+    );
+    expect(new URL(result.databaseUrl).hostname).toBe(supabasePoolerHost);
+    expect(result.redisUrl).toBe('redis://cache/0');
+  });
+
+  it('rejects hosted staging database configuration without an explicit Supabase project mapping', () => {
+    expect(() => resolveConnectionUrls(
+      'staging',
+      'postgresql://postgres:placeholder@postgres.internal.example:5432/ryanai',
+      'redis://staging-cache',
+    )).toThrow('Missing required Supabase project mapping: set SUPABASE_URL');
+  });
+
+  it('rejects hosted staging database configuration without a verified Session Pooler host', () => {
+    expect(() => resolveConnectionUrls(
+      'staging',
+      supabaseDatabaseUrl(`db.${supabaseProjectRef}.supabase.co`),
+      'redis://staging-cache',
+      supabaseProjectUrl,
+    )).toThrow('Missing required Supabase Session Pooler mapping');
   });
 
   it('routes a Supabase direct connection through the configured IPv4 Session Pooler', () => {
