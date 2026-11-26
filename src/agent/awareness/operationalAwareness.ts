@@ -22,6 +22,21 @@ export interface OperationalTask {
   updatedAt: string;
   lastError?: string | null;
   completionVerified?: boolean;
+  lease?: {
+    state: 'unleased' | 'active' | 'expired';
+    workerId: string | null;
+    lockedAt: string | null;
+    expiresAt: string | null;
+    heartbeatAt: string | null;
+    nextAttemptAt: string | null;
+    attempts: number;
+    maxAttempts: number | null;
+  };
+  recovery?: {
+    recovered: boolean;
+    recoveryCount: number;
+    lastRecoveredAt: string | null;
+  };
 }
 
 export interface TaskIndicator {
