@@ -466,6 +466,30 @@ cd /d C:\Users\General\Downloads\RYANAI-Automous-Reasioning-Plat-main-main\RYANA
 dir
 ~~~
 
+### Generate local development secrets from Windows CMD
+
+After creating the local `.env` with:
+
+~~~cmd
+copy .env.example .env
+~~~
+
+run the following **single `node -e` command directly in Windows Command Prompt (`cmd.exe`)**. It generates cryptographically random hex values and updates only the local `.env` file. Secret values are never printed:
+
+~~~cmd
+node -e "const fs = require('fs'), crypto = require('crypto'); const path = '.env'; let text = fs.readFileSync(path, 'utf8'); const updates = { DB_PASSWORD: crypto.randomBytes(24).toString('hex'), JWT_SECRET: crypto.randomBytes(32).toString('hex'), REDIS_PASSWORD: crypto.randomBytes(24).toString('hex'), MCP_PROXY_DELEGATION_TOKEN: crypto.randomBytes(24).toString('hex') }; for (const [k, v] of Object.entries(updates)) { const re = new RegExp('^' + k + '=.*$', 'm'); text = re.test(text) ? text.replace(re, `${k}=${v}`) : text.trimEnd() + `\r\n${k}=${v}\r\n`; } fs.writeFileSync(path, text, 'utf8'); console.log('Updated keys:', Object.keys(updates).map(k => `${k}=***`).join(', '));"
+~~~
+
+Expected output is a key-name-only confirmation such as:
+
+~~~text
+Updated keys: DB_PASSWORD=***, JWT_SECRET=***, REDIS_PASSWORD=***, MCP_PROXY_DELEGATION_TOKEN=***
+~~~
+
+Do **not** paste the generated values into README, Git, issues, pull requests, logs, or chat. Keep `.env` local and untracked. If `.env` already contains real credentials, this command replaces the four listed values.
+
+> **Windows shell note:** this section is for **`cmd.exe`**. PowerShell syntax such as `function`, `$var`, `foreach`, `Set-Content`, and `Select-String`, and Unix commands such as `cp` or `#`, are not valid `cmd.exe` syntax. If you prefer PowerShell, switch shells first by typing `powershell` at the `cmd.exe` prompt and then use PowerShell-specific commands.
+
 If `mcp-server` and `workflows-ryanai` exist inside that cloned directory and have no `package-lock.json`, install with `npm install --include=dev` (or check for `pnpm-lock.yaml` / `package.json` first):
 
 ~~~cmd
