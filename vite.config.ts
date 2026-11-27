@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const LOOPBACK_URL_PATTERN =
-  /https?:\\/\\/(?:localhost|[^/]*\\.localhost|127\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}|0\\.0\\.0\\.0)(?::\\d+)?/g;
+  /https?:\/\/(?:localhost|[^/]*\.localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|0\.0\.0\.0)(?::\d+)?/g;
 
 function traceProductionLoopbacks() {
   const enabled = process.env.RYANAI_TRACE_FRONTEND_LOOPBACKS === '1';
