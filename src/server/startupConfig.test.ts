@@ -225,6 +225,22 @@ describe('production and staging connection configuration', () => {
     });
   });
 
+  it('allows an explicitly marked loopback disposable Supabase database on a dynamically mapped port', () => {
+    expect(resolveConnectionUrls(
+      'production',
+      'postgresql://postgres:test-placeholder@127.0.0.1:31667/postgres',
+      'redis://u2eb-cache',
+      undefined,
+      undefined,
+      undefined,
+      false,
+      true,
+    )).toEqual({
+      databaseUrl: 'postgresql://postgres:test-placeholder@127.0.0.1:31667/postgres',
+      redisUrl: 'redis://u2eb-cache',
+    });
+  });
+
   it('does not let the disposable Supabase opt-in bypass a remote database host', () => {
     expect(() => resolveConnectionUrls(
       'staging',
