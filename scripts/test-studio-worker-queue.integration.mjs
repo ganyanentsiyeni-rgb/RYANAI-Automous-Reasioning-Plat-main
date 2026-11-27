@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { prisma } from '../src/lib/prisma.ts';
+import { studioTaskApprovalDigest, STUDIO_TASK_APPROVAL_DIGEST_VERSION } from '../src/server/engineering/studioTaskApprovalDigest.ts';
 import {
   cancelStudioTask,
   claimStudioTask,
@@ -57,7 +58,12 @@ async function approveTaskForIntegrationTest(taskId) {
       ownerUserId,
       actorId: ownerUserId,
       eventType: 'task.human_approved',
-      payload: { source: 'disposable-integration-fixture', approval: 'explicit-owner-test-approval' },
+      payload: {
+        source: 'disposable-integration-fixture',
+        approval: 'explicit-owner-test-approval',
+        taskContentDigestVersion: STUDIO_TASK_APPROVAL_DIGEST_VERSION,
+        taskContentSha256: studioTaskApprovalDigest(await taskById(taskId)),
+      },
     },
   });
 }
