@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import Modal from './Modal';
 import { BookOpen, Cpu, Database, GitBranch, Network, RefreshCw, ShieldCheck, Workflow } from 'lucide-react';
-import packageMetadata from '../../package.json';
 import { usePlatformHealth } from '@/hooks/usePlatformHealth';
 import { getSnapshotFreshness } from '@/lib/healthFreshness';
 
@@ -191,7 +190,7 @@ export default function AboutModal({ open, onClose }: AboutModalProps) {
         </section>
 
         <div className="rounded-lg border border-white/10 bg-ink-800/30 p-3 text-xs font-mono">
-          <div>Version: {packageMetadata.version}</div>
+          <div>Version: {__RYANAI_PACKAGE_VERSION__}</div>
           <div>Build: {buildId || 'Not supplied by the build pipeline'}</div>
         </div>
         <p className="flex items-start gap-2 text-[11px] leading-5 text-ink-500">
