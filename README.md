@@ -421,6 +421,92 @@ docker compose ps -a
 
 If Compose reports missing variables or services are unhealthy, inspect the rendered configuration and service logs before changing credentials or container definitions. Do not paste `.env` contents or secret-bearing Compose output into issues, pull requests, chat, or screenshots.
 
+### Dependency installation verification
+
+The canonical repository dependency installation has been verified with all three lockfile-driven installs completing successfully with **0 vulnerabilities**:
+
+- Root: `npm ci --include=dev --legacy-peer-deps` — **1,384 packages added**
+- `mcp-server`: `npm --prefix mcp-server ci --include=dev` — **95 packages added**
+- `workflows-ryanai`: `npm --prefix workflows-ryanai ci --include=dev` — **21 packages added**
+- Root `package-lock.json`: present (**815,861 bytes**)
+
+These results confirm dependency installation only; they do not certify that builds, tests, runtime health, or deployments pass.
+
+#### `workflows-ryanai` esbuild install-script notice
+
+The `workflows-ryanai` install may report an npm warning such as:
+
+~~~text
+npm warn allow-scripts 1 package has install scripts not yet covered by allowScripts
+~~~
+
+For the observed `esbuild@0.28.2` notice, if building or running `workflows-ryanai` fails because the `esbuild` binary is unavailable, explicitly approve the package install script:
+
+~~~cmd
+npm --prefix workflows-ryanai approve-scripts esbuild
+~~~
+
+Only approve the package script when it is required for the intended local build/run operation. Do not treat the warning itself as an installation failure.
+
+#### Inspect exact npm scripts before builds or tests
+
+Before running builds or tests, inspect the scripts actually declared by the root package and both nested package scopes:
+
+~~~cmd
+node -e "console.log(JSON.stringify({root: require('./package.json').scripts, mcp: require('./mcp-server/package.json').scripts, wf: require('./workflows-ryanai/package.json').scripts}, null, 2))"
+~~~
+
+Use the resulting script names rather than assuming a script exists. Run this from the repository root so the relative package paths resolve correctly.
+### Fix Commands (CMD)
+
+Step into the newly cloned repo first (or target its subfolders explicitly) and use `npm install` (or `pnpm install` if the repo uses `pnpm-lock.yaml`):
+
+~~~cmd
+cd /d C:\Users\General\Downloads\RYANAI-Automous-Reasioning-Plat-main-main\RYANAI-Automous-Reasioning-Plat-main
+dir
+~~~
+
+### Generate local development secrets from Windows CMD
+
+After creating the local `.env` with:
+
+~~~cmd
+copy .env.example .env
+~~~
+
+run the following **single `node -e` command directly in Windows Command Prompt (`cmd.exe`)**. It generates cryptographically random hex values and updates only the local `.env` file. Secret values are never printed:
+
+~~~cmd
+node -e "const fs = require('fs'), crypto = require('crypto'); const path = '.env'; let text = fs.readFileSync(path, 'utf8'); const updates = { DB_PASSWORD: crypto.randomBytes(24).toString('hex'), JWT_SECRET: crypto.randomBytes(32).toString('hex'), REDIS_PASSWORD: crypto.randomBytes(24).toString('hex'), MCP_PROXY_DELEGATION_TOKEN: crypto.randomBytes(24).toString('hex') }; for (const [k, v] of Object.entries(updates)) { const re = new RegExp('^' + k + '=.*$', 'm'); text = re.test(text) ? text.replace(re, `${k}=${v}`) : text.trimEnd() + `\r\n${k}=${v}\r\n`; } fs.writeFileSync(path, text, 'utf8'); console.log('Updated keys:', Object.keys(updates).map(k => `${k}=***`).join(', '));"
+~~~
+
+Expected output is a key-name-only confirmation such as:
+
+~~~text
+Updated keys: DB_PASSWORD=***, JWT_SECRET=***, REDIS_PASSWORD=***, MCP_PROXY_DELEGATION_TOKEN=***
+~~~
+
+Do **not** paste the generated values into README, Git, issues, pull requests, logs, or chat. Keep `.env` local and untracked. If `.env` already contains real credentials, this command replaces the four listed values.
+
+> **Windows shell note:** this section is for **`cmd.exe`**. PowerShell syntax such as `function`, `$var`, `foreach`, `Set-Content`, and `Select-String`, and Unix commands such as `cp` or `#`, are not valid `cmd.exe` syntax. If you prefer PowerShell, switch shells first by typing `powershell` at the `cmd.exe` prompt and then use PowerShell-specific commands.
+
+If `mcp-server` and `workflows-ryanai` exist inside that cloned directory and have no `package-lock.json`, install with `npm install --include=dev` (or check for `pnpm-lock.yaml` / `package.json` first):
+
+~~~cmd
+cd /d C:\Users\General\Downloads\RYANAI-Automous-Reasioning-Plat-main-main\RYANAI-Automous-Reasioning-Plat-main
+if exist mcp-server\package.json if not exist mcp-server\package-lock.json npm install --prefix mcp-server --include=dev
+if exist workflows-ryanai\package.json if not exist workflows-ryanai\package-lock.json npm install --prefix workflows-ryanai --include=dev
+~~~
+
+When a `package-lock.json` is present, prefer the repository's lockfile-driven install instead:
+
+~~~cmd
+npm --prefix mcp-server ci --include=dev
+npm --prefix workflows-ryanai ci --include=dev
+~~~
+
+If the repository uses pnpm, use the corresponding pnpm install command instead of npm. Do not install dependencies in a directory that is not part of the cloned checkout.
+
 ### 4. Start development services
 
 ~~~bash
