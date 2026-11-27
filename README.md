@@ -373,7 +373,7 @@ npm run dev
 To inspect the exact port-binding configuration in `mcp-server/http.js`, run this single Node command from the repository root in CMD. It prints only matching source lines with line numbers:
 
 ~~~dos
-node -e "const fs = require('fs'); const p = 'C:\\Users\\General\\Downloads\\RYANAI-Automous-Reasioning-Plat-main-main\\RYANAI-Automous-Reasioning-Plat-main\\mcp-server\\http.js'; const lines = fs.readFileSync(p, 'utf8').split(/\\r?\\n/); lines.forEach((line, idx) => { if (/(listen|port|host|8765|127\\.0\\.0\\.1|process\\.env)/i.test(line)) console.log(`${idx + 1}: ${line}`); });"
+node -e "const fs = require('fs'); const p = 'C:\\Users\\General\\Downloads\\RYANAI-Automous-Reasioning-Plat-main-main\\RYANAI-Automous-Reasioning-Plat-main\\mcp-server\\http.js'; const lines = fs.readFileSync(p, 'utf8').split(/\\r?\\n/); lines.forEach((line, idx) => { if (/(listen|port|host|8765|127\\.0\\.0\\.1|process\.env)/i.test(line)) console.log(`${idx + 1}: ${line}`); });"
 ~~~
 
 To display the complete file instead of filtering it:
