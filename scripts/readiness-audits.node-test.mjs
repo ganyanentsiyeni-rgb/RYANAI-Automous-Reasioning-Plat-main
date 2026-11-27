@@ -13,9 +13,9 @@ test('deployment targets remain disabled unless explicitly enabled', () => {
 
 test('enabled deployment with missing configuration is blocked', () => {
   const results = auditDeploymentTargets({ AWS_ECS_DEPLOY_ENABLED: 'true' });
-  const aws = results.find((target) => target.name === 'AWS ECS');
+  const aws = results.find((target) => target.name === 'AWS ECS staging');
   assert.equal(aws.status, 'BLOCKED');
-  assert.ok(aws.missing.includes('AWS_ACCESS_KEY_ID'));
+  assert.ok(aws.missing.includes('AWS_REGION') && aws.missing.includes('AWS_ROLE_TO_ASSUME'));
   assert.equal(aws.deploymentAttempted, false);
 });
 
