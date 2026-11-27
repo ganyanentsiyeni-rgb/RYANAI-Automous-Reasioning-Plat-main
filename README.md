@@ -373,7 +373,7 @@ npm run dev
 To inspect the exact port-binding configuration in `mcp-server/http.js`, run this single Node command from the repository root in CMD. It prints only matching source lines with line numbers:
 
 ~~~dos
-node -e "const fs = require('fs'); const p = 'C:\\Users\\General\\Downloads\\RYANAI-Automous-Reasioning-Plat-main-main\\RYANAI-Automous-Reasioning-Plat-main\\mcp-server\\http.js'; const lines = fs.readFileSync(p, 'utf8').split(/\\r?\\n/); lines.forEach((line, idx) => { if (/(listen|port|host|8765|127\\.0\\.0\\.1|process\\.env)/i.test(line)) console.log(`${idx + 1}: ${line}`); });"
+node -e "const fs = require('fs'); const p = 'C:\\Users\\General\\Downloads\\RYANAI-Automous-Reasioning-Plat-main-main\\RYANAI-Automous-Reasioning-Plat-main\\mcp-server\\http.js'; const lines = fs.readFileSync(p, 'utf8').split(/\\r?\\n/); lines.forEach((line, idx) => { if (/(listen|port|host|8765|127\\.0\\.0\\.1|process\.env)/i.test(line)) console.log(`${idx + 1}: ${line}`); });"
 ~~~
 
 To display the complete file instead of filtering it:
@@ -742,6 +742,78 @@ npm start
 ~~~
 
 The package start command launches dist/server/server/launcher.js. Confirm the actual configured port and health route for the selected environment.
+
+### 7. Windows CMD: API startup, Prisma generation, and local port diagnosis
+
+Use the **cloned repository root**, not its parent download folder. In this example the repository root is:
+
+`C:\Users\General\Downloads\RYANAI-Automous-Reasioning-Plat-main-main\RYANAI-Automous-Reasioning-Plat-main`
+
+A common Windows failure is starting commands from the outer `RYANAI-Automous-Reasioning-Plat-main-main` directory. Confirm the prompt is inside the folder that contains the root `package.json`, `src\`, and `mcp-server\` before running scripts.
+
+#### A. Generate both Prisma clients before starting the API
+
+If `npm run dev:api` exits while importing `src/server/audiobookPrisma.ts` because `src/generated/audiobook-prisma/index.js` is missing, generate the main and audiobook Prisma clients from the repository root:
+
+~~~cmd
+cd /d C:\Users\General\Downloads\RYANAI-Automous-Reasioning-Plat-main-main\RYANAI-Automous-Reasioning-Plat-main
+set "RYANAI_PROJECT_ROOT=%CD%"
+npm run db:generate
+~~~
+
+The root `db:generate` script runs Prisma generation for the main client and then `npm run db:audiobook:generate`. Wait for the command to finish successfully before starting the API. Do not hand-create files under `src/generated\`; they are generated artifacts.
+
+#### B. Start the API alone and capture its real startup result
+
+Open a **second** Command Prompt window. Run the API by itself so startup errors and the process exit are visible without the web/MCP processes obscuring the output:
+
+~~~cmd
+cd /d C:\Users\General\Downloads\RYANAI-Automous-Reasioning-Plat-main-main\RYANAI-Automous-Reasioning-Plat-main
+set "RYANAI_PROJECT_ROOT=%CD%"
+npm run dev:api
+~~~
+
+Keep this window open. A successful command should remain running and bind the API listener; an immediate return to the prompt means startup failed or the process exited. Read the first underlying error in this window rather than treating a web proxy error as the root cause.
+
+#### C. Inspect the API listener and check ports 3001/3000
+
+In another CMD window, inspect the listener configuration and check whether either candidate port is already occupied:
+
+~~~cmd
+cd /d C:\Users\General\Downloads\RYANAI-Automous-Reasioning-Plat-main-main\RYANAI-Automous-Reasioning-Plat-main
+netstat -ano | findstr ":3001 :3000"
+node -e "const fs = require('fs'); const p = 'src/server/launcher.ts'; const lines = fs.readFileSync(p, 'utf8').split(/\r?\n/); lines.forEach((line, i) => { if (/(listen|port|3000|3001|process\.env)/i.test(line)) console.log((i + 1) + ': ' + line); });"
+~~~
+
+The source inspection prints only matching lines and their line numbers. Confirm the actual host/port from the current `src/server/launcher.ts` and runtime output; do not assume the API is listening merely because the web server started. If `netstat` shows a listener, identify its PID with `tasklist /FI "PID eq <PID>"` before stopping anything. Do not terminate an unfamiliar process.
+
+#### D. Start the web, API, and MCP processes together
+
+After Prisma generation succeeds and the standalone API startup has been verified, return to the repository root and run the root development command:
+
+~~~cmd
+cd /d C:\Users\General\Downloads\RYANAI-Automous-Reasioning-Plat-main-main\RYANAI-Automous-Reasioning-Plat-main
+set "RYANAI_PROJECT_ROOT=%CD%"
+set "MCP_PORT=8766"
+npm run dev
+~~~
+
+Set `MCP_PORT` in the same CMD session that launches `npm run dev`. If you launch the API/web/MCP processes in separate windows, set the required project-root and port variables in each relevant window. The MCP endpoint in this local setup is `http://127.0.0.1:8766/mcp`; the web UI is `http://localhost:1420/`.
+
+#### E. Interpret web proxy ECONNREFUSED correctly
+
+If the web UI and MCP endpoint are reachable but web requests to `/api` report `ECONNREFUSED 127.0.0.1:3001`, the web development proxy cannot reach an API listener at that address. This is an API startup/bind problem until proven otherwise—not evidence that the web or MCP server itself failed. Check, in order:
+
+1. The API window's startup output and whether `npm run dev:api` is still running.
+2. Whether `npm run db:generate` completed and the generated audiobook Prisma client exists.
+3. Whether the API source/runtime is configured to listen on `127.0.0.1:3001` (or the configured host/port).
+4. Whether another process already owns the configured API port.
+
+A running web server does not imply that its `/api` proxy target is healthy. Resolve the API listener failure before diagnosing application routes.
+
+#### F. Docker Desktop port 8765 is separate from the MCP port override
+
+If `netstat` identifies `com.docker.backend.exe` as the process owning port `8765`, that is a Docker Desktop port allocation. It does not mean the MCP server on `8766` is unavailable. Do not kill Docker's backend process to free the port. If Docker/Compose later needs to reclaim or refresh its port mapping, restart Docker Desktop deliberately after saving active work, then re-check the port. Keep MCP on the explicitly selected `8766` for this development session.
 
 ## NPM commands and scripts
 
