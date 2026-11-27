@@ -13,8 +13,10 @@ const LOOPBACK_URL_PATTERN =
   /https?:\/\/(?:localhost|[^/]*\.localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|0\.0\.0\.0)(?::\d+)?/g;
 
 function traceProductionLoopbacks() {
-  const enabled = process.env.RYANAI_TRACE_FRONTEND_LOOPBACKS === '1';
-  if (!enabled) return null;
+  // The dependency rewrite is a production-build invariant. Only verbose
+  // diagnostics are optional; CI workflows must not control whether the
+  // development-only Supabase URL is removed from browser output.
+  const traceEnabled = process.env.RYANAI_TRACE_FRONTEND_LOOPBACKS === '1';
 
   // @supabase/auth-js ships a development-only default URL
   // (http://localhost:9999) in its DEFAULT_OPTIONS. RyanAI always supplies
@@ -36,7 +38,9 @@ function traceProductionLoopbacks() {
       const transformedCode = isSupabaseAuthModule
         ? code.replaceAll(SUPABASE_AUTH_DEV_URL, SUPABASE_AUTH_PRODUCTION_SENTINEL)
         : code;
-      const matches = [...transformedCode.matchAll(LOOPBACK_URL_PATTERN)].map((match) => match[0]);
+      const matches = traceEnabled
+        ? [...transformedCode.matchAll(LOOPBACK_URL_PATTERN)].map((match) => match[0])
+        : [];
       if (matches.length > 0) {
         const unique = [...new Set(matches)];
         console.error(
@@ -45,7 +49,17 @@ function traceProductionLoopbacks() {
       }
       return transformedCode === code ? null : { code: transformedCode, map: null };
     },
+    // Final chunk-level safeguard: the exact development fallback is never
+    // valid in the browser bundle, even if Vite changes dependency module IDs.
+    renderChunk(code: string) {
+      const transformedCode = code.replaceAll(
+        SUPABASE_AUTH_DEV_URL,
+        SUPABASE_AUTH_PRODUCTION_SENTINEL,
+      );
+      return transformedCode === code ? null : { code: transformedCode, map: null };
+    },
     generateBundle(_options: unknown, bundle: Record<string, { type?: string; fileName?: string; code?: string }>) {
+      if (!traceEnabled) return;
       for (const item of Object.values(bundle)) {
         if (item.type !== 'chunk' || typeof item.code !== 'string') continue;
         const matches = [...item.code.matchAll(LOOPBACK_URL_PATTERN)].map((match) => match[0]);
