@@ -2,7 +2,6 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import packageMetadata from '../../package.json';
 import AboutModal from './AboutModel';
 vi.mock('framer-motion', async () => {
   const React = await import('react');
@@ -53,7 +52,7 @@ afterEach(async () => {
 describe('About RyanAI release metadata and live diagnostics', () => {
   it('uses the package release version instead of a hardcoded marketing version', async () => {
     await act(async () => root.render(<AboutModal open onClose={vi.fn()} />));
-    expect(container.textContent).toContain(`Version: ${packageMetadata.version}`);
+    expect(container.textContent).toContain(`Version: ${__RYANAI_PACKAGE_VERSION__}`);
     expect(container.textContent).not.toContain('Version: 1.0.0');
   });
 
