@@ -45,7 +45,7 @@ function traceProductionLoopbacks() {
 
 function normalizeApiUrl(value: string): string {
   const trimmed = value.trim();
-  if (/^[a-z][a-z\\d+.-]*:\\/\\//i.test(trimmed)) {
+  if (/^[a-z][a-z\d+.-]*:\/\//i.test(trimmed)) {
     return trimmed.replace(/\\/+$/, '');
   }
 
@@ -57,7 +57,7 @@ function normalizeApiUrl(value: string): string {
       hostname === 'localhost' ||
       hostname === '::1' ||
       hostname === '[::1]' ||
-      /^127(?:\\.\\d{1,3}){3}$/.test(hostname)
+      /^127(?:\.\d{1,3}){3}$/.test(hostname)
     ) {
       protocol = 'http';
     }
