@@ -71,6 +71,55 @@ describe('API-owned provider registry', () => {
     expect(runtime.model).toBe('gpt-4o');
   });
 
+  it('supports the configured Anthropic endpoint and default-model aliases', () => {
+    const runtime = resolveProviderRuntime('anthropic', 'claude-sonnet-4-5', {
+      ANTHROPIC_API_KEY: 'anthropic-only',
+      ANTHROPIC_BASE_URL: 'https://api.anthropic.com/v1',
+      ANTHROPIC_DEFAULT_MODEL: 'claude-sonnet-4-5',
+    });
+    expect(runtime.endpoint).toBe('https://api.anthropic.com/v1');
+    expect(runtime.model).toBe('claude-sonnet-4-5');
+  });
+
+  it('supports OpenRouter legacy base URL and default mode model aliases', () => {
+    const runtime = resolveProviderRuntime('openrouter', 'openai/gpt-4o', {
+      OPENROUTER_API_KEY: 'openrouter-only',
+      OPENROUTER_BASE_URL: 'https://openrouter.ai/api/v1',
+      OPENROUTER_DEFAULT_MODE: 'openai/gpt-4o',
+    });
+    expect(runtime.endpoint).toBe('https://openrouter.ai/api/v1');
+    expect(runtime.model).toBe('openai/gpt-4o');
+  });
+
+  it('supports xAI secret, endpoint and model aliases', () => {
+    const runtime = resolveProviderRuntime('xai', 'grok-4', {
+      XAI_API_KEY: 'xai-only',
+      XAI_BASE_URL: 'https://api.x.ai/v1',
+      XAI_DEFAULT_MODEL: 'grok-4',
+    });
+    expect(runtime.credential).toBe('xai-only');
+    expect(runtime.endpoint).toBe('https://api.x.ai/v1');
+    expect(runtime.model).toBe('grok-4');
+  });
+
+  it('uses generic development/production model keys only with an explicit matching provider', () => {
+    expect(resolveProviderRuntime('openai', 'gpt-4o-mini', {
+      NODE_ENV: 'development',
+      RYANAI_MODEL_PROVIDER: 'openai',
+      RYANAI_DEV_MODEL_KEY: 'dev-generic-key',
+    }).credential).toBe('dev-generic-key');
+    expect(resolveProviderRuntime('openai', 'gpt-4o-mini', {
+      NODE_ENV: 'production',
+      RYANAI_MODEL_PROVIDER: 'openai',
+      RYANAI_PROD_MODEL_KEY: 'prod-generic-key',
+    }).credential).toBe('prod-generic-key');
+    expect(() => resolveProviderRuntime('openai', 'gpt-4o-mini', {
+      NODE_ENV: 'production',
+      RYANAI_MODEL_PROVIDER: 'anthropic',
+      RYANAI_PROD_MODEL_KEY: 'must-not-be-routed',
+    })).toThrow(/unconfigured/);
+  });
+
   it('requires an explicit allowlist for native Anthropic models', () => {
     expect(() => resolveProviderRuntime('anthropic', 'claude-sonnet-4-5', {
       ANTHROPIC_API_KEY: 'anthropic-only',
