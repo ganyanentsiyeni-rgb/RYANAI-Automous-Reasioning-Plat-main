@@ -18,7 +18,6 @@ function traceProductionLoopbacks() {
     name: 'ryanai-trace-production-loopbacks',
     apply: 'build' as const,
     transform(code: string, id: string) {
-      if (id.includes('/node_modules/') || id.includes('\\\\node_modules\\\\')) return null;
       const matches = [...code.matchAll(LOOPBACK_URL_PATTERN)].map((match) => match[0]);
       if (matches.length > 0) {
         const unique = [...new Set(matches)];
