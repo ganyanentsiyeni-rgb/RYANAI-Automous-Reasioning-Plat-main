@@ -67,7 +67,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          unexpected_loopback="$(grep -RnoE 'https?://(localhost|[^/]*\\.localhost|127\\.[0-9]+\\.[0-9]+\\.[0-9]+|0\\.0\\.0\\.0)(:[0-9]+)?' dist/ | sort -u || true)"
+          unexpected_loopback="$(grep -RnoE 'https?://(localhost|[^/]*\.localhost|127\.[0-9]+\.[0-9]+\.[0-9]+|0\.0\.0\.0)(:[0-9]+)?' dist/ | sort -u || true)"
           if [ -n "$unexpected_loopback" ]; then
             printf '%s\n' "$unexpected_loopback"
             echo 'ERROR: unexpected loopback endpoint found in production bundle'
