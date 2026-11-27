@@ -41,6 +41,8 @@ for (const context of inventory.contexts) {
   const source = fs.readFileSync(workflowPath, "utf8");
   const declared = source.includes(`name: ${name}`) ||
     source.includes(`name: "${name}"`) ||
+    source.includes(`  ${job}:\\n`) ||
+    source.includes(`    ${job}:\\n`) ||
     source.includes(`name: '${name}'`) ||
     (name.startsWith("Analyze (") && source.includes("name: Analyze (${{ matrix.language }})")) ||
     (name.startsWith("Upgrade legacy pgvector database safely (") && source.includes("name: Upgrade legacy pgvector database safely (${{ matrix.legacy_session_column }})"));
