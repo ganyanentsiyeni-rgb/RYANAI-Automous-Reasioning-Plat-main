@@ -329,6 +329,77 @@ Optional modules may require additional provider accounts, native build tools, A
 
 **Runtime compatibility note:** package.json declares Node.js 24.x and the checked-in API Dockerfiles use `node:24-alpine`. Keep the package engine and container base aligned, and verify the exact image digest and runtime version in release evidence.
 
+## Windows CMD local development: project root, MCP secrets, and port 8765
+
+When running RyanAI locally from **Windows Command Prompt (`cmd.exe`)**, set the project root in the current CMD session before starting the development stack. This prevents runtime components from resolving the repository root incorrectly.
+
+### Fix: Set `RYANAI_PROJECT_ROOT` in CMD
+
+Set `RYANAI_PROJECT_ROOT` for the current CMD session:
+
+~~~dos
+set "RYANAI_PROJECT_ROOT=%CD%"
+npm run dev
+~~~
+
+To persist `RYANAI_PROJECT_ROOT` in `.env` for tooling that loads the root environment file in future sessions:
+
+~~~dos
+node -e "const fs = require('fs'); const p = '.env'; const k = 'RYANAI_PROJECT_ROOT'; const v = process.cwd().replace(/\\/g, '/'); let t = fs.readFileSync(p, 'utf8'); const re = new RegExp('^' + k + '=.*$', 'm'); t = re.test(t) ? t.replace(re, `${k}=${v}`) : t.trimEnd() + `\r\n${k}=${v}\r\n`; fs.writeFileSync(p, t, 'utf8'); console.log('Set ' + k + '=' + v);"
+~~~
+
+The value is derived from the current repository directory and normalised to forward slashes for environment-file portability.
+
+> **npm warning clarification:** `npm warn allow-scripts ...` is console warning output from npm, not an npm subcommand. Do not run `npm warn ...`; that produces `Unknown command: "warn"`.
+
+### Fix: Generate 32+ character MCP secrets in `.env` and the CMD session
+
+The MCP HTTP server requires both `RYANAI_MCP_DELEGATION_SECRET` and `RYANAI_MCP_SERVICE_TOKEN` to be present and at least 32 characters long. Generate cryptographically random 32-byte values (64 hexadecimal characters) and update the local `.env` without printing the secret values:
+
+~~~dos
+node -e "const fs = require('fs'), crypto = require('crypto'); const p = '.env'; let t = fs.readFileSync(p, 'utf8'); const keys = ['RYANAI_MCP_DELEGATION_SECRET', 'RYANAI_MCP_SERVICE_TOKEN']; for (const k of keys) { const v = crypto.randomBytes(32).toString('hex'); const re = new RegExp('^' + k + '=.*$', 'm'); t = re.test(t) ? t.replace(re, `${k}=${v}`) : t.trimEnd() + `\r\n${k}=${v}\r\n`; } fs.writeFileSync(p, t, 'utf8'); console.log('Updated keys:', keys.map(k => `${k}=*** (64 hex chars)`).join(', '));"
+~~~
+
+Because `npm --prefix mcp-server run start:http` starts a child process, the child does not necessarily inherit values stored only in the root `.env`. Load the root `.env` into the current CMD session before `npm run dev`, or use the repository's environment validation command if applicable:
+
+~~~dos
+for /f "usebackq eol=# tokens=1,* delims==" %a in (".env") do if not "%a"=="" set "%a=%b"
+npm run dev
+~~~
+
+**Security:** do not paste, commit, or publish the generated values. The CMD `for /f` import above places values into the process environment; avoid commands that echo the environment. If a secret was previously printed to a terminal, CI log, shell history, or other shared output, rotate it before treating the local environment as clean.
+
+### Fix: Free MCP HTTP port 8765
+
+After the MCP secret checks pass, `mcp-server/http.js` may fail with `EADDRINUSE` on `127.0.0.1:8765`. This means another process is already listening on that port, commonly a leftover Node/MCP process.
+
+Check the owning process:
+
+~~~dos
+netstat -ano | findstr :8765
+~~~
+
+Take the PID from the `LISTENING` line for `127.0.0.1:8765` or `0.0.0.0:8765`, inspect it before stopping anything:
+
+~~~dos
+tasklist /FI "PID eq <PID>"
+~~~
+
+If inspection confirms it is the leftover MCP/Node process, stop that PID:
+
+~~~dos
+taskkill /PID <PID> /F
+~~~
+
+Then start the development stack again with the project root and MCP secrets already loaded:
+
+~~~dos
+set "RYANAI_PROJECT_ROOT=%CD%"
+npm run dev
+~~~
+
+Do **not** kill a PID merely because it owns port 8765; verify that it is an expected stale MCP/Node process first.
+
 ## Local development
 
 ### 1. Get the source
