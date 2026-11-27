@@ -27,6 +27,7 @@ describe('GitHub App OAuth security primitives', () => {
   it('targets the current RyanAI source-of-truth repository', () => {
     expect(GITHUB_APP_REPOSITORY).toBe('ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main');
   });
+
   it('fails closed when any required server setting is missing or malformed', () => {
     const env = environment();
     expect(readGitHubAppConfig(env)).not.toBeNull();
@@ -42,7 +43,12 @@ describe('GitHub App OAuth security primitives', () => {
     expect(encrypted).not.toContain('ghu.synthetic-token');
     expect(encryptGitHubSecret('ghu.synthetic-token', key)).not.toBe(encrypted);
     expect(decryptGitHubSecret(encrypted, key)).toBe('ghu.synthetic-token');
-    expect(() => decryptGitHubSecret(encrypted.slice(0, -2) + 'aa', key)).toThrow();
+
+    const parts = encrypted.split('.');
+    expect(parts).toHaveLength(4);
+    const tamperedTag = (parts[2][0] === 'a' ? 'b' : 'a') + parts[2].slice(1);
+    expect(() => decryptGitHubSecret([parts[0], parts[1], tamperedTag, parts[3]].join('.'), key)).toThrow();
+
     expect(() => encryptGitHubSecret('token', Buffer.alloc(16))).toThrow();
   });
 

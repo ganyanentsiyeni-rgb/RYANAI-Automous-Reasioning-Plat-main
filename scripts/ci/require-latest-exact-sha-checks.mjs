@@ -37,13 +37,24 @@ export function validateChecks(checks, required, expectedSha) {
   return failures;
 }
 
+export function loadRequiredChecks(catalogPath) {
+  const required = JSON.parse(fs.readFileSync(catalogPath, "utf8"));
+  if (!Array.isArray(required) || required.length === 0 || required.some(name => typeof name !== "string" || !name.trim())) {
+    throw new Error("Required CI check catalog is empty or invalid");
+  }
+  if (new Set(required).size !== required.length) {
+    throw new Error("Required CI check catalog contains duplicate contexts");
+  }
+  return required;
+}
+
 async function main() {
-  const [inputPath, expectedSha] = process.argv.slice(2);
+  const [inputPath, expectedSha, catalogPath = new URL("./required-release-checks.json", import.meta.url)] = process.argv.slice(2);
   if (!inputPath || !/^[0-9a-f]{40}$/.test(expectedSha ?? "")) {
-    console.error("Usage: node scripts/ci/require-latest-exact-sha-checks.mjs <check-runs.ndjson> <full-commit-sha>");
+    console.error("Usage: node scripts/ci/require-latest-exact-sha-checks.mjs <check-runs.ndjson> <full-commit-sha> [catalog.json]");
     process.exit(2);
   }
-  const required = JSON.parse(fs.readFileSync(new URL("./required-release-checks.json", import.meta.url), "utf8"));
+  const required = loadRequiredChecks(catalogPath);
   const checks = parseCheckRuns(fs.readFileSync(inputPath, "utf8"));
   const failures = validateChecks(checks, required, expectedSha);
   if (failures.length) {

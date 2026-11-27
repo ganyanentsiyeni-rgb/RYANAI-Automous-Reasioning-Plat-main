@@ -30,6 +30,8 @@ on:
       - '.github/workflows/ci.yml'
       - 'scripts/check-platform-wiring.mjs'
       - 'scripts/validate-github-workflows.mjs'
+      - 'scripts/readiness-audits.node-test.mjs'
+      - 'scripts/validate-deployment-contracts.mjs'
       - 'quant-engine/**'
       - 'certs/**'
       - 'scripts/backup-on-startup.mjs'
