@@ -614,3 +614,9 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Restored a single blank `DATABASE_URL` / `DIRECT_URL` contract and retained blank optional external database variables.
 - Kept `CORS_ORIGINS` explicit for local frontend origins and the U2EB web origin; no secrets, production environment values, or provider settings were changed.
 - Follow-up: rotate any credential that was live and previously committed; removing it from the repository does not revoke it. Exact-head CI/security checks are required before merge; no deployment or migration is authorized by this patch.
+
+## 2026-11-27 — Reconcile names-only base environment contract
+
+- `.env.example` now contains variable names with blank values only, matching the dedicated names-only CI guard and preventing public routing values or secrets from being mistaken for runtime credentials.
+- Public U2EB routing values, including `CORS_ORIGINS`, remain in `.env.u2eb.example`; deployment-contract validation now checks that overlay separately while asserting every base template value is blank.
+- This is a template/contract correction only. No platform environment values, credentials, domains, migrations, or deployments were changed.
