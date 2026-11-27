@@ -2237,3 +2237,115 @@ The Admin Console includes a read-only AI Inspector report view sourced from the
 ## Application layer architecture
 
 RyanAI's eight-layer application contract, dependency/authority rules, request lifecycle, and static audit tooling are documented in [docs/architecture/RYANAI_APPLICATION_LAYER_INTEGRITY.md](docs/architecture/RYANAI_APPLICATION_LAYER_INTEGRITY.md). Run `npm run audit:application-layers` for a read-only dependency-topology report and `npm run test:application-layers` for its focused tests. The report is static evidence, not runtime or production-readiness certification.
+
+
+## Windows CMD recovery: repository root, local secrets, and API Docker build
+
+Use the nested Git checkout as the working directory. In the reported Windows layout, the outer download folder is **not** the npm project root:
+
+```cmd
+cd /d "C:\Users\General\Downloads\RYANAI-Automous-Reasioning-Plat-main-main\RYANAI-Automous-Reasioning-Plat-main"
+cd
+dir package.json
+git rev-parse --show-toplevel
+```
+
+The `dir package.json` command must show the root manifest before running npm commands. Do not run `npm run dev`, edit `.env`, or run the root install from the outer `...-main-main` directory. If npm reports it is trying to open `C:\Users\General\package.json`, first confirm the current directory and the npm prefix:
+
+```cmd
+cd
+npm prefix
+where npm
+```
+
+Set the project-root variable only after changing into the checkout:
+
+```cmd
+set "RYANAI_PROJECT_ROOT=%CD%"
+```
+
+Create a local environment file only if one does not already exist. Keep it out of Git and never print its contents:
+
+```cmd
+if not exist .env copy .env.example .env
+git check-ignore .env
+```
+
+If `git check-ignore .env` does not confirm that the file is ignored, stop and correct the local ignore configuration before adding credentials. Generate or edit local secrets using the documented Node.js CMD commands from this repository root. Do not paste PowerShell functions, hashtables, `Set-Content`, or `Select-String` directly into CMD; open PowerShell first if using PowerShell syntax. Verify only variable names, never values.
+
+### Root npm install and Windows EPERM
+
+If `npm ci` fails with `EPERM: operation not permitted, unlink ... .node`, a native module is likely held open by a Node process, editor, antivirus scanner, or another process. Close RyanAI dev servers and tools that may have loaded the module, then inspect Node processes:
+
+```cmd
+tasklist /FI "IMAGENAME eq node.exe"
+```
+
+Identify the process before stopping it; do not terminate every Node process indiscriminately. Retry the root install from the repository root:
+
+```cmd
+npm ci --include=dev --legacy-peer-deps
+npm --prefix mcp-server ci --include=dev
+npm --prefix workflows-ryanai ci --include=dev
+```
+
+The transcript's MCP and workflows installs completed successfully (95 and 21 packages respectively, with zero reported vulnerabilities); the root install did not complete because Windows denied unlinking the Lightning CSS native module.
+
+### API Docker build: verify the exact CA script in the build context
+
+The reported Docker build reached the final API image verification and failed at:
+
+```text
+scripts/verify-node-ca.sh: line 19: syntax error: unexpected end of file (expecting "then")
+```
+
+The canonical `main` version inspected for this documentation contains a balanced POSIX-shell conditional and is 16 lines long. The Docker error therefore indicates that the file actually supplied in the local Docker build context differs from that inspected canonical version, or that the local file was modified/truncated. Do not infer that the current repository version has the same syntax error.
+
+From the repository root, inspect local changes and the exact committed file before replacing anything:
+
+```cmd
+git status --short
+git rev-parse HEAD
+git diff -- scripts/verify-node-ca.sh Dockerfile
+git show HEAD:scripts/verify-node-ca.sh
+type scripts\verify-node-ca.sh
+```
+
+Compare the local file with the committed version. Preserve any intentional local edits; do not overwrite the file until the difference is understood. The expected script has this structure:
+
+```sh
+if [ -n "${NODE_EXTRA_CA_CERTS:-}" ]; then
+  if [ ! -r "$NODE_EXTRA_CA_CERTS" ]; then
+    echo "NODE_EXTRA_CA_CERTS is set, but its CA bundle is missing or unreadable; refusing to start." >&2
+    exit 1
+  fi
+
+  if ! grep -q -- '-----BEGIN CERTIFICATE-----' "$NODE_EXTRA_CA_CERTS"; then
+    echo "NODE_EXTRA_CA_CERTS must reference a PEM-encoded certificate bundle; refusing to start." >&2
+    exit 1
+  fi
+fi
+
+exec "$@"
+```
+
+The Dockerfile already runs `sh -n scripts/verify-node-ca.sh` as an API image build gate. Once the local source discrepancy is resolved, rebuild the API image and then rerun Compose:
+
+```cmd
+docker compose build --no-cache api
+docker compose config --quiet
+docker compose up -d --wait
+docker compose ps -a
+```
+
+A successful `docker compose config --quiet` validates Compose configuration only; it does not prove that images build or containers become healthy. Do not report the stack as ready until the build, startup, and health checks all succeed.
+
+### Current evidence from the supplied terminal transcript
+
+- Root npm install: **blocked** by Windows `EPERM` while unlinking the Lightning CSS native module.
+- MCP package install: **completed**, 95 packages; zero vulnerabilities reported.
+- Workflows package install: **completed**, 21 packages; zero vulnerabilities reported.
+- Local MCP delegation/service secret generation attempts: **failed** because `.env` was absent in the outer download directory.
+- `MCPJUNGLE_DB_PASSWORD`: Node command reported updating the key in the nested repository's `.env`; its value was not printed.
+- Docker API image: **failed** at `sh -n scripts/verify-node-ca.sh`; no successful Compose startup or health verification is shown.
+- No production deployment, database migration, or hosted secret-store change is implied by these local commands.
