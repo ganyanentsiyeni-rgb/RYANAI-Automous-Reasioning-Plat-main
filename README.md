@@ -782,7 +782,7 @@ In another CMD window, inspect the listener configuration and check whether eith
 ~~~cmd
 cd /d C:\Users\General\Downloads\RYANAI-Automous-Reasioning-Plat-main-main\RYANAI-Automous-Reasioning-Plat-main
 netstat -ano | findstr ":3001 :3000"
-node -e "const fs = require('fs'); const p = 'src/server/launcher.ts'; const lines = fs.readFileSync(p, 'utf8').split(/\r?\n/); lines.forEach((line, i) => { if (/(listen|port|3000|3001|process\\.env)/i.test(line)) console.log((i + 1) + ': ' + line); });"
+node -e "const fs = require('fs'); const p = 'src/server/launcher.ts'; const lines = fs.readFileSync(p, 'utf8').split(/\r?\n/); lines.forEach((line, i) => { if (/(listen|port|3000|3001|process\.env)/i.test(line)) console.log((i + 1) + ': ' + line); });"
 ~~~
 
 The source inspection prints only matching lines and their line numbers. Confirm the actual host/port from the current `src/server/launcher.ts` and runtime output; do not assume the API is listening merely because the web server started. If `netstat` shows a listener, identify its PID with `tasklist /FI "PID eq <PID>"` before stopping anything. Do not terminate an unfamiliar process.
