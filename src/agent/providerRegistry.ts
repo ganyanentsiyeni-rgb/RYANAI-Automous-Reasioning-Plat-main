@@ -88,7 +88,6 @@ const DEFINITIONS: Record<ProviderId, ProviderDefinition> = {
     credentialEnv: 'OPENROUTER_API_KEY',
     modelEnv: 'OPENROUTER_MODEL_ALLOWLIST',
     modelFallbackEnv: 'OPENROUTER_MODEL',
-    modelFallbackAliasEnv: 'OPENROUTER_DEFAULT_MODE',
     defaultModels: ['~openai/gpt-latest', '~anthropic/claude-sonnet-latest'],
   },
   nvidia: {
