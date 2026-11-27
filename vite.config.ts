@@ -14,11 +14,26 @@ function traceProductionLoopbacks() {
   const enabled = process.env.RYANAI_TRACE_FRONTEND_LOOPBACKS === '1';
   if (!enabled) return null;
 
+  // @supabase/auth-js ships a development-only default URL
+  // (http://localhost:9999) in its DEFAULT_OPTIONS. RyanAI always supplies
+  // the real Supabase URL at client construction time, so that fallback must
+  // never be emitted into a hosted browser bundle. Rewrite only that exact
+  // dependency literal to an intentionally unusable sentinel; this preserves
+  // explicit runtime configuration while preventing a local service endpoint
+  // from being shipped as production browser code.
+  const SUPABASE_AUTH_DEV_URL = 'http://localhost:9999';
+  const SUPABASE_AUTH_PRODUCTION_SENTINEL = 'https://supabase.invalid';
+
   return {
     name: 'ryanai-trace-production-loopbacks',
     apply: 'build' as const,
     transform(code: string, id: string) {
-      if (id.includes('/node_modules/') || id.includes('\\\\node_modules\\\\')) return null;
+      if (
+        id.includes('/node_modules/@supabase/auth-js/') ||
+        id.includes('\\\\node_modules\\\\@supabase\\\\auth-js\\\\')
+      ) {
+        code = code.replaceAll(SUPABASE_AUTH_DEV_URL, SUPABASE_AUTH_PRODUCTION_SENTINEL);
+      }
       const matches = [...code.matchAll(LOOPBACK_URL_PATTERN)].map((match) => match[0]);
       if (matches.length > 0) {
         const unique = [...new Set(matches)];
