@@ -421,6 +421,32 @@ docker compose ps -a
 
 If Compose reports missing variables or services are unhealthy, inspect the rendered configuration and service logs before changing credentials or container definitions. Do not paste `.env` contents or secret-bearing Compose output into issues, pull requests, chat, or screenshots.
 
+### Fix Commands (CMD)
+
+Step into the newly cloned repo first (or target its subfolders explicitly) and use `npm install` (or `pnpm install` if the repo uses `pnpm-lock.yaml`):
+
+~~~cmd
+cd /d C:\Users\General\Downloads\RYANAI-Automous-Reasioning-Plat-main-main\RYANAI-Automous-Reasioning-Plat-main
+dir
+~~~
+
+If `mcp-server` and `workflows-ryanai` exist inside that cloned directory and have no `package-lock.json`, install with `npm install --include=dev` (or check for `pnpm-lock.yaml` / `package.json` first):
+
+~~~cmd
+cd /d C:\Users\General\Downloads\RYANAI-Automous-Reasioning-Plat-main-main\RYANAI-Automous-Reasioning-Plat-main
+if exist mcp-server\package.json if not exist mcp-server\package-lock.json npm install --prefix mcp-server --include=dev
+if exist workflows-ryanai\package.json if not exist workflows-ryanai\package-lock.json npm install --prefix workflows-ryanai --include=dev
+~~~
+
+When a `package-lock.json` is present, prefer the repository's lockfile-driven install instead:
+
+~~~cmd
+npm --prefix mcp-server ci --include=dev
+npm --prefix workflows-ryanai ci --include=dev
+~~~
+
+If the repository uses pnpm, use the corresponding pnpm install command instead of npm. Do not install dependencies in a directory that is not part of the cloned checkout.
+
 ### 4. Start development services
 
 ~~~bash
