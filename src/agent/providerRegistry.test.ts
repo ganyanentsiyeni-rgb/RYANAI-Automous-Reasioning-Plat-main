@@ -81,11 +81,11 @@ describe('API-owned provider registry', () => {
     expect(runtime.model).toBe('claude-sonnet-4-5');
   });
 
-  it('supports OpenRouter legacy base URL and default mode model aliases', () => {
+  it('supports the OpenRouter legacy base URL with an explicit model', () => {
     const runtime = resolveProviderRuntime('openrouter', 'openai/gpt-4o', {
       OPENROUTER_API_KEY: 'openrouter-only',
       OPENROUTER_BASE_URL: 'https://openrouter.ai/api/v1',
-      OPENROUTER_DEFAULT_MODE: 'openai/gpt-4o',
+      OPENROUTER_MODEL: 'openai/gpt-4o',
     });
     expect(runtime.endpoint).toBe('https://openrouter.ai/api/v1');
     expect(runtime.model).toBe('openai/gpt-4o');
