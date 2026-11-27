@@ -421,6 +421,43 @@ docker compose ps -a
 
 If Compose reports missing variables or services are unhealthy, inspect the rendered configuration and service logs before changing credentials or container definitions. Do not paste `.env` contents or secret-bearing Compose output into issues, pull requests, chat, or screenshots.
 
+### Dependency installation verification
+
+The canonical repository dependency installation has been verified with all three lockfile-driven installs completing successfully with **0 vulnerabilities**:
+
+- Root: `npm ci --include=dev --legacy-peer-deps` — **1,384 packages added**
+- `mcp-server`: `npm --prefix mcp-server ci --include=dev` — **95 packages added**
+- `workflows-ryanai`: `npm --prefix workflows-ryanai ci --include=dev` — **21 packages added**
+- Root `package-lock.json`: present (**815,861 bytes**)
+
+These results confirm dependency installation only; they do not certify that builds, tests, runtime health, or deployments pass.
+
+#### `workflows-ryanai` esbuild install-script notice
+
+The `workflows-ryanai` install may report an npm warning such as:
+
+~~~text
+npm warn allow-scripts 1 package has install scripts not yet covered by allowScripts
+~~~
+
+For the observed `esbuild@0.28.2` notice, if building or running `workflows-ryanai` fails because the `esbuild` binary is unavailable, explicitly approve the package install script:
+
+~~~cmd
+npm --prefix workflows-ryanai approve-scripts esbuild
+~~~
+
+Only approve the package script when it is required for the intended local build/run operation. Do not treat the warning itself as an installation failure.
+
+#### Inspect exact npm scripts before builds or tests
+
+Before running builds or tests, inspect the scripts actually declared by the root package and both nested package scopes:
+
+~~~cmd
+node -e "console.log(JSON.stringify({root: require('./package.json').scripts, mcp: require('./mcp-server/package.json').scripts, wf: require('./workflows-ryanai/package.json').scripts}, null, 2))"
+~~~
+
+Use the resulting script names rather than assuming a script exists. Run this from the repository root so the relative package paths resolve correctly.
+
 ### 4. Start development services
 
 ~~~bash
