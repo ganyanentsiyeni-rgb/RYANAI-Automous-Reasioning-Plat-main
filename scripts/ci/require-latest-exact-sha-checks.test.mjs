@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { latestChecksByName, parseCheckRuns, validateChecks } from "./require-latest-exact-sha-checks.mjs";
+import { latestChecksByName, loadRequiredChecks, parseCheckRuns, validateChecks } from "./require-latest-exact-sha-checks.mjs";
 
 const sha = "a".repeat(40);
 const name = "Validate (typecheck, lint, test, build)";
@@ -37,4 +37,11 @@ test("parses newline-delimited check runs", () => {
   const checks = [run(10, "2026-11-26T10:00:00Z"), run(11, "2026-11-26T11:00:00Z")];
   const ndjson = checks.map((check) => JSON.stringify(check)).join("\n");
   assert.deepEqual(parseCheckRuns(ndjson), checks);
+});
+
+test("staging catalog is separate from the main-release catalog", () => {
+  const staging = loadRequiredChecks(new URL("./required-staging-checks.json", import.meta.url));
+  assert.equal(staging.includes("Audit Render API configuration (read-only)"), false);
+  assert.equal(staging.length, 18);
+  assert.equal(new Set(staging).size, staging.length);
 });

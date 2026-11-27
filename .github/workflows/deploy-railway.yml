@@ -52,7 +52,7 @@ jobs:
             exit 1
           }
 
-      - name: Require canonical exact-SHA CI and security checks
+      - name: Require PR-staging exact-SHA CI and security checks
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_SHA: ${{ env.TARGET_SHA || github.sha }}
@@ -60,7 +60,7 @@ jobs:
           set -euo pipefail
           [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Target SHA must be a full commit SHA"; exit 1; }
           gh api --paginate "repos/${GITHUB_REPOSITORY}/commits/${TARGET_SHA}/check-runs?per_page=100" --jq '.check_runs[]' > check-runs.ndjson
-          node scripts/ci/require-latest-exact-sha-checks.mjs check-runs.ndjson "$TARGET_SHA"
+          node scripts/ci/require-latest-exact-sha-checks.mjs check-runs.ndjson "$TARGET_SHA" scripts/ci/required-staging-checks.json
 
       - name: Validate isolated Railway staging target
         env:

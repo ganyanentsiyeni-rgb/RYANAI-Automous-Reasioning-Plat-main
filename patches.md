@@ -620,3 +620,8 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - `.env.example` now contains variable names with blank values only, matching the dedicated names-only CI guard and preventing public routing values or secrets from being mistaken for runtime credentials.
 - Public U2EB routing values, including `CORS_ORIGINS`, remain in `.env.u2eb.example`; deployment-contract validation now checks that overlay separately while asserting every base template value is blank.
 - This is a template/contract correction only. No platform environment values, credentials, domains, migrations, or deployments were changed.
+
+- Split exact-SHA staging evidence from main/release evidence with scripts/ci/required-staging-checks.json. Render and Railway PR-staging gates now validate the PR-compatible 18-context catalogue instead of requiring the main-only Render configuration audit.
+- Extended the exact-SHA validator to accept an explicit catalogue while preserving the release catalogue as the default.
+- Added regression coverage proving the staging catalogue excludes the main-only Render audit and contains unique contexts.
+- Expanded Docker PR path coverage so deployment-readiness changes trigger the API/web image build and scan producers required by the staging evidence contract.

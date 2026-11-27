@@ -2349,3 +2349,9 @@ A successful `docker compose config --quiet` validates Compose configuration onl
 - `MCPJUNGLE_DB_PASSWORD`: Node command reported updating the key in the nested repository's `.env`; its value was not printed.
 - Docker API image: **failed** at `sh -n scripts/verify-node-ca.sh`; no successful Compose startup or health verification is shown.
 - No production deployment, database migration, or hosted secret-store change is implied by these local commands.
+
+### Exact-SHA CI evidence
+
+RyanAI maintains separate evidence catalogues for PR staging and main/release gates. Isolated Render/Railway staging validates scripts/ci/required-staging-checks.json, while the main/release gate uses scripts/ci/required-release-checks.json. The staging catalogue intentionally excludes main-only checks such as Audit Render API configuration (read-only). The exact-SHA validator accepts an explicit catalogue and rejects missing, pending, failed, or differently-SHA latest attempts.
+
+Docker PR image scans are also triggered when deployment-readiness validation scripts change, ensuring the required API/web image-scan contexts are produced for those changes.
