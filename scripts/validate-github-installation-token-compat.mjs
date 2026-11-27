@@ -15,7 +15,7 @@ const legacyPatterns = [
   /ghs_\[A-Za-z0-9_\]\{36\}/i,
 ];
 const narrowTokenColumn = /(?:access|installation|github)[_ ]?token[^\n;]*(?:varchar|character varying|char)\s*\(\s*(?:[1-4]?\d{1,2}|255)\s*\)/i;
-const fixedLengthCheck = /(?:token|installation)[^\n]{0,100}(?:length\s*(?:===?|!==?)\s*40|\b40\s*characters)/i;
+const fixedLengthCheck = /(?:github|installation)[^\n]{0,100}(?:token)[^\n]{0,100}(?:length\s*(?:===?|!==?)\s*40|\b40\s*characters)/i;
 
 export function findCompatibilityRisks(content) {
   const risks = [];
