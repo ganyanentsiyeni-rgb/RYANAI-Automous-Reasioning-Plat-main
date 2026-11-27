@@ -10,7 +10,7 @@ This contract maps the repository's supported model-provider runtime settings to
 | `ANTHROPIC_BASE_URL` | `ANTHROPIC_API_ENDPOINT` fallback | API provider registry |
 | `ANTHROPIC_DEFAULT_MODEL` | `ANTHROPIC_MODEL_ALLOWLIST` fallback | API provider registry; explicit model only |
 | `OPENROUTER_BASE_URL` | `OPENROUTER_API_ENDPOINT` fallback | API provider registry |
-| `OPENROUTER_DEFAULT_MODE` | `OPENROUTER_MODEL_ALLOWLIST` fallback | API provider registry; explicit model only |
+| `OPENROUTER_DEFAULT_MODE` | No direct mapping until its value semantics are confirmed | Unresolved; do not assume it is a model ID or mode selector |
 | `XAI_API_KEY` | `GROK_API_KEY` fallback | Logic brain and API provider registry |
 | `XAI_BASE_URL` | `GROK_API_ENDPOINT` fallback | Logic brain and API provider registry |
 | `XAI_DEFAULT_MODEL` | `GROK_MODEL` fallback | Logic brain and API provider registry |
