@@ -22,3 +22,4 @@ interface ImportMeta {
 interface Window {
   __RYANAI_INDEX_HTML__?: string;
 }
+declare const __RYANAI_PACKAGE_VERSION__: string;

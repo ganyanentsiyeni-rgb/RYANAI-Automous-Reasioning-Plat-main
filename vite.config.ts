@@ -3,9 +3,11 @@ import { validateFrontendEnvironment } from './src/config/frontendEnv';
 import { configDefaults } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const packageMetadata = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string };
 
 const LOOPBACK_URL_PATTERN =
   /https?:\/\/(?:localhost|[^/]*\.localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|0\.0\.0\.0)(?::\d+)?/g;
@@ -164,6 +166,7 @@ export default defineConfig(({ mode }) => {
   );
 
   return {
+    define: { __RYANAI_PACKAGE_VERSION__: JSON.stringify(packageMetadata.version) },
     plugins: [react(), traceProductionLoopbacks()].filter(Boolean),
     resolve: {
       alias: {

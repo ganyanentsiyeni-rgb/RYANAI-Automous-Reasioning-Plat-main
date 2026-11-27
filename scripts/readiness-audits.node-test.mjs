@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { auditDeploymentTargets } from './audit-deployment-readiness.mjs';
 import { auditAgentReadiness } from './audit-agent-readiness.mjs';
 
