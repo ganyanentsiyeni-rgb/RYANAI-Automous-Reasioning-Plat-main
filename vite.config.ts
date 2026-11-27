@@ -7,10 +7,46 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+const LOOPBACK_URL_PATTERN =
+  /https?:\\/\\/(?:localhost|[^/]*\\.localhost|127\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}|0\\.0\\.0\\.0)(?::\\d+)?/g;
+
+function traceProductionLoopbacks() {
+  const enabled = process.env.RYANAI_TRACE_FRONTEND_LOOPBACKS === '1';
+  if (!enabled) return null;
+
+  return {
+    name: 'ryanai-trace-production-loopbacks',
+    apply: 'build' as const,
+    transform(code: string, id: string) {
+      if (id.includes('/node_modules/') || id.includes('\\\\node_modules\\\\')) return null;
+      const matches = [...code.matchAll(LOOPBACK_URL_PATTERN)].map((match) => match[0]);
+      if (matches.length > 0) {
+        const unique = [...new Set(matches)];
+        console.error(
+          `[frontend-loopback-trace] source module: ${id} -> ${unique.join(', ')}`,
+        );
+      }
+      return null;
+    },
+    generateBundle(_options: unknown, bundle: Record<string, { type?: string; fileName?: string; code?: string }>) {
+      for (const item of Object.values(bundle)) {
+        if (item.type !== 'chunk' || typeof item.code !== 'string') continue;
+        const matches = [...item.code.matchAll(LOOPBACK_URL_PATTERN)].map((match) => match[0]);
+        if (matches.length > 0) {
+          const unique = [...new Set(matches)];
+          console.error(
+            `[frontend-loopback-trace] emitted chunk: ${item.fileName ?? '<unknown>'} -> ${unique.join(', ')}`,
+          );
+        }
+      }
+    },
+  };
+}
+
 function normalizeApiUrl(value: string): string {
   const trimmed = value.trim();
-  if (/^[a-z][a-z\d+.-]*:\/\//i.test(trimmed)) {
-    return trimmed.replace(/\/+$/, '');
+  if (/^[a-z][a-z\\d+.-]*:\\/\\//i.test(trimmed)) {
+    return trimmed.replace(/\\/+$/, '');
   }
 
   let protocol = 'https';
@@ -21,14 +57,14 @@ function normalizeApiUrl(value: string): string {
       hostname === 'localhost' ||
       hostname === '::1' ||
       hostname === '[::1]' ||
-      /^127(?:\.\d{1,3}){3}$/.test(hostname)
+      /^127(?:\\.\\d{1,3}){3}$/.test(hostname)
     ) {
       protocol = 'http';
     }
   } catch {
     // Hosted hostnames default to HTTPS; malformed values fail at URL parsing.
   }
-  return `${protocol}://${trimmed}`.replace(/\/+$/, '');
+  return `${protocol}://${trimmed}`.replace(/\\/+$/, '');
 }
 
 export default defineConfig(({ mode }) => {
@@ -113,7 +149,7 @@ export default defineConfig(({ mode }) => {
   );
 
   return {
-    plugins: [react()],
+    plugins: [react(), traceProductionLoopbacks()].filter(Boolean),
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
