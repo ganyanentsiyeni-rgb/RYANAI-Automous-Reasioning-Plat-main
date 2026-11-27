@@ -67,19 +67,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          loopback_matches="$(grep -RnoE 'https?://(localhost|[^/]*\\.localhost|127\\.[0-9]+\\.[0-9]+\\.[0-9]+|0\\.0\\.0\\.0)(:[0-9]+)?' dist/ | sort -u || true)"
+          loopback_matches="$(grep -RnoE 'https?://(localhost|[^/]*\.localhost|127\.[0-9]+\.[0-9]+\.[0-9]+|0\.0\.0\.0)(:[0-9]+)?' dist/ | sort -u || true)"
           if [ -n "$loopback_matches" ]; then
-            unexpected_loopback="$(printf '%s\\n' "$loopback_matches" | grep -vF 'http://localhost:9999' || true)"
-            unexpected_loopback="$(printf '%s\\n' "$loopback_matches" | grep -vxF 'http://localhost:9999' || true)"
+            unexpected_loopback="$(printf '%s\n' "$loopback_matches" | grep -vF 'http://localhost:9999' || true)"
+            unexpected_loopback="$(printf '%s\n' "$loopback_matches" | grep -vxF 'http://localhost:9999' || true)"
           else
             unexpected_loopback=""
           fi
           if [ -n "$unexpected_loopback" ]; then
-            printf '%s\\n' "$unexpected_loopback"
+            printf '%s\n' "$unexpected_loopback"
             echo 'ERROR: unexpected loopback endpoint found in production bundle'
             exit 1
           fi
-          if grep -RniE 'sk-(proj-)?[A-Za-z0-9_-]{20,}|sb_secret_[A-Za-z0-9_-]{20,}|SG\\.[A-Za-z0-9_-]{20,}\\.[A-Za-z0-9_-]{20,}' dist/; then
+          if grep -RniE 'sk-(proj-)?[A-Za-z0-9_-]{20,}|sb_secret_[A-Za-z0-9_-]{20,}|SG\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}' dist/; then
             echo 'ERROR: credential-shaped value found in production bundle'
             exit 1
           fi
