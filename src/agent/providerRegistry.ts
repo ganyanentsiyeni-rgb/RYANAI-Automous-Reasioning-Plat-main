@@ -44,6 +44,7 @@ interface ProviderDefinition {
   credentialFallbackEnv?: string;
   modelEnv: string;
   modelFallbackEnv?: string;
+  modelFallbackAliasEnv?: string;
   defaultModels: readonly string[];
   allowLoopbackHttp?: boolean;
 }
@@ -87,6 +88,7 @@ const DEFINITIONS: Record<ProviderId, ProviderDefinition> = {
     credentialEnv: 'OPENROUTER_API_KEY',
     modelEnv: 'OPENROUTER_MODEL_ALLOWLIST',
     modelFallbackEnv: 'OPENROUTER_MODEL',
+    modelFallbackAliasEnv: 'OPENROUTER_DEFAULT_MODE',
     defaultModels: ['~openai/gpt-latest', '~anthropic/claude-sonnet-latest'],
   },
   nvidia: {
@@ -116,6 +118,7 @@ const DEFINITIONS: Record<ProviderId, ProviderDefinition> = {
     credentialFallbackEnv: 'XAI_API_KEY',
     modelEnv: 'GROK_MODEL_ALLOWLIST',
     modelFallbackEnv: 'GROK_MODEL',
+    modelFallbackAliasEnv: 'XAI_DEFAULT_MODEL',
     defaultModels: [],
   },
   ollama: {
@@ -148,7 +151,8 @@ function providerEndpoint(providerId: ProviderId, env: ProviderEnvironment): str
 function providerModels(providerId: ProviderId, env: ProviderEnvironment): string[] {
   const definition = DEFINITIONS[providerId];
   return parseModels(env[definition.modelEnv],
-    definition.modelFallbackEnv ? env[definition.modelFallbackEnv] : undefined,
+    (definition.modelFallbackEnv ? env[definition.modelFallbackEnv] : undefined)
+      || (definition.modelFallbackAliasEnv ? env[definition.modelFallbackAliasEnv] : undefined),
     definition.defaultModels);
 }
 
