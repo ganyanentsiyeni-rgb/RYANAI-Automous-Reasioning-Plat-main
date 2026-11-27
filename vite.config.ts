@@ -30,7 +30,7 @@ function traceProductionLoopbacks() {
     transform(code: string, id: string) {
       const isSupabaseAuthModule =
         id.includes('/node_modules/@supabase/auth-js/') ||
-        id.includes('\\\\node_modules\\\\@supabase\\\\auth-js\\\\');
+        id.includes('\\node_modules\\@supabase\\auth-js\\');
       const transformedCode = isSupabaseAuthModule
         ? code.replaceAll(SUPABASE_AUTH_DEV_URL, SUPABASE_AUTH_PRODUCTION_SENTINEL)
         : code;
