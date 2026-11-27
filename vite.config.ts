@@ -46,7 +46,7 @@ function traceProductionLoopbacks() {
 function normalizeApiUrl(value: string): string {
   const trimmed = value.trim();
   if (/^[a-z][a-z\d+.-]*:\/\//i.test(trimmed)) {
-    return trimmed.replace(/\\/+$/, '');
+    return trimmed.replace(/\/+$/, '');
   }
 
   let protocol = 'https';
@@ -64,7 +64,7 @@ function normalizeApiUrl(value: string): string {
   } catch {
     // Hosted hostnames default to HTTPS; malformed values fail at URL parsing.
   }
-  return `${protocol}://${trimmed}`.replace(/\\/+$/, '');
+  return `${protocol}://${trimmed}`.replace(/\/+$/, '');
 }
 
 export default defineConfig(({ mode }) => {
