@@ -21,7 +21,7 @@ describe('GitHub installation token compatibility audit', () => {
       .toContain('possible fixed 40-character token length assumption');
   });
 
-  it('detects narrow token columns', () => {
+  it('does not flag unrelated device-session token lengths', () => {\n    expect(findCompatibilityRisks('const token = /^Bearer ([A-Za-z0-9_-]{40,60})$/.exec(value)?.[1];')).toEqual([]);\n  });\n\n  it('detects narrow token columns', () => {
     expect(findCompatibilityRisks('access_token VARCHAR(255) NOT NULL'))
       .toContain('token storage column appears limited to 255 characters or fewer');
   });
