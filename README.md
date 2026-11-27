@@ -364,7 +364,7 @@ On Windows Command Prompt (CMD):
 copy .env.example .env
 ~~~
 
-Edit `.env` locally. The template is a starting point, not a complete secret generator. Docker Compose additionally requires local values for `DB_PASSWORD`, `REDIS_PASSWORD`, and `JWT_SECRET`. Set unique development-only values for all three. Do not paste credentials into issues, pull requests, chat, screenshots, or source files.
+Edit `.env` locally. The template is a starting point, not a complete secret generator. Docker Compose additionally requires local values for `DB_PASSWORD`, `REDIS_PASSWORD`, `JWT_SECRET`, and `MCPJUNGLE_DB_PASSWORD`. Set unique development-only values for all four. `MCPJUNGLE_DB_PASSWORD` is required by both the `mcpjungle-db` PostgreSQL password and the `mcpjungle` service `DATABASE_URL`; leaving it missing or empty causes Compose interpolation to fail before containers start. Do not paste credentials into issues, pull requests, chat, screenshots, or source files.
 
 ### 3A. Generate local development secrets (Windows PowerShell)
 
@@ -407,7 +407,26 @@ Select-String -Path .\\.env -Pattern '^(DB_PASSWORD|JWT_SECRET|REDIS_PASSWORD|MC
 
 The generated values are written only to the local `.env` file. The command does not print the secret values. Use this for local development only; do not use these generated values as production credentials, and never commit `.env`.
 
-### 3B. Validate Compose configuration and start the local stack
+### 3B. Generate `MCPJUNGLE_DB_PASSWORD` (Windows CMD)
+
+If `docker compose config --quiet` fails with an interpolation error stating that `MCPJUNGLE_DB_PASSWORD` is missing or empty, generate a fresh local-only value and write it to `.env` without printing the secret:
+
+~~~cmd
+node -e "const fs = require('fs'), crypto = require('crypto'); const path = '.env'; let text = fs.readFileSync(path, 'utf8'); const k = 'MCPJUNGLE_DB_PASSWORD'; const v = crypto.randomBytes(24).toString('hex'); const re = new RegExp('^' + k + '=.*$', 'm'); text = re.test(text) ? text.replace(re, `${k}=${v}`) : text.trimEnd() + `\r\n${k}=${v}\r\n`; fs.writeFileSync(path, text, 'utf8'); console.log('Updated key:', k + '=***');"
+~~~
+
+The command generates 24 random bytes (48 hexadecimal characters), updates an existing `MCPJUNGLE_DB_PASSWORD` entry or appends one, and prints only `MCPJUNGLE_DB_PASSWORD=***`. Do not paste the generated value into documentation, Git, issues, pull requests, chat, logs, or screenshots.
+
+### 3C. Validate Compose configuration and start the local stack
+
+After all required local `.env` values are populated:
+
+~~~cmd
+docker compose config --quiet && docker compose up -d --wait && docker compose ps -a
+~~~
+
+If `docker compose config --quiet` still reports another unset variable, inspect `.env.example` and `docker-compose.yml` for remaining `${VAR:?...}` or `${VAR}` placeholders required by the active Compose profiles. Do not expose `.env` contents or secret-bearing rendered configuration when reporting the error.
+
 
 After the local environment file is populated:
 
