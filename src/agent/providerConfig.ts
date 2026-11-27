@@ -105,7 +105,7 @@ export function resolveBrainApiKey(
   }
 
   const selector = selectedProvider('logic', env);
-  if (selector === 'grok' || selector === 'xai') return (env.GROK_API_KEY || '').trim();
+  if (selector === 'grok' || selector === 'xai') return (env.GROK_API_KEY || env.XAI_API_KEY || '').trim();
   return (env.LOGIC_API_KEY || env.OPENAI_API_KEY ||
     (config.endpoint === env.LM_STUDIO_URL ? env.LM_STUDIO_API_KEY : '') || '').trim();
 }
@@ -125,8 +125,8 @@ export function resolveBrainProviderConfig(
     const config = {
       role,
       adapter: 'openai-compatible' as const,
-      model: env.GROK_MODEL?.trim() || '',
-      endpoint: validateEndpoint(env.GROK_API_ENDPOINT || 'https://api.x.ai/v1', role),
+      model: env.GROK_MODEL?.trim() || env.XAI_DEFAULT_MODEL?.trim() || '',
+      endpoint: validateEndpoint(env.GROK_API_ENDPOINT || env.XAI_BASE_URL || 'https://api.x.ai/v1', role),
     };
     return { ...config, credential: Boolean(resolveBrainApiKey(brain, config, env)) };
   }

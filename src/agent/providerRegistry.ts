@@ -41,8 +41,10 @@ interface ProviderDefinition {
   endpointFallbackEnv?: string;
   defaultEndpoint: string;
   credentialEnv: string | null;
+  credentialFallbackEnv?: string;
   modelEnv: string;
   modelFallbackEnv?: string;
+  modelFallbackAliasEnv?: string;
   defaultModels: readonly string[];
   allowLoopbackHttp?: boolean;
 }
@@ -71,14 +73,17 @@ const DEFINITIONS: Record<ProviderId, ProviderDefinition> = {
   anthropic: {
     adapter: 'anthropic-messages',
     endpointEnv: 'ANTHROPIC_API_ENDPOINT',
+    endpointFallbackEnv: 'ANTHROPIC_BASE_URL',
     defaultEndpoint: 'https://api.anthropic.com/v1',
     credentialEnv: 'ANTHROPIC_API_KEY',
     modelEnv: 'ANTHROPIC_MODEL_ALLOWLIST',
+    modelFallbackEnv: 'ANTHROPIC_DEFAULT_MODEL',
     defaultModels: [],
   },
   openrouter: {
     adapter: 'openai-compatible',
     endpointEnv: 'OPENROUTER_API_ENDPOINT',
+    endpointFallbackEnv: 'OPENROUTER_BASE_URL',
     defaultEndpoint: 'https://openrouter.ai/api/v1',
     credentialEnv: 'OPENROUTER_API_KEY',
     modelEnv: 'OPENROUTER_MODEL_ALLOWLIST',
@@ -106,10 +111,13 @@ const DEFINITIONS: Record<ProviderId, ProviderDefinition> = {
   xai: {
     adapter: 'openai-compatible',
     endpointEnv: 'GROK_API_ENDPOINT',
+    endpointFallbackEnv: 'XAI_BASE_URL',
     defaultEndpoint: 'https://api.x.ai/v1',
     credentialEnv: 'GROK_API_KEY',
+    credentialFallbackEnv: 'XAI_API_KEY',
     modelEnv: 'GROK_MODEL_ALLOWLIST',
     modelFallbackEnv: 'GROK_MODEL',
+    modelFallbackAliasEnv: 'XAI_DEFAULT_MODEL',
     defaultModels: [],
   },
   ollama: {
@@ -142,7 +150,8 @@ function providerEndpoint(providerId: ProviderId, env: ProviderEnvironment): str
 function providerModels(providerId: ProviderId, env: ProviderEnvironment): string[] {
   const definition = DEFINITIONS[providerId];
   return parseModels(env[definition.modelEnv],
-    definition.modelFallbackEnv ? env[definition.modelFallbackEnv] : undefined,
+    (definition.modelFallbackEnv ? env[definition.modelFallbackEnv] : undefined)
+      || (definition.modelFallbackAliasEnv ? env[definition.modelFallbackAliasEnv] : undefined),
     definition.defaultModels);
 }
 
@@ -183,15 +192,27 @@ export function listProviderRegistry(
     const definition = DEFINITIONS[providerId];
     const endpoint = providerEndpoint(providerId, env);
     const modelAllowlist = providerModels(providerId, env);
+    const genericKeyName = env.NODE_ENV === 'production' ? 'RYANAI_PROD_MODEL_KEY' : 'RYANAI_DEV_MODEL_KEY';
+    const genericKeySelected = env.RYANAI_MODEL_PROVIDER?.trim().toLowerCase() === providerId
+      && Boolean(env[genericKeyName]?.trim());
     const configured = providerId === 'ollama' || (definition.allowLoopbackHttp && isLoopbackEndpoint(endpoint))
       ? modelAllowlist.length > 0
-      : Boolean(definition.credentialEnv && env[definition.credentialEnv]?.trim());
+      : Boolean((definition.credentialEnv && env[definition.credentialEnv]?.trim())
+        || (definition.credentialFallbackEnv && env[definition.credentialFallbackEnv]?.trim())
+        || genericKeySelected);
 
     return {
       providerId,
       adapter: definition.adapter,
       endpoint,
-      credentialRef: definition.credentialEnv,
+      credentialRef: (definition.credentialEnv && env[definition.credentialEnv]?.trim())
+        ? definition.credentialEnv
+        : (definition.credentialFallbackEnv && env[definition.credentialFallbackEnv]?.trim())
+          ? definition.credentialFallbackEnv
+          : env.RYANAI_MODEL_PROVIDER?.trim().toLowerCase() === providerId
+            && env[env.NODE_ENV === 'production' ? 'RYANAI_PROD_MODEL_KEY' : 'RYANAI_DEV_MODEL_KEY']?.trim()
+            ? (env.NODE_ENV === 'production' ? 'RYANAI_PROD_MODEL_KEY' : 'RYANAI_DEV_MODEL_KEY')
+            : definition.credentialEnv,
       configured,
       modelAllowlist,
     };
@@ -224,8 +245,14 @@ export function resolveProviderRuntime(
   }
 
   const endpoint = providerEndpoint(providerId, env);
+  const genericKeyName = env.NODE_ENV === 'production' ? 'RYANAI_PROD_MODEL_KEY' : 'RYANAI_DEV_MODEL_KEY';
+  const genericKey = env.RYANAI_MODEL_PROVIDER?.trim().toLowerCase() === providerId
+    ? env[genericKeyName]?.trim() || null
+    : null;
   const credential = definition.credentialEnv
-    ? env[definition.credentialEnv]?.trim() || null
+    ? env[definition.credentialEnv]?.trim() ||
+      (definition.credentialFallbackEnv ? env[definition.credentialFallbackEnv]?.trim() : '') ||
+      genericKey
     : null;
   const localUnauthenticated = definition.allowLoopbackHttp === true && isLoopbackEndpoint(endpoint);
   if (providerId !== 'ollama' && !localUnauthenticated && !credential) {

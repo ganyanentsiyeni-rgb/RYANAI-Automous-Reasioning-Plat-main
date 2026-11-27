@@ -63,7 +63,15 @@ jobs:
       # Prefer the dedicated Logic key, falling back to the OpenAI-compatible Logic credential.
       LOGIC_API_KEY: ${{ matrix.provider == 'logic' && (secrets.LOGIC_API_KEY || secrets.OPENAI_API_KEY) || '' }}
       OPENAI_API_KEY: ${{ matrix.provider == 'logic' && secrets.OPENAI_API_KEY || '' }}
-      GROK_API_KEY: ${{ matrix.provider == 'logic' && secrets.GROK_API_KEY || '' }}
+      GROK_API_KEY: ${{ matrix.provider == 'logic' && (secrets.GROK_API_KEY || secrets.XAI_API_KEY) || '' }}
+      XAI_API_KEY: ${{ matrix.provider == 'logic' && secrets.XAI_API_KEY || '' }}
+      XAI_BASE_URL: ${{ secrets.XAI_BASE_URL }}
+      XAI_DEFAULT_MODEL: ${{ secrets.XAI_DEFAULT_MODEL }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
+      ANTHROPIC_DEFAULT_MODEL: ${{ secrets.ANTHROPIC_DEFAULT_MODEL }}
+      OPENROUTER_BASE_URL: ${{ secrets.OPENROUTER_BASE_URL }}
+      OPENROUTER_DEFAULT_MODE: ${{ secrets.OPENROUTER_DEFAULT_MODE }}
       # No generic provider aliases or unconditional credentials: each matrix
       # job receives only the keys required by its selected brain.
       NVIDIA_API_ENDPOINT: ${{ vars.NVIDIA_API_ENDPOINT }}
