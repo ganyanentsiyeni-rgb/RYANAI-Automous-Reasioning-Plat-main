@@ -817,91 +817,114 @@ If `netstat` identifies `com.docker.backend.exe` as the process owning port `876
 
 ### 8. Neon CLI setup and environment wiring (Windows CMD)
 
-This procedure links the **actual cloned RyanAI repository** to an existing Neon project, declares the required Neon services, and wires standard PostgreSQL connection URLs into RyanAI. It does not make the Neon project ID in an example authoritative: confirm the organization, project, and branch from your own Neon account before linking.
+This procedure links the **actual cloned RyanAI repository** to the Neon organization and project verified in the user's latest CLI session, declares the requested Neon services, and wires standard PostgreSQL connection URLs into RyanAI. Keep project linking and infrastructure deployment separate: initializing a local configuration is not the same as applying it to a Neon environment.
 
 #### A. Enter the cloned repository root and install the Neon CLI
 
-Run these commands in an interactive `cmd.exe` window (not PowerShell):
+Run each command as a separate line in an interactive `cmd.exe` window (not PowerShell). The outer download folder is **not** the RyanAI repository root:
 
 ~~~cmd
 cd /d C:\Users\General\Downloads\RYANAI-Automous-Reasioning-Plat-main-main\RYANAI-Automous-Reasioning-Plat-main
+cd
+git rev-parse --show-toplevel
 npm i -g neon@latest
 neon --version
 ~~~
 
-If the global install is unavailable, use `npx neon@latest` for each command below, for example `npx neon@latest projects list`. The current Neon CLI package is `neon`; `neonctl` is the compatibility name. The CLI requires a supported Node.js version; check the official Neon CLI quickstart if installation reports a version mismatch.
+The `cd` output and `git rev-parse` result must identify the cloned `RYANAI-Automous-Reasioning-Plat-main` directory before running npm, Prisma, or Neon project commands. The outer parent directory previously contained a malformed/non-root `package.json`; running npm there caused `EJSONPARSE`. Its `.env` is also not the repository's `.env`.
 
-#### B. Authenticate and verify the organization/project/branch
+If the global install is unavailable, use `npx neon@latest` for each command below, for example `npx neon@latest projects list`. The current Neon CLI package is `neon`; `neonctl` is the compatibility name.
 
-Authenticate in the browser when prompted:
+#### B. Authenticate and verify the correct Neon organization, project, and branch
+
+The latest successful account lookup supplied these IDs:
+
+- Organization: `org-gentle-river-21563803` (Ganyane).
+- Project: `polished-mountain-92127706` (AWS region `aws-us-east-2`).
+
+The earlier pair `org-twilight-band-48129768` / `misty-boat-98998037` returned `Project not found` and is not the project to use for this setup. Do not reuse it.
+
+Confirm that the current CLI login can still see the verified organization and project before initializing:
 
 ~~~cmd
 neon login
 neon orgs list
-neon projects list
+neon projects list --org-id org-gentle-river-21563803
+neon branches list --project-id polished-mountain-92127706
 ~~~
 
-If you have multiple organizations, list projects under the intended organization explicitly:
+Use the branch name shown by the branch listing. The following initialization command uses `production` only if that exact branch exists and is the intended target. If the project listing does not show this organization/project pair, stop and resolve the CLI account or access mismatch; do not substitute another project ID.
+
+#### C. Initialize the project from the repository root
+
+After confirming the IDs and intended branch, run:
 
 ~~~cmd
-neon projects list --org-id <verified-org-id>
+neon init -y --no-agent-setup --org-id org-gentle-river-21563803 --project-id polished-mountain-92127706 --branch production --services postgres,auth,ai-gateway,object-storage,functions,realtime
 ~~~
 
-Then verify the project's branches before choosing the branch to link:
+If the verified branch is not named `production`, replace that final branch value with the exact branch name returned by `neon branches list`. Run `neon init --help` if the installed CLI reports an unsupported option or service; do not guess alternative service names.
 
-~~~cmd
-neon branches list --project-id <verified-project-id>
-~~~
-
-Replace the angle-bracket values with IDs returned by your authenticated account or confirmed in the Neon Console. Do not guess IDs or assume a project exists because an ID appears in an old command. If the CLI reports that a project is not found, verify the signed-in account, organization membership, exact project ID, and access permissions; do not continue to `neon init` or `neon deploy` until the lookup succeeds. If browser sign-in does not complete, run `neon login` explicitly and retry.
-
-**Known troubleshooting case:** the previously attempted project ID `misty-boat-98998037` was reported by the CLI as not found under organization `org-twilight-band-48129768`. Treat that pair as unverified until `neon projects list --org-id org-twilight-band-48129768` confirms the project. A failed `neon init` can leave no usable project link or config file; a later `neon deploy` then fails because there is no `neon.ts` configuration.
-
-#### C. Link the verified project and declare its Neon services
-
-Once the project ID, organization ID, and branch name are confirmed, run from the repository root:
-
-~~~cmd
-neon init -y --no-agent-setup --org-id <verified-org-id> --project-id <verified-project-id> --branch <verified-branch-name> --services postgres,auth,ai-gateway,object-storage,functions,realtime
-~~~
-
-This uses the existing Neon agent/plugin setup rather than installing it again, links the current directory, and asks the CLI to create a `neon.ts` service configuration. Review the generated `.neon` context and `neon.ts` locally; do not commit credentials or connection strings. If you intentionally want Neon to configure agent tooling too, omit `--no-agent-setup` and review the CLI prompts/options first.
-
-If the directory is already linked but `neon.ts` is absent, initialize the config from the linked branch:
+A failed initialization or running the command from the outer parent directory can leave no usable config in the real repository. If the directory is already linked but `neon.ts` is absent, run this from the **repository root**:
 
 ~~~cmd
 neon config init --from-branch
 ~~~
 
-If `neon init` reports an unknown option or service, check the installed CLI's current syntax with `neon init --help`; do not substitute guessed service names. The service declaration is infrastructure configuration, not proof that the services have been provisioned.
+After initialization, confirm that the expected config exists in the current directory:
 
-#### D. Preview and apply the Neon configuration
+~~~cmd
+dir neon.ts
+dir .neon
+~~~
 
-Preview the exact changes before applying them:
+Review generated `neon.ts` and `.neon` locally. Do not commit API keys, connection strings, or generated secret material. If `neon.ts` is still absent, stop; do not run `neon deploy`.
+
+#### D. Preview before applying Neon infrastructure configuration
+
+First inspect the proposed changes:
 
 ~~~cmd
 neon config plan
 ~~~
 
-Review the target project and branch, service additions/removals, and any settings changes. Only after confirming that the plan targets the intended environment and is approved should you apply it:
+Confirm the plan names organization `org-gentle-river-21563803`, project `polished-mountain-92127706`, and the intended branch. Review service additions/removals and settings. Only apply the plan when the target is correct and the infrastructure change is explicitly approved:
 
 ~~~cmd
 neon deploy
 ~~~
 
-`neon deploy` applies the `neon.ts` policy to the linked Neon branch and may provision or modify managed backend services. Treat deployment to a production branch as a production infrastructure change. Do not run it merely to test CLI installation, and do not approve a plan that targets an unintended project or branch.
+`neon deploy` applies the local `neon.ts` configuration and may create or modify managed services. A successful CLI installation, login, project link, or config generation does not require or imply an infrastructure deployment. Do not apply an unreviewed plan or use a production branch for a setup experiment.
 
-#### E. Load the local environment into the current CMD session
+#### E. Safely inspect accidental files in the outer parent directory
 
-Neon CLI setup can pull branch variables into `.env` (when present) or `.env.local` (when `.env` is absent). RyanAI's application code uses standard PostgreSQL URL variables; it does not replace them with a generic Neon-only variable:
+A previous `neon config init` was run while CMD was still in `...\\RYANAI-Automous-Reasioning-Plat-main-main`, so it created a stub `package.json`, `neon.ts`, `hello.ts`, and `.neon` there instead of in the cloned repository.
+
+Inspect the parent directory before cleanup:
+
+~~~cmd
+cd /d C:\Users\General\Downloads\RYANAI-Automous-Reasioning-Plat-main-main
+dir /a
+~~~
+
+Only remove an item if you have verified that it is the accidental file created by the failed command and that it contains no work you need. For example, inspect each candidate with `type ..\package.json` only if you are back in the cloned repository, or use `dir` to confirm the exact parent path. Do **not** blindly delete the parent `package.json`, `package-lock.json`, or `node_modules`; they may belong to another project. In particular, recursively deleting `..\node_modules` is not a safe default. Once inspection is complete, return to the actual repository root before continuing:
+
+~~~cmd
+cd /d C:\Users\General\Downloads\RYANAI-Automous-Reasioning-Plat-main-main\RYANAI-Automous-Reasioning-Plat-main
+git rev-parse --show-toplevel
+~~~
+
+#### F. Load the local environment into the current CMD session
+
+RyanAI's application code uses these standard PostgreSQL URL variables:
 
 - `DATABASE_URL` — primary RyanAI Prisma datasource and persistent agent approval/runtime database.
 - `AUDIOBOOK_DATABASE_URL` — separately scoped audiobook Prisma datasource.
 - `AUDIOBOOK_DATABASE_URL_UNPOOLED` — audiobook Prisma direct/unpooled URL.
 
-The audiobook URLs must target the intended audiobook database; do not point them at the main application database merely to satisfy startup. Confirm the exact variable names in the current Prisma schemas and source before changing environment wiring.
+The audiobook URLs must target the intended audiobook database; do not point them at the main application database merely to satisfy startup. Neon CLI environment pulls may write `.env` or `.env.local`; check which file was updated without displaying its contents.
 
-In an interactive CMD window, load `.env` first and then `.env.local` if it exists (so values in `.env.local` override duplicate names from `.env`):
+From the repository root, load `.env` first and `.env.local` second so local overrides win:
 
 ~~~cmd
 if exist ".env" for /f "usebackq eol=# tokens=1,* delims==" %a in (".env") do @if not "%a"=="" set "%a=%b"
@@ -911,18 +934,18 @@ if defined AUDIOBOOK_DATABASE_URL (echo AUDIOBOOK_DATABASE_URL is set) else (ech
 if defined AUDIOBOOK_DATABASE_URL_UNPOOLED (echo AUDIOBOOK_DATABASE_URL_UNPOOLED is set) else (echo AUDIOBOOK_DATABASE_URL_UNPOOLED is NOT set)
 ~~~
 
-These `for /f` lines are for direct entry at the CMD prompt. If placing them in a `.bat` or `.cmd` file, change each loop variable from `%a` to `%%a`. This simple loader is intended for ordinary single-line `KEY=VALUE` dotenv entries; it is not a complete parser for multiline or complex quoted dotenv values. Never use `echo %DATABASE_URL%`, `set` without a variable name, `type .env`, or screenshots/logs that expose connection strings. Do not paste environment values into Git, pull requests, chat, or issue reports.
+These `for /f` lines are for direct entry at the CMD prompt. In a `.bat` or `.cmd` file, change each loop variable from `%a` to `%%a`. This simple loader is intended for ordinary single-line `KEY=VALUE` dotenv entries; it is not a complete parser for multiline or complex quoted dotenv values. Never use `echo %DATABASE_URL%`, `set` without a variable name, `type .env`, or screenshots/logs that expose connection strings. Do not paste environment values into Git, pull requests, chat, or issue reports.
 
-#### F. Generate both Prisma clients, build, and start RyanAI
+#### G. Generate both Prisma clients, build, and start RyanAI
 
-After confirming the required environment variables are set, generate both Prisma clients and build from the repository root:
+After confirming the required environment variables are set, run from the repository root:
 
 ~~~cmd
 npm run db:generate
 npm run build
 ~~~
 
-The root `db:generate` script runs `prisma generate` for the main schema and `npm run db:audiobook:generate` for `prisma/audiobook/schema.prisma`. Resolve any missing URL, schema, or generation error before starting the API.
+The root `db:generate` script runs `prisma generate` for the main schema and `npm run db:audiobook:generate` for `prisma/audiobook/schema.prisma`. Resolve missing URL, schema, or generation errors before starting the API.
 
 Start the local stack with the project root and MCP port set in the same CMD session:
 
@@ -932,7 +955,9 @@ set "MCP_PORT=8766"
 npm run dev
 ~~~
 
-Verify the API, web UI, and MCP endpoints independently. A successful Neon CLI deploy, Prisma client generation, or frontend startup is not by itself proof that RyanAI's API can connect to both databases or that the application is ready. Check API startup output, database health/readiness, and the web `/api` proxy before treating the local stack as healthy.
+Verify the API, web UI, and MCP endpoints independently. A successful Neon configuration deploy, Prisma client generation, or frontend startup is not by itself proof that RyanAI's API can connect to both databases or that the application is ready. Check API startup output, database health/readiness, and the web `/api` proxy before treating the local stack as healthy.
+
+**Neon API key hygiene:** the API key ID shown in the setup output is an identifier, not the secret key value. Do not put either the ID or secret in README, source control, or support logs. After the CLI/MCP setup is verified, review the key's scope and last-use record in Neon; revoke temporary or over-privileged keys and create a least-privilege replacement if ongoing access is required. Do not assume a key has been revoked until the Neon console confirms it.
 
 ## NPM commands and scripts
 
