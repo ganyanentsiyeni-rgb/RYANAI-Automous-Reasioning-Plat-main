@@ -370,6 +370,47 @@ npm run dev
 **Security:** do not paste, commit, or publish the generated values. The CMD `for /f` import above places values into the process environment; avoid commands that echo the environment. If a secret was previously printed to a terminal, CI log, shell history, or other shared output, rotate it before treating the local environment as clean.
 
 ### Fix: Free MCP HTTP port 8765
+To inspect the exact port-binding configuration in `mcp-server/http.js`, run this single Node command from the repository root in CMD. It prints only matching source lines with line numbers:
+
+~~~dos
+node -e "const fs = require('fs'); const p = 'C:\\Users\\General\\Downloads\\RYANAI-Automous-Reasioning-Plat-main-main\\RYANAI-Automous-Reasioning-Plat-main\\mcp-server\\http.js'; const lines = fs.readFileSync(p, 'utf8').split(/\\r?\\n/); lines.forEach((line, idx) => { if (/(listen|port|host|8765|127\\.0\\.0\\.1|process\\.env)/i.test(line)) console.log(`${idx + 1}: ${line}`); });"
+~~~
+
+To display the complete file instead of filtering it:
+
+~~~dos
+type "C:\\Users\\General\\Downloads\\RYANAI-Automous-Reasioning-Plat-main-main\\RYANAI-Automous-Reasioning-Plat-main\\mcp-server\\http.js"
+~~~
+
+The current implementation reads its bind host from `process.env.MCP_HOST` (defaulting to `0.0.0.0` in production and `127.0.0.1` otherwise) and its port from `Number(process.env.PORT || process.env.MCP_PORT || 8765)`. Therefore, `MCP_PORT` is a supported local override when `PORT` is not already set in the process environment.
+
+**Example observed diagnostic:** if `netstat` reports PID `16296` listening on `127.0.0.1:8765`, inspect that exact PID before stopping it:
+
+~~~dos
+tasklist /FI "PID eq 16296"
+~~~
+
+If the process is confirmed to be a stale RyanAI MCP/Node process, stop only that PID:
+
+~~~dos
+taskkill /PID 16296 /F
+~~~
+
+Then restart:
+
+~~~dos
+npm run dev
+~~~
+
+If you want to leave PID `16296` untouched, run the MCP service on port `8766` instead:
+
+~~~dos
+set "MCP_PORT=8766"
+npm run dev
+~~~
+
+Use the port override only if the development launcher passes `MCP_PORT` through to the MCP HTTP child process and does not set `PORT` to a higher-precedence value. If `PORT` is already set, clear or correct it in the same CMD session before relying on `MCP_PORT` (for example, `set "PORT="`). Confirm the actual listening port with `netstat -ano | findstr :8766`.
+
 
 After the MCP secret checks pass, `mcp-server/http.js` may fail with `EADDRINUSE` on `127.0.0.1:8765`. This means another process is already listening on that port, commonly a leftover Node/MCP process.
 
