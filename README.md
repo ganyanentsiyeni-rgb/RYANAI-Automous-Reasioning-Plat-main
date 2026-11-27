@@ -79,6 +79,7 @@ These optional staging workflows are not part of the main `PUSH DEPLOY` fan-out 
 - [NPM commands and scripts](#npm-commands-and-scripts)
 - [Environment configuration](#environment-configuration)
 - [Database setup and migrations](#database-setup-and-migrations)
+- [MongoDB Atlas connectivity and model key separation](#mongodb-atlas-connectivity-and-model-key-separation)
 - [Testing and validation](#testing-and-validation)
 - [WSL 2 Ubuntu and Docker Engine](#wsl-2-ubuntu-and-docker-engine)
 - [Containers and deployment configuration](#containers-and-deployment-configuration)
@@ -1183,6 +1184,63 @@ The db:migrate, db:setup, db:push, and audiobook migration commands can change d
 ### Production boundary
 
 Production migrations are a separate controlled operation. They require an exact reviewed commit, successful required CI/security evidence, a verified target environment, a backup/rollback plan, staging validation, and separate explicit approval. A successful local migration test does not authorize a production migration.
+
+
+## MongoDB Atlas connectivity and model key separation
+
+MongoDB Atlas is an intended third persistence integration. The current repository snapshot does not by itself prove that an application-level MongoDB client is wired or that an Atlas connection succeeds. Treat `mongosh` connectivity as a separate network and credential check; do not report the RyanAI application database integration as healthy solely because the shell is installed.
+
+### Diagnose Atlas connection timeouts on Windows
+
+A timeout such as `MongoServerSelectionError: connect ETIMEDOUT <address>:27017` means the client did not establish a TCP connection to an Atlas node. Successful SRV/DNS lookup only confirms that the cluster hostname resolved; it does not prove that the current public IP is allowed or that outbound TCP port `27017` is reachable.
+
+1. Get the current public IPv4 address in an interactive Windows `cmd.exe` window:
+
+   ```cmd
+   curl -4 -s https://api.ipify.org
+   echo.
+   ```
+
+   Use the returned address only to update the intended Atlas project's access list. Public IP addresses can change; re-check after switching networks, VPNs, or internet providers.
+
+2. In MongoDB Atlas, select the project that owns the target cluster, then open **Security → Network Access** (the navigation label may vary). Add the current IP address as a single-IP entry (`x.x.x.x/32`) and wait for the access-list change to become active before retrying. Confirm that you selected the correct Atlas project and cluster.
+
+3. Check whether the current network blocks outbound TCP port `27017`. From CMD, run this PowerShell network test against the node hostname returned by the cluster's SRV lookup (not the SRV URI itself):
+
+   ```cmd
+   nslookup -type=SRV _mongodb._tcp.cluster0.4n9xidf.mongodb.net
+   powershell -NoProfile -Command "Test-NetConnection <atlas-node-hostname-from-SRV> -Port 27017"
+   ```
+
+   Replace the placeholder with one exact hostname returned by the SRV lookup. A failed TCP test can indicate a local firewall, VPN, campus/corporate egress policy, ISP restriction, or Atlas access-list issue. If permitted, compare with a trusted mobile hotspot. If the hotspot works and the original network does not, ask that network administrator whether outbound TCP `27017` is blocked.
+
+4. Retry with the real Atlas database username. Let `mongosh` prompt for the password; do not put the password directly in the command line:
+
+   ```cmd
+   mongosh "mongodb+srv://cluster0.4n9xidf.mongodb.net/" --apiVersion 1 --username YOUR_ATLAS_DATABASE_USERNAME --password
+   ```
+
+   Replace `YOUR_ATLAS_DATABASE_USERNAME` with the database user name. The `--password` option without a value prompts interactively. Use the Atlas-provided driver connection string if the cluster hostname or authentication options differ. A shell login proves only that this client can connect; it does not verify RyanAI's application configuration.
+
+**Do not use `0.0.0.0/0` as a routine fix.** It permits connections from any IPv4 address and materially broadens exposure. Prefer the current public IP as a `/32`; if a broad temporary rule is exceptionally approved for diagnosis, set a short expiry, remove it immediately after the test, and verify its removal in Atlas. Never leave it as a standing access rule.
+
+### Atlas credential handling
+
+Never place Atlas database passwords, connection strings, API keys, or private credentials in README files, shell history, command arguments, screenshots, terminal transcripts, Git commits, or support messages. Use a password manager or approved secret store and rotate credentials that have been exposed. Do not echo environment variables or print the contents of `.env`.
+
+### Separate development and production model-provider keys
+
+Use distinct server-side secret names for development and production model-provider credentials:
+
+| Secret name | Intended use | Boundary |
+| --- | --- | --- |
+| `ryanai_dev_model_key` | Local development, experiments, tests, and staging | Separate development/staging quota and access; never use as a production fallback |
+| `ryanai_prod_model_key` | Approved live production workloads | Production-only access; enable only through the approved deployment and secret-management process |
+
+These are **secret names**, not key values. Store the actual credentials in the appropriate secret manager and inject them only into the server-side runtime. Never expose them through `VITE_*` variables, browser bundles, logs, or source control. Keep development and production credentials, quotas, and permissions separate; do not silently fall back from one environment to the other.
+
+Before creating a provider key or project, verify the target **Project**, **Geography**, and **Cloud Provider** in the provider console. The supplied setup notes identify these as fixed-at-creation choices; confirm the provider's current rules before committing to them. Record the non-secret key name, owning project, environment, scope, and rotation owner—not the secret value.
+
 
 ## Testing and validation
 
