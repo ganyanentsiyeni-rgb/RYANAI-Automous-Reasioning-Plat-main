@@ -121,7 +121,7 @@ export function resolveConnectionUrls(
     try {
       const parsed = new URL(database ?? '');
       return ['127.0.0.1', 'localhost', '::1'].includes(parsed.hostname)
-        && (parsed.port || '5432') === '5432';
+        && Boolean(parsed.port || '5432');
     } catch {
       return false;
     }
