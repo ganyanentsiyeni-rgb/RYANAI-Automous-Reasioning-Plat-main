@@ -1203,26 +1203,28 @@ A timeout such as `MongoServerSelectionError: connect ETIMEDOUT <address>:27017`
 
    Use the returned address only to update the intended Atlas project's access list. Public IP addresses can change; re-check after switching networks, VPNs, or internet providers.
 
-2. In MongoDB Atlas, select the project that owns the target cluster, then open **Security → Network Access** (the navigation label may vary). Add the current IP address as a single-IP entry (`x.x.x.x/32`) and wait for the access-list change to become active before retrying. Confirm that you selected the correct Atlas project and cluster.
+2. In MongoDB Atlas, select the project that owns the target cluster, then open **Security → Network Access** (the navigation label may vary). Add the current public IPv4 address as a single-IP entry (`x.x.x.x/32`) and wait for the access-list change to become active before retrying. Confirm that you selected the correct Atlas project and cluster. Do not copy a personal/current public IP into this public README; obtain it at the time of testing and add it only to the intended Atlas project's access list.
 
-3. Check whether the current network blocks outbound TCP port `27017`. From CMD, run this PowerShell network test against the node hostname returned by the cluster's SRV lookup (not the SRV URI itself):
+3. Check whether the current network blocks outbound TCP port `27017`. From CMD, run this PowerShell network test against a node hostname returned by the cluster's current SRV lookup (not the SRV URI itself):
 
    ```cmd
    nslookup -type=SRV _mongodb._tcp.cluster0.4n9xidf.mongodb.net
-   powershell -NoProfile -Command "Test-NetConnection <atlas-node-hostname-from-SRV> -Port 27017"
+   powershell -NoProfile -Command "Test-NetConnection 159.41.94.46 -Port 27017"
    ```
 
-   Replace the placeholder with one exact hostname returned by the SRV lookup. A failed TCP test can indicate a local firewall, VPN, campus/corporate egress policy, ISP restriction, or Atlas access-list issue. If permitted, compare with a trusted mobile hotspot. If the hotspot works and the original network does not, ask that network administrator whether outbound TCP `27017` is blocked.
+   The IP above is an example node address observed during one diagnostic attempt, not a permanent cluster endpoint. Atlas replica-set nodes and resolved addresses can rotate; repeat the SRV lookup and test a hostname from its current answer rather than pinning an IP in scripts, firewall rules, or application configuration. A `TcpTestSucceeded : True` result confirms TCP reachability to that tested node at that moment; it does not prove Atlas authentication or application integration. `False` indicates the TCP handshake did not complete and may reflect local firewall/VPN policy, campus/corporate or ISP egress filtering, routing, or an Atlas access-list issue. Re-check the current public IPv4 and confirm the exact `/32` entry is active in the correct Atlas project. If it is active and TCP still times out, compare using a trusted mobile hotspot if permitted; if that works, ask the original network administrator whether outbound TCP `27017` is blocked.
 
 4. Retry with the real Atlas database username. Let `mongosh` prompt for the password; do not put the password directly in the command line:
 
    ```cmd
-   mongosh "mongodb+srv://cluster0.4n9xidf.mongodb.net/" --apiVersion 1 --username YOUR_ATLAS_DATABASE_USERNAME --password
+   C:\mongosh\mongosh.exe "mongodb+srv://cluster0.4n9xidf.mongodb.net/" --apiVersion 1 --username YOUR_ATLAS_DATABASE_USERNAME --password
    ```
 
-   Replace `YOUR_ATLAS_DATABASE_USERNAME` with the database user name. The `--password` option without a value prompts interactively. Use the Atlas-provided driver connection string if the cluster hostname or authentication options differ. A shell login proves only that this client can connect; it does not verify RyanAI's application configuration.
+   Replace `YOUR_ATLAS_DATABASE_USERNAME` with the database user name. The `--password` option without a value prompts interactively. Do not append the password as an argument, paste it into a command, or place it in shell history. Use the Atlas-provided driver connection string if the cluster hostname or authentication options differ. A shell login proves only that this client can connect; it does not verify RyanAI's application configuration.
 
-**Do not use `0.0.0.0/0` as a routine fix.** It permits connections from any IPv4 address and materially broadens exposure. Prefer the current public IP as a `/32`; if a broad temporary rule is exceptionally approved for diagnosis, set a short expiry, remove it immediately after the test, and verify its removal in Atlas. Never leave it as a standing access rule.
+**Never use `0.0.0.0/0` for this troubleshooting workflow, even temporarily.** It permits connections from every IPv4 address and materially broadens exposure. Use only the current public IP as a `/32`, then remove stale entries when they are no longer needed. If the ISP/network address changes, re-run the public-IP check and update the single-IP entry rather than opening access to the world.
+
+**Observed diagnostic state (27 November 2026):** `mongosh` v2.14.3 was installed and SRV/DNS resolution succeeded, but the TCP connection timed out with `ETIMEDOUT` on port `27017`. The node address changed between attempts (from `159.41.88.8` to `159.41.94.46`), which is consistent with not treating an individual resolved node IP as a stable endpoint. A changed node IP alone does not prove the cause of the timeout. The current public IP was reported by ipify during that test; it is intentionally not recorded here because public IPs are transient and should not be published in a repository. Until a fresh TCP test and successful authenticated connection are evidenced, Atlas shell connectivity remains **unverified/blocked**, and this does not establish RyanAI application-level MongoDB integration.
 
 ### Atlas credential handling
 
