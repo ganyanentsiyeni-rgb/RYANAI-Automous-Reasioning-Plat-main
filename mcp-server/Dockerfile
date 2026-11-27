@@ -7,6 +7,7 @@ WORKDIR /app/mcp-server
 RUN apk upgrade --no-cache \
     && apk add --no-cache 'libexpat>=2.10.0-r0'
 
+COPY package.json package-lock.json /app/
 COPY mcp-server/package.json mcp-server/package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts \
     && npm cache clean --force \
@@ -18,6 +19,7 @@ RUN node --check index.js \
     && node --check delegation.js
 COPY src/mcp/canonical-tool-registry.json /app/src/mcp/canonical-tool-registry.json
 COPY stacks/ryanai.stack.json /app/stacks/ryanai.stack.json
+RUN test -s /app/package.json && test -s /app/src/mcp/canonical-tool-registry.json && test -s /app/stacks/ryanai.stack.json
 
 USER node
 EXPOSE 8765
