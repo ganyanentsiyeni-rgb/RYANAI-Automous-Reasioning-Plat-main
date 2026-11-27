@@ -92,6 +92,7 @@ const railway = JSON.parse(read('railway.json'));
 const renderRepair = read('.github/workflows/guarded-render-api-source-repair.yml');
 const renderDeploy = read('.github/workflows/deploy-render.yml');
 const ciWorkflow = read('.github/workflows/ci.yml');
+const requiredReleaseCheckInventory = read('scripts/ci/required-release-check-producers.json');
 const railwayDeploy = read('.github/workflows/deploy-railway.yml');
 const dockerCompose = read('docker-compose.yml');
 const composeConfig = parseYaml(dockerCompose);
@@ -203,9 +204,9 @@ const hasThreePlatformPushDeployContract =
   && platformDeployWorkflow.includes('RENDER_HEALTH_URLS')
   && platformDeployWorkflow.includes('RAILWAY_HEALTH_URL')
   && platformDeployWorkflow.includes('VERCEL_HEALTH_URL')
-  && platformDeployWorkflow.includes('TruffleHog secret audit')
-  && platformDeployWorkflow.includes('Analyze (javascript-typescript)')
-  && platformDeployWorkflow.includes('Trivy filesystem scan')
+  && requiredReleaseCheckInventory.includes('TruffleHog secret audit')
+  && requiredReleaseCheckInventory.includes('Analyze (javascript-typescript)')
+  && requiredReleaseCheckInventory.includes('Trivy filesystem scan')
   && platformDeployWorkflow.includes('ref: ${{ needs.gate.outputs.sha }}')
   && ['railway:', 'render:', 'vercel:'].every((job) =>
     platformDeployWorkflow.includes(job)
