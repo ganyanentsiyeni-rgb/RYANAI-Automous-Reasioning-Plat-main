@@ -28,20 +28,20 @@ function traceProductionLoopbacks() {
     name: 'ryanai-trace-production-loopbacks',
     apply: 'build' as const,
     transform(code: string, id: string) {
-      if (
+      const isSupabaseAuthModule =
         id.includes('/node_modules/@supabase/auth-js/') ||
-        id.includes('\\\\node_modules\\\\@supabase\\\\auth-js\\\\')
-      ) {
-        code = code.replaceAll(SUPABASE_AUTH_DEV_URL, SUPABASE_AUTH_PRODUCTION_SENTINEL);
-      }
-      const matches = [...code.matchAll(LOOPBACK_URL_PATTERN)].map((match) => match[0]);
+        id.includes('\\\\node_modules\\\\@supabase\\\\auth-js\\\\');
+      const transformedCode = isSupabaseAuthModule
+        ? code.replaceAll(SUPABASE_AUTH_DEV_URL, SUPABASE_AUTH_PRODUCTION_SENTINEL)
+        : code;
+      const matches = [...transformedCode.matchAll(LOOPBACK_URL_PATTERN)].map((match) => match[0]);
       if (matches.length > 0) {
         const unique = [...new Set(matches)];
         console.error(
           `[frontend-loopback-trace] source module: ${id} -> ${unique.join(', ')}`,
         );
       }
-      return null;
+      return transformedCode === code ? null : { code: transformedCode, map: null };
     },
     generateBundle(_options: unknown, bundle: Record<string, { type?: string; fileName?: string; code?: string }>) {
       for (const item of Object.values(bundle)) {
