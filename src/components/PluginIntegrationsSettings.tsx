@@ -130,6 +130,7 @@ function PluginIntegrationsSettingsContent({
   const [connectionsLoading, setConnectionsLoading] = useState(true);
   const [connectionBusyId, setConnectionBusyId] = useState('');
   const [githubStatus, setGithubStatus] = useState<GitHubIntegrationStatus>({ status: 'checking' });
+  const [githubStatusError, setGithubStatusError] = useState('');
   const [githubBusy, setGithubBusy] = useState(false);
   const [connectionError, setConnectionError] = useState('');
   const [connectionNotice, setConnectionNotice] = useState('');
@@ -165,11 +166,17 @@ function PluginIntegrationsSettingsContent({
     const requestId = ++githubRequestId.current;
     try {
       const response = await authenticatedFetch('/api/github/status', { headers: { Accept: 'application/json' } }, userId);
-      const payload = await response.json().catch(() => ({})) as GitHubIntegrationStatus;
-      if (!response.ok || typeof payload.status !== 'string') throw new Error('GitHub status is unavailable.');
-      if (requestId === githubRequestId.current) setGithubStatus(payload);
-    } catch {
+      const payload = await response.json().catch(() => ({})) as GitHubIntegrationStatus & { error?: string };
+      if (!response.ok || typeof payload.status !== 'string') {
+        throw new Error(payload.error || 'GitHub status is unavailable.');
+      }
       if (requestId === githubRequestId.current) {
+        setGithubStatus(payload);
+        setGithubStatusError('');
+      }
+    } catch (cause) {
+      if (requestId === githubRequestId.current) {
+        setGithubStatusError(cause instanceof Error ? cause.message : 'GitHub status is unavailable.');
         setGithubStatus((current) => ({
           status: 'unverified',
           connected: current.connected,
@@ -490,6 +497,7 @@ function PluginIntegrationsSettingsContent({
               </div>
             </div>
             {githubStatus.repository?.fullName && <p className="mt-2 text-[10px] text-slate-500">Verified repository: {githubStatus.repository.fullName}</p>}
+            {githubStatusError && <p role="alert" className="mt-2 text-xs text-rose-200">{githubStatusError}</p>}
             <p className="mt-2 text-[10px] leading-4 text-slate-500">Connection is shown as verified only after the API confirms the signed-in GitHub identity and repository access. OAuth credentials remain server-side.</p>
           </div>}
           {providerId && <div className="mt-3 rounded-lg border border-white/10 bg-slate-900/70 p-3">
