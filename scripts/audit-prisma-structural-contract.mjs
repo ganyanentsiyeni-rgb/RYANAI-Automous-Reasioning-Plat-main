@@ -171,7 +171,9 @@ export function assessStructuralContract(snapshot) {
     const actual = normalize(row?.indexdef);
     const expected = normalize(definition);
     const matches = Boolean(row) && actual.includes('using btree') && !/\swhere\s/.test(actual)
-      && (definition.startsWith('unique ') ? actual.includes('create unique index') && actual.includes(expected.slice('unique '.length)) : actual.includes(expected));
+      && (definition.startsWith('unique ')
+        ? actual.includes('create unique index') && actual.includes(expected.slice('unique '.length))
+        : !actual.includes('create unique index') && actual.includes(expected));
     finding(findings, 'index public.' + table + '.' + name, definition, row?.indexdef ?? null, Boolean(row), matches);
   }
 

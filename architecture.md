@@ -318,3 +318,18 @@ The MCPJungle runtime smoke workflow now explicitly sources its generated, dispo
 ### MCPJungle upstream identity boundary
 
 MCPJungle's upstream registration points at the private Caddy MCP proxy and must store the short-lived RyanAI delegation JWT as its static bearer token. This is distinct from `MCP_AUTH_TOKEN`, which authenticates the MCP server directly. Caddy replaces the gateway's inbound Authorization header with the delegated token; the MCP HTTP service validates its signature, issuer, audience, expiry, subject, role, actor type, and tool scope, and the API reauthorizes every tool invocation. The CI fixture includes the required `actorType` claim (`human`, `agent`, or `service`) and remains restricted to `platform_health`; the test credential is never promoted to a hosted environment.
+\n\n### Complete AgentRun schema readiness contract (2026-11-28)\n- Startup readiness requires all 32 columns mapped by the Prisma `AgentRun` model, not merely the original 18 base queue columns. This includes plan/approval binding hashes, cancellation and steering fields, model and trace metadata, execution scope, lease fields, queue classification, and lifecycle timestamps.\n- The check is read-only and fails closed before worker startup when the table is partial. Schema changes remain versioned migrations; API startup never performs DDL or auto-migration.\n- The YAML manifest and SQL readiness predicate must be kept in sync with the Prisma model and worker raw SQL contract.\n
+
+### Migration audit parity
+The Prisma migration-readiness audit now checks the same 32 `agent_runs` columns as the startup readiness predicate and `database.yml`. Its complete-schema fixture includes all 32 columns, preventing the migration audit from accepting a table that would fail API startup. This remains a read-only validation contract; it does not apply migrations.
+
+
+### AgentRun operational index readiness
+The migration-readiness audit verifies the four operational indexes declared for AgentRun queue selection and lease/approval filtering: `agent_runs_queue_type_status_created_idx`, `agent_runs_status_next_attempt_lease_idx`, `agent_runs_worker_lease_idx`, and `agent_runs_approval_status_created_idx`. Missing indexes now fail the audit independently of the vector-memory index checks.
+
+
+## AgentRun operational index readiness parity (2026-11-28)
+
+The read-only migration-readiness audit now checks all eight `agent_runs` indexes also defined by the structural-contract audit: user/created, status/created, status/locked, status/next-attempt, queue/status/created, status/next-attempt/lease, worker/lease, and approval-status/created. The test fixture covers all eight. Missing indexes block readiness; this check does not perform DDL.
+
+- AgentRun index structural validation now explicitly rejects unique indexes where Prisma declares non-unique indexes, in addition to checking B-tree type, ordered columns, and absence of partial predicates. Regression coverage includes an unexpectedly unique `agent_runs_user_id_created_at_idx`.
