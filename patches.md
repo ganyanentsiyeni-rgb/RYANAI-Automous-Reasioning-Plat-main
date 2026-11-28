@@ -868,3 +868,9 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - No provider configuration, credentials, production data, database migrations, deployments, or release settings were changed. Exact-SHA CI and security checks must pass before any merge or deployment.
 
 - Corrected the AgentRun approval-default contract: the later `20261122100000_fail_closed_agent_run_approval` migration supersedes the earlier `approved` default. Prisma, `database.yml`, and the structural audit now consistently require `approval_status = 'pending'` by default; explicit approval is required before reasoning-worker claim. Historical migration review documentation now distinguishes the superseded intermediate default from the current fail-closed behavior.
+
+
+### 2026-11-28 — Migration-source FK and timestamp contract audit
+- Extended the read-only Prisma structural migration-source audit to validate AgentRun and AgentHandoff cascading FK actions, CodingTask cascading deletes with PostgreSQL `NO ACTION` update defaults, and the full CodingTask `TIMESTAMPTZ(6)` lifecycle timestamp set.
+- Added explicit chronology validation that the historical `approved` AgentRun approval default is superseded by the later fail-closed `pending` migration.
+- Added regression fixture coverage. Source edits are committed on `repair/db-runtime-contract-20261128`; tests and live database verification have not yet been executed.
