@@ -335,3 +335,7 @@ The read-only migration-readiness audit now checks all eight `agent_runs` indexe
 - AgentRun index structural validation now explicitly rejects unique indexes where Prisma declares non-unique indexes, in addition to checking B-tree type, ordered columns, and absence of partial predicates. Regression coverage includes an unexpectedly unique `agent_runs_user_id_created_at_idx`.
 
 - Corrected the AgentRun approval-default contract: the later `20261122100000_fail_closed_agent_run_approval` migration supersedes the earlier `approved` default. Prisma, `database.yml`, and the structural audit now consistently require `approval_status = 'pending'` by default; explicit approval is required before reasoning-worker claim. Historical migration review documentation now distinguishes the superseded intermediate default from the current fail-closed behavior.
+
+
+### Migration-source integrity — FK, timestamps and approval chronology (2026-11-28)
+The read-only structural audit now checks migration-source FK actions for AgentRun, AgentHandoff and CodingTask, verifies CodingTask lifecycle timestamps remain `TIMESTAMPTZ(6)`, and verifies the historical `approved` default is explicitly superseded by the fail-closed `pending` migration. AgentRun and AgentHandoff base timestamps remain `TIMESTAMP(3)` without time zone. These checks validate source text; they do not prove the live database has applied the same migrations. Regression tests are added but remain unexecuted.
