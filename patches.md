@@ -959,3 +959,11 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Retained append-only receipt history and latest-received callback details for operator inspection; receipt ordering remains based on provider event time when explicitly supplied, otherwise database receipt time.
 - Added callback SQL regression assertions for the delivered-dispatch guard.
 - Validation status: tests authored but not executed; exact-head CI/security verification pending. No provider dispatch, AgentRun mutation, migration, credential, deployment, or production state changed.
+
+## 2026-11-28 — Inbound Comms owner and provider-event isolation
+
+- Removed implicit owner reassignment from the channel/address conversation upsert.
+- Added a conditional ownership claim: an unowned legacy conversation can be claimed once, while a conversation already assigned to another owner cannot be transferred by an inbound webhook.
+- A globally duplicated provider event ID is accepted as a replay only when the existing message has the same owner, channel, and body. Reuse across owners, channels, or changed content is rejected.
+- Added regression coverage for owner-transfer prevention, cross-owner provider-ID collision, and changed-content collision.
+- Validation status: tests authored but not executed; exact-head CI/security verification pending. No inbound provider request, outbound reply, AgentRun mutation, migration, credential, deployment, or production state changed.
