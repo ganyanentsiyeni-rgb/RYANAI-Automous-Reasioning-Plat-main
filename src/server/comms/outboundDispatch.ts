@@ -67,6 +67,7 @@ export async function reserveOutboundCommsDispatch(
         agentRunId: true,
         channel: true,
         recipient: true,
+        provider: true,
       },
     });
     if (!existing) throw error;
