@@ -289,3 +289,8 @@ PhoneLink loads the device registry and capability catalog as its primary refres
 - The reconnect flow now invokes exact-ID reconciliation for every replay item that was not explicitly accepted or definitively rejected by the sync response.
 - A reconciliation response can clear an outbox record only when it explicitly confirms the same task ID; unresolved, missing, or failed reconciliation keeps the task locally retryable.
 - Regression tests cover successful reconciliation after ambiguous dispatch and retention when exact-ID lookup remains unresolved.
+
+
+## 2026-11-28 — Exact-SHA CI completeness
+
+The CI completeness workflow resolves the candidate commit differently by trigger: pull requests use `github.event.pull_request.head.sha`; manually dispatched runs use the selected workflow SHA. It validates the 40-character SHA, checks out that exact commit, and supplies the same value to the required-context verifier. This avoids comparing check runs attached to a PR head with GitHub's synthetic merge commit. The verifier still requires every catalogued context to complete successfully on that exact SHA; this workflow change is not release certification.
