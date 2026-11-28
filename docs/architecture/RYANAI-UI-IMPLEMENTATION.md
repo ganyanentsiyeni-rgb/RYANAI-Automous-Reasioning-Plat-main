@@ -88,3 +88,10 @@ The PhoneLink Comms inbox now distinguishes a confirmed empty result from a fail
 - Offline outbox entries retain an explicit delivery state: queued, rejected, or uncertain. Transport failures and malformed/missing per-task acknowledgements are uncertain because the server may have committed the stable task ID before the response was lost; explicit per-task negative acknowledgements are rejected.
 - Retries always reuse the original task ID. The API's AgentRun primary key plus owner/objective match is the idempotency boundary; an existing same-owner/same-objective run is returned rather than creating a second execution, while mismatched owner or objective reuse is rejected.
 - Local records are removed only after an explicit positive acknowledgement for that exact task ID. Uncertain and rejected records remain retryable and are presented distinctly; worker execution state remains separate in task history.
+
+
+### Offline task replay reconciliation (2026-11-28)
+- Replay dispatch exceptions are reported as `uncertain`, never as definite rejection, because persistence may have committed before a connection failure.
+- Authenticated `POST /api/agent/ops/tasks/reconcile` accepts batches of 1–20 stable task IDs plus objectives and queries only records owned by the authenticated user.
+- Exact ID + matching objective confirms the existing run; same-owner objective mismatch is a conflict; missing or cross-owner IDs remain unresolved without disclosing another account's record.
+- Local outbox entries are removed only after explicit exact-ID acceptance. Unresolved and uncertain entries remain retryable with the same task ID.
