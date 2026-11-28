@@ -952,3 +952,10 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 
 - Follow-up test correction: the GitHub identity-refresh regression now clicks the GitHub card's own Refresh control, not the separate registry/connection refresh control. The latter does not invoke /api/github/status.
 - The Framer Motion test double strips animation-only props from the rendered DOM while preserving ordinary dialog props and refs.
+
+## 2026-11-28 — Comms out-of-order callback protection
+
+- Kept the monotonic outbound dispatch state authoritative when reconciling send approvals: a late `failed` receipt cannot reverse a dispatch already confirmed as `delivered`.
+- Retained append-only receipt history and latest-received callback details for operator inspection; receipt ordering remains based on provider event time when explicitly supplied, otherwise database receipt time.
+- Added callback SQL regression assertions for the delivered-dispatch guard.
+- Validation status: tests authored but not executed; exact-head CI/security verification pending. No provider dispatch, AgentRun mutation, migration, credential, deployment, or production state changed.
