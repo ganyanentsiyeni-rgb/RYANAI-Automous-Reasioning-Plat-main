@@ -743,3 +743,11 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Asserted that the primary workspace, dashboard, and cockpit destinations remain available when the API is online or unavailable.
 - The test mocks the platform-health hook so it does not depend on a live API or external service.
 - Validation status: test source added; local execution and exact-head CI remain pending. This coverage addition does not change runtime behavior, authentication, API contracts, provider configuration, or deployment state.
+
+## 2026-11-28 — Trading Terminal safety and navigation regression coverage
+
+- Added page-level coverage for the default overview, Forex research state, Wallet deposit/withdrawal presentation, and Risk Center.
+- Asserted that the terminal remains explicitly paper-only, does not imply live quotes, and keeps real-money funding/withdrawal actions disabled until a provider is connected.
+- Asserted that risk limits are presented as server-enforced and that emergency-stop reset requirements remain visible.
+- Mocked the paper-trading child panels to keep the page tests isolated from their own API and component contracts.
+- Validation status: test source added; local execution and exact-head CI remain pending. No runtime trading, payment, API, authentication, or provider behavior was changed.
