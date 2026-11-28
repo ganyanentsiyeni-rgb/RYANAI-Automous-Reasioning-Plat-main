@@ -45,7 +45,7 @@ describe('outbound Comms dispatch', () => {
     }));
   });
 
-  it('deduplicates outbound idempotency reservations', async () => {
+  it('deduplicates outbound idempotency reservations and binds replay to provider', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'dispatch-1', state: 'reserved', providerMessageId: null });
     const findUnique = vi.fn();
     const prisma = {
@@ -53,33 +53,19 @@ describe('outbound Comms dispatch', () => {
     } as unknown as PrismaClient;
 
     await expect(reserveOutboundCommsDispatch(prisma, {
-      communicationMessageId: 'message-1',
-      agentRunId: 'run-1',
-      channel: 'sms',
-      recipient: '+27710000000',
-      idempotencyKey: 'outbound-key-0001',
-      provider: 'twilio',
+      communicationMessageId: 'message-1', agentRunId: 'run-1', channel: 'sms',
+      recipient: '+27710000000', idempotencyKey: 'outbound-key-0001', provider: 'twilio',
     })).resolves.toEqual({ id: 'dispatch-1', state: 'reserved', providerMessageId: null, replayed: false });
 
     create.mockRejectedValueOnce({ code: 'P2002' });
     findUnique.mockResolvedValueOnce({
-      id: 'dispatch-1',
-      state: 'reserved',
-      providerMessageId: null,
-      communicationMessageId: 'message-1',
-      agentRunId: 'run-1',
-      channel: 'sms',
-      recipient: '+27710000000',
-      provider: 'twilio',
+      id: 'dispatch-1', state: 'reserved', providerMessageId: null,
+      communicationMessageId: 'message-1', agentRunId: 'run-1',
+      channel: 'sms', recipient: '+27710000000', provider: 'twilio',
     });
-
     await expect(reserveOutboundCommsDispatch(prisma, {
-      communicationMessageId: 'message-1',
-      agentRunId: 'run-1',
-      channel: 'sms',
-      recipient: '+27710000000',
-      idempotencyKey: 'outbound-key-0001',
-      provider: 'twilio',
+      communicationMessageId: 'message-1', agentRunId: 'run-1', channel: 'sms',
+      recipient: '+27710000000', idempotencyKey: 'outbound-key-0001', provider: 'twilio',
     })).resolves.toMatchObject({ id: 'dispatch-1', replayed: true });
 
     create.mockRejectedValueOnce({ code: 'P2002' });
@@ -89,27 +75,9 @@ describe('outbound Comms dispatch', () => {
       channel: 'sms', recipient: '+27710000000', provider: 'twilio',
     });
     await expect(reserveOutboundCommsDispatch(prisma, {
-      communicationMessageId: 'message-1', agentRunId: 'run-1',
-      channel: 'sms', recipient: '+27710000000',
-      idempotencyKey: 'outbound-key-0001', provider: 'resend',
-    })).rejects.toThrow('already bound to a different dispatch');
-      id: 'dispatch-1',
-      state: 'reserved',
-      providerMessageId: null,
-      communicationMessageId: 'message-1',
-      agentRunId: 'run-1',
-      channel: 'sms',
-      recipient: '+27710000000',
-      provider: 'another-provider',
-    });
-    await expect(reserveOutboundCommsDispatch(prisma, {
-      communicationMessageId: 'message-1',
-      agentRunId: 'run-1',
-      channel: 'sms',
-      recipient: '+27710000000',
-      idempotencyKey: 'outbound-key-0001',
-      provider: 'twilio',
-    })).rejects.toThrow('already bound to a different dispatch.');
+      communicationMessageId: 'message-1', agentRunId: 'run-1', channel: 'sms',
+      recipient: '+27710000000', idempotencyKey: 'outbound-key-0001', provider: 'resend',
+    })).rejects.toThrow(/already bound to a different dispatch/i);
   });
 
   it('moves stale in-flight dispatches to uncertain instead of retrying', async () => {
