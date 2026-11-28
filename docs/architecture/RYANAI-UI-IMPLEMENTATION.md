@@ -71,3 +71,8 @@ The app-owned Agent UI approval dialog now places initial focus on Decline, cont
 ## Command Center mobile drawer accessibility follow-up (2026-11-28)
 
 The conversation-history and live-telemetry drawers now use mutually exclusive modal state, explicit trigger-to-dialog `aria-controls` relationships, shared keyboard Tab wrapping, a focus-in containment guard, Escape dismissal, and trigger focus restoration. `src/lib/dialogFocus.test.ts` covers forward/backward wrapping and focus that escapes the dialog. Exact-head tests and CI/security evidence remain required before release; this patch does not change backend or provider integrations.
+
+
+### Operator Console offline outbox account-switch safety (2026-11-28)
+- Scoped outbox reads and sync UI updates to the account and request generation that initiated them; late IndexedDB/network completions are ignored after an auth-account change.
+- Clear prior-account queue/error presentation on account changes and filter rendered records by the active owner as a final UI boundary. Existing stable task IDs and server acceptance rules remain unchanged.
