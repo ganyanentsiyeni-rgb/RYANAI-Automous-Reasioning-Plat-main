@@ -174,6 +174,26 @@ describe('RyanAI Comms inbox controls', () => {
     expect(container.textContent).not.toContain('Accepted by provider · delivery confirmed');
   });
 
+  it('renders internal dispatch lifecycle states and provider receipt timestamps clearly', async () => {
+    const base = conversations[0];
+    comms.getCommsConversations.mockResolvedValueOnce([{
+      ...base,
+      messages: [
+        { ...base.messages[0], id: 'reserved-message', direction: 'outbound', status: 'accepted', deliveryStatus: 'reserved', body: 'Reserved before dispatch.' },
+        { ...base.messages[0], id: 'dispatching-message', direction: 'outbound', status: 'accepted', deliveryStatus: 'dispatching', body: 'Provider request underway.' },
+        { ...base.messages[0], id: 'reconciled-message', direction: 'outbound', status: 'accepted', deliveryStatus: 'reconciled', body: 'Operator reconciled.' },
+        { ...base.messages[0], id: 'receipt-message', direction: 'outbound', status: 'accepted', deliveryStatus: 'delivered', deliveryProviderStatus: 'delivered', deliveryOccurredAt: '2026-11-05T10:05:00.000Z', body: 'Delivery receipt timestamp.' },
+      ],
+    }]);
+    await act(async () => root.render(<CommunicationsCenter userId="synthetic-user-a" />));
+    await act(async () => vi.waitFor(() => expect(container.textContent).toContain('+27110000001')));
+    expect(container.textContent).toContain('Pending send · reserved, not dispatched');
+    expect(container.textContent).toContain('In flight · provider request underway');
+    expect(container.textContent).toContain('Reconciled · operator reviewed outcome');
+    expect(container.textContent).toContain('provider: delivered');
+    expect(container.textContent).toContain('receipt:');
+  });
+
   it('filters the conversation list by channel', async () => {
     await render();
     const channelFilter = container.querySelector('aside select') as HTMLSelectElement;
