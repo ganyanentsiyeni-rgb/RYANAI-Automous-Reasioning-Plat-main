@@ -10,10 +10,11 @@ on:
     paths:
       - 'Dockerfile'
       - 'Dockerfile.api'
-      - 'Dockerfile'
+      - 'Dockerfile.database'
       - 'index.html'
       - 'mcp-server/**'
       - 'docker-compose.yml'
+      - 'scripts/docker-init/**'
       - 'docker-entrypoint.sh'
       - 'nginx.conf'
       - 'nginx.conf.template'

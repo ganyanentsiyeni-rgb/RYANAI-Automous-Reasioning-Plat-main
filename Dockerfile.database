@@ -1,0 +1,9 @@
+# syntax=docker/dockerfile:1
+# Local and private pgvector PostgreSQL image used by docker-compose.yml.
+# Supabase remains the credential authority in hosted environments; this image
+# only carries the minimal Supabase Auth role bootstrap for the isolated local database.
+# The bootstrap runs once, when the postgres_data volume is first initialized.
+# Never point this image or its volume at production.
+FROM pgvector/pgvector:pg16
+
+COPY scripts/docker-init/01-supabase-auth-compat.sql /docker-entrypoint-initdb.d/01-supabase-auth-compat.sql

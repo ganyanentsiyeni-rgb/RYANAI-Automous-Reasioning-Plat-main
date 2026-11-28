@@ -27,3 +27,4 @@
 !.env.*.example
 !env.frontend.example
 !apps/mobile/.env.example
+!Dockerfile.database
