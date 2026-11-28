@@ -264,3 +264,9 @@ The mobile conversation-history and live-telemetry drawers are mutually exclusiv
 ### Operator Console offline outbox account-switch safety (2026-11-28)
 - Scoped outbox reads and sync UI updates to the account and request generation that initiated them; late IndexedDB/network completions are ignored after an auth-account change.
 - Clear prior-account queue/error presentation on account changes and filter rendered records by the active owner as a final UI boundary. Existing stable task IDs and server acceptance rules remain unchanged.
+## Operations Center approval freshness (2026-11-28)
+
+Administrator approval actions are executable side effects and must be based on a successfully refreshed queue. When an approval refresh is in progress or fails, the UI hides previously loaded actions and does not offer review, approve, or reject controls against stale queue data. The UI explains that the prior queue is hidden until it can be verified. This is a presentation safety guard, not an authorization boundary; backend administrator checks remain authoritative.
+## PhoneLink refresh and partial-failure behavior (2026-11-28)
+
+PhoneLink loads the device registry and capability catalog as its primary refresh operation, while the Comms event inbox is handled as a separately recoverable subrequest. Inbox failure must not erase the last known events or be represented as a confirmed empty inbox; the UI retains stale-but-known events, exposes an accessible inbox error, and offers retry. Successful inbox refresh clears that error. The initial device loading placeholder is shown only until the first refresh completes; periodic polling must not replace an already rendered device list with a transient loading state. These rules preserve truthful partial-data presentation without changing API contracts.
