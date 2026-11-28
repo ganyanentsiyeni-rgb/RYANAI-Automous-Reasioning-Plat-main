@@ -683,3 +683,12 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - The reconnect flow now invokes exact-ID reconciliation for every replay item that was not explicitly accepted or definitively rejected by the sync response.
 - A reconciliation response can clear an outbox record only when it explicitly confirms the same task ID; unresolved, missing, or failed reconciliation keeps the task locally retryable.
 - Regression tests cover successful reconciliation after ambiguous dispatch and retention when exact-ID lookup remains unresolved.
+
+
+## 2026-11-28 — CI completeness exact PR-head SHA repair
+
+- Corrected `.github/workflows/ci-execution-completeness.yml` to resolve pull-request candidates from `github.event.pull_request.head.sha`, rather than `github.sha` (which is the synthetic pull-request merge ref for `pull_request` events).
+- Manual `workflow_dispatch` runs continue to validate the selected workflow SHA.
+- The candidate SHA is validated as a 40-character lowercase hexadecimal commit before checkout and is passed explicitly to the 19-context verifier.
+- This repairs the false “all required contexts missing” result caused by comparing PR-head checks against a synthetic merge SHA. It does not waive any required check or certify a PR; all contexts must still complete successfully on the exact candidate SHA.
+- Validation status: code change proposed; CI execution and exact-SHA green status remain pending.
