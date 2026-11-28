@@ -796,3 +796,10 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Failed refreshes now mark the snapshot `unverified` instead of falsely replacing verified identity with `connected: false`.
 - Added regression coverage for the refresh-failure path.
 - No credential, provider configuration, backend, database, deployment, or production changes.
+
+## 2026-11-28 — PhoneLink account-switch isolation
+
+- Clear the previous mounted account's PhoneLink devices, capabilities, inbox events, pairing state, and transient messages when the authenticated `userId` changes.
+- Reset the refresh generation and loaded-state marker so stale in-flight requests cannot repopulate the newly selected account's view.
+- Added a regression test that switches the mounted PhoneLink workspace from one synthetic owner to another and asserts the prior owner's inbox event is no longer rendered.
+- No native Android, backend, provider, credential, database, deployment, or production changes. Physical-device validation remains separate.
