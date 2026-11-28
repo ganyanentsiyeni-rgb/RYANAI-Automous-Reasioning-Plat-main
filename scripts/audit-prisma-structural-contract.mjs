@@ -326,15 +326,15 @@ export function assessMigrationSourceContracts(sources) {
       && /UPDATE\s+public\.coding_tasks[\s\S]*?heartbeat_at\s*=\s*COALESCE\(locked_at,\s*NOW\(\)\)/i.test(lease)));
 
   add('migration AgentRun and AgentHandoff foreign-key actions', 'AgentRun user and AgentHandoff run foreign keys cascade on delete and update', agentOperations,
-    Boolean(agentOperations && /agent_runs_user_id_fkey[\\s\\S]*?ON DELETE CASCADE ON UPDATE CASCADE/i.test(agentOperations) && /agent_handoffs_run_id_fkey[\\s\\S]*?ON DELETE CASCADE ON UPDATE CASCADE/i.test(agentOperations)));
+    Boolean(agentOperations && /agent_runs_user_id_fkey[\s\S]*?ON DELETE CASCADE ON UPDATE CASCADE/i.test(agentOperations) && /agent_handoffs_run_id_fkey[\s\S]*?ON DELETE CASCADE ON UPDATE CASCADE/i.test(agentOperations)));
   add('migration CodingTask foreign-key actions', 'CodingTask user and workbench-run foreign keys cascade on delete with default update action', coding,
-    Boolean(coding && /user_id TEXT NOT NULL REFERENCES public\\.users\\(id\\) ON DELETE CASCADE(?!\\s+ON UPDATE)/i.test(coding) && /workbench_run_id TEXT NOT NULL REFERENCES public\\.agent_runs\\(id\\) ON DELETE CASCADE(?!\\s+ON UPDATE)/i.test(coding)));
+    Boolean(coding && /user_id TEXT NOT NULL REFERENCES public\.users\(id\) ON DELETE CASCADE(?!\s+ON UPDATE)/i.test(coding) && /workbench_run_id TEXT NOT NULL REFERENCES public\.agent_runs\(id\) ON DELETE CASCADE(?!\s+ON UPDATE)/i.test(coding)));
   add('migration AgentRun and AgentHandoff timestamp precision', 'AgentRun and AgentHandoff timestamps use TIMESTAMP(3)', agentOperations,
-    Boolean(agentOperations && /"created_at" TIMESTAMP\\(3\\)/i.test(agentOperations) && /"completed_at" TIMESTAMP\\(3\\)/i.test(agentOperations) && /"started_at" TIMESTAMP\\(3\\)/i.test(agentOperations) && /approved_at TIMESTAMP\\(3\\)/i.test(sources.approvalHistory) && /cancel_requested_at TIMESTAMP\\(3\\)/i.test(sources.approvalHistory)));
+    Boolean(agentOperations && /"created_at" TIMESTAMP\(3\)/i.test(agentOperations) && /"completed_at" TIMESTAMP\(3\)/i.test(agentOperations) && /"started_at" TIMESTAMP\(3\)/i.test(agentOperations) && /approved_at TIMESTAMP\(3\)/i.test(sources.approvalHistory) && /cancel_requested_at TIMESTAMP\(3\)/i.test(sources.approvalHistory)));
   add('migration CodingTask lifecycle timestamp precision', 'CodingTask lifecycle timestamps use TIMESTAMPTZ(6)', coding,
-    Boolean(coding && ['locked_at','lease_expires_at','next_attempt_at','cancel_requested_at','created_at','updated_at','completed_at'].every((column) => new RegExp(column + '\\\\s+TIMESTAMPTZ\\\\(6\\\\)', 'i').test(coding))));
+    Boolean(coding && ['locked_at','lease_expires_at','next_attempt_at','cancel_requested_at','created_at','updated_at','completed_at'].every((column) => new RegExp(column + '\\s+TIMESTAMPTZ\\(6\\)', 'i').test(coding))));
   add('migration historical approval default is superseded fail-closed', 'historical approved default is superseded by later pending default migration', sources.approvalHistory,
-    Boolean(sources.approvalHistory && /ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'approved'/i.test(sources.approvalHistory) && /ALTER COLUMN approval_status SET DEFAULT 'pending'/i.test(sources.approvalHistory) && /UPDATE public\\.agent_runs[\\s\\S]*?approval_status = 'pending'/i.test(sources.approvalHistory)));
+    Boolean(sources.approvalHistory && /ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'approved'/i.test(sources.approvalHistory) && /ALTER COLUMN approval_status SET DEFAULT 'pending'/i.test(sources.approvalHistory) && /UPDATE public\.agent_runs[\s\S]*?approval_status = 'pending'/i.test(sources.approvalHistory)));
   const embeddedMigrationMatches = (name, source) => {
     if (!sources.bootstrap || !source) return false;
     const begin = `-- BEGIN PRISMA MIGRATION ${name}`, end = `-- END PRISMA MIGRATION ${name}`;
