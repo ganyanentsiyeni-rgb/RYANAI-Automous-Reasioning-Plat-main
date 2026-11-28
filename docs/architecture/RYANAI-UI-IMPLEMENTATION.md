@@ -76,3 +76,6 @@ The conversation-history and live-telemetry drawers now use mutually exclusive m
 ## Operations Center approval freshness (2026-11-28)
 
 The administrator approval inbox now hides stale actions while a refresh is pending and after a refresh failure. This prevents a user from acting on a previously loaded queue that may no longer represent current pending approvals. The error and a specific stale-queue warning remain visible; decisions become available again only after a successful refresh. Regression coverage verifies stale actions and their controls are absent after a failed refresh. Backend authorization remains unchanged. Exact-head test and CI/security verification remain pending.
+## PhoneLink async state follow-up (2026-11-28)
+
+The PhoneLink Comms inbox now distinguishes a confirmed empty result from a failed request. On inbox failure, previously loaded events remain visible, an accessible error is shown with a retry action, and the interface states that inbox emptiness cannot be confirmed. A successful retry clears the error. Periodic polling no longer re-displays the initial device-loading placeholder after the first completed load. A regression test covers retention of the last known events after an inbox refresh failure. Exact-head test and CI/security results are still required before release.

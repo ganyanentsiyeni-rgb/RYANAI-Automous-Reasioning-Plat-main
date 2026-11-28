@@ -654,3 +654,9 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Display an explicit warning that the old queue is hidden until a fresh queue response can be verified; retain the request error and retry path.
 - Added a regression test proving an approval action is not visible/actionable after the refresh endpoint returns an error.
 - Frontend-only safety behavior. Backend administrator authorization remains authoritative and unchanged. Test execution and exact-head CI/security checks remain pending.
+## 2026-11-28 — PhoneLink async refresh and inbox error states
+
+- Fixed the Comms inbox refresh path so a failed inbox request no longer clears the last successfully loaded events or presents a false “No queued mobile updates” empty state.
+- Added a visible, accessible inbox-specific error with a retry action and a truthful unavailable-state message; a successful refresh clears the inbox error.
+- Changed periodic refreshes to avoid re-entering the initial device-loading state after the first load, preventing the device list from flashing its loading placeholder every 15 seconds.
+- Added a regression test proving the last known inbox events remain visible after a subsequent inbox failure. Test execution and exact-head CI/security checks remain pending.

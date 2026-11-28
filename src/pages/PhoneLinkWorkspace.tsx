@@ -38,16 +38,18 @@ export default function PhoneLinkWorkspace({ userId, settings }: { userId: strin
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [inboxError, setInboxError] = useState('');
   const [notice, setNotice] = useState('');
   const [claimCode, setClaimCode] = useState(() => new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('code') ?? '');
   const [claimName, setClaimName] = useState('My Android phone');
   const [nativeExchangeLink, setNativeExchangeLink] = useState('');
   const refreshRequestId = useRef(0);
+  const hasLoadedRef = useRef(false);
   const isClaimRoute = window.location.hash.includes('/phonelink/pair');
 
   const refresh = useCallback(async () => {
     const requestId = ++refreshRequestId.current;
-    setLoading(true);
+    if (!hasLoadedRef.current) setLoading(true);
     try {
       const [deviceResult, capabilityResult] = await Promise.all([
         request<{ devices: Device[] }>('/api/phonelink/devices', undefined, userId),
@@ -61,12 +63,24 @@ export default function PhoneLinkWorkspace({ userId, settings }: { userId: strin
       setSelectedCapabilities(current => current.filter(id => grantableIds.has(id)));
       try {
         const inbox = await request<{ events: PhoneEvent[] }>('/api/phonelink/events', undefined, userId);
-        if (requestId === refreshRequestId.current) setEvents(inbox.events ?? []);
-      } catch { if (requestId === refreshRequestId.current) setEvents([]); }
+        if (requestId === refreshRequestId.current) {
+          setEvents(inbox.events ?? []);
+          setInboxError('');
+        }
+      } catch (cause) {
+        if (requestId === refreshRequestId.current) {
+          setInboxError(cause instanceof Error ? cause.message : 'PhoneLink inbox could not load.');
+        }
+      }
       if (requestId === refreshRequestId.current) setError('');
     } catch (cause) {
       if (requestId === refreshRequestId.current) setError(cause instanceof Error ? cause.message : 'PhoneLink could not load.');
-    } finally { if (requestId === refreshRequestId.current) setLoading(false); }
+    } finally {
+      if (requestId === refreshRequestId.current) {
+        hasLoadedRef.current = true;
+        setLoading(false);
+      }
+    }
   }, [userId]);
 
   useEffect(() => {
@@ -180,7 +194,7 @@ export default function PhoneLinkWorkspace({ userId, settings }: { userId: strin
     <article className="rounded-2xl border border-white/10 bg-slate-900/70 p-5"><div className="flex items-center justify-between"><div><h2 className="font-semibold">Trusted devices</h2><p className="mt-1 text-xs text-slate-400">Only devices paired to your account appear here.</p></div><span className="text-xs text-slate-400">{devices.filter(device=>device.status==='paired').length} active</span></div>
       {loading ? <p className="mt-4 text-sm text-slate-400">Loading devices…</p> : devices.length === 0 ? <p className="mt-4 rounded-xl border border-dashed border-white/15 p-5 text-sm text-slate-400">No phones connected yet. Generate a QR pairing code to begin.</p> : <div className="mt-4 grid gap-3 md:grid-cols-2">{devices.map(device=><div key={device.id} className="rounded-xl border border-white/10 bg-slate-950/60 p-4"><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-2"><Smartphone className="h-5 w-5 text-cyan-300"/><div><p className="font-medium">{device.deviceName}</p><p className="text-xs text-slate-500">{device.platform} · {device.status}</p></div></div>{device.status==='paired'&&<button onClick={()=>void revokeDevice(device.id)} disabled={busy} aria-label={`Revoke ${device.deviceName}`} className="rounded-lg p-2 text-rose-300 hover:bg-rose-400/10"><Trash2 className="h-4 w-4"/></button>}</div><p className="mt-3 text-xs text-slate-400">Device permissions · changes save immediately</p><div className="mt-2 grid gap-2 sm:grid-cols-2">{availableCapabilities.map(cap=>{const granted=device.capabilities?.includes(cap)??false;const grantable=isCapabilityAvailable(cap);return <label key={cap} className="flex items-center gap-2 text-[11px] text-slate-300"><input type="checkbox" aria-label={`Allow ${capabilityLabels[cap]} on ${device.deviceName}`} checked={granted} disabled={busy||device.status!=='paired'||(!grantable&&!granted)} onChange={event=>void updateDevice(device,event.target.checked?[...(device.capabilities??[]),cap]:(device.capabilities??[]).filter(item=>item!==cap))} className="accent-cyan-400"/><span>{capabilityLabels[cap]}{!grantable&&granted?' · stored grant unavailable':''}</span></label>})}</div></div>)}</div>}
     </article>
-    <article className="rounded-2xl border border-white/10 bg-slate-900/70 p-5"><div className="flex items-center justify-between"><div><h2 className="font-semibold">PhoneLink Comms inbox</h2><p className="mt-1 text-xs text-slate-400">Reviewed Comms dispatch updates are queued for devices with Comms permission.</p></div><span className="text-xs text-slate-400">{events.length} pending</span></div>{events.length===0?<p className="mt-4 text-sm text-slate-500">No queued mobile updates.</p>:<div className="mt-3 space-y-2">{events.map(event=><div key={event.id} className="flex items-start justify-between gap-3 rounded-xl bg-slate-950 p-3"><div><p className="text-sm font-medium">{event.title}</p><p className="mt-1 text-xs text-slate-400">{event.body}</p><p className="mt-1 text-[10px] text-slate-600">{new Date(event.createdAt).toLocaleString()}</p></div><button onClick={()=>{void acknowledgeEvent(event.deviceId,event.id);}} className="rounded-lg p-2 text-emerald-300" aria-label="Acknowledge event"><Check className="h-4 w-4"/></button></div>)}</div>}</article>
+    <article className="rounded-2xl border border-white/10 bg-slate-900/70 p-5"><div className="flex items-center justify-between"><div><h2 className="font-semibold">PhoneLink Comms inbox</h2><p className="mt-1 text-xs text-slate-400">Reviewed Comms dispatch updates are queued for devices with Comms permission.</p></div><span className="text-xs text-slate-400">{events.length} pending</span></div>{inboxError && <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-rose-400/30 bg-rose-400/5 p-3 text-sm text-rose-200" role="alert"><span>Inbox unavailable: {inboxError}</span><button type="button" onClick={() => void refresh()} disabled={loading} className="rounded-md border border-rose-300/30 px-3 py-1.5 text-xs font-medium disabled:opacity-50">Retry inbox</button></div>}{events.length===0 ? (inboxError ? <p className="mt-3 text-sm text-slate-500">Inbox contents are unavailable; the empty state cannot be confirmed.</p> : <p className="mt-4 text-sm text-slate-500">No queued mobile updates.</p>) : <div className="mt-3 space-y-2">{events.map(event=><div key={event.id} className="flex items-start justify-between gap-3 rounded-xl bg-slate-950 p-3"><div><p className="text-sm font-medium">{event.title}</p><p className="mt-1 text-xs text-slate-400">{event.body}</p><p className="mt-1 text-[10px] text-slate-600">{new Date(event.createdAt).toLocaleString()}</p></div><button onClick={()=>{void acknowledgeEvent(event.deviceId,event.id);}} className="rounded-lg p-2 text-emerald-300" aria-label="Acknowledge event"><Check className="h-4 w-4"/></button></div>)}</div>}</article>
     <article className="rounded-2xl border border-white/10 bg-slate-900/70 p-5"><h2 className="font-semibold">Mobile capability registry</h2><p className="mt-1 text-xs text-slate-400">Permissions are explicit and scoped. Unsupported native capabilities are identified rather than silently enabled.</p><div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{capabilities.map(cap=><div key={cap.id} className="rounded-xl bg-slate-950 p-3"><p className="text-sm font-medium">{cap.label}</p><p className={`mt-1 text-xs ${cap.state==='available'?'text-emerald-300':'text-amber-200'}`}>{cap.state.replaceAll('_',' ')}</p><p className="mt-1 text-[11px] text-slate-500">Approval: {cap.approval}</p></div>)}</div></article>
     <article className="rounded-2xl border border-white/10 bg-slate-900/70 p-5"><h2 className="font-semibold">Security and privacy</h2><div className="mt-3 grid gap-3 text-sm text-slate-300 sm:grid-cols-2"><p><ShieldCheck className="mr-2 inline h-4 w-4 text-emerald-300"/>Pairing codes expire after five minutes and can only be used once.</p><p><Wifi className="mr-2 inline h-4 w-4 text-cyan-300"/>Android stores a revocable device token encrypted with Keystore; RyanAI stores only its SHA-256 digest.</p><p><Clipboard className="mr-2 inline h-4 w-4 text-cyan-300"/>Clipboard sharing is never read automatically.</p><p><Camera className="mr-2 inline h-4 w-4 text-cyan-300"/>Camera, microphone, notifications and location require explicit Android permissions.</p><p><ShieldCheck className="mr-2 inline h-4 w-4 text-cyan-300"/>Comms outbound dispatch remains behind human review.</p><p><Activity className="mr-2 inline h-4 w-4 text-cyan-300"/>Revoking a device disables its registry entry.</p></div></article>
   </section>;
