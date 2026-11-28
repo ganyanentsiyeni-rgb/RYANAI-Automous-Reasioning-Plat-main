@@ -333,3 +333,13 @@ The migration-readiness audit verifies the four operational indexes declared for
 The read-only migration-readiness audit now checks all eight `agent_runs` indexes also defined by the structural-contract audit: user/created, status/created, status/locked, status/next-attempt, queue/status/created, status/next-attempt/lease, worker/lease, and approval-status/created. The test fixture covers all eight. Missing indexes block readiness; this check does not perform DDL.
 
 - AgentRun index structural validation now explicitly rejects unique indexes where Prisma declares non-unique indexes, in addition to checking B-tree type, ordered columns, and absence of partial predicates. Regression coverage includes an unexpectedly unique `agent_runs_user_id_created_at_idx`.
+
+
+### AgentRun approval and migration-source integrity (2026-11-28)
+
+The current AgentRun approval default is `pending`. The earlier `approved` default in initial runtime/workbench migrations is historical and is superseded by `20261122100000_fail_closed_agent_run_approval`; reasoning workers must not claim a run until explicit approval is recorded. The read-only structural audit now checks this current default, migration chronology, relevant FK actions and timestamp precision, and exact parity of five embedded bootstrap migration blocks against canonical Prisma sources. The bootstrap snapshot predates the fail-closed follow-up and is not the final approval state. These are source-contract checks only, not evidence of live database state; tests and live DB verification remain pending.
+
+
+### Plugin integration status refresh failure handling (2026-11-28)
+
+The GitHub integration status loader performs one response parse and validates both the HTTP result and the returned status shape. A successful refresh clears the prior status error. A failed refresh preserves the last known connection identity while marking the status as unverified and exposing the refresh error; it does not silently present stale data as freshly verified. This is a UI-state contract and does not change provider authorization, credentials, or connection configuration.
