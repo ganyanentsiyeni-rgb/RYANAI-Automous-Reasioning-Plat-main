@@ -71,3 +71,8 @@ The app-owned Agent UI approval dialog now places initial focus on Decline, cont
 ## Command Center mobile drawer accessibility follow-up (2026-11-28)
 
 The conversation-history and live-telemetry drawers now use mutually exclusive modal state, explicit trigger-to-dialog `aria-controls` relationships, shared keyboard Tab wrapping, a focus-in containment guard, Escape dismissal, and trigger focus restoration. `src/lib/dialogFocus.test.ts` covers forward/backward wrapping and focus that escapes the dialog. Exact-head tests and CI/security evidence remain required before release; this patch does not change backend or provider integrations.
+
+
+## Operations Center approval freshness (2026-11-28)
+
+The administrator approval inbox now hides stale actions while a refresh is pending and after a refresh failure. This prevents a user from acting on a previously loaded queue that may no longer represent current pending approvals. The error and a specific stale-queue warning remain visible; decisions become available again only after a successful refresh. Regression coverage verifies stale actions and their controls are absent after a failed refresh. Backend authorization remains unchanged. Exact-head test and CI/security verification remain pending.
