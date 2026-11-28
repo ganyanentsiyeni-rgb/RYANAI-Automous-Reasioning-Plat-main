@@ -41,6 +41,18 @@ describe('claimInboundCommunication', () => {
     });
   });
 
+  it('does not transfer a conversation already assigned to another owner', async () => {
+    const create = vi.fn();
+    const prisma = prismaMock(create);
+    vi.mocked(prisma.communicationConversation.updateMany).mockResolvedValueOnce({ count: 0 } as never);
+
+    await expect(claimInboundCommunication(prisma, {
+      ...input,
+      ownerUserId: 'owner-new',
+    })).rejects.toThrow('already assigned to a different owner');
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it('returns the existing event after a concurrent or retried provider delivery', async () => {
     const create = vi.fn().mockRejectedValue({ code: 'P2002' });
     const findUnique = vi.fn().mockResolvedValue({
