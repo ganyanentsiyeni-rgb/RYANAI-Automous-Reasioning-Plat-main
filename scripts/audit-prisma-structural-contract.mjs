@@ -332,7 +332,7 @@ export function assessMigrationSourceContracts(sources) {
   add('migration AgentRun and AgentHandoff timestamp precision', 'AgentRun and AgentHandoff timestamps use TIMESTAMP(3)', agentOperations,
     Boolean(agentOperations && /"created_at" TIMESTAMP\(3\)/i.test(agentOperations) && /"completed_at" TIMESTAMP\(3\)/i.test(agentOperations) && /"started_at" TIMESTAMP\(3\)/i.test(agentOperations) && /approved_at TIMESTAMP\(3\)/i.test(sources.approvalHistory) && /cancel_requested_at TIMESTAMP\(3\)/i.test(sources.approvalHistory)));
   add('migration CodingTask lifecycle timestamp precision', 'CodingTask lifecycle timestamps use TIMESTAMPTZ(6)', coding,
-    Boolean(coding && ['locked_at','lease_expires_at','next_attempt_at','cancel_requested_at','created_at','updated_at','completed_at'].every((column) => new RegExp(column + '\\s+TIMESTAMPTZ\\(6\\)', 'i').test(coding))));
+    Boolean(coding && ['locked_at','lease_expires_at','next_attempt_at','cancel_requested_at','created_at','updated_at','completed_at'].every((column) => new RegExp(column + '\s+TIMESTAMPTZ\(6\)', 'i').test(coding))));
   add('migration historical approval default is superseded fail-closed', 'historical approved default is superseded by later pending default migration', sources.approvalHistory,
     Boolean(sources.approvalHistory && /ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'approved'/i.test(sources.approvalHistory) && /ALTER COLUMN approval_status SET DEFAULT 'pending'/i.test(sources.approvalHistory) && /UPDATE public\.agent_runs[\s\S]*?approval_status = 'pending'/i.test(sources.approvalHistory)));
   const embeddedMigrationMatches = (name, source) => {
