@@ -82,6 +82,10 @@ jobs:
           - image: mcp
             file: mcp-server/Dockerfile
             target: ''
+          # Local Compose Postgres image. Built and validated here, never published.
+          - image: database
+            file: Dockerfile.database
+            target: ''
     steps:
       - name: Checkout
         uses: actions/checkout@v7
