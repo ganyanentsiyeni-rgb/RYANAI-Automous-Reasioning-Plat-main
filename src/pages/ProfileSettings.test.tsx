@@ -92,6 +92,8 @@ describe('RyanAI Settings', () => {
     expect(container.querySelector('#phonelink-settings-title')).not.toBeNull();
     expect(container.querySelector('#copilot-settings-title')).not.toBeNull();
     expect(container.querySelector('[data-testid="copilot-show-alex-status"]')).not.toBeNull();
+    expect(container.textContent).toContain('Show PA Agent operational status');
+    expect(container.textContent).toContain('PA Agent status refresh interval');
     expect(container.querySelector('[data-testid="copilot-show-delegation-panel"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="copilot-refresh-interval"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="music-default-provider"]')).not.toBeNull();
