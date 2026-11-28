@@ -320,6 +320,13 @@ export function assessMigrationSourceContracts(sources) {
     coding,
     Boolean(coding && ['locked_at','lease_expires_at','next_attempt_at','cancel_requested_at','created_at','updated_at','completed_at']
       .every((column) => new RegExp(column + '\\s+TIMESTAMPTZ\\(6\\)', 'i').test(coding))));
+  add('migration historical approval default is superseded fail-closed',
+    'historical approved default is explicitly superseded by later pending default migration',
+    sources.approvalHistory,
+    Boolean(sources.approvalHistory
+      && /ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'approved'/i.test(sources.approvalHistory)
+      && /ALTER COLUMN approval_status SET DEFAULT 'pending'/i.test(sources.approvalHistory)
+      && /UPDATE public\\.agent_runs[\\s\\S]*?approval_status = 'pending'/i.test(sources.approvalHistory)));
   add('migration coding queue legacy classification',
     "approval_status = 'pending' OR plan_snapshot IS NOT NULL OR proposed_diff_hash IS NOT NULL",
     coding,
@@ -362,12 +369,14 @@ async function main() {
     return;
   }
   const root = resolve(process.cwd());
-  const [authBridge, agentOperations, codingQueue, queueCorrection, leaseHeartbeat] = await Promise.all([
+  const [authBridge, agentOperations, codingQueue, queueCorrection, leaseHeartbeat, approvalBase, approvalFailClosed] = await Promise.all([
     readFile(resolve(root, 'prisma/migrations/20261102123000_supabase_auth_identity_bridge/migration.sql'), 'utf8'),
     readFile(resolve(root, 'prisma/migrations/20261030120000_agent_operations/migration.sql'), 'utf8'),
     readFile(resolve(root, 'prisma/migrations/20261104120000_isolated_coding_task_queue/migration.sql'), 'utf8'),
     readFile(resolve(root, 'prisma/migrations/20261108120000_correct_pending_reasoning_queue_classification/migration.sql'), 'utf8'),
     readFile(resolve(root, 'prisma/migrations/20261121120000_agent_run_lease_heartbeat/migration.sql'), 'utf8'),
+    readFile(resolve(root, 'prisma/migrations/20261102235000_engineering_evidence_workbench/migration.sql'), 'utf8'),
+    readFile(resolve(root, 'prisma/migrations/20261122100000_fail_closed_agent_run_approval/migration.sql'), 'utf8'),
   ]);
 
   const pool = new Pool({
@@ -394,7 +403,7 @@ async function main() {
       tables: tables.rows, columns: columns.rows, indexes: indexes.rows, constraints: constraints.rows,
       triggers: triggers.rows, functions: functions.rows, grants: grants.rows, functionGrants: functionGrants.rows,
     });
-    const migration = assessMigrationSourceContracts({ authBridge, agentOperations, codingQueue, queueCorrection, leaseHeartbeat });
+    const migration = assessMigrationSourceContracts({ authBridge, agentOperations, codingQueue, queueCorrection, leaseHeartbeat, approvalHistory: approvalBase + '\n' + approvalFailClosed });
     await client.query('COMMIT');
     console.log(JSON.stringify({
       mode: 'read-only',
