@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { dispatchAutonomousTask, getAgentTaskWorkerStatus, listAgentRuns, listBrainHealth, probeAllBrains } from '../../agent/operations.js';
+import { dispatchAutonomousTask, getAgentTaskWorkerStatus, listAgentRuns, listAgentRunsByIds, listBrainHealth, probeAllBrains } from '../../agent/operations.js';
 import { getAgentPAStatus } from '../../skills/agentPAScript.js';
 import { buildUserAwarenessSnapshot } from '../../agent/awareness/operationalAwarenessService.js';
 import { listBrainKnowledge, publishBrainKnowledge } from '../../agent/knowledgeAgent.js';
@@ -316,8 +316,10 @@ export const agentOperationsRoutes: FastifyPluginAsync = async (fastify) => {
         const task = await dispatchAutonomousTask(request.authUser.id, taskInput.objective, undefined, undefined, taskInput.taskId);
         results.push({ taskId: task.id, status: task.status, accepted: true, createdAt: task.createdAt });
       } catch (error) {
-        fastify.log.warn({ err: error, taskId: taskInput.taskId }, 'Offline task replay was rejected');
-        results.push({ taskId: taskInput.taskId, status: 'rejected', accepted: false });
+        // Dispatch failures are ambiguous: a transaction may have committed before
+        // the connection failed. Never report a definite rejection without proof.
+        fastify.log.warn({ err: error, taskId: taskInput.taskId }, 'Offline task replay outcome is uncertain');
+        results.push({ taskId: taskInput.taskId, status: 'uncertain', accepted: false });
       }
     }
     const accepted = results.filter((item) => item.accepted).length;
@@ -328,6 +330,39 @@ export const agentOperationsRoutes: FastifyPluginAsync = async (fastify) => {
       results,
       replaySafe: true,
     });
+  });
+  fastify.post<{ Body: OfflineSyncBody }>('/api/agent/ops/tasks/reconcile', {
+    schema: { body: { type: 'object', required: ['tasks'], additionalProperties: false, properties: {
+      tasks: { type: 'array', minItems: 1, maxItems: 20, items: {
+        type: 'object', required: ['taskId', 'objective'], additionalProperties: false,
+        properties: {
+          taskId: { type: 'string', format: 'uuid' },
+          objective: { type: 'string', minLength: 5, maxLength: 20000 },
+        },
+      } },
+    } } },
+  }, async (request, reply) => {
+    if (!request.authUser?.id) return reply.code(401).send({ error: 'Sign in to continue.' });
+    let tasks: ReturnType<typeof normalizeOfflineTaskBatch>;
+    try {
+      tasks = normalizeOfflineTaskBatch(request.body.tasks);
+    } catch (error) {
+      return reply.code(400).send({ status: 'rejected', error: error instanceof Error ? error.message : 'Invalid reconciliation batch.' });
+    }
+    try {
+      const runs = await listAgentRunsByIds(request.authUser.id, tasks.map((task) => task.taskId));
+      const byId = new Map(runs.map((run) => [run.id, run]));
+      const results = tasks.map((task) => {
+        const run = byId.get(task.taskId);
+        if (!run) return { taskId: task.taskId, status: 'unresolved', accepted: false };
+        if (run.objective !== task.objective) return { taskId: task.taskId, status: 'conflict', accepted: false };
+        return { taskId: run.id, status: run.status, accepted: true, createdAt: run.createdAt };
+      });
+      return reply.code(200).send({ status: 'reconciled', results });
+    } catch (error) {
+      fastify.log.warn({ err: error }, 'Offline task exact-ID reconciliation unavailable');
+      return reply.code(503).send({ status: 'uncertain', error: 'Exact task reconciliation is temporarily unavailable.' });
+    }
   });
   fastify.get('/api/agent/ops/awareness', async (request, reply) => {
     if (!request.authUser) return reply.code(401).send({ error: 'Sign in to continue.' });
