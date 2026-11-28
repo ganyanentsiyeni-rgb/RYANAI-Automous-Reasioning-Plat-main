@@ -92,6 +92,10 @@ describe('Twilio delivery status callback', () => {
       expect(response.statusCode).toBe(202);
       expect(response.json()).toMatchObject({ accepted: true, state: 'delivered' });
       expect(prisma.commsDeliveryReceipt.create).toHaveBeenCalledTimes(1);
+      const approvalUpdate = prisma.$executeRawUnsafe.mock.calls[0][0] as string;
+      expect(approvalUpdate).toContain('public.comms_delivery_receipts');
+      expect(approvalUpdate).toContain('ORDER BY occurred_at DESC, created_at DESC');
+      expect(approvalUpdate).toContain("status IN ('dispatching', 'accepted', 'unknown', 'failed')");
       expect(prisma.outboundCommsDispatch.updateMany).toHaveBeenCalledWith(expect.objectContaining({
         where: { id: 'dispatch-1', state: { in: expect.arrayContaining(['accepted']) } },
         data: expect.objectContaining({ state: 'delivered' }),
