@@ -692,3 +692,11 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - The candidate SHA is validated as a 40-character lowercase hexadecimal commit before checkout and is passed explicitly to the 19-context verifier.
 - This repairs the false “all required contexts missing” result caused by comparing PR-head checks against a synthetic merge SHA. It does not waive any required check or certify a PR; all contexts must still complete successfully on the exact candidate SHA.
 - Validation status: code change proposed; CI execution and exact-SHA green status remain pending.
+
+
+## 2026-11-28 — Dialog focus tests use a DOM runtime
+
+- The dialog keyboard-focus regression suite creates DOM nodes and asserts active-element behavior; the repository-wide Vitest default is Node.
+- Added a file-scoped `@vitest-environment happy-dom` directive to `src/lib/dialogFocus.test.ts`. The existing `happy-dom` development dependency is already declared, so no dependency or lockfile change is required.
+- This isolates browser-DOM requirements to the relevant UI test file without changing the environment for server-side Vitest suites.
+- Validation remains pending on the PR head SHA.
