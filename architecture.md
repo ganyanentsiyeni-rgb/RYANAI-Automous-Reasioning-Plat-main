@@ -315,3 +315,8 @@ The Prisma migration-readiness audit now checks the same 32 `agent_runs` columns
 
 ### AgentRun operational index readiness
 The migration-readiness audit verifies the four operational indexes declared for AgentRun queue selection and lease/approval filtering: `agent_runs_queue_type_status_created_idx`, `agent_runs_status_next_attempt_lease_idx`, `agent_runs_worker_lease_idx`, and `agent_runs_approval_status_created_idx`. Missing indexes now fail the audit independently of the vector-memory index checks.
+
+
+## AgentRun operational index readiness parity (2026-11-28)
+
+The read-only migration-readiness audit now checks all eight `agent_runs` indexes also defined by the structural-contract audit: user/created, status/created, status/locked, status/next-attempt, queue/status/created, status/next-attempt/lease, worker/lease, and approval-status/created. The test fixture covers all eight. Missing indexes block readiness; this check does not perform DDL.
