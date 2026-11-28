@@ -850,3 +850,7 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Initial status requests now start immediately on mount; request-generation guards still prevent stale responses from updating state after newer requests or unmount.
 - Mocked Framer Motion's presence/transition layer in Command Center component tests so drawer open/close, Escape handling, and focus restoration are tested deterministically without depending on browser animation-frame completion. Production animation behavior is unchanged.
 - Exact-SHA CI must verify these corrections; no production/provider configuration, credentials, database migrations, deployment, or release settings were changed.
+
+
+- Follow-up test correction: the GitHub identity-refresh regression now clicks the GitHub card's own Refresh control, not the separate registry/connection refresh control. The latter does not invoke /api/github/status.
+- The Framer Motion test double strips animation-only props from the rendered DOM while preserving ordinary dialog props and refs.
