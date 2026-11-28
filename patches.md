@@ -1,4 +1,11 @@
 
+## 2026-11-28 — Frontend gate scope expanded for UI coverage
+
+- Expanded the frontend verification test step from a small regression list to the frontend-owned test directories: `src/config`, `src/lib`, `src/hooks`, `src/components`, `src/pages`, and `src/shared`.
+- This is test-scope expansion only; it does not authorize merge or deployment and does not change backend/provider behavior.
+- Exact-head CI execution is still required; no pass is claimed until GitHub reports the resulting run for the current SHA.
+
+
 ## 2026-11-28 — UI refresh truthfulness for PA and Plugin Integrations
 
 - Fixed PA Agent periodic/focus refreshes so a transient API, task, or Task Awareness failure no longer clears the last verified snapshot or renders a false empty/unavailable runtime state. The UI now preserves known data while explicitly reporting the latest refresh as unverified.
