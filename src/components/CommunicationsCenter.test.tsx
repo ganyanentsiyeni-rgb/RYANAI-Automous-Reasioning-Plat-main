@@ -109,6 +109,35 @@ async function render() {
 }
 
 describe('RyanAI Comms inbox controls', () => {
+  it('clears the previous account inbox and draft while the next account loads', async () => {
+    await render();
+    expect(container.textContent).toContain('+27110000001');
+
+    let releaseStatus!: (value: { status: string; enabled: boolean; channels: Record<string, boolean>; note: string }) => void;
+    let releaseConversations!: (value: typeof conversations) => void;
+    comms.getCommsStatus.mockImplementationOnce(() => new Promise((resolve) => { releaseStatus = resolve; }));
+    comms.getCommsConversations.mockImplementationOnce(() => new Promise((resolve) => { releaseConversations = resolve; }));
+
+    await act(async () => root.render(<CommunicationsCenter userId="synthetic-user-b" />));
+    expect(container.textContent).not.toContain('+27110000001');
+    expect(container.textContent).not.toContain('client@example.com');
+    expect(container.textContent).toContain('Loading Comms configuration and persisted conversation history');
+
+    const accountBConversation = [{
+      ...conversations[0],
+      id: 'conversation-account-b',
+      externalAddress: '+27110000002',
+      messages: [{ ...conversations[0].messages[0], id: 'message-account-b', body: 'Account B private message.' }],
+    }];
+    await act(async () => {
+      releaseStatus({ status: 'configuration_snapshot', enabled: true, channels: { whatsapp: true }, note: 'Account B configuration.' });
+      releaseConversations(accountBConversation);
+    });
+    await act(async () => vi.waitFor(() => expect(container.textContent).toContain('+27110000002')));
+    expect(container.textContent).toContain('Account B private message.');
+    expect(container.textContent).not.toContain('+27110000001');
+  });
+
   it('searches persisted message bodies and recipient addresses', async () => {
     await render();
     expect(container.textContent).toContain('2 / 2');
