@@ -31,7 +31,9 @@ export async function recordCommunication(
       externalAddress: input.externalAddress,
       ...(input.ownerUserId ? { ownerUserId: input.ownerUserId } : {}),
     },
-    update: { updatedAt: new Date(), ...(input.ownerUserId ? { ownerUserId: input.ownerUserId } : {}) },
+    // Never transfer an existing channel/address conversation to a new owner
+    // as a side effect of an inbound webhook.
+    update: { updatedAt: new Date() },
     select: { id: true },
   });
 
@@ -274,6 +276,16 @@ export async function claimInboundCommunication(
       select: { id: true, status: true, metadata: true, createdAt: true, agentRunId: true, body: true, conversation: { select: { channel: true, ownerUserId: true } } },
     });
     if (!existing) throw error;
+
+    // Provider IDs are globally unique in the message table. A collision must
+    // never be treated as a replay across owners, channels, or different content.
+    const existingOwnerId = existing.conversation?.ownerUserId ?? null;
+    const requestedOwnerId = input.ownerUserId ?? null;
+    if (existing.conversation?.channel !== input.channel
+      || existingOwnerId !== requestedOwnerId
+      || existing.body !== input.body) {
+      throw new Error('Inbound provider event ID is already bound to a different owner, channel, or message.');
+    }
 
     // A process can die after claiming a webhook but before completing it.
     // Permit a provider retry to reclaim only an expired processing lease.
