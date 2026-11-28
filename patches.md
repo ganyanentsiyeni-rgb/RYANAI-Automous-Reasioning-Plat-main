@@ -1,3 +1,12 @@
+
+## 2026-11-28 — UI refresh truthfulness for PA and Plugin Integrations
+
+- Fixed PA Agent periodic/focus refreshes so a transient API, task, or Task Awareness failure no longer clears the last verified snapshot or renders a false empty/unavailable runtime state. The UI now preserves known data while explicitly reporting the latest refresh as unverified.
+- Fixed Plugin & Integrations refresh handling so transient connection or registry failures preserve the last verified provider/adapter snapshot instead of converting it into an empty catalogue or disconnected state.
+- Added regression coverage for PA snapshot preservation and plugin registry/connection snapshot preservation after subsequent refresh failures.
+- No API, database, auth, credential, provider, deployment, or migration changes.
+- Exact-head CI/security execution remains required before this branch can be treated as verified.
+
 # RyanAI Patch Record — Shared PA / Darkside / Comms / Push Deploy
 
 **Status:** implementation record for the focused repair branch. This document records intended and implemented contract changes; it is not a deployment certification.
