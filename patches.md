@@ -818,3 +818,11 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Invalidate outstanding task and approval reads and guard task-submission/approval mutation completions with an account-generation token so late responses from the previous identity cannot update the newly mounted account's UI.
 - Added a deferred-response regression test proving previous task and approval content disappears while the next account's task and approval requests are still loading, then only the new account's results appear.
 - Frontend-only isolation and stale-response safety. Backend authorization remains authoritative; no credentials, database, provider, deployment, or production state changed. Test execution and exact-head CI/security evidence remain pending.
+
+
+## 2026-11-28 — RyanAI Comms account-switch isolation
+
+- Clear the prior account's private conversation list, selected thread, channel configuration snapshot, draft message/recipient/subject, attachment selections, approval state, conversation intelligence output, filters, and transient notices when the authenticated app identity changes.
+- Invalidate the previous refresh generation before the next account's Comms status and conversation requests run, preventing an older inbox refresh from repopulating the newly selected account's view.
+- Added a deferred-response regression test: the previous owner's phone number and email conversation must disappear while the next owner's inbox is still loading; only the next owner's thread appears after its response resolves.
+- This is a frontend privacy boundary; server-side owner authorization remains authoritative. Test execution and exact-head CI/security evidence remain pending. No dispatch, backend, database, credential, provider, deployment, or production state changed.
