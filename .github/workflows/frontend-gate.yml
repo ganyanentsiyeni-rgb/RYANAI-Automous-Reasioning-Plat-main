@@ -55,7 +55,7 @@ jobs:
         run: npm run typecheck
 
       - name: Frontend environment and health contract tests
-        run: npx vitest run src/config/frontendEnv.test.ts src/lib/platformHealth.test.ts
+        run: npx vitest run src/config/frontendEnv.test.ts src/lib/platformHealth.test.ts src/pages/LandingPage.test.tsx src/pages/TradingTerminal.test.tsx src/pages/CommandCenter.test.tsx
 
       - name: Production web build with non-secret placeholder configuration
         env:
