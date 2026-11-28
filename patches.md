@@ -780,3 +780,5 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Updated the readiness test fixture and missing-index assertions to cover the complete eight-index contract.
 - The audit remains read-only; it does not create indexes or apply migrations.
 - Verification is source-level only until the Node test suite and live database audit are executed.
+
+- AgentRun index structural validation now explicitly rejects unique indexes where Prisma declares non-unique indexes, in addition to checking B-tree type, ordered columns, and absence of partial predicates. Regression coverage includes an unexpectedly unique `agent_runs_user_id_created_at_idx`.
