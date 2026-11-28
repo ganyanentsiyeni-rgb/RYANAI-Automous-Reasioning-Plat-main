@@ -797,3 +797,38 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - No provider relink, live configuration change, production deployment,
   database operation, or credential change is included. Exact-SHA CI/security
   verification is required before any merge or deployment.
+## 2026-11-28 — Studio canonical repository handoff repair
+
+- Fixed the RyanAI Studio VS Code Web handoff to open the canonical repository `ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main` instead of the retired `RyanAI-Automated/RYANAI-Automous-Reasioning-Plat` source.
+- Added page-level `happy-dom` coverage for the repository handoff and Studio runtime boundary messaging.
+- No backend, authentication, credential, deployment, database migration, or provider configuration changes.
+- Exact-head CI/security execution remains required before this patch is considered verified.
+
+## 2026-11-28 — UI integration resilience: GitHub provider refresh
+
+- Preserved the last verified GitHub account/repository identity in the Plugin & Integrations centre when a later status refresh fails.
+- Failed refreshes now mark the snapshot `unverified` instead of falsely replacing verified identity with `connected: false`.
+- Added regression coverage for the refresh-failure path.
+- No credential, provider configuration, backend, database, deployment, or production changes.
+
+## 2026-11-28 — PhoneLink account-switch isolation
+
+- Clear the previous mounted account's PhoneLink devices, capabilities, inbox events, pairing state, and transient messages when the authenticated `userId` changes.
+- Reset the refresh generation and loaded-state marker so stale in-flight requests cannot repopulate the newly selected account's view.
+- Added a regression test that switches the mounted PhoneLink workspace from one synthetic owner to another and asserts the prior owner's inbox event is no longer rendered.
+- No native Android, backend, provider, credential, database, deployment, or production changes. Physical-device validation remains separate.
+
+## 2026-11-28 — Operator Console account-switch isolation
+
+- Clear task history, selection, offline outbox snapshot, refresh metadata, and transient messages when the authenticated app `userId` changes.
+- Invalidate in-flight task-history and outbox reads and reset the current outbox owner/sync snapshot so prior-account data is not displayed while the next account loads.
+- Added a regression test that holds the next account's task-history request open and verifies the previous account's task objective disappears immediately before the new response resolves.
+- No backend, database, credential, provider, deployment, or production changes.
+
+
+## 2026-11-28 — Operations Center account-switch isolation
+
+- Clear prior-account task history, administrator approval actions, objective draft, confirmation/acting state, errors, and notices immediately when the authenticated app identity or admin UI scope changes.
+- Invalidate outstanding task and approval reads and guard task-submission/approval mutation completions with an account-generation token so late responses from the previous identity cannot update the newly mounted account's UI.
+- Added a deferred-response regression test proving previous task and approval content disappears while the next account's task and approval requests are still loading, then only the new account's results appear.
+- Frontend-only isolation and stale-response safety. Backend authorization remains authoritative; no credentials, database, provider, deployment, or production state changed. Test execution and exact-head CI/security evidence remain pending.

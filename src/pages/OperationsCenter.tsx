@@ -92,6 +92,27 @@ export default function OperationsCenter({ userId, isAdmin = false }: { userId: 
   const [notice, setNotice] = useState('');
   const taskRequestId = useRef(0);
   const actionRequestId = useRef(0);
+  const accountGeneration = useRef(0);
+
+  /* eslint-disable react-hooks/set-state-in-effect -- account changes must synchronously clear prior-identity UI before the next account's data is rendered */
+  useEffect(() => {
+    // Clear account-bound content immediately and invalidate every request or mutation from the prior identity.
+    accountGeneration.current += 1;
+    taskRequestId.current += 1;
+    actionRequestId.current += 1;
+    setTasks([]);
+    setActions([]);
+    setObjective('');
+    setLoadingTasks(Boolean(userId));
+    setLoadingActions(Boolean(userId && isAdmin));
+    setSubmitting(false);
+    setActingId(null);
+    setConfirmApproveId(null);
+    setTaskError('');
+    setApprovalError('');
+    setNotice('');
+  }, [userId, isAdmin]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const refreshTasks = useCallback(async () => {
     const requestId = ++taskRequestId.current;
@@ -143,6 +164,7 @@ export default function OperationsCenter({ userId, isAdmin = false }: { userId: 
     event.preventDefault();
     const trimmed = objective.trim();
     if (!trimmed || submitting) return;
+    const generation = accountGeneration.current;
 
     setSubmitting(true);
     setTaskError('');
@@ -154,19 +176,21 @@ export default function OperationsCenter({ userId, isAdmin = false }: { userId: 
         body: JSON.stringify({ objective: trimmed }),
       });
       const payload = await readPayload<{ taskId?: string; status?: string }>(response, 'The task could not be queued.');
+      if (generation !== accountGeneration.current) return;
       setObjective('');
       setNotice(payload.taskId
         ? `Task ${payload.taskId} was saved to the durable queue with status ${payload.status || 'queued'}.`
         : 'The task was accepted by the durable queue.');
       await refreshTasks();
     } catch (error) {
-      setTaskError(error instanceof Error ? error.message : 'The task could not be queued.');
+      if (generation === accountGeneration.current) setTaskError(error instanceof Error ? error.message : 'The task could not be queued.');
     } finally {
-      setSubmitting(false);
+      if (generation === accountGeneration.current) setSubmitting(false);
     }
   }
 
   async function decideAction(id: string, decision: 'approve' | 'reject') {
+    const generation = accountGeneration.current;
     setActingId(id);
     setApprovalError('');
     setNotice('');
@@ -175,15 +199,16 @@ export default function OperationsCenter({ userId, isAdmin = false }: { userId: 
         method: 'POST',
       });
       const payload = await readPayload<{ status?: string }>(response, 'The approval decision could not be recorded.');
+      if (generation !== accountGeneration.current) return;
       setConfirmApproveId(null);
       setNotice(decision === 'approve'
         ? `Approval recorded. Action status: ${payload.status || 'submitted'}.`
         : `Action rejected. Status: ${payload.status || 'rejected'}.`);
       await refreshActions();
     } catch (error) {
-      setApprovalError(error instanceof Error ? error.message : 'The approval decision could not be recorded.');
+      if (generation === accountGeneration.current) setApprovalError(error instanceof Error ? error.message : 'The approval decision could not be recorded.');
     } finally {
-      setActingId(null);
+      if (generation === accountGeneration.current) setActingId(null);
     }
   }
 
