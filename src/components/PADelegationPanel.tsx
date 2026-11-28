@@ -114,10 +114,10 @@ export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilo
       );
       createRequestRef.current = null;
       setObjective('');
-      setNotice(created.status === 'approved' ? 'Gen-X functional approval recorded. PA is queued; its internal Comms task will receive the result. Any Push Deploy still waits for exact-SHA CI/security checks.' : 'Alex received the handoff. This scope is waiting for a functional policy decision before execution.');
+      setNotice(created.status === 'approved' ? 'Gen-X functional approval recorded. PA is queued; its internal Comms task will receive the result. Any Push Deploy still waits for exact-SHA CI/security checks.' : 'Darkside Copilot received the handoff. This scope is waiting for a functional policy decision before execution.');
       await refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Alex could not accept this handoff.');
+      setError(cause instanceof Error ? cause.message : 'Darkside Copilot could not accept this handoff.');
     } finally {
       setBusy(null);
     }
@@ -150,11 +150,11 @@ export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilo
         <div className="flex items-center gap-2">
           <span className="grid h-9 w-9 place-items-center rounded-xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-200"><ArrowRightLeft className="h-4 w-4" /></span>
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-300">Ryan ↔ Alex</p>
-            <h2 id={`pa-handoff-${mode}-title`} className="text-base font-semibold text-white">{mode === 'shared' ? 'Shared PA & Copilot delegation desk' : canCreate ? 'Hand work to Alex' : 'Alex delegation desk'}</h2>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-300">Ryan ↔ Darkside Copilot</p>
+            <h2 id={`pa-handoff-${mode}-title`} className="text-base font-semibold text-white">{mode === 'shared' ? 'Shared PA & Copilot delegation desk' : canCreate ? 'Hand work to Alex' : 'Darkside Copilot delegation desk'}</h2>
           </div>
         </div>
-        <button type="button" onClick={() => void refresh()} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white" aria-label="Refresh Alex handoffs"><RefreshCw className="h-4 w-4" /></button>
+        <button type="button" onClick={() => void refresh()} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300" aria-label="Refresh Darkside Copilot handoffs" aria-busy={loading}><RefreshCw className="h-4 w-4" /></button>
       </div>
       <p className="mt-3 text-xs leading-5 text-slate-400">
         {canCreate
@@ -165,7 +165,7 @@ export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilo
       {canCreate && (
         <div className="mt-4 space-y-3 rounded-xl border border-white/10 bg-black/20 p-3">
           <label className="block text-xs font-medium text-slate-300" htmlFor="alex-handoff-objective">What should Alex coordinate?</label>
-          <textarea id="alex-handoff-objective" value={objective} onChange={event => setObjective(event.target.value)} rows={3} maxLength={12000} placeholder="Example: Inspect the RyanAI API health, compare the current engineering blockers, and prepare a reviewable recommendation." className="w-full resize-y rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/40" />
+          <textarea id="alex-handoff-objective" value={objective} onChange={event => setObjective(event.target.value)} rows={3} maxLength={12000} placeholder="Example: Inspect the RyanAI API health, compare the current engineering blockers, and prepare a reviewable recommendation." className="w-full resize-y rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/40 focus-visible:ring-2 focus-visible:ring-cyan-300" />
           <div className="grid gap-2 sm:grid-cols-2">
             {CAPABILITIES.map(item => (
               <label key={item.id} className="flex items-center gap-2 text-[11px] text-slate-300">
@@ -177,7 +177,7 @@ export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilo
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-[10px] text-slate-500">Internal Comms tasks are durable, owner-scoped work items. Creating one does not start a conversation or send WhatsApp, SMS, voice, or email.</p>
             <p className="text-[10px] text-slate-500">Internal Comms tasks are durable and owner-scoped. To deploy, include the exact phrase PUSH DEPLOY in the objective; the three providers start only after every required exact-SHA CI/security check passes. No outbound messages are sent.</p>
-            <button type="button" onClick={() => void submit()} disabled={busy !== null || objective.trim().length < 5 || capabilities.length === 0} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-xs font-semibold text-cyan-100 hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-40">
+            <button type="button" onClick={() => void submit()} disabled={busy !== null || objective.trim().length < 5 || capabilities.length === 0} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-xs font-semibold text-cyan-100 hover:bg-cyan-300/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300 disabled:cursor-not-allowed disabled:opacity-40" aria-busy={busy === "create"}>
               {busy === 'create' ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Send to Alex
             </button>
           </div>
@@ -189,7 +189,7 @@ export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilo
 
       <div className="mt-4 space-y-3">
         {loading ? <p className="text-xs text-slate-500">Loading delegation history…</p> :
-          delegations.length === 0 ? <p className="rounded-xl border border-dashed border-white/10 p-4 text-xs text-slate-500">No Ryan ↔ Alex handoffs yet.</p> :
+          delegations.length === 0 ? <p className="rounded-xl border border-dashed border-white/10 p-4 text-xs text-slate-500">No Ryan ↔ Darkside Copilot handoffs yet.</p> :
           delegations.map(delegation => {
             const synthesis = resultText(delegation);
             const status = displayStatus(delegation);
@@ -215,8 +215,8 @@ export default function PADelegationPanel({ mode = 'copilot' }: { mode?: 'copilo
                 )}
                 {pending && canApprove && (
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <button type="button" onClick={() => void decide(delegation.id, 'approve')} disabled={busy !== null} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300/20 bg-emerald-300/5 px-3 py-2 text-xs font-semibold text-emerald-100 disabled:opacity-40"><ShieldCheck className="h-3.5 w-3.5" /> Approve & queue</button>
-                    <button type="button" onClick={() => void decide(delegation.id, 'reject')} disabled={busy !== null} className="inline-flex items-center gap-1.5 rounded-lg border border-rose-300/20 bg-rose-300/5 px-3 py-2 text-xs font-semibold text-rose-100 disabled:opacity-40"><XCircle className="h-3.5 w-3.5" /> Reject</button>
+                    <button type="button" onClick={() => void decide(delegation.id, 'approve')} disabled={busy !== null} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300/20 bg-emerald-300/5 px-3 py-2 text-xs font-semibold text-emerald-100 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"><ShieldCheck className="h-3.5 w-3.5" /> Approve & queue</button>
+                    <button type="button" onClick={() => void decide(delegation.id, 'reject')} disabled={busy !== null} className="inline-flex items-center gap-1.5 rounded-lg border border-rose-300/20 bg-rose-300/5 px-3 py-2 text-xs font-semibold text-rose-100 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-rose-300"><XCircle className="h-3.5 w-3.5" /> Reject</button>
                   </div>
                 )}
                 {synthesis && <div className="mt-3 rounded-lg border border-emerald-300/10 bg-emerald-300/[0.04] p-3"><p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-200"><CheckCircle2 className="h-3.5 w-3.5" /> Workforce response · {((delegation.agentRun?.result as { verification?: { verified?: boolean } } | null)?.verification?.verified === true) ? 'three-brain complete' : 'verification not complete'}</p><p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-slate-300">{synthesis}</p></div>}
