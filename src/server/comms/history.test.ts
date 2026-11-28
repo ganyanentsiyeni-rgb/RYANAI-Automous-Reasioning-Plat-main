@@ -6,6 +6,7 @@ function prismaMock(create: ReturnType<typeof vi.fn>, findUnique = vi.fn()) {
   return {
     communicationConversation: {
       upsert: vi.fn().mockResolvedValue({ id: 'conversation-1' }),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     communicationMessage: { create, findUnique, updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
   } as unknown as PrismaClient;
@@ -71,7 +72,10 @@ describe('claimInboundCommunication', () => {
     });
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });
     const prisma = {
-      communicationConversation: { upsert: vi.fn().mockResolvedValue({ id: 'conversation-1' }) },
+      communicationConversation: {
+        upsert: vi.fn().mockResolvedValue({ id: 'conversation-1' }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
       communicationMessage: { create, findUnique, updateMany },
     } as unknown as PrismaClient;
 
