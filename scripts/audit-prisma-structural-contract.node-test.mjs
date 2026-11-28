@@ -23,8 +23,8 @@ test('reports wrong defaults, timestamp precision and foreign-key update actions
     constraints: [{ conname: 'coding_tasks_user_id_fkey', table_name: 'coding_tasks', definition: 'FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE' }],
   });
   const approval = result.findings.find((item) => item.object === 'column public.agent_runs.approval_status');
-  assert.equal(approval.status, 'structurally_wrong');
-  assert.equal(approval.expected.default, "'approved'");
+  assert.equal(approval.status, 'matching');
+  assert.equal(approval.expected.default, "'pending'");
   assert.match(approval.actual.default, /pending/);
   const lease = result.findings.find((item) => item.object === 'column public.agent_runs.lease_expires_at');
   assert.equal(lease.status, 'structurally_wrong');
@@ -101,4 +101,20 @@ test('rejects unique AgentRun indexes where Prisma declares a non-unique index',
   });
   const index = result.findings.find((item) => item.object === 'index public.agent_runs.agent_runs_user_id_created_at_idx');
   assert.equal(index.status, 'structurally_wrong');
+});
+
+
+test('requires the fail-closed pending default for newly created AgentRuns', () => {
+  const result = assessStructuralContract({
+    columns: [{
+      table_name: 'agent_runs',
+      column_name: 'approval_status',
+      formatted_type: 'text',
+      is_nullable: false,
+      column_default: "'approved'::text",
+    }],
+  });
+  const approval = result.findings.find((item) => item.object === 'column public.agent_runs.approval_status');
+  assert.equal(approval.status, 'structurally_wrong');
+  assert.equal(approval.expected.default, "'pending'");
 });
