@@ -259,3 +259,8 @@ The user-facing collaboration identity is presented as **PA Agent** across Profi
 ## Command Center mobile drawer interaction boundary (2026-11-28)
 
 The mobile conversation-history and live-telemetry drawers are mutually exclusive app-owned modal surfaces. Their triggers expose `aria-controls` and `aria-expanded`; opening a drawer closes the other. Keyboard Tab navigation wraps in both directions, a focus-in guard prevents focus escaping the active modal, Escape closes the drawer, and dismissal restores focus to the invoking trigger. The shared `src/lib/dialogFocus.ts` helper is covered by unit tests. These are frontend accessibility behaviors and do not change conversation, telemetry, or authorization contracts.
+
+
+## Operations Center approval freshness (2026-11-28)
+
+Administrator approval actions are executable side effects and must be based on a successfully refreshed queue. When an approval refresh is in progress or fails, the UI hides previously loaded actions and does not offer review, approve, or reject controls against stale queue data. The UI explains that the prior queue is hidden until it can be verified. This is a presentation safety guard, not an authorization boundary; backend administrator checks remain authoritative.
