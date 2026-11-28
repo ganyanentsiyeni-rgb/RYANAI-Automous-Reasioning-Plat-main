@@ -35,6 +35,7 @@ export async function replayOfflineTaskBatch(
       .filter((item) => item.accepted === true && taskIds.has(item.taskId))
       .map((item) => item.taskId))];
     const accepted = new Set(acceptedIds);
+    const resultById = new Map(reply.results.map((item) => [item.taskId, item]));
     const rejectedIds = batch.filter((task) => !accepted.has(task.taskId)).map((task) => task.taskId);
     await removeAcceptedOfflineTasks(ownerId, acceptedIds);
     for (const task of batch) {
@@ -43,13 +44,14 @@ export async function replayOfflineTaskBatch(
           ownerId,
           task.taskId,
           reply.error || 'Server did not confirm acceptance. This task remains saved locally for safe retry.',
+          resultById.has(task.taskId) ? 'rejected' : 'uncertain',
         );
       }
     }
     return { acceptedIds, rejectedIds, error: rejectedIds.length ? reply.error || 'Some tasks remain pending server acceptance.' : null };
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : 'Network or authentication failure during sync.';
-    for (const task of batch) await recordOfflineTaskFailure(ownerId, task.taskId, message);
+    for (const task of batch) await recordOfflineTaskFailure(ownerId, task.taskId, message, 'uncertain');
     return { acceptedIds: [], rejectedIds: batch.map((task) => task.taskId), error: message };
   }
 }

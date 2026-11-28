@@ -5,6 +5,7 @@ export interface OfflineTaskRecord {
   createdAt: string;
   attempts: number;
   lastError: string | null;
+  deliveryState?: 'queued' | 'rejected' | 'uncertain';
 }
 
 export const OFFLINE_TASK_OUTBOX_DB = 'ryanai-offline-task-outbox';
@@ -124,6 +125,7 @@ export async function recordOfflineTaskFailure(
   ownerId: string,
   taskId: string,
   message: string,
+  deliveryState: 'queued' | 'rejected' | 'uncertain' = 'rejected',
 ): Promise<void> {
   const db = await openOutbox();
   const transaction = db.transaction(STORE_NAME, 'readwrite');
@@ -131,7 +133,7 @@ export async function recordOfflineTaskFailure(
   const store = transaction.objectStore(STORE_NAME);
   const record = await requestValue(store.get(taskId)) as OfflineTaskRecord | undefined;
   if (record?.ownerId === ownerId) {
-    store.put({ ...record, attempts: record.attempts + 1, lastError: message.slice(0, 500) });
+    store.put({ ...record, attempts: record.attempts + 1, lastError: message.slice(0, 500), deliveryState });
   }
   await closeAfter(db, done);
 }

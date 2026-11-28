@@ -664,3 +664,9 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Added a visible, accessible inbox-specific error with a retry action and a truthful unavailable-state message; a successful refresh clears the inbox error.
 - Changed periodic refreshes to avoid re-entering the initial device-loading state after the first load, preventing the device list from flashing its loading placeholder every 15 seconds.
 - Added a regression test proving the last known inbox events remain visible after a subsequent inbox failure. Test execution and exact-head CI/security checks remain pending.
+
+
+### Operator Console replay outcome truthfulness (2026-11-28)
+- Offline outbox entries retain an explicit delivery state: queued, rejected, or uncertain. Transport failures and malformed/missing per-task acknowledgements are uncertain because the server may have committed the stable task ID before the response was lost; explicit per-task negative acknowledgements are rejected.
+- Retries always reuse the original task ID. The API's AgentRun primary key plus owner/objective match is the idempotency boundary; an existing same-owner/same-objective run is returned rather than creating a second execution, while mismatched owner or objective reuse is rejected.
+- Local records are removed only after an explicit positive acknowledgement for that exact task ID. Uncertain and rejected records remain retryable and are presented distinctly; worker execution state remains separate in task history.
