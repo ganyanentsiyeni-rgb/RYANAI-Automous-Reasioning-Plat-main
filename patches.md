@@ -967,3 +967,10 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - A globally duplicated provider event ID is accepted as a replay only when the existing message has the same owner, channel, and body. Reuse across owners, channels, or changed content is rejected.
 - Added regression coverage for owner-transfer prevention, cross-owner provider-ID collision, and changed-content collision.
 - Validation status: tests authored but not executed; exact-head CI/security verification pending. No inbound provider request, outbound reply, AgentRun mutation, migration, credential, deployment, or production state changed.
+
+## 2026-11-28 — Inbound SMS and WhatsApp reply idempotency
+
+- Bound generated WhatsApp and SMS reply-history rows to deterministic synthetic provider IDs derived from the inbound provider event ID. A webhook retry that resumes an already-completed AgentRun now upserts the same outbound history record instead of creating a second logical reply row.
+- Kept provider delivery separate: these identifiers are internal history idempotency keys and do not trigger a second provider send or claim provider acceptance.
+- Added route regression assertions for stable WhatsApp and SMS reply IDs on the completed/replay paths.
+- Validation status: tests authored but not executed. Exact-head CI/security checks remain unpassed; no provider dispatch, merge, deployment, migration, credential, or production changes were made.
