@@ -166,7 +166,8 @@ describe('RyanAI Comms inbox controls', () => {
         { ...base.messages[0], id: 'delivered-message', direction: 'outbound', status: 'delivered', body: 'Receipt confirmed.' },
       ],
     }]);
-    await render();
+    await act(async () => root.render(<CommunicationsCenter userId="synthetic-user-a" />));
+    await act(async () => vi.waitFor(() => expect(container.textContent).toContain('+27110000001')));
     expect(container.textContent).toContain('Accepted by provider · delivery unconfirmed');
     expect(container.textContent).toContain('Uncertain · reconcile before retrying');
     expect(container.textContent).toContain('Delivered · provider receipt confirmed');
