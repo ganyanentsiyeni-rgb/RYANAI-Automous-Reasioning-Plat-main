@@ -66,14 +66,14 @@ test('checks identity bridge, migration chronology and bootstrap parity', () => 
   const queueCorrection = "SET queue_type = 'unclassified' WHERE queue_type = 'coding' AND approval_status = 'pending' AND plan_snapshot IS NULL AND proposed_diff_hash IS NULL;";
   const leaseHeartbeat = "ALTER TABLE public.agent_runs ADD COLUMN lease_expires_at TIMESTAMP(3), ADD COLUMN heartbeat_at TIMESTAMP(3); ALTER TABLE public.coding_tasks ADD COLUMN heartbeat_at TIMESTAMPTZ(6); UPDATE public.coding_tasks SET heartbeat_at = COALESCE(locked_at, NOW()) WHERE status = 'running' AND heartbeat_at IS NULL;";
   const approvalFailClosed = "ALTER TABLE public.agent_runs ALTER COLUMN approval_status SET DEFAULT 'pending'; UPDATE public.agent_runs SET approval_status = 'pending' WHERE status = 'queued' AND approval_status IS NULL;";
-  const embedded = (name, source) => `-- BEGIN PRISMA MIGRATION ${name}\\n${source}\\n-- END PRISMA MIGRATION ${name}`;
+  const embedded = (name, source) => `-- BEGIN PRISMA MIGRATION ${name}\n${source}\n-- END PRISMA MIGRATION ${name}`;
   const bootstrap = [
     embedded('20261030120000_agent_operations', agentOperations),
     embedded('20261104120000_isolated_coding_task_queue', codingQueue),
     embedded('20261102235000_engineering_evidence_workbench', approvalBase),
     embedded('20261108120000_correct_pending_reasoning_queue_classification', queueCorrection),
     embedded('20261121120000_agent_run_lease_heartbeat', leaseHeartbeat),
-  ].join('\\n') + "\\napproval_status TEXT NOT NULL DEFAULT 'approved'";
+  ].join('\n') + "\napproval_status TEXT NOT NULL DEFAULT 'approved'";
   const result = assessMigrationSourceContracts({
     authBridge: "SECURITY DEFINER; SET search_path = ''; COALESCE(NULLIF(NEW.email, ''), 'auth-user-' || NEW.id::text || '@no-email.invalid'); COALESCE(EXCLUDED.name, public.users.name); CREATE TRIGGER ryanai_auth_user_sync_insert AFTER INSERT ON auth.users; CREATE TRIGGER ryanai_auth_user_sync_update AFTER UPDATE OF email, raw_user_meta_data ON auth.users; CREATE TRIGGER ryanai_auth_user_sync_delete AFTER DELETE ON auth.users; REVOKE ALL PRIVILEGES ON TABLE public.users FROM PUBLIC, anon, authenticated; GRANT ALL PRIVILEGES ON TABLE public.users TO service_role; COALESCE(au.created_at, pg_catalog.now())::timestamp(3) COALESCE(au.updated_at, au.created_at, pg_catalog.now())::timestamp(3)",
     agentOperations, codingQueue, queueCorrection, leaseHeartbeat, approvalBase, bootstrap,
