@@ -254,3 +254,8 @@ The app-owned Agent UI approval prompt is a presentation-level confirmation only
 ## PA Agent identity presentation and compatibility (2026-11-28)
 
 The user-facing collaboration identity is presented as **PA Agent** across Profile Settings, Darkside Copilot, delegation controls, and neural identity components. Existing persisted preference key `showAlexStatus`, the internal neural identity lookup key `alex`, and backend handoff identifiers are retained as compatibility contracts; they must not leak into user-facing labels. This presentation-only naming alignment does not rename API fields, database values, authorization actors, or persisted records. Exact-head tests and CI/security evidence remain required before release.
+
+
+## Command Center mobile drawer interaction boundary (2026-11-28)
+
+The mobile conversation-history and live-telemetry drawers are mutually exclusive app-owned modal surfaces. Their triggers expose `aria-controls` and `aria-expanded`; opening a drawer closes the other. Keyboard Tab navigation wraps in both directions, a focus-in guard prevents focus escaping the active modal, Escape closes the drawer, and dismissal restores focus to the invoking trigger. The shared `src/lib/dialogFocus.ts` helper is covered by unit tests. These are frontend accessibility behaviors and do not change conversation, telemetry, or authorization contracts.
