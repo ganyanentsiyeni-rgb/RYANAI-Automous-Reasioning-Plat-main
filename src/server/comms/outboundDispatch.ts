@@ -256,6 +256,19 @@ export async function advanceOutboundCommsDispatchFromReceipt(
         ? 'failed'
         : 'accepted';
 
+  // Use a conditional write as the concurrency boundary. A read followed by
+  // an unconditional update lets an older callback overwrite a newer receipt.
+  // Delivered may supersede failed (a later authoritative delivery receipt),
+  // but no non-terminal event may overwrite delivered/failed/reconciled.
+  const allowedPriorStates = nextState === 'delivered'
+    ? ['reserved', 'dispatching', 'accepted', 'uncertain', 'failed']
+    : nextState === 'failed'
+      ? ['reserved', 'dispatching', 'accepted', 'uncertain']
+      : ['reserved', 'dispatching', 'accepted', 'uncertain'];
+
+  await prisma.outboundCommsDispatch.updateMany({
+    where: { id: input.dispatchId, state: { in: allowedPriorStates } },
+    data: { state: nextState, updatedAt: new Date() },
   // Apply receipt transitions atomically. A late accepted/failed callback must
   // not downgrade delivered/reconciled state; delivered evidence may supersede
   // a prior failed callback when provider events arrive out of order.

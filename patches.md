@@ -952,3 +952,12 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 
 - Follow-up test correction: the GitHub identity-refresh regression now clicks the GitHub card's own Refresh control, not the separate registry/connection refresh control. The latter does not invoke /api/github/status.
 - The Framer Motion test double strips animation-only props from the rendered DOM while preserving ordinary dialog props and refs.
+
+
+## 2026-11-28 — Comms receipt state transitions are concurrency-safe
+
+- Replaced the read-then-unconditional-write delivery-state update with a conditional database update keyed by the dispatch's permitted prior states.
+- Late accepted/failed callbacks can no longer overwrite a delivered or reconciled dispatch; an authoritative delivered receipt may still supersede a prior failed receipt.
+- Added regression coverage for late accepted receipts and delivered-after-failed ordering.
+- Append-only receipt records remain unchanged; this updates only the dispatch summary state. No provider calls, AgentRun state changes, database schema changes, migrations, credentials, production configuration, or deployments.
+- Exact-SHA CI and security verification are required; this change is not merged.
