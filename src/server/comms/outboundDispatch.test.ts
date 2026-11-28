@@ -3,6 +3,9 @@ import type { PrismaClient } from '@prisma/client';
 import {
   buildCommsProviderEventKey,
   claimOutboundCommsDispatch,
+  markOutboundCommsDispatchAccepted,
+  markOutboundCommsDispatchUncertain,
+  advanceOutboundCommsDispatchFromReceipt,
   reconcileOutboundCommsDispatch,
   reconcileStaleOutboundCommsDispatches,
   reserveOutboundCommsDispatch,
@@ -62,6 +65,38 @@ describe('outbound Comms dispatch', () => {
       where: expect.objectContaining({ id: 'dispatch-2', state: 'dispatching' }),
       data: expect.objectContaining({ state: 'uncertain' }),
     }));
+  });
+
+  it('does not let a late provider send response downgrade a terminal dispatch receipt', async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 0 });
+    const prisma = { outboundCommsDispatch: { updateMany } } as unknown as PrismaClient;
+    await markOutboundCommsDispatchAccepted(prisma, { dispatchId: 'dispatch-terminal', providerMessageId: 'SM' + 'a'.repeat(32) });
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'dispatch-terminal', state: { in: ['reserved', 'dispatching', 'uncertain', 'accepted'] } },
+      data: expect.objectContaining({ state: 'accepted' }),
+    }));
+  });
+
+  it('only marks a dispatch uncertain while it is still dispatching', async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 0 });
+    const prisma = { outboundCommsDispatch: { updateMany } } as unknown as PrismaClient;
+    await markOutboundCommsDispatchUncertain(prisma, 'dispatch-delivered', 'late provider error');
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'dispatch-delivered', state: 'dispatching' },
+      data: expect.objectContaining({ state: 'uncertain' }),
+    }));
+  });
+
+  it('uses atomic state predicates so out-of-order receipts cannot downgrade delivery', async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const findUnique = vi.fn();
+    const prisma = { outboundCommsDispatch: { updateMany, findUnique } } as unknown as PrismaClient;
+    await advanceOutboundCommsDispatchFromReceipt(prisma, { dispatchId: 'dispatch-4', deliveryState: 'delivered' });
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'dispatch-4', state: { in: ['reserved', 'dispatching', 'accepted', 'uncertain', 'failed', 'delivered'] } },
+      data: expect.objectContaining({ state: 'delivered' }),
+    }));
+    expect(findUnique).not.toHaveBeenCalled();
   });
 
   it('requires explicit operator reconciliation before an uncertain dispatch can become resolved', async () => {
