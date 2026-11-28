@@ -339,3 +339,7 @@ The read-only migration-readiness audit now checks all eight `agent_runs` indexe
 
 ### Migration-source integrity — FK, timestamps and approval chronology (2026-11-28)
 The read-only structural audit now checks migration-source FK actions for AgentRun, AgentHandoff and CodingTask, verifies CodingTask lifecycle timestamps remain `TIMESTAMPTZ(6)`, and verifies the historical `approved` default is explicitly superseded by the fail-closed `pending` migration. AgentRun and AgentHandoff base timestamps remain `TIMESTAMP(3)` without time zone. These checks validate source text; they do not prove the live database has applied the same migrations. Regression tests are added but remain unexecuted.
+
+
+### Bootstrap migration parity and approval chronology (2026-11-28)
+The read-only structural audit now compares five embedded Prisma migration blocks in `supabase/migrations/20261122000000_prisma_runtime_schema_bootstrap.sql` with their canonical Prisma migration files, requiring one exact copy of each. The bootstrap snapshot predates `20261122100000_fail_closed_agent_run_approval`; it correctly retains the earlier historical `approved` default and does not contain the later `pending` ALTER. The later fail-closed migration must still be applied for the current contract. This is a source-integrity and chronology check, not evidence of live database migration state. Regression coverage is added; tests remain unexecuted.
