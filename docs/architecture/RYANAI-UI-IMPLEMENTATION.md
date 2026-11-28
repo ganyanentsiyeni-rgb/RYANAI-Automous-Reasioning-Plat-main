@@ -66,3 +66,8 @@ This PR is documentation and frontend-only. It does not authorize production dep
 ## Agent UI approval dialog accessibility follow-up (2026-11-28)
 
 The app-owned Agent UI approval dialog now places initial focus on Decline, contains keyboard Tab navigation, maps Escape to decline, restores focus to the invoking control after dismissal, and programmatically associates the approval summary with the dialog. These are interaction and accessibility safeguards only: the server remains authoritative for authorization, and approving the UI prompt does not grant server permissions. Regression tests cover initial focus, Escape dismissal, and focus restoration. Exact-head CI and security validation are still required before release.
+
+
+## Command Center mobile drawer accessibility follow-up (2026-11-28)
+
+The conversation-history and live-telemetry drawers now use mutually exclusive modal state, explicit trigger-to-dialog `aria-controls` relationships, shared keyboard Tab wrapping, a focus-in containment guard, Escape dismissal, and trigger focus restoration. `src/lib/dialogFocus.test.ts` covers forward/backward wrapping and focus that escapes the dialog. Exact-head tests and CI/security evidence remain required before release; this patch does not change backend or provider integrations.

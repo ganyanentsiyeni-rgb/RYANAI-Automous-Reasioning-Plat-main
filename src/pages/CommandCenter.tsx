@@ -23,6 +23,7 @@ import { supabase } from '@/lib/supabase';
 import { removeConversationAttachments, safeAttachmentName, signConversationAttachment } from '@/lib/attachments';
 import type { AttachmentUploadOptions } from '@/lib/attachments';
 import { createTarArchive } from '@/lib/conversationArchive';
+import { trapDialogTabKey } from '@/lib/dialogFocus';
 import Sidebar from '@/components/Sidebar';
 import ChatPanel from '@/components/ChatPanel';
 import TelemetryPanel from '@/components/TelemetryPanel';
@@ -117,35 +118,21 @@ export default function CommandCenter({
         setRightOpen(false);
         return;
       }
-      if (event.key !== 'Tab' || !dialog) return;
-
-      const focusable = Array.from(
-        dialog.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ),
-      ).filter((element) => element.getAttribute('aria-hidden') !== 'true');
-
-      if (focusable.length === 0) {
-        event.preventDefault();
-        dialog.focus();
-        return;
-      }
-
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      const active = document.activeElement;
-      if (event.shiftKey && (active === first || active === dialog)) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && (active === last || active === dialog)) {
-        event.preventDefault();
-        first.focus();
+      if (event.key === 'Tab' && dialog) {
+        trapDialogTabKey(event, dialog);
       }
     };
 
+    const handleFocusIn = (event: FocusEvent) => {
+      if (!dialog || !(event.target instanceof Node) || dialog.contains(event.target)) return;
+      closeButton?.focus();
+    };
+
     window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('focusin', handleFocusIn);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('focusin', handleFocusIn);
       if (previouslyFocused?.isConnected) previouslyFocused.focus();
     };
   }, [leftOpen, rightOpen]);
@@ -806,8 +793,9 @@ export default function CommandCenter({
         <div className="flex items-center gap-2 px-3 py-2.5 border-b border-cyan-500/15 glass">
           <button
             type="button"
-            onClick={(event) => { leftDrawerTriggerRef.current = event.currentTarget; setLeftOpen(true); }}
+            onClick={(event) => { leftDrawerTriggerRef.current = event.currentTarget; setRightOpen(false); setLeftOpen(true); }}
             aria-label="Open conversation history"
+            aria-controls="command-center-conversation-drawer"
             aria-expanded={leftOpen}
             className="rounded-lg p-1.5 text-ink-400 transition-colors hover:bg-cyan-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300"
           >
@@ -840,8 +828,9 @@ export default function CommandCenter({
           </div>
           <button
             type="button"
-            onClick={(event) => { rightDrawerTriggerRef.current = event.currentTarget; setRightOpen(true); }}
+            onClick={(event) => { rightDrawerTriggerRef.current = event.currentTarget; setLeftOpen(false); setRightOpen(true); }}
             aria-label="Open live telemetry"
+            aria-controls="command-center-telemetry-drawer"
             aria-expanded={rightOpen}
             className="rounded-lg p-1.5 text-ink-400 transition-colors hover:bg-cyan-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300"
           >
@@ -867,6 +856,7 @@ export default function CommandCenter({
             <div className="absolute inset-0 bg-ink-950/80 backdrop-blur-sm" />
             <motion.div
               ref={leftDrawerRef}
+              id="command-center-conversation-drawer"
               role="dialog"
               aria-modal="true"
               aria-label="Conversation history"
@@ -901,6 +891,7 @@ export default function CommandCenter({
             <div className="absolute inset-0 bg-ink-950/80 backdrop-blur-sm" />
             <motion.div
               ref={rightDrawerRef}
+              id="command-center-telemetry-drawer"
               role="dialog"
               aria-modal="true"
               aria-label="Live telemetry"
