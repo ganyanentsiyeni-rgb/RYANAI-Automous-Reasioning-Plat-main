@@ -100,9 +100,7 @@ test('detects schema and vector-memory drift, including runtime columns and inde
 });
 
 test('accepts a complete schema and vector-memory installation', () => {
-  const columns = ['queue_type', 'execution_scope', 'approval_status', 'plan_snapshot', 'plan_hash', 'base_commit_sha',
-    'proposed_diff_hash', 'approved_plan_hash', 'approved_commit_sha', 'approved_diff_hash',
-    'approved_by', 'approved_at', 'steering_notes', 'cancel_requested_at', 'requested_model'];
+  const columns = ["id","user_id","objective","requested_model","trace_context","execution_scope","approval_status","plan_snapshot","plan_hash","base_commit_sha","proposed_diff_hash","approved_plan_hash","approved_commit_sha","approved_diff_hash","approved_by","approved_at","steering_notes","cancel_requested_at","status","result","error","attempts","max_attempts","worker_id","locked_at","lease_expires_at","heartbeat_at","next_attempt_at","created_at","updated_at","completed_at","queue_type"];
   const result = assessSchema({
     columns: new Set(columns),
     tables: new Set(['agent_runs', 'agent_handoffs', 'agent_brain_health', 'agent_run_evidence', 'jarvis_audit_events', 'coding_tasks', 'reasoning_cache', 'agent_memory', 'profiles', 'conversations', 'messages', 'memory_entries', 'rooms', 'room_members', 'room_messages']),
