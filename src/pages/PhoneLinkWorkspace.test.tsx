@@ -141,4 +141,22 @@ describe('PhoneLink account-scoped requests', () => {
     ));
     expect(container.textContent).toContain('PAIR-TEST-123');
   });
+  it('clears the previous account device and inbox snapshot before loading a new account', async () => {
+    apiFetch.mockImplementation(async (input, _init, ownerId) => {
+      const path = String(input);
+      if (path === '/api/phonelink/devices') return response({ devices: [{ id: ownerId === 'phone-owner-a' ? 'device-a' : 'device-b', deviceName: ownerId === 'phone-owner-a' ? 'Owner A phone' : 'Owner B phone', status: 'active', platform: 'android', capabilities: [] }] });
+      if (path === '/api/phonelink/capabilities') return response({ capabilities: [] });
+      if (path === '/api/phonelink/events') return response({ events: [{ id: ownerId === 'phone-owner-a' ? 'event-a' : 'event-b', deviceId: ownerId === 'phone-owner-a' ? 'device-a' : 'device-b', eventType: 'comms', title: ownerId === 'phone-owner-a' ? 'Owner A private update' : 'Owner B update', body: 'Account-scoped event', createdAt: '2026-11-28T03:00:00.000Z' }] });
+      throw new Error('Unexpected PhoneLink request: ' + path);
+    });
+
+    await mount('phone-owner-a');
+    await vi.waitFor(() => expect(container.textContent).toContain('Owner A private update'));
+
+    await act(async () => root.render(<PhoneLinkWorkspace userId="phone-owner-b" settings={DEFAULT_PHONELINK_SETTINGS} />));
+    await vi.waitFor(() => expect(container.textContent).toContain('Owner B update'));
+    expect(container.textContent).not.toContain('Owner A private update');
+    expect(apiFetch).toHaveBeenCalledWith('/api/phonelink/events', undefined, 'phone-owner-b');
+  });
+
 });

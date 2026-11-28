@@ -169,7 +169,14 @@ function PluginIntegrationsSettingsContent({
       if (!response.ok || typeof payload.status !== 'string') throw new Error('GitHub status is unavailable.');
       if (requestId === githubRequestId.current) setGithubStatus(payload);
     } catch {
-      if (requestId === githubRequestId.current) setGithubStatus({ status: 'unverified', connected: false });
+      if (requestId === githubRequestId.current) {
+        setGithubStatus((current) => ({
+          status: 'unverified',
+          connected: current.connected,
+          account: current.account,
+          repository: current.repository,
+        }));
+      }
     }
   }, [userId]);
 
