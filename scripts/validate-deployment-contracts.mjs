@@ -6,6 +6,12 @@ const read = (path) => readFileSync(new URL('../' + path, import.meta.url), 'utf
 const render = read('render.yaml');
 const renderConfig = parseYaml(render);
 const stagingConfig = parseYaml(read('render.staging.yaml'));
+const u2ebStandaloneConfig = parseYaml(read('render.u2eb.yaml'));
+const u2ebStandaloneProjects = Array.isArray(u2ebStandaloneConfig.projects) ? u2ebStandaloneConfig.projects : [];
+const u2ebStandaloneEnvironments = u2ebStandaloneProjects.flatMap((project) => project.environments ?? []);
+const u2ebStandaloneEnvironment = u2ebStandaloneEnvironments.find((environment) => environment.name === 'U2EB');
+const u2ebStandaloneServices = u2ebStandaloneEnvironment?.services ?? [];
+const u2ebStandaloneNames = u2ebStandaloneServices.map((service) => service.name);
 const stagingProjects = Array.isArray(stagingConfig.projects) ? stagingConfig.projects : [];
 const stagingServices = stagingProjects.flatMap((project) => (project.environments ?? []).flatMap((environment) => environment.services ?? []));
 const stagingApi = stagingServices.find((service) => service.name === 'ryanai-api-staging');
@@ -301,6 +307,11 @@ checks.push(
   ['U2EB Redis retains its existing name and Oregon region without changing database plan or credentials', u2ebRedis?.type === 'keyvalue' && u2ebRedis?.region === 'oregon' && Array.isArray(u2ebRedis?.ipAllowList) && u2ebRedis.ipAllowList.length === 0 && !u2ebDatabase],
   ['U2EB resource names do not overlap Production or the isolated staging Blueprint', !u2ebServices.some((service) => productionServiceNames.includes(service.name) || stagingServiceNames.includes(service.name)) && !stagingServiceNames.includes('ryanai-redis-u2eb')],
   ['Production and staging Blueprint resource names do not overlap', !productionServiceNames.some((name) => stagingServiceNames.includes(name))],
+  ['Standalone U2EB Blueprint is a protected U2EB-only environment', u2ebStandaloneProjects.length === 1 && u2ebStandaloneEnvironments.length === 1 && u2ebStandaloneEnvironment?.permissions?.protection === 'enabled'],
+  ['Standalone U2EB Blueprint declares exactly API, web, MCP, and Redis with unique names', u2ebStandaloneServices.length === 4 && new Set(u2ebStandaloneNames).size === 4 && ['ryanai-api-u2eb', 'ryanai-web-u2eb', 'ryanai-mcp-u2eb-u2eb-u2eb', 'ryanai-redis-u2eb'].every((name) => u2ebStandaloneNames.includes(name))],
+  ['Standalone U2EB API and web use manual deployment; MCP is also manual', u2ebStandaloneServices.filter((service) => ['ryanai-api-u2eb', 'ryanai-web-u2eb', 'ryanai-mcp-u2eb-u2eb-u2eb'].includes(service.name)).every((service) => service.autoDeployTrigger === 'off')],
+  ['Standalone U2EB API uses Dockerfile.api and liveness health endpoint without startup migrations', u2ebStandaloneServices.find((service) => service.name === 'ryanai-api-u2eb')?.runtime === 'docker' && u2ebStandaloneServices.find((service) => service.name === 'ryanai-api-u2eb')?.dockerfilePath === './Dockerfile.api' && u2ebStandaloneServices.find((service) => service.name === 'ryanai-api-u2eb')?.healthCheckPath === '/health' && !u2ebStandaloneServices.find((service) => service.name === 'ryanai-api-u2eb')?.preDeployCommand],
+  ['Standalone U2EB MCP hostname, API observer, and allowlist agree', (() => { const api = u2ebStandaloneServices.find((service) => service.name === 'ryanai-api-u2eb'); const mcp = u2ebStandaloneServices.find((service) => service.name === 'ryanai-mcp-u2eb-u2eb-u2eb'); const value = (service, key) => service?.envVars?.find((item) => item.key === key)?.value; const host = 'ryanai-mcp-u2eb-u2eb-u2eb.onrender.com'; return mcp?.healthCheckPath === '/health' && value(api, 'RYANAI_MCP_HEALTH_URL') === `https://${host}/health` && value(mcp, 'MCP_ALLOWED_HOSTS') === host; } )()],
 );
 
 checks.push(
