@@ -96,6 +96,9 @@ describe('Twilio delivery status callback', () => {
       expect(approvalUpdate).toContain('public.comms_delivery_receipts');
       expect(approvalUpdate).toContain('ORDER BY occurred_at DESC, created_at DESC');
       expect(approvalUpdate).toContain("status IN ('dispatching', 'accepted', 'unknown', 'failed')");
+      expect(approvalUpdate).toContain('FROM public.outbound_comms_dispatch');
+      expect(approvalUpdate).toContain(") = 'delivered' THEN 'accepted'");
+      expect(approvalUpdate).toContain(") = 'failed' THEN 'failed'");
       expect(prisma.outboundCommsDispatch.updateMany).toHaveBeenCalledWith(expect.objectContaining({
         where: { id: 'dispatch-1', state: { in: expect.arrayContaining(['accepted']) } },
         data: expect.objectContaining({ state: 'delivered' }),
