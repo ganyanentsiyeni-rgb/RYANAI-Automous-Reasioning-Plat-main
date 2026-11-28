@@ -90,3 +90,15 @@ test('classifies absent and partial service-role grants distinctly', () => {
   const partialGrant = partial.findings.find((item) => item.object === 'grant public.users to service_role');
   assert.equal(partialGrant.status, 'structurally_wrong');
 });
+
+
+test('rejects unique AgentRun indexes where Prisma declares a non-unique index', () => {
+  const result = assessStructuralContract({
+    indexes: [{
+      indexname: 'agent_runs_user_id_created_at_idx',
+      indexdef: 'CREATE UNIQUE INDEX agent_runs_user_id_created_at_idx ON public.agent_runs USING btree (user_id, created_at)',
+    }],
+  });
+  const index = result.findings.find((item) => item.object === 'index public.agent_runs.agent_runs_user_id_created_at_idx');
+  assert.equal(index.status, 'structurally_wrong');
+});

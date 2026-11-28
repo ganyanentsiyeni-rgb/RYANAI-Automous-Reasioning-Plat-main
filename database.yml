@@ -88,6 +88,21 @@ agent_runs:
     - id
     - user_id
     - objective
+    - requested_model
+    - trace_context
+    - execution_scope
+    - approval_status
+    - plan_snapshot
+    - plan_hash
+    - base_commit_sha
+    - proposed_diff_hash
+    - approved_plan_hash
+    - approved_commit_sha
+    - approved_diff_hash
+    - approved_by
+    - approved_at
+    - steering_notes
+    - cancel_requested_at
     - status
     - result
     - error
@@ -98,11 +113,10 @@ agent_runs:
     - lease_expires_at
     - heartbeat_at
     - next_attempt_at
-    - approval_status
-    - queue_type
     - created_at
     - updated_at
     - completed_at
+    - queue_type
 
 runtime:
   database:

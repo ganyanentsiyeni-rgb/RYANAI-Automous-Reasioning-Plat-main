@@ -1031,8 +1031,13 @@ async function start() {
             if (!dbPool) throw new Error('PostgreSQL pool is unavailable');
             await dbPool.query('SELECT 1');
             const schema = await inspectDatabaseSchema((sql) => dbPool!.query(sql));
-            serviceStatus.database = true;
+            serviceStatus.database = schema.requiredTables;
             serviceStatus.agentCheckpointer = schema.agentCheckpointer;
+            if (!schema.requiredTables) {
+              throw new Error(
+                'Primary database schema is incomplete or incompatible with the RyanAI runtime contract.',
+              );
+            }
           })(),
           (async () => {
             if (!fastify.hasDecorator('redis')) throw new Error('Redis client is unavailable');
