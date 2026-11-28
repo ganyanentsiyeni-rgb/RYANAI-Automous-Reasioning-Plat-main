@@ -713,3 +713,12 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - The isolated gateway workflow wrote `MCP_AUTH_TOKEN` to the Compose `.env` file, but then expanded `$MCP_AUTH_TOKEN` in the runner shell without sourcing that file. Compose could read the value while the CLI received an empty `--bearer-token`, causing MCPJungle to attempt OAuth dynamic client registration and fail with `OAuth error: Not found`.
 - The workflow now exports the disposable `.env` values into its own shell and fails immediately if `MCP_AUTH_TOKEN` is absent, before calling the registration CLI.
 - No production credentials are read or changed; the fixture token remains CI-only. Runtime verification must pass on the exact PR SHA.
+
+
+## 2026-11-28 — MCPJungle delegated JWT claim repair
+
+- The MCPJungle runtime smoke test creates a short-lived HMAC-signed delegation JWT and injects it into the private Caddy proxy, which forwards it to the MCP HTTP server.
+- The MCP verifier requires `actorType` in addition to issuer, audience, subject, role, scope, timestamps, and signature. The CI fixture omitted this required claim, so the MCP server rejected the token and the MCPJungle CLI fell back to its upstream OAuth registration path.
+- Added `actorType: "human"` to the CI-only token fixture. This preserves the existing short lifetime, read-only `platform_health` scope, signature, and fail-closed authorization checks.
+- Added `Dockerfile.database` to the isolated stack-validator fixture because the manifest correctly declares it as the PostgreSQL build file.
+- Validation is pending on this branch's exact commit. No production credentials, provider settings, database state, or deployments were changed.
