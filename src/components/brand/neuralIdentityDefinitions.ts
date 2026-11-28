@@ -25,9 +25,9 @@ export const NEURAL_IDENTITIES: Record<NeuralIdentityId, NeuralIdentityDefinitio
     tone: 'cyan',
   },
   alex: {
-    name: 'Alex',
-    role: 'Collaboration partner',
-    description: 'Alex collaboration and task handoff identity',
+    name: 'PA Agent',
+    role: 'PA coordination',
+    description: 'PA Agent collaboration and task handoff identity',
     icon: Sparkles,
     tone: 'violet',
   },
