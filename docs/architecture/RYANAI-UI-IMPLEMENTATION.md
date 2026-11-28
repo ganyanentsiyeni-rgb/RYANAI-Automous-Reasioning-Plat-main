@@ -71,3 +71,8 @@ The app-owned Agent UI approval dialog now places initial focus on Decline, cont
 ## Command Center mobile drawer accessibility follow-up (2026-11-28)
 
 The conversation-history and live-telemetry drawers now use mutually exclusive modal state, explicit trigger-to-dialog `aria-controls` relationships, shared keyboard Tab wrapping, a focus-in containment guard, Escape dismissal, and trigger focus restoration. `src/lib/dialogFocus.test.ts` covers forward/backward wrapping and focus that escapes the dialog. Exact-head tests and CI/security evidence remain required before release; this patch does not change backend or provider integrations.
+
+
+## PhoneLink async state follow-up (2026-11-28)
+
+The PhoneLink Comms inbox now distinguishes a confirmed empty result from a failed request. On inbox failure, previously loaded events remain visible, an accessible error is shown with a retry action, and the interface states that inbox emptiness cannot be confirmed. A successful retry clears the error. Periodic polling no longer re-displays the initial device-loading placeholder after the first completed load. A regression test covers retention of the last known events after an inbox refresh failure. Exact-head test and CI/security results are still required before release.

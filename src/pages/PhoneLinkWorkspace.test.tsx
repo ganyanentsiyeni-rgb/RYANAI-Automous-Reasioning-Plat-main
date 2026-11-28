@@ -60,6 +60,40 @@ describe('PhoneLink account-scoped requests', () => {
     expect(apiFetch).toHaveBeenCalledWith('/api/phonelink/events', undefined, 'phone-owner-a');
   });
 
+  it('shows inbox refresh failures without clearing the last known events or claiming the inbox is empty', async () => {
+    apiFetch.mockImplementation(async (input) => {
+      const path = String(input);
+      if (path === '/api/phonelink/devices') return response({ devices: [] });
+      if (path === '/api/phonelink/capabilities') return response({ capabilities: [] });
+      if (path === '/api/phonelink/events') return response({ events: [{
+        id: 'event-1',
+        deviceId: 'device-1',
+        eventType: 'comms',
+        title: 'Dispatch update',
+        body: 'A reviewed update is ready.',
+        createdAt: '2026-11-28T03:00:00.000Z',
+      }] });
+      throw new Error('Unexpected PhoneLink request: ' + path);
+    });
+
+    await mount('phone-owner-a');
+    await vi.waitFor(() => expect(container.textContent).toContain('Dispatch update'));
+
+    apiFetch.mockImplementation(async (input) => {
+      const path = String(input);
+      if (path === '/api/phonelink/devices') return response({ devices: [] });
+      if (path === '/api/phonelink/capabilities') return response({ capabilities: [] });
+      if (path === '/api/phonelink/events') return response({ error: 'Inbox service unavailable' }, false);
+      throw new Error('Unexpected PhoneLink request: ' + path);
+    });
+
+    await click([...container.querySelectorAll('button')].find(button => button.textContent?.includes('Refresh')) ?? null);
+    await vi.waitFor(() => expect(container.textContent).toContain('Inbox unavailable: Inbox service unavailable'));
+    expect(container.textContent).toContain('Dispatch update');
+    expect(container.textContent).not.toContain('No queued mobile updates.');
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('Inbox service unavailable');
+  });
+
   it('offers only backend-verified capabilities during device pairing', async () => {
     apiFetch.mockImplementation(async (input, init) => {
       const path = String(input);
