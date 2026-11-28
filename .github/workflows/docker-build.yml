@@ -225,7 +225,7 @@ jobs:
             const now = Math.floor(Date.now() / 1000);
             const enc = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
             const header = enc({ alg: "HS256", typ: "JWT" });
-            const claims = enc({ iss: "ryanai-api", aud: "ryanai-mcp", sub: "ci-mcpjungle-proxy", role: "user", scope: ["platform_health"], iat: now, exp: now + 110, jti: randomUUID() });
+            const claims = enc({ iss: "ryanai-api", aud: "ryanai-mcp", sub: "ci-mcpjungle-proxy", role: "user", actorType: "human", scope: ["platform_health"], iat: now, exp: now + 110, jti: randomUUID() });
             const input = header + "." + claims;
             const signature = createHmac("sha256", process.env.RYANAI_MCP_DELEGATION_SECRET).update(input).digest("base64url");
             process.stdout.write(input + "." + signature);
