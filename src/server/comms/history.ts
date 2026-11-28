@@ -306,6 +306,7 @@ export async function claimInboundCommunication(
     // Permit a provider retry to reclaim only an expired processing lease.
     // The conditional update is atomic, so concurrent retries still have one winner.
     const leaseExpired = existing.status === 'processing'
+      && !existing.agentRunId
       && existing.createdAt instanceof Date
       && Date.now() - existing.createdAt.getTime() >= INBOUND_PROCESSING_LEASE_MS;
     const attachmentRetryable = existing.status === 'attachment_failed';
@@ -314,7 +315,7 @@ export async function claimInboundCommunication(
         where: {
           id: existing.id,
           status: existing.status,
-          ...(leaseExpired ? { createdAt: { lte: new Date(Date.now() - INBOUND_PROCESSING_LEASE_MS) } } : {}),
+          ...(leaseExpired ? { agentRunId: null, createdAt: { lte: new Date(Date.now() - INBOUND_PROCESSING_LEASE_MS) } } : {}),
         },
         data: {
           status: input.status ?? 'processing',
