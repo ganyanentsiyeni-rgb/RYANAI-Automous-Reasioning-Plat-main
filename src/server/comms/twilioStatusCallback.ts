@@ -117,6 +117,13 @@ export const twilioStatusCallbackPlugin: FastifyPluginAsync = async (fastify) =>
     await fastify.prisma.$executeRawUnsafe(
       `UPDATE public.comms_send_approvals
           SET status = CASE
+                -- Dispatch state is monotonic; a late failure callback must not
+                -- reverse a delivery already confirmed by an earlier receipt.
+                WHEN (
+                  SELECT state FROM public.outbound_comms_dispatch
+                   WHERE provider_message_id = $1
+                   LIMIT 1
+                ) = 'delivered' THEN 'accepted'
                 WHEN (
                   SELECT delivery_state FROM public.comms_delivery_receipts
                    WHERE provider_message_id = $1
