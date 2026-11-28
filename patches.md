@@ -735,3 +735,11 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Registration now supplies the generated short-lived delegated JWT to `--bearer-token`, matching the Caddy proxy contract. The JWT remains limited to the `platform_health` scope and is generated only inside the disposable CI job. The MCP server's own token remains separate and is not passed to the proxy registration.
 - Updated Render readiness-audit tests to match the committed U2EB Blueprint: `/health` is the configured health endpoint, and `autoDeployTrigger: off` preserves the explicit Push Deploy policy. No provider setting or live deployment was changed.
 - Exact-SHA CI rerun is required; these code changes are not considered verified until the MCPJungle auth/ACL job and full required checks pass.
+
+
+## 2026-11-28 — MCPJungle CI delegation claim completeness
+
+- The gateway registration now correctly uses the short-lived `MCP_PROXY_DELEGATION_TOKEN`, distinct from the MCP server's own `MCP_AUTH_TOKEN`.
+- A subsequent exact source audit found the CI JWT fixture still omitted `actorType`, which `mcp-server/delegation.js` requires and validates against `human`, `agent`, or `service`.
+- Added `actorType: "human"` to the disposable CI-only JWT. The token remains HMAC-signed, short-lived, and restricted to the read-only `platform_health` scope.
+- This is a CI fixture correction only. The MCPJungle authentication/ACL job and all required exact-SHA checks must pass before the repair is considered verified.
