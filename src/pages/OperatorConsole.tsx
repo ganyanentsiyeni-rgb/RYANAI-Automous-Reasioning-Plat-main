@@ -82,6 +82,7 @@ export default function OperatorConsole({ userId }: { userId: string }) {
   const [isOnline, setIsOnline] = useState(() => typeof navigator === 'undefined' ? true : navigator.onLine);
   const syncingRef = useRef(false);
   const ownerIdRef = useRef<string | null>(null);
+  const outboxRequestId = useRef(0);
   const refreshRequestId = useRef(0);
 
   useEffect(() => {
@@ -92,18 +93,26 @@ export default function OperatorConsole({ userId }: { userId: string }) {
       if (!active) return;
       authChanged = true;
       const nextOwnerId = session?.user.is_anonymous ? null : session?.user.id ?? null;
-      if (nextOwnerId !== ownerIdRef.current) setOutboxTasks([]);
+      if (nextOwnerId !== ownerIdRef.current) {
+        outboxRequestId.current += 1;
+        setOutboxTasks([]);
+        setOutboxError('');
+      }
       ownerIdRef.current = nextOwnerId;
       setOwnerId(nextOwnerId);
     });
     void supabase.auth.getSession().then(({ data, error: sessionError }) => {
       if (!active || authChanged) return;
       const nextOwnerId = sessionError || data.session?.user.is_anonymous ? null : data.session?.user.id ?? null;
-      if (nextOwnerId !== ownerIdRef.current) setOutboxTasks([]);
+      if (nextOwnerId !== ownerIdRef.current) {
+        outboxRequestId.current += 1;
+        setOutboxTasks([]);
+        setOutboxError('');
+      }
       ownerIdRef.current = nextOwnerId;
       setOwnerId(nextOwnerId);
     }).catch(() => {
-      if (active && !authChanged) { ownerIdRef.current = null; setOutboxTasks([]); setOwnerId(null); }
+      if (active && !authChanged) { outboxRequestId.current += 1; ownerIdRef.current = null; setOutboxTasks([]); setOutboxError(''); setOwnerId(null); }
     });
     return () => {
       active = false;
@@ -138,33 +147,44 @@ export default function OperatorConsole({ userId }: { userId: string }) {
   }, [userId]);
 
   const refreshOutbox = useCallback(async () => {
-    if (!ownerId) {
+    const requestedOwnerId = ownerId;
+    const requestId = ++outboxRequestId.current;
+    if (!requestedOwnerId) {
       setOutboxTasks([]);
       setOutboxError('');
       return;
     }
     try {
-      setOutboxTasks(await listOfflineTasks(ownerId));
+      const records = await listOfflineTasks(requestedOwnerId);
+      if (requestId !== outboxRequestId.current || ownerIdRef.current !== requestedOwnerId) return;
+      setOutboxTasks(records.filter((record) => record.ownerId === requestedOwnerId));
       setOutboxError('');
     } catch (cause) {
-      setOutboxError(cause instanceof Error ? cause.message : 'Could not read this device’s offline task queue.');
+      if (requestId === outboxRequestId.current && ownerIdRef.current === requestedOwnerId) {
+        setOutboxError(cause instanceof Error ? cause.message : 'Could not read this device’s offline task queue.');
+      }
     }
   }, [ownerId]);
 
   const syncPending = useCallback(async () => {
     if (!ownerId || ownerId !== userId || typeof navigator === 'undefined' || !navigator.onLine || syncingRef.current) return;
+    const syncOwnerId = ownerId;
+    const syncGeneration = outboxRequestId.current;
+    const isCurrentOwner = () => ownerIdRef.current === syncOwnerId && outboxRequestId.current === syncGeneration;
     syncingRef.current = true;
     setSyncing(true);
     setIsOnline(true);
     let acceptedCount = 0;
     let failureMessage: string | null = null;
     try {
-      const pending = await listOfflineTasks(ownerId);
-      setOutboxTasks(pending);
+      const pending = await listOfflineTasks(syncOwnerId);
+      if (!isCurrentOwner()) return;
+      setOutboxTasks(pending.filter((record) => record.ownerId === syncOwnerId));
       for (let offset = 0; offset < pending.length; offset += 20) {
+        if (!isCurrentOwner()) return;
         const batch = pending.slice(offset, offset + 20);
         try {
-          const outcome = await replayOfflineTaskBatch(ownerId, batch, async (items) => {
+          const outcome = await replayOfflineTaskBatch(syncOwnerId, batch, async (items) => {
             const response = await authenticatedFetch('/api/agent/ops/tasks/sync', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -176,6 +196,7 @@ export default function OperatorConsole({ userId }: { userId: string }) {
             }
             return payload;
           });
+          if (!isCurrentOwner()) return;
           acceptedCount += outcome.acceptedIds.length;
           if (outcome.error) {
             failureMessage = outcome.error;
@@ -184,21 +205,24 @@ export default function OperatorConsole({ userId }: { userId: string }) {
           if (outcome.acceptedIds.length === 0) break;
         } catch (cause) {
           const message = cause instanceof Error ? cause.message : 'Network or authentication failure during sync.';
-          for (const item of batch) await recordOfflineTaskFailure(ownerId, item.taskId, message);
-          setOutboxError(message + ' Pending tasks remain saved on this device.');
+          for (const item of batch) await recordOfflineTaskFailure(syncOwnerId, item.taskId, message);
+          if (isCurrentOwner()) setOutboxError(message + ' Pending tasks remain saved on this device.');
           break;
         }
       }
-      const remaining = await listOfflineTasks(ownerId);
-      setOutboxTasks(remaining);
+      const remaining = await listOfflineTasks(syncOwnerId);
+      if (!isCurrentOwner()) return;
+      setOutboxTasks(remaining.filter((record) => record.ownerId === syncOwnerId));
       if (acceptedCount > 0) {
         setOutboxError(failureMessage || '');
         setNotice('Server accepted ' + acceptedCount + ' offline task' + (acceptedCount === 1 ? '' : 's') + '. Worker execution status will appear in task history.');
         await refresh();
       }
     } catch (cause) {
-      setOutboxError(cause instanceof Error ? cause.message : 'Offline sync failed. Local tasks were retained.');
-      await refreshOutbox();
+      if (isCurrentOwner()) {
+        setOutboxError(cause instanceof Error ? cause.message : 'Offline sync failed. Local tasks were retained.');
+        await refreshOutbox();
+      }
     } finally {
       syncingRef.current = false;
       setSyncing(false);
@@ -239,7 +263,7 @@ export default function OperatorConsole({ userId }: { userId: string }) {
     };
   }, [ownerId, refreshOutbox, syncPending]);
 
-  const accountOutboxTasks = ownerId ? outboxTasks : [];
+  const accountOutboxTasks = ownerId ? outboxTasks.filter((record) => record.ownerId === ownerId) : [];
   const visibleTasks = useMemo(() => filter === 'all' ? tasks : tasks.filter((task) => task.status === filter), [tasks, filter]);
   const selected = tasks.find((task) => task.id === selectedId) ?? visibleTasks[0] ?? null;
   const counts = useMemo(() => ({
@@ -307,9 +331,9 @@ export default function OperatorConsole({ userId }: { userId: string }) {
             <RefreshCw className={'h-3.5 w-3.5 ' + (syncing ? 'animate-spin' : '')} /> {syncing ? 'Syncing…' : 'Sync pending tasks'}
           </button>
         </div>
-        <p className="mt-3 text-sm text-slate-200">{outboxTasks.length} task{outboxTasks.length === 1 ? '' : 's'} saved locally and awaiting server acceptance</p>
+        <p className="mt-3 text-sm text-slate-200">{accountOutboxTasks.length} task{accountOutboxTasks.length === 1 ? '' : 's'} saved locally and awaiting server acceptance</p>
         {outboxError && <p role="alert" className="mt-3 rounded-lg border border-amber-300/20 bg-amber-950/20 p-3 text-xs text-amber-100">{outboxError}</p>}
-        {outboxTasks.length > 0 && <ul className="mt-3 space-y-2">{accountOutboxTasks.map((item) => (
+        {accountOutboxTasks.length > 0 && <ul className="mt-3 space-y-2">{accountOutboxTasks.map((item) => (
           <li key={item.taskId} className="rounded-lg border border-white/5 bg-slate-950/50 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-medium text-slate-100">{item.objective}</span>
@@ -319,7 +343,7 @@ export default function OperatorConsole({ userId }: { userId: string }) {
             {item.lastError && <p className="mt-2 text-xs text-amber-200">Retry {item.attempts}: {item.lastError}</p>}
           </li>
         ))}</ul>}
-        {outboxTasks.length === 0 && !outboxError && <p className="mt-3 text-xs text-slate-500">No local tasks are waiting for server acceptance.</p>}
+        {accountOutboxTasks.length === 0 && !outboxError && <p className="mt-3 text-xs text-slate-500">No local tasks are waiting for server acceptance.</p>}
         <p className="mt-3 text-[11px] leading-5 text-slate-500">Tasks are saved in browser IndexedDB and scoped to the signed-in account. A task leaves this outbox only after the API confirms acceptance. Local storage does not mean a worker is running it.</p>
       </section>
 
