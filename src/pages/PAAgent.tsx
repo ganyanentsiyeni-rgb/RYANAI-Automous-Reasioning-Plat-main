@@ -300,7 +300,7 @@ export default function PAAgentPage() {
         <Capability icon={BrainCircuit} title="Personal memory" description="Memory retrieval and authorised note capture are planned next. No memory write is exposed in this release." state="Next increment" />
         <Capability icon={CalendarDays} title="Daily planning" description="Calendar, reminders and briefing integrations are not connected yet." state="Not connected" />
         <Capability icon={MessageSquareText} title="Communications" description="Drafting and delivery stay in RyanAI Comms with destination verification and explicit approval." state="Approval gated" />
-        <Capability icon={Workflow} title="Agent coordination" description="Ryan can submit scoped proposals; Alex records the round-trip handoff, and the owner approves before the reasoning workforce runs." state="Gen-X + owner approval" />
+        <Capability icon={Workflow} title="Agent coordination" description="RyanAI can submit scoped proposals; PA Agent records the handoff, and the owner approves before the reasoning workforce runs." state="Gen-X + owner approval" />
       </section>
 
       <footer className="rounded-xl border border-white/10 bg-slate-950/50 p-4 text-xs leading-5 text-slate-400">
