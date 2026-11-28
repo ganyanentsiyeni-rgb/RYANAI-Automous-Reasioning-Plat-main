@@ -314,7 +314,9 @@ export function assessMigrationSourceContracts(sources) {
     Boolean(agentOperations
       && /"created_at" TIMESTAMP\(3\) NOT NULL DEFAULT CURRENT_TIMESTAMP/i.test(agentOperations)
       && /"completed_at" TIMESTAMP\(3\)/i.test(agentOperations)
-      && /"started_at" TIMESTAMP\(3\) NOT NULL DEFAULT CURRENT_TIMESTAMP/i.test(agentOperations)));
+      && /"started_at" TIMESTAMP\(3\) NOT NULL DEFAULT CURRENT_TIMESTAMP/i.test(agentOperations)
+      && /approved_at TIMESTAMP\(3\)/i.test(sources.approvalHistory)
+      && /cancel_requested_at TIMESTAMP\(3\)/i.test(sources.approvalHistory)));
   add('migration CodingTask lifecycle timestamp precision',
     'CodingTask locked_at, lease_expires_at, next_attempt_at, cancel_requested_at, created_at, updated_at and completed_at use TIMESTAMPTZ(6)',
     coding,
