@@ -306,8 +306,8 @@ export function assessMigrationSourceContracts(sources) {
     'CodingTask user and workbench-run foreign keys ON DELETE CASCADE with PostgreSQL default ON UPDATE NO ACTION',
     coding,
     Boolean(coding
-      && /user_id TEXT NOT NULL REFERENCES public\.users\(id\) ON DELETE CASCADE(?!\\s+ON UPDATE)/i.test(coding)
-      && /workbench_run_id TEXT NOT NULL REFERENCES public\.agent_runs\(id\) ON DELETE CASCADE(?!\\s+ON UPDATE)/i.test(coding)));
+      && /user_id TEXT NOT NULL REFERENCES public\.users\(id\) ON DELETE CASCADE(?!\s+ON UPDATE)/i.test(coding)
+      && /workbench_run_id TEXT NOT NULL REFERENCES public\.agent_runs\(id\) ON DELETE CASCADE(?!\s+ON UPDATE)/i.test(coding)));
   add('migration AgentRun and AgentHandoff timestamp precision',
     'AgentRun lifecycle timestamps and AgentHandoff started_at/completed_at use TIMESTAMP(3) without time zone',
     agentOperations,
