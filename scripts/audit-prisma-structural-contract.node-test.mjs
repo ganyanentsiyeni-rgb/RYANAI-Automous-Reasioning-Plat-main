@@ -65,7 +65,7 @@ test('checks identity bridge, migration chronology and bootstrap parity', () => 
   const approvalBase = "ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'approved', ADD COLUMN approved_at TIMESTAMP(3), ADD COLUMN cancel_requested_at TIMESTAMP(3);";
   const queueCorrection = "SET queue_type = 'unclassified' WHERE queue_type = 'coding' AND approval_status = 'pending' AND plan_snapshot IS NULL AND proposed_diff_hash IS NULL;";
   const leaseHeartbeat = "ALTER TABLE public.agent_runs ADD COLUMN lease_expires_at TIMESTAMP(3), ADD COLUMN heartbeat_at TIMESTAMP(3); ALTER TABLE public.coding_tasks ADD COLUMN heartbeat_at TIMESTAMPTZ(6); UPDATE public.coding_tasks SET heartbeat_at = COALESCE(locked_at, NOW()) WHERE status = 'running' AND heartbeat_at IS NULL;";
-  const approvalFailClosed = "ALTER TABLE public.agent_runs ALTER COLUMN approval_status SET DEFAULT 'pending'; UPDATE public.agent_runs SET approval_status = 'pending' WHERE status = 'queued' AND approval_status IS NULL;";
+  const approvalFailClosed = "ALTER TABLE public.agent_runs ALTER COLUMN approval_status SET DEFAULT 'pending'; UPDATE public.agent_runs SET approval_status = 'pending' WHERE status = 'queued' AND queue_type = 'reasoning' AND approval_status = 'approved' AND approved_by IS NULL AND approved_at IS NULL;";
   const embedded = (name, source) => `-- BEGIN PRISMA MIGRATION ${name}\n${source}\n-- END PRISMA MIGRATION ${name}`;
   const bootstrap = [
     embedded('20261030120000_agent_operations', agentOperations),
