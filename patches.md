@@ -971,3 +971,12 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Added regression coverage for late accepted receipts and delivered-after-failed ordering.
 - Append-only receipt records remain unchanged; this updates only the dispatch summary state. No provider calls, AgentRun state changes, database schema changes, migrations, credentials, production configuration, or deployments.
 - Exact-SHA CI and security verification are required; this change is not merged.
+
+
+## 2026-11-28 — AgentRun approval default and bootstrap migration parity
+
+- Corrected the structural audit's current AgentRun approval default to `pending`, matching Prisma, `database.yml`, and the later fail-closed migration. The historical `approved` default remains migration chronology only.
+- Expanded migration-source checks for AgentRun/AgentHandoff and CodingTask foreign-key actions, lifecycle timestamp precision, and the fail-closed approval migration.
+- Added exact single-copy parity checks for five embedded Prisma migration blocks in the Supabase bootstrap snapshot and explicitly verified that the snapshot predates the fail-closed migration.
+- Updated the runtime schema review to distinguish the initial migration's temporary `approved` default from the current `pending` default.
+- Regression tests are authored but have not yet been executed; no live database state is asserted. No migration, deployment, credential, or production change was performed.
