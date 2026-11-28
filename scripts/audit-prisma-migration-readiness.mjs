@@ -78,6 +78,8 @@ export function assessSchema({ columns, tables, indexes, extensions, memoryColum
   const missingCacheColumns = requiredCacheColumns.filter((name) => !cacheColumns.has(name));
   const requiredIndexes = ['idx_reasoning_embedding', 'idx_agent_session', 'coding_tasks_status_next_attempt_idx', 'coding_tasks_status_lease_expiry_idx', 'coding_tasks_user_created_idx', 'coding_tasks_workbench_run_idx', 'agent_runs_queue_type_status_created_idx'];
   const missingIndexes = requiredIndexes.filter((name) => !indexes.has(name));
+  const requiredAgentRunIndexes = ['agent_runs_queue_type_status_created_idx', 'agent_runs_status_next_attempt_lease_idx', 'agent_runs_worker_lease_idx', 'agent_runs_approval_status_created_idx'];
+  const missingAgentRunIndexes = requiredAgentRunIndexes.filter((name) => !indexes.has(name));
   const expectedAttemptTypes = { id: 'uuid', event_inbox_id: 'uuid', attempt: 'integer', worker_id: 'character varying(128)', status: 'character varying(24)', error: 'text', started_at: 'timestamp with time zone', finished_at: 'timestamp with time zone' };
   const missingAttemptColumns = eventAttemptColumns === null ? [] : Object.keys(expectedAttemptTypes).filter((name) => !eventAttemptColumns.some((column) => column.column_name === name));
   const mismatchedAttemptColumns = eventAttemptColumns === null ? [] : eventAttemptColumns.filter((column) => expectedAttemptTypes[column.column_name] && column.formatted_type !== expectedAttemptTypes[column.column_name]).map((column) => ({ column: column.column_name, expected: expectedAttemptTypes[column.column_name], actual: column.formatted_type }));
@@ -137,7 +139,7 @@ export function assessSchema({ columns, tables, indexes, extensions, memoryColum
     rlsEnabledExpected: true,
   };
   return {
-    missingColumns, missingTables, missingSharedColumns,
+    missingColumns, missingTables, missingSharedColumns, missingAgentRunIndexes,
     vector: { extensionPresent: extensions.has('vector'), missingTables: missingVectorTables, missingMemoryColumns, missingCacheColumns, missingIndexes, indexPresent: missingIndexes.length === 0 },
     eventAttempts,
     checkpointWrites,
@@ -195,7 +197,7 @@ async function main() {
       checkpointWritePrimaryKeyColumns: checkpointWritePrimaryKeyResult.rows[0]?.columns ?? null,
     });
     console.log(JSON.stringify({ mode: 'read-only', migrationState: state, schema, remediation: 'Review each pending migration against live schema before applying. This command never applies DDL.' }, null, 2));
-    if (!state.ledgerPresent || (state.pending?.length ?? 0) || (state.databaseOnly?.length ?? 0) || (state.checksumMismatches?.length ?? 0) || (state.unresolved?.length ?? 0) || (state.duplicateCompleted?.length ?? 0) || schema.missingColumns.length || schema.missingTables.length || schema.missingSharedColumns.length || !schema.vector.extensionPresent || schema.vector.missingTables.length || schema.vector.missingMemoryColumns.length || schema.vector.missingCacheColumns.length || schema.vector.missingIndexes.length || !schema.eventAttempts.tablePresent || schema.eventAttempts.missingColumns.length || schema.eventAttempts.mismatchedColumns.length || schema.eventAttempts.missingConstraints.length || schema.eventAttempts.mismatchedConstraints.length || schema.eventAttempts.missingIndexes.length || schema.eventAttempts.mismatchedIndexes.length || schema.eventAttempts.rlsEnabled !== true || !schema.checkpointWrites.primaryKeyMatches) process.exitCode = 1;
+    if (!state.ledgerPresent || (state.pending?.length ?? 0) || (state.databaseOnly?.length ?? 0) || (state.checksumMismatches?.length ?? 0) || (state.unresolved?.length ?? 0) || (state.duplicateCompleted?.length ?? 0) || schema.missingColumns.length || schema.missingTables.length || schema.missingSharedColumns.length || schema.missingAgentRunIndexes.length || !schema.vector.extensionPresent || schema.vector.missingTables.length || schema.vector.missingMemoryColumns.length || schema.vector.missingCacheColumns.length || schema.vector.missingIndexes.length || !schema.eventAttempts.tablePresent || schema.eventAttempts.missingColumns.length || schema.eventAttempts.mismatchedColumns.length || schema.eventAttempts.missingConstraints.length || schema.eventAttempts.mismatchedConstraints.length || schema.eventAttempts.missingIndexes.length || schema.eventAttempts.mismatchedIndexes.length || schema.eventAttempts.rlsEnabled !== true || !schema.checkpointWrites.primaryKeyMatches) process.exitCode = 1;
   } catch {
     console.error('BLOCKED: migration metadata/schema audit failed. Check database connectivity and permissions; connection details were suppressed.');
     process.exitCode = 2;
