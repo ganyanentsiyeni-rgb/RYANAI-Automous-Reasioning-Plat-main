@@ -21,7 +21,7 @@ const COLUMN_CONTRACTS = {
   agent_runs: {
     id: ['text', false, null], user_id: ['text', false, null], objective: ['text', false, null],
     requested_model: ['text', true, null], trace_context: ['jsonb', true, null],
-    execution_scope: ['jsonb', false, "'{}'"], approval_status: ['text', false, "'approved'"],
+    execution_scope: ['jsonb', false, "'{}'"], approval_status: ['text', false, "'pending'"],
     plan_snapshot: ['jsonb', true, null], plan_hash: ['text', true, null],
     base_commit_sha: ['text', true, null], proposed_diff_hash: ['text', true, null],
     approved_plan_hash: ['text', true, null], approved_commit_sha: ['text', true, null],
@@ -324,6 +324,27 @@ export function assessMigrationSourceContracts(sources) {
     lease,
     Boolean(lease && /coding_tasks[\s\S]*?heartbeat_at\s+TIMESTAMPTZ\(6\)/i.test(lease)
       && /UPDATE\s+public\.coding_tasks[\s\S]*?heartbeat_at\s*=\s*COALESCE\(locked_at,\s*NOW\(\)\)/i.test(lease)));
+
+  add('migration AgentRun and AgentHandoff foreign-key actions', 'AgentRun user and AgentHandoff run foreign keys cascade on delete and update', agentOperations,
+    Boolean(agentOperations && /agent_runs_user_id_fkey[\\s\\S]*?ON DELETE CASCADE ON UPDATE CASCADE/i.test(agentOperations) && /agent_handoffs_run_id_fkey[\\s\\S]*?ON DELETE CASCADE ON UPDATE CASCADE/i.test(agentOperations)));
+  add('migration CodingTask foreign-key actions', 'CodingTask user and workbench-run foreign keys cascade on delete with default update action', coding,
+    Boolean(coding && /user_id TEXT NOT NULL REFERENCES public\\.users\\(id\\) ON DELETE CASCADE(?!\\s+ON UPDATE)/i.test(coding) && /workbench_run_id TEXT NOT NULL REFERENCES public\\.agent_runs\\(id\\) ON DELETE CASCADE(?!\\s+ON UPDATE)/i.test(coding)));
+  add('migration AgentRun and AgentHandoff timestamp precision', 'AgentRun and AgentHandoff timestamps use TIMESTAMP(3)', agentOperations,
+    Boolean(agentOperations && /"created_at" TIMESTAMP\\(3\\)/i.test(agentOperations) && /"completed_at" TIMESTAMP\\(3\\)/i.test(agentOperations) && /"started_at" TIMESTAMP\\(3\\)/i.test(agentOperations) && /approved_at TIMESTAMP\\(3\\)/i.test(sources.approvalHistory) && /cancel_requested_at TIMESTAMP\\(3\\)/i.test(sources.approvalHistory)));
+  add('migration CodingTask lifecycle timestamp precision', 'CodingTask lifecycle timestamps use TIMESTAMPTZ(6)', coding,
+    Boolean(coding && ['locked_at','lease_expires_at','next_attempt_at','cancel_requested_at','created_at','updated_at','completed_at'].every((column) => new RegExp(column + '\\\\s+TIMESTAMPTZ\\\\(6\\\\)', 'i').test(coding))));
+  add('migration historical approval default is superseded fail-closed', 'historical approved default is superseded by later pending default migration', sources.approvalHistory,
+    Boolean(sources.approvalHistory && /ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'approved'/i.test(sources.approvalHistory) && /ALTER COLUMN approval_status SET DEFAULT 'pending'/i.test(sources.approvalHistory) && /UPDATE public\\.agent_runs[\\s\\S]*?approval_status = 'pending'/i.test(sources.approvalHistory)));
+  const embeddedMigrationMatches = (name, source) => {
+    if (!sources.bootstrap || !source) return false;
+    const begin = `-- BEGIN PRISMA MIGRATION ${name}`, end = `-- END PRISMA MIGRATION ${name}`;
+    const start = sources.bootstrap.indexOf(begin), finish = sources.bootstrap.indexOf(end, start + begin.length);
+    return start >= 0 && finish > start && sources.bootstrap.indexOf(begin, start + begin.length) < 0 && sources.bootstrap.slice(start + begin.length, finish).trim() === source.trim();
+  };
+  add('bootstrap embedded Prisma migration copies match canonical sources', 'five embedded Prisma migration blocks are exact single copies', sources.bootstrap,
+    Boolean(embeddedMigrationMatches('20261030120000_agent_operations', agentOperations) && embeddedMigrationMatches('20261104120000_isolated_coding_task_queue', coding) && embeddedMigrationMatches('20261102235000_engineering_evidence_workbench', sources.approvalBase) && embeddedMigrationMatches('20261108120000_correct_pending_reasoning_queue_classification', correction) && embeddedMigrationMatches('20261121120000_agent_run_lease_heartbeat', lease)));
+  add('bootstrap approval chronology remains explicit', 'bootstrap retains historical approved default and predates later pending migration', sources.bootstrap,
+    Boolean(sources.bootstrap && /-- BEGIN PRISMA MIGRATION 20261102235000_engineering_evidence_workbench/.test(sources.bootstrap) && /approval_status TEXT NOT NULL DEFAULT 'approved'/i.test(sources.bootstrap) && !/-- BEGIN PRISMA MIGRATION 20261122100000_fail_closed_agent_run_approval/.test(sources.bootstrap) && !/ALTER COLUMN approval_status SET DEFAULT 'pending'/i.test(sources.bootstrap) && sources.approvalHistory && /ALTER COLUMN approval_status SET DEFAULT 'pending'/i.test(sources.approvalHistory)));
   return { counts: {
     matching: findings.filter((item) => item.status === 'matching').length,
     missing: findings.filter((item) => item.status === 'missing').length,
@@ -338,12 +359,15 @@ async function main() {
     return;
   }
   const root = resolve(process.cwd());
-  const [authBridge, agentOperations, codingQueue, queueCorrection, leaseHeartbeat] = await Promise.all([
+  const [authBridge, agentOperations, codingQueue, queueCorrection, leaseHeartbeat, approvalBase, approvalFailClosed, bootstrap] = await Promise.all([
     readFile(resolve(root, 'prisma/migrations/20261102123000_supabase_auth_identity_bridge/migration.sql'), 'utf8'),
     readFile(resolve(root, 'prisma/migrations/20261030120000_agent_operations/migration.sql'), 'utf8'),
     readFile(resolve(root, 'prisma/migrations/20261104120000_isolated_coding_task_queue/migration.sql'), 'utf8'),
     readFile(resolve(root, 'prisma/migrations/20261108120000_correct_pending_reasoning_queue_classification/migration.sql'), 'utf8'),
     readFile(resolve(root, 'prisma/migrations/20261121120000_agent_run_lease_heartbeat/migration.sql'), 'utf8'),
+    readFile(resolve(root, 'prisma/migrations/20261102235000_engineering_evidence_workbench/migration.sql'), 'utf8'),
+    readFile(resolve(root, 'prisma/migrations/20261122100000_fail_closed_agent_run_approval/migration.sql'), 'utf8'),
+    readFile(resolve(root, 'supabase/migrations/20261122000000_prisma_runtime_schema_bootstrap.sql'), 'utf8'),
   ]);
 
   const pool = new Pool({
@@ -370,7 +394,7 @@ async function main() {
       tables: tables.rows, columns: columns.rows, indexes: indexes.rows, constraints: constraints.rows,
       triggers: triggers.rows, functions: functions.rows, grants: grants.rows, functionGrants: functionGrants.rows,
     });
-    const migration = assessMigrationSourceContracts({ authBridge, agentOperations, codingQueue, queueCorrection, leaseHeartbeat });
+    const migration = assessMigrationSourceContracts({ authBridge, agentOperations, codingQueue, queueCorrection, leaseHeartbeat, approvalBase, bootstrap, approvalHistory: approvalBase + '\n' + approvalFailClosed });
     await client.query('COMMIT');
     console.log(JSON.stringify({
       mode: 'read-only',
