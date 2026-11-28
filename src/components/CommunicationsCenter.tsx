@@ -34,7 +34,10 @@ function dateLabel(value: string) {
 
 function messageStatusLabel(status: string) {
   const labels: Record<string, string> = {
+    reserved: 'Pending send · reserved, not dispatched',
     pending_send: 'Pending send · not yet dispatched',
+    dispatching: 'In flight · provider request underway',
+    reconciled: 'Reconciled · operator reviewed outcome',
     in_flight: 'In flight · provider outcome pending',
     uncertain: 'Uncertain · reconcile before retrying',
     accepted: 'Accepted by provider · delivery unconfirmed',
@@ -553,7 +556,7 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
                       {attachment.status === 'clean' && <button type="button" onClick={() => void downloadAttachment(attachment)} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-cyan-400/30 px-2 py-1 text-[10px] text-cyan-200 hover:bg-cyan-400/10"><Download className="h-3 w-3" />Download</button>}
                     </div>
                   ))}
-                  <p className="mt-2 flex items-center gap-2 text-[10px] text-slate-400"><Activity className="h-3 w-3" />{item.direction} · {messageStatusLabel(item.deliveryStatus ?? item.status)}{item.deliveryProviderStatus ? ` · provider: ${item.deliveryProviderStatus}` : ''} · {dateLabel(item.createdAt)}</p>
+                  <p className="mt-2 flex items-center gap-2 text-[10px] text-slate-400"><Activity className="h-3 w-3" />{item.direction} · {messageStatusLabel(item.deliveryStatus ?? item.status)}{item.deliveryProviderStatus ? ` · provider: ${item.deliveryProviderStatus}` : ''} · {dateLabel(item.createdAt)}{item.deliveryOccurredAt ? ` · receipt: ${dateLabel(item.deliveryOccurredAt)}` : ''}</p>
                 </article>
               </div>
             ))}
