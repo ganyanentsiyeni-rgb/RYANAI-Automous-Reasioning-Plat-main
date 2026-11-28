@@ -82,6 +82,25 @@ describe('Operations Center', () => {
     await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/api/actions/action-1/approve', expect.objectContaining({ method: 'POST' }), 'synthetic-user-a'));
   });
 
+  it('hides previously loaded approval actions when a refresh cannot verify the current queue', async () => {
+    await mount(true);
+    await vi.waitFor(() => expect(container.textContent).toContain('Send the approved project update.'));
+
+    apiFetch.mockImplementation(async (input, init) => {
+      const path = String(input);
+      if (path === '/api/agent/ops/tasks') return response({ tasks: [] });
+      if (path === '/api/actions') return response({ error: 'Approval queue temporarily unavailable' }, false);
+      throw new Error('Unexpected API request: ' + path);
+    });
+
+    await click(Array.from(container.querySelectorAll('button')).find(button => button.textContent?.includes('Refresh')) ?? null);
+    await vi.waitFor(() => expect(container.textContent).toContain('Approval queue temporarily unavailable'));
+
+    expect(container.textContent).not.toContain('Send the approved project update.');
+    expect(Array.from(container.querySelectorAll('button')).some(button => button.textContent?.includes('Review approval'))).toBe(false);
+    expect(container.textContent).toContain('Previously loaded approvals are hidden');
+  });
+
   it('clears the administrator approval inbox when the account loses admin UI scope', async () => {
     await mount(true);
     await vi.waitFor(() => expect(container.textContent).toContain('Administrator approval inbox'));
