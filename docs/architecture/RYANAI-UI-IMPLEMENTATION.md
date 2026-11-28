@@ -61,3 +61,8 @@ Live mission, ontology, Gen-X decision, Jarvis queue, model registry, capability
 ## Delivery boundary
 
 This PR is documentation and frontend-only. It does not authorize production deployment, production database work, provider calls, live communication, infrastructure changes, secret operations, paid upgrades, or auto-merge. A later production release requires separate explicit approval.
+
+
+## Agent UI approval dialog accessibility follow-up (2026-11-28)
+
+The app-owned Agent UI approval dialog now places initial focus on Decline, contains keyboard Tab navigation, maps Escape to decline, restores focus to the invoking control after dismissal, and programmatically associates the approval summary with the dialog. These are interaction and accessibility safeguards only: the server remains authoritative for authorization, and approving the UI prompt does not grant server permissions. Regression tests cover initial focus, Escape dismissal, and focus restoration. Exact-head CI and security validation are still required before release.
