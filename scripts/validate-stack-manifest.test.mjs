@@ -27,6 +27,7 @@ function fixture(t) {
   put('stacks/ryanai.stack.json', JSON.stringify(structuredClone(sourceManifest), null, 2));
   put('stacks/ryanai.stack.schema.json', sourceSchema);
   put('Dockerfile');
+  put('Dockerfile.database');
   put('mcp-server/Dockerfile');
   put('k8s/kustomization.yaml');
   put('k8s/ryanai-apps.yaml');
