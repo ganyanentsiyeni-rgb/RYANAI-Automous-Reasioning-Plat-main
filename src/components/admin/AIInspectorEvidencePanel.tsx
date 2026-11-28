@@ -81,12 +81,12 @@ export default function AIInspectorEvidencePanel() {
             {lastConfirmedAt ? `AgentRun snapshot confirmed ${new Date(lastConfirmedAt).toLocaleString()}` : 'Awaiting an authenticated AgentRun snapshot'}
           </p>
         </div>
-        <button type="button" onClick={() => void refresh()} disabled={refreshing} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-200 disabled:opacity-50">
+        <button type="button" onClick={() => void refresh()} disabled={refreshing} aria-busy={refreshing} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-300 disabled:opacity-50">
           {refreshing ? 'Refreshing…' : 'Refresh reports'}
         </button>
       </header>
 
-      {error && <p role="status" className="mt-3 rounded-lg border border-amber-300/20 bg-amber-300/5 p-3 text-xs text-amber-200">Some operational sources are unavailable: {error}</p>}
+      {error && <p role="alert" className="mt-3 rounded-lg border border-amber-300/20 bg-amber-300/5 p-3 text-xs text-amber-200">Some operational sources are unavailable: {error}</p>}
       {loading && inspectorTasks.length === 0 ? (
         <p className="mt-4 rounded-lg border border-dashed border-white/10 p-4 text-xs text-slate-400">Loading authenticated AgentRun evidence…</p>
       ) : inspectorTasks.length === 0 ? (
