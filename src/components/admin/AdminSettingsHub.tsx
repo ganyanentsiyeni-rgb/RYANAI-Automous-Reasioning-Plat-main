@@ -45,12 +45,12 @@ export default function AdminSettingsHub({ userId, isOwner, isAdmin }: { userId:
           <h2 id="admin-settings-hub-title" className="mt-1 text-xl font-semibold text-white">Settings & workspace control</h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-400">A single entry point to the eight existing Settings areas and the twelve primary RyanAI UI areas. Preference controls remain account-scoped; privileged access is still enforced by the API and Gen-X.</p>
         </div>
-        <a href="#/settings" className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/25 px-3 py-2 text-xs font-semibold text-cyan-100 hover:bg-cyan-300/10">Open Settings <ArrowUpRight className="h-3.5 w-3.5" /></a>
+        <a href="#/settings" className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/25 px-3 py-2 text-xs font-semibold text-cyan-100 hover:bg-cyan-300/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300">Open Settings <ArrowUpRight className="h-3.5 w-3.5" /></a>
       </header>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {settingsAreas.map(({ id, title, description, icon: Icon, capability }) => (
-          <a key={id} href={`?section=${encodeURIComponent(id)}#/settings`} className="group rounded-xl border border-white/10 bg-slate-950/60 p-4 transition hover:border-cyan-300/35 hover:bg-cyan-300/[0.04]" aria-label={`${title}: open Settings`}>
+          <a key={id} href={`?section=${encodeURIComponent(id)}#/settings`} className="group rounded-xl border border-white/10 bg-slate-950/60 p-4 transition hover:border-cyan-300/35 hover:bg-cyan-300/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300" aria-label={`${title}: open Settings`}>
             <div className="flex items-center justify-between gap-2">
               <Icon className="h-5 w-5 text-cyan-300" aria-hidden="true" />
               <ArrowUpRight className="h-3.5 w-3.5 text-slate-600 transition group-hover:text-cyan-200" aria-hidden="true" />
