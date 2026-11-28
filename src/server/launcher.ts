@@ -973,7 +973,7 @@ async function start() {
       // Durable agent execution additionally requires Redis and its queue listener.
       const canRun = canMonitorBrains && redisHealthy;
       if (canRun && !stopAgentWorker) {
-        stopAgentWorker = startAgentTaskWorker();
+        stopAgentWorker = startAgentTaskWorker({ connectionString: config.database.url });
         fastify.log.info('Durable agent task worker started after dependency recovery.');
       } else if (!canRun && stopAgentWorker) {
         stopAgentWorker();

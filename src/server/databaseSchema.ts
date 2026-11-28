@@ -39,7 +39,20 @@ export async function inspectDatabaseSchema(
         WHERE table_schema = 'public'
           AND table_name = 'checkpoint_writes'
           AND column_name = 'task_path'
-      ) AS checkpoint_task_path
+      ) AS checkpoint_task_path,
+      (
+        SELECT COUNT(*) = 18
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'agent_runs'
+          AND column_name IN (
+            'id', 'user_id', 'objective', 'status', 'result', 'error',
+            'attempts', 'max_attempts', 'worker_id', 'locked_at',
+            'lease_expires_at', 'heartbeat_at', 'next_attempt_at',
+            'approval_status', 'queue_type', 'created_at', 'updated_at',
+            'completed_at'
+          )
+      ) AS agent_runs_contract
   `);
 
   const row = tables.rows[0];
@@ -66,7 +79,12 @@ export async function inspectDatabaseSchema(
     row.communication_conversations === true &&
     row.communication_messages === true;
 
-  if (!requiredTables) {
+  // A present agent_runs table is not sufficient: the worker lease/queue SQL
+  // depends on the complete contract declared in database.yml. Treat a partial
+  // or stale table as schema-unready before the worker can claim any run.
+  const agentRunsContract = row.agent_runs_contract === true;
+
+  if (!requiredTables || !agentRunsContract) {
     return { communications, requiredTables: false, agentCheckpointer: false };
   }
 
