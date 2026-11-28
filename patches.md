@@ -886,3 +886,11 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - The message timeline now shows the provider receipt occurrence time separately from the original communication-message creation time.
 - Added a component regression test for the three dispatch-only states and provider receipt timestamp visibility.
 - Validation status: test authored but not executed; exact-head CI/security checks remain subject to verification. No dispatch, provider, AgentRun, migration, credential, or production state changed.
+
+## 2026-11-28 — Comms provider callback lifecycle semantics
+
+- Prevented `queued` and `unknown` provider callbacks from promoting an outbound dispatch to `accepted`; these callbacks remain append-only evidence without claiming provider acceptance.
+- Kept voice `completed` mapped to `accepted_by_provider`, not `delivered`. A completed call is not proof that a recipient heard or read the message.
+- Added regression tests for queued/unknown no-op transitions and voice completion advancing only to accepted dispatch state.
+- Added explicit UI labels for queued, unknown, and accepted-by-provider states.
+- Validation status: tests authored but not executed; exact-head CI/security verification pending. No provider dispatch, AgentRun mutation, migration, credential, deployment, or production state changed.
