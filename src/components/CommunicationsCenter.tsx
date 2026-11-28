@@ -67,6 +67,33 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
     setAttachmentStatuses([]);
   }
 
+  /* eslint-disable react-hooks/set-state-in-effect -- account changes must clear private Comms content before rendering the next identity's inbox */
+  useEffect(() => {
+    refreshRequestId.current += 1;
+    setStatus(null);
+    setConversations([]);
+    setActiveId('');
+    setRecipient('');
+    setSubject('');
+    setMessage('');
+    setIdempotencyKey(crypto.randomUUID());
+    setSelectedFiles([]);
+    setAttachmentIds([]);
+    setAttachmentStatuses([]);
+    setLoading(true);
+    setSending(false);
+    setReviewing(false);
+    setApprovalId('');
+    setApprovalStatus('');
+    setAssistBusy(false);
+    setAssistOutput('');
+    setError('');
+    setNotice('');
+    setConversationSearch('');
+    setChannelFilter('all');
+  }, [userId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
   const refresh = useCallback(async () => {
     const requestId = ++refreshRequestId.current;
     try {
