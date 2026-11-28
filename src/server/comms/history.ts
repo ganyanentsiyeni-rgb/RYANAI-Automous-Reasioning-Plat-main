@@ -252,6 +252,21 @@ export async function claimInboundCommunication(
     select: { id: true },
   });
 
+  if (input.ownerUserId) {
+    // Claim an unowned legacy conversation once, but never transfer a
+    // conversation already assigned to a different owner.
+    const ownership = await prisma.communicationConversation.updateMany({
+      where: {
+        id: conversation.id,
+        OR: [{ ownerUserId: null }, { ownerUserId: input.ownerUserId }],
+      },
+      data: { ownerUserId: input.ownerUserId },
+    });
+    if (ownership.count !== 1) {
+      throw new Error('Inbound conversation is already assigned to a different owner.');
+    }
+  }
+
   try {
     const created = await prisma.communicationMessage.create({
       data: {
