@@ -774,6 +774,30 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Asserted that risk limits are presented as server-enforced and that emergency-stop reset requirements remain visible.
 - Mocked the paper-trading child panels to keep the page tests isolated from their own API and component contracts.
 - Validation status: test source added; local execution and exact-head CI remain pending. No runtime trading, payment, API, authentication, or provider behavior was changed.
+\n\n## 2026-11-28 — Complete Prisma AgentRun runtime schema gate\n\n- The earlier startup guard checked only the 18 base queue columns. A source-to-source audit found that Prisma and worker claim/approval flows also depend on 14 additional AgentRun columns, including the immutable approval hashes, plan snapshot, cancellation marker, model selection, trace context, and execution scope.\n- Expanded the authoritative `database.yml` AgentRun required-column contract to all 32 mapped Prisma columns. Expanded the read-only startup inspection to require the same 32 columns and added regression assertions for the approval-plan fields and full count.\n- The guard remains read-only; it performs no DDL and does not run migrations. No database, credentials, provider configuration, deployment, or production state was changed.\n- Exact-head CI and security checks remain required; this source change is not runtime or deployment certification.\n
+
+## 2026-11-28 — Align migration audit with the full AgentRun contract
+
+- Expanded the Prisma migration-readiness schema audit from 15 AgentRun columns to all 32 columns declared by the Prisma model, database.yml, and startup readiness gate.
+- Expanded the complete-schema test fixture to all 32 columns so the audit cannot pass with a partial AgentRun table.
+- This is source/test coverage only. Local execution and exact-head CI/security validation remain pending; no live database migration or deployment was run.
+
+
+## 2026-11-28 — AgentRun operational index readiness audit
+
+- Extended the read-only migration/schema audit to require the four AgentRun indexes used by queue selection, lease recovery, worker lease lookup, and approval filtering.
+- Added regression assertions that a missing AgentRun operational index is reported and that the complete-schema fixture includes all required indexes.
+- Local test execution and exact-head CI/security checks remain pending. No live database or deployment was changed.
+
+
+## 2026-11-28 — Complete AgentRun index readiness parity
+
+- Expanded the read-only Prisma migration-readiness audit to require all eight operational `agent_runs` indexes, matching the structural-contract audit and the migration definitions.
+- Updated the readiness test fixture and missing-index assertions to cover the complete eight-index contract.
+- The audit remains read-only; it does not create indexes or apply migrations.
+- Verification is source-level only until the Node test suite and live database audit are executed.
+
+- AgentRun index structural validation now explicitly rejects unique indexes where Prisma declares non-unique indexes, in addition to checking B-tree type, ordered columns, and absence of partial predicates. Regression coverage includes an unexpectedly unique `agent_runs_user_id_created_at_idx`.
 
 ## 2026-11-28 — Command Center mobile drawer integration coverage
 

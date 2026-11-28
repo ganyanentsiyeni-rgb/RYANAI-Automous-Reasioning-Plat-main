@@ -4,7 +4,7 @@ import { compareMigrationState, assessMissingMigrationLedger, assessMigrationLed
 
 const memoryColumns = new Set(['session_id', 'role', 'content', 'timestamp']);
 const cacheColumns = new Set(['id', 'prompt', 'response', 'embedding', 'created_at']);
-const vectorIndexes = new Set(['idx_reasoning_embedding', 'idx_agent_session', 'coding_tasks_status_next_attempt_idx', 'coding_tasks_status_lease_expiry_idx', 'coding_tasks_user_created_idx', 'coding_tasks_workbench_run_idx', 'agent_runs_queue_type_status_created_idx']);
+const vectorIndexes = new Set(['idx_reasoning_embedding', 'idx_agent_session', 'coding_tasks_status_next_attempt_idx', 'coding_tasks_status_lease_expiry_idx', 'coding_tasks_user_created_idx', 'coding_tasks_workbench_run_idx', 'agent_runs_user_id_created_at_idx', 'agent_runs_status_created_at_idx', 'agent_runs_status_locked_at_idx', 'agent_runs_status_next_attempt_at_idx', 'agent_runs_queue_type_status_created_idx', 'agent_runs_status_next_attempt_lease_idx', 'agent_runs_worker_lease_idx', 'agent_runs_approval_status_created_idx']);
 
 test('reports source migrations absent from the applied ledger without mutating either input', () => {
   const names = ['20261102150000_agent_run_execution_scope', '20261102210000_internal_jarvis_audit'];
@@ -84,6 +84,7 @@ test('detects schema and vector-memory drift, including runtime columns and inde
   assert.ok(result.missingColumns.includes('approval_status'));
   assert.ok(result.missingColumns.includes('requested_model'));
   assert.ok(result.missingColumns.includes('queue_type'));
+  assert.deepEqual(result.missingAgentRunIndexes, ['agent_runs_user_id_created_at_idx', 'agent_runs_status_created_at_idx', 'agent_runs_status_locked_at_idx', 'agent_runs_status_next_attempt_at_idx', 'agent_runs_queue_type_status_created_idx', 'agent_runs_status_next_attempt_lease_idx', 'agent_runs_worker_lease_idx', 'agent_runs_approval_status_created_idx']);
   assert.ok(result.missingTables.includes('agent_brain_health'));
   assert.ok(result.missingTables.includes('agent_run_evidence'));
   assert.ok(result.missingTables.includes('coding_tasks'));
@@ -100,9 +101,7 @@ test('detects schema and vector-memory drift, including runtime columns and inde
 });
 
 test('accepts a complete schema and vector-memory installation', () => {
-  const columns = ['queue_type', 'execution_scope', 'approval_status', 'plan_snapshot', 'plan_hash', 'base_commit_sha',
-    'proposed_diff_hash', 'approved_plan_hash', 'approved_commit_sha', 'approved_diff_hash',
-    'approved_by', 'approved_at', 'steering_notes', 'cancel_requested_at', 'requested_model'];
+  const columns = ["id","user_id","objective","requested_model","trace_context","execution_scope","approval_status","plan_snapshot","plan_hash","base_commit_sha","proposed_diff_hash","approved_plan_hash","approved_commit_sha","approved_diff_hash","approved_by","approved_at","steering_notes","cancel_requested_at","status","result","error","attempts","max_attempts","worker_id","locked_at","lease_expires_at","heartbeat_at","next_attempt_at","created_at","updated_at","completed_at","queue_type"];
   const result = assessSchema({
     columns: new Set(columns),
     tables: new Set(['agent_runs', 'agent_handoffs', 'agent_brain_health', 'agent_run_evidence', 'jarvis_audit_events', 'coding_tasks', 'reasoning_cache', 'agent_memory', 'profiles', 'conversations', 'messages', 'memory_entries', 'rooms', 'room_members', 'room_messages']),
@@ -115,6 +114,7 @@ test('accepts a complete schema and vector-memory installation', () => {
   assert.deepEqual(result.missingColumns, []);
   assert.deepEqual(result.missingTables, []);
   assert.deepEqual(result.missingSharedColumns, []);
+  assert.deepEqual(result.missingAgentRunIndexes, []);
   assert.equal(result.vector.extensionPresent, true);
   assert.deepEqual(result.vector.missingTables, []);
   assert.deepEqual(result.vector.missingMemoryColumns, []);
