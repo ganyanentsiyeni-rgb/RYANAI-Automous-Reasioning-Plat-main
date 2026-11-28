@@ -10,6 +10,7 @@ const genx = vi.hoisted(() => ({ evaluateGenXSecurityEvent: vi.fn() }));
 const operations = vi.hoisted(() => ({
   dispatchAutonomousTask: vi.fn(),
   listAgentRuns: vi.fn(),
+  listAgentRunsByIds: vi.fn(),
   listBrainHealth: vi.fn(),
   probeAllBrains: vi.fn(),
   listBrainKnowledge: vi.fn(),
@@ -229,6 +230,57 @@ describe('agent operations routes', () => {
     expect(response.statusCode).toBe(202);
     expect(operations.dispatchAutonomousTask).toHaveBeenCalledWith('user-1', 'Resume my report', undefined, undefined, taskId);
     expect(response.json()).toMatchObject({ status: 'accepted', accepted: 1, rejected: 0, replaySafe: true });
+  });
+  it('returns exact-ID reconciliation only for the authenticated owner', async () => {
+    const taskId = '8b5d2f0a-3f42-4c9a-8a71-1a9e9f55b101';
+    operations.listAgentRunsByIds.mockResolvedValue([{
+      id: taskId, userId: 'user-1', objective: 'Resume my report', status: 'queued',
+      createdAt: new Date('2026-11-07T20:00:00.000Z'),
+    }]);
+    const response = await app.inject({
+      method: 'POST', url: '/api/agent/ops/tasks/reconcile',
+      headers: { 'x-test-user': 'user-1' },
+      payload: { tasks: [{ taskId, objective: 'Resume my report' }] },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(operations.listAgentRunsByIds).toHaveBeenCalledWith('user-1', [taskId]);
+    expect(response.json().results).toMatchObject([{ taskId, status: 'queued', accepted: true }]);
+  });
+  it('leaves missing and cross-owner task IDs unresolved without disclosure', async () => {
+    operations.listAgentRunsByIds.mockResolvedValue([]);
+    const taskId = '8b5d2f0a-3f42-4c9a-8a71-1a9e9f55b101';
+    const response = await app.inject({
+      method: 'POST', url: '/api/agent/ops/tasks/reconcile',
+      headers: { 'x-test-user': 'user-2' },
+      payload: { tasks: [{ taskId, objective: 'Resume my report' }] },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().results).toMatchObject([{ taskId, status: 'unresolved', accepted: false }]);
+    expect(operations.listAgentRunsByIds).toHaveBeenCalledWith('user-2', [taskId]);
+  });
+  it('marks same-owner objective mismatches as conflicts', async () => {
+    const taskId = '8b5d2f0a-3f42-4c9a-8a71-1a9e9f55b101';
+    operations.listAgentRunsByIds.mockResolvedValue([{
+      id: taskId, userId: 'user-1', objective: 'Different objective', status: 'queued', createdAt: new Date(),
+    }]);
+    const response = await app.inject({
+      method: 'POST', url: '/api/agent/ops/tasks/reconcile',
+      headers: { 'x-test-user': 'user-1' },
+      payload: { tasks: [{ taskId, objective: 'Resume my report' }] },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().results).toMatchObject([{ taskId, status: 'conflict', accepted: false }]);
+  });
+  it('returns uncertain rather than rejected when replay dispatch throws', async () => {
+    operations.dispatchAutonomousTask.mockRejectedValue(new Error('database connection lost'));
+    const taskId = '8b5d2f0a-3f42-4c9a-8a71-1a9e9f55b101';
+    const response = await app.inject({
+      method: 'POST', url: '/api/agent/ops/tasks/sync',
+      headers: { 'x-test-user': 'user-1' },
+      payload: { tasks: [{ taskId, objective: 'Resume my report' }] },
+    });
+    expect(response.statusCode).toBe(503);
+    expect(response.json().results).toMatchObject([{ taskId, status: 'uncertain', accepted: false }]);
   });
   it('rejects unauthenticated offline replay before persistence', async () => {
     const response = await app.inject({
