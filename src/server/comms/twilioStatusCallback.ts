@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import formbody from '@fastify/formbody';
 import twilio from 'twilio';
@@ -140,7 +140,9 @@ export const twilioStatusCallbackPlugin: FastifyPluginAsync = async (fastify) =>
         source: 'ryanai-comms',
         repository: 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main',
         commitSha,
-        eventId: randomUUID(),
+        // The immutable receipt UUID is also the PA event id, so webhook replays
+        // carry the same identity and downstream consumers can deduplicate them.
+        eventId: receipt.receiptId,
         correlationId: `twilio:${providerMessageId}:dispatch:${dispatch.id}`,
         occurredAt: new Date().toISOString(),
         channel: channel as 'whatsapp' | 'sms' | 'voice',
