@@ -156,6 +156,23 @@ describe('RyanAI Comms inbox controls', () => {
     expect(list?.textContent).not.toContain('+27110000001');
   });
 
+  it('labels provider acceptance, uncertainty and delivery receipts as distinct states', async () => {
+    const base = conversations[0];
+    comms.getCommsConversations.mockResolvedValueOnce([{
+      ...base,
+      messages: [
+        { ...base.messages[0], id: 'accepted-message', direction: 'outbound', status: 'accepted', body: 'Accepted, not delivered.' },
+        { ...base.messages[0], id: 'uncertain-message', direction: 'outbound', status: 'uncertain', body: 'Provider outcome unknown.' },
+        { ...base.messages[0], id: 'delivered-message', direction: 'outbound', status: 'delivered', body: 'Receipt confirmed.' },
+      ],
+    }]);
+    await render();
+    expect(container.textContent).toContain('Accepted by provider · delivery unconfirmed');
+    expect(container.textContent).toContain('Uncertain · reconcile before retrying');
+    expect(container.textContent).toContain('Delivered · provider receipt confirmed');
+    expect(container.textContent).not.toContain('Accepted by provider · delivery confirmed');
+  });
+
   it('filters the conversation list by channel', async () => {
     await render();
     const channelFilter = container.querySelector('aside select') as HTMLSelectElement;
