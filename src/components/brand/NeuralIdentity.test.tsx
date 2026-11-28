@@ -21,6 +21,13 @@ describe('NeuralIdentity', () => {
     expect(html).toContain('Primary assistant');
   });
 
+  it('renders the PA Agent identity using its product-facing name', () => {
+    const html = renderToStaticMarkup(<NeuralIdentity identity="alex" />);
+    expect(html).toContain('aria-label="PA Agent, PA coordination"');
+    expect(html).toContain('PA Agent');
+    expect(html).not.toContain('Alex');
+  });
+
   it('supports a compact label without hiding the accessible identity', () => {
     const html = renderToStaticMarkup(
       <NeuralIdentity identity="genx" compact />,
