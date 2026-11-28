@@ -44,7 +44,7 @@ describe('Ryan Copilot preferences', () => {
     ));
     expect(authenticatedFetch).not.toHaveBeenCalled();
     expect(container.querySelector('[data-testid="delegation-panel"]')).not.toBeNull();
-    expect(container.textContent).not.toContain('Alex · PA Agent');
+    expect(container.textContent).not.toContain('PA Agent status');
     expect(container.querySelector('[data-testid="command-center"]')).not.toBeNull();
   });
 
@@ -55,7 +55,7 @@ describe('Ryan Copilot preferences', () => {
     ));
     await vi.waitFor(() => expect(authenticatedFetch).toHaveBeenCalledOnce());
     expect(interval).toHaveBeenCalledWith(expect.any(Function), 60_000);
-    expect(container.textContent).toContain('Alex · Monitoring');
+    expect(container.textContent).toContain('PA Agent · Monitoring');
     expect(container.querySelectorAll('[data-testid="delegation-panel"]')).toHaveLength(1);
   });
 });
