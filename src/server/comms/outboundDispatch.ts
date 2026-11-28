@@ -77,7 +77,6 @@ export async function reserveOutboundCommsDispatch(
       || existing.channel !== input.channel
       || existing.provider !== input.provider
       || existing.recipient !== input.recipient
-      || existing.provider !== input.provider
       || (existing.agentRunId ?? null) !== (input.agentRunId ?? null)
     ) {
       throw new Error('This outbound idempotency key is already bound to a different dispatch.', { cause: error });
