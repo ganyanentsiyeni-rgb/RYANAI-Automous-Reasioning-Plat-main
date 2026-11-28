@@ -33,8 +33,8 @@ describe('offline task reconnect and recovery', () => {
     expect(unavailable.acceptedIds).toEqual([]);
     expect(unavailable.rejectedIds).toEqual([firstId, secondId]);
     expect(await listOfflineTasks('user-a')).toMatchObject([
-      { taskId: firstId, attempts: 1, lastError: 'Network unavailable' },
-      { taskId: secondId, attempts: 1, lastError: 'Network unavailable' },
+      { taskId: firstId, attempts: 1, lastError: 'Network unavailable', deliveryState: 'uncertain' },
+      { taskId: secondId, attempts: 1, lastError: 'Network unavailable', deliveryState: 'uncertain' },
     ]);
 
     const reconnected = await replayOfflineTaskBatch('user-a', await listOfflineTasks('user-a'), async (tasks) => ({
@@ -56,7 +56,7 @@ describe('offline task reconnect and recovery', () => {
     expect(outcome.acceptedIds).toEqual([firstId]);
     expect(outcome.rejectedIds).toEqual([secondId]);
     expect(await listOfflineTasks('user-a')).toMatchObject([
-      { taskId: secondId, attempts: 1 },
+      { taskId: secondId, attempts: 1, deliveryState: 'rejected' },
     ]);
   });
 
@@ -66,7 +66,7 @@ describe('offline task reconnect and recovery', () => {
       results: [{ taskId: secondId, accepted: true, status: 'queued' }],
     }));
     expect(outcome.acceptedIds).toEqual([]);
-    expect(await listOfflineTasks('user-a')).toMatchObject([{ taskId: firstId, attempts: 1 }]);
+    expect(await listOfflineTasks('user-a')).toMatchObject([{ taskId: firstId, attempts: 1, deliveryState: 'uncertain' }]);
   });
 
   it('keeps retrying the same ID safely after an ambiguous response', async () => {
@@ -76,6 +76,7 @@ describe('offline task reconnect and recovery', () => {
       .mockResolvedValueOnce({ results: [{ taskId: firstId, accepted: true, status: 'queued' }] });
     const firstAttempt = await replayOfflineTaskBatch('user-a', [first], send);
     expect(firstAttempt.acceptedIds).toEqual([]);
+    expect(await listOfflineTasks('user-a')).toMatchObject([{ taskId: firstId, deliveryState: 'uncertain' }]);
     const secondAttempt = await replayOfflineTaskBatch('user-a', await listOfflineTasks('user-a'), send);
     expect(send).toHaveBeenNthCalledWith(2, [{ taskId: firstId, objective: 'Continue the report' }]);
     expect(secondAttempt.acceptedIds).toEqual([firstId]);
