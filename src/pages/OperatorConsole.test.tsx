@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { authenticatedFetch } from '@/lib/authenticatedFetch';
 import OperatorConsole from './OperatorConsole';
 import { listOfflineTasks } from '@/lib/offlineTaskOutbox';
+import { replayOfflineTaskBatch } from '@/lib/offlineTaskSyncClient';
 
 vi.mock('@/lib/authenticatedFetch', () => ({ authenticatedFetch: vi.fn() }));
 vi.mock('@/lib/supabase', () => ({
@@ -31,6 +32,7 @@ let root: Root;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(replayOfflineTaskBatch).mockResolvedValue({ acceptedIds: [], rejectedIds: [], error: null });
   apiFetch.mockResolvedValue({
     ok: true,
     json: async () => ({ tasks: [] }),
