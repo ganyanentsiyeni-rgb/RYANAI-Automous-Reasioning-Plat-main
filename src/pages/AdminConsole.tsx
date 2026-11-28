@@ -383,7 +383,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
       {errors.map((error, index) => <p key={index} role="alert" className="rounded-lg border border-rose-400/25 bg-rose-950/20 p-3 text-sm text-rose-200">{error}</p>)}
       {notice && <p role="status" className="rounded-lg border border-cyan-300/20 bg-cyan-950/20 p-3 text-sm text-cyan-100">{notice}</p>}
 
-      <AdminSettingsHub userId={userId} />
+      <AdminSettingsHub userId={userId} isOwner={Boolean(identity?.user.isOwner)} isAdmin={identity?.user.role === 'admin' || Boolean(identity?.user.isOwner)} />
       {(identity?.user.role === 'admin' || identity?.user.isOwner) && (
         <section id="admin-pa-control-plane" className="scroll-mt-6 space-y-3" aria-labelledby="admin-pa-control-plane-title">
           <header>
@@ -568,7 +568,7 @@ export default function AdminConsole({ userId }: { userId: string }) {
           <InfoRow label="Owner authority" value={identity ? (identity.user.isOwner ? 'Owner identity confirmed by server configuration' : 'Not the configured owner') : 'Not verified'} />
           <InfoRow label="Identity source" value="Supabase Auth · server-verified access token" />
         </dl>
-        <p className="mt-4 text-xs leading-5 text-slate-500">Read-only current-session view. The API verifies the bearer token with Supabase Auth, derives administrator role from trusted app metadata, and matches owner identity against server-side configuration. A tenant-wide user directory, role changes, session revocation and access-review history are not implemented. This console cannot grant administrator or owner authority.</p>
+        <p className="mt-4 text-xs leading-5 text-slate-500">Read-only current-session view. The API verifies the bearer token with Supabase Auth, derives administrator role from trusted app metadata, and matches owner identity against server-side configuration. Directory data and lifecycle requests are shown only when the protected APIs return them. This console cannot grant administrator or owner authority.</p>
       </section>
 
       <section id="admin-audit" className="scroll-mt-6 rounded-2xl border border-white/10 bg-slate-900/70 p-5 sm:p-6" aria-labelledby="admin-audit-title">
