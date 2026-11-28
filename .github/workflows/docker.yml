@@ -10,10 +10,11 @@ on:
     paths:
       - 'Dockerfile'
       - 'Dockerfile.api'
-      - 'Dockerfile'
+      - 'Dockerfile.database'
       - 'index.html'
       - 'mcp-server/**'
       - 'docker-compose.yml'
+      - 'scripts/docker-init/**'
       - 'docker-entrypoint.sh'
       - 'nginx.conf'
       - 'nginx.conf.template'
@@ -80,6 +81,10 @@ jobs:
             target: web
           - image: mcp
             file: mcp-server/Dockerfile
+            target: ''
+          # Local Compose Postgres image. Built and validated here, never published.
+          - image: database
+            file: Dockerfile.database
             target: ''
     steps:
       - name: Checkout

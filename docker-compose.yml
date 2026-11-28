@@ -6,7 +6,10 @@
 
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    # Built from Dockerfile.database so the Supabase Auth compatibility bootstrap ships inside the image.
+    build:
+      context: .
+      dockerfile: Dockerfile.database
     container_name: ryanai-db
     environment:
       POSTGRES_USER: ryanai
@@ -19,7 +22,6 @@ services:
     # Supabase remains the credential authority; this table contains no auth secrets.
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/docker-init/01-supabase-auth-compat.sql:/docker-entrypoint-initdb.d/01-supabase-auth-compat.sql:ro
     healthcheck:
       test:
         - CMD-SHELL

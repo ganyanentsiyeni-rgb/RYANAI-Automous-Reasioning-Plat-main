@@ -43,7 +43,7 @@
     {
       "name": "postgres",
       "runtime": "container",
-      "image": "pgvector/pgvector:pg16",
+      "dockerfile": "Dockerfile.database",
       "port": 5432,
       "persistentVolume": "postgres_data",
       "requiresSecret": "DB_PASSWORD"
