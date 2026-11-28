@@ -61,6 +61,21 @@ describe('Operator Console account ownership', () => {
     await vi.waitFor(() => expect(listOfflineTasksMock).toHaveBeenCalledWith('operator-account-a'));
   });
 
+  it('never renders offline tasks owned by a different account', async () => {
+    listOfflineTasksMock.mockResolvedValue([{
+      taskId: 'foreign-task',
+      ownerId: 'operator-account-b',
+      objective: 'A task belonging to another account',
+      createdAt: new Date().toISOString(),
+      attempts: 0,
+      lastError: null,
+    }]);
+    await act(async () => root.render(<OperatorConsole userId="operator-account-a" />));
+    await vi.waitFor(() => expect(listOfflineTasksMock).toHaveBeenCalledWith('operator-account-a'));
+    expect(container.textContent).not.toContain('A task belonging to another account');
+    expect(container.textContent).toContain('No local tasks are waiting for server acceptance.');
+  });
+
   it('does not load account task history without an authenticated account identity', async () => {
     await act(async () => root.render(<OperatorConsole userId="" />));
     await act(async () => await Promise.resolve());
