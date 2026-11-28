@@ -857,3 +857,10 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Send finalization now reconciles the latest immutable receipt for the provider message before finalizing the approval. The callback path likewise derives approval status and provider status from the latest receipt, allowing later delivered evidence to supersede an earlier failed callback without letting an older callback downgrade the current state.
 - Approval status remains a coarse authorization/dispatch lifecycle; detailed provider delivery events remain append-only in `CommsDeliveryReceipt`. AgentRun state is not modified.
 - Added regression assertions for receipt-based reconciliation. Test execution and exact-head CI/security evidence remain pending. No provider dispatch, migration, credential, deployment, or production state changed.
+
+## 2026-11-28 — Comms idempotency provider binding
+
+- Tightened outbound dispatch replay validation so an idempotency key cannot be replayed against a different provider, even when message, recipient, channel, and AgentRun attribution match.
+- The existing reservation lookup now retrieves and compares the provider as part of the immutable dispatch identity.
+- Added a regression case for cross-provider idempotency-key reuse.
+- Validation status: regression test authored; execution remains pending.
