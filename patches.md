@@ -765,3 +765,10 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Expanded the Prisma migration-readiness schema audit from 15 AgentRun columns to all 32 columns declared by the Prisma model, database.yml, and startup readiness gate.
 - Expanded the complete-schema test fixture to all 32 columns so the audit cannot pass with a partial AgentRun table.
 - This is source/test coverage only. Local execution and exact-head CI/security validation remain pending; no live database migration or deployment was run.
+
+
+## 2026-11-28 — AgentRun operational index readiness audit
+
+- Extended the read-only migration/schema audit to require the four AgentRun indexes used by queue selection, lease recovery, worker lease lookup, and approval filtering.
+- Added regression assertions that a missing AgentRun operational index is reported and that the complete-schema fixture includes all required indexes.
+- Local test execution and exact-head CI/security checks remain pending. No live database or deployment was changed.
