@@ -843,3 +843,10 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Receipt advancement now uses atomic allowed-state predicates. Delivered evidence can supersede an earlier failed callback, while later accepted/failed callbacks cannot downgrade delivered or reconciled state.
 - Added unit coverage for conditional acceptance, in-flight-only uncertainty, and atomic receipt transition predicates. No AgentRun fields are written by these dispatch-state functions.
 - Test execution and exact-head CI/security evidence remain pending. No provider dispatch, database migration, credential, deployment, or production state changed.
+
+
+## 2026-11-28 — Comms PA receipt event replay identity
+
+- Reused the immutable CommsDeliveryReceipt UUID as the PA event ID instead of generating a fresh UUID for every Twilio webhook delivery.
+- Authenticated provider retries can still re-emit evidence if a prior callback was persisted before a process interruption, but every replay now carries the same event identity so downstream consumers can deduplicate it.
+- Added regression coverage for stable PA event identity across a repeated callback. Test execution and exact-head CI/security evidence remain pending; no provider dispatch, AgentRun state, database migration, credential, deployment, or production state changed.
