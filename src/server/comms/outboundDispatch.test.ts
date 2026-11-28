@@ -120,6 +120,30 @@ describe('outbound Comms dispatch', () => {
     expect(findUnique).not.toHaveBeenCalled();
   });
 
+  it.each(['queued', 'unknown'])('does not promote a dispatch on a %s provider callback', async (deliveryState) => {
+    const updateMany = vi.fn();
+    const findUnique = vi.fn();
+    const prisma = { outboundCommsDispatch: { updateMany, findUnique } } as unknown as PrismaClient;
+
+    await advanceOutboundCommsDispatchFromReceipt(prisma, { dispatchId: 'dispatch-pending', deliveryState });
+
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(findUnique).not.toHaveBeenCalled();
+  });
+
+  it('advances voice call completion only to provider acceptance, never delivery', async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const prisma = { outboundCommsDispatch: { updateMany } } as unknown as PrismaClient;
+
+    await advanceOutboundCommsDispatchFromReceipt(prisma, { dispatchId: 'voice-dispatch', deliveryState: 'accepted_by_provider' });
+
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'voice-dispatch', state: { in: ['reserved', 'dispatching', 'accepted', 'uncertain'] } },
+      data: expect.objectContaining({ state: 'accepted' }),
+    }));
+    expect(updateMany.mock.calls[0][0].data.state).not.toBe('delivered');
+  });
+
   it('requires explicit operator reconciliation before an uncertain dispatch can become resolved', async () => {
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });
     const prisma = { outboundCommsDispatch: { updateMany } } as unknown as PrismaClient;
