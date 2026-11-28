@@ -783,6 +783,20 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - No runtime behavior, API contract, authentication, provider configuration, deployment, migration, or credential state was changed.
 - Validation status: source committed on the repair branch; exact-head test execution is still required before this patch is considered verified.
 
+## 2026-11-28 — PR CI catalogue and Docker scan producer alignment
+
+- Updated CI execution completeness to select `required-staging-checks.json`
+  for pull requests and non-main manual runs. Manual runs on main retain the
+  release catalogue, keeping the main-only Render audit out of PR validation.
+- Removed the Docker workflow's restrictive PR path filter. API/web image
+  build and scan contexts now run for every pull request, including
+  documentation-only and workflow-only changes. PR validation does not publish.
+- The Railway source contract remains `railway.json`: Dockerfile builder with
+  `Dockerfile.api`. The observed live Railway source/builder drift is not
+  changed here; relinking or changing a live service requires authorization.
+- No provider relink, live configuration change, production deployment,
+  database operation, or credential change is included. Exact-SHA CI/security
+  verification is required before any merge or deployment.
 ## 2026-11-28 — Studio canonical repository handoff repair
 
 - Fixed the RyanAI Studio VS Code Web handoff to open the canonical repository `ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main` instead of the retired `RyanAI-Automated/RYANAI-Automous-Reasioning-Plat` source.
