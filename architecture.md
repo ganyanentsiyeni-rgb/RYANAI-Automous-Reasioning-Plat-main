@@ -259,3 +259,8 @@ The user-facing collaboration identity is presented as **PA Agent** across Profi
 ## Command Center mobile drawer interaction boundary (2026-11-28)
 
 The mobile conversation-history and live-telemetry drawers are mutually exclusive app-owned modal surfaces. Their triggers expose `aria-controls` and `aria-expanded`; opening a drawer closes the other. Keyboard Tab navigation wraps in both directions, a focus-in guard prevents focus escaping the active modal, Escape closes the drawer, and dismissal restores focus to the invoking trigger. The shared `src/lib/dialogFocus.ts` helper is covered by unit tests. These are frontend accessibility behaviors and do not change conversation, telemetry, or authorization contracts.
+
+
+### Operator Console offline outbox account-switch safety (2026-11-28)
+- Scoped outbox reads and sync UI updates to the account and request generation that initiated them; late IndexedDB/network completions are ignored after an auth-account change.
+- Clear prior-account queue/error presentation on account changes and filter rendered records by the active owner as a final UI boundary. Existing stable task IDs and server acceptance rules remain unchanged.
