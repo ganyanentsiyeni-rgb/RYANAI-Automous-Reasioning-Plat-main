@@ -37,6 +37,8 @@ describe('Mission Operating System accessibility', () => {
     expect(container.querySelector('#mission-tab-architecture')?.getAttribute('aria-selected')).toBe('true');
     expect(container.querySelector('#mission-panel-architecture')).toBeTruthy();
     expect(container.querySelector('#mission-tab-overview')?.getAttribute('tabindex')).toBe('-1');
+    const selectedPlane = container.querySelector('button[aria-label="Open Experience architecture plane"]');
+    expect(selectedPlane?.getAttribute('aria-pressed')).toBe('true');
   });
 
   it('supports Home and End navigation without changing the selected panel incorrectly', async () => {
