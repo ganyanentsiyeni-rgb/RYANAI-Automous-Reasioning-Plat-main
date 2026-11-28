@@ -171,6 +171,10 @@ export async function claimCommsAction(
   if (claimed.length !== 1) throw new Error('The approved communications action is expired, changed, or already claimed.');
 }
 
+export function resolveCommsApprovalStatus(status: string, expiresAt: Date, now = new Date()): string {
+  return status === 'pending' && expiresAt.getTime() <= now.getTime() ? 'expired' : status;
+}
+
 export async function finishCommsAction(
   prisma: { $executeRawUnsafe(query: string, ...values: unknown[]): Promise<number> },
   approvalId: string,
@@ -178,7 +182,23 @@ export async function finishCommsAction(
 ): Promise<void> {
   await prisma.$executeRawUnsafe(
     `UPDATE public.comms_send_approvals
-       SET status = $2, provider_message_id = $3, provider_status = $4, updated_at = NOW()
+       SET status = CASE
+             WHEN (
+               SELECT delivery_state FROM public.comms_delivery_receipts
+                WHERE provider_message_id = $3
+                ORDER BY occurred_at DESC, created_at DESC
+                LIMIT 1
+             ) = 'failed' THEN 'failed'
+             ELSE $2
+           END,
+           provider_message_id = $3,
+           provider_status = COALESCE((
+             SELECT provider_status FROM public.comms_delivery_receipts
+              WHERE provider_message_id = $3
+              ORDER BY occurred_at DESC, created_at DESC
+              LIMIT 1
+           ), $4),
+           updated_at = NOW()
      WHERE id = $1::uuid AND status = 'dispatching'`,
     approvalId, outcome.status, outcome.providerMessageId ?? null, outcome.providerStatus ?? null,
   );
@@ -391,7 +411,7 @@ export const commsAuthorizationRoutes: FastifyPluginAsync = async (fastify) => {
     );
     const item = rows[0];
     if (!item) return reply.code(404).send({ error: 'Approval request not found.' });
-    return { approvalId: request.params.id, status: item.status, channel: item.channel, recipient: item.recipient, expiresAt: item.expires_at.toISOString() };
+    return { approvalId: request.params.id, status: resolveCommsApprovalStatus(item.status, item.expires_at), channel: item.channel, recipient: item.recipient, expiresAt: item.expires_at.toISOString() };
   });
 
   fastify.post<{ Params: { id: string } }>('/api/comms/approvals/:id/approve', async (request, reply) => {
