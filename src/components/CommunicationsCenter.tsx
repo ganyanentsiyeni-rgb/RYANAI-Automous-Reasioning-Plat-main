@@ -553,7 +553,7 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
                       {attachment.status === 'clean' && <button type="button" onClick={() => void downloadAttachment(attachment)} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-cyan-400/30 px-2 py-1 text-[10px] text-cyan-200 hover:bg-cyan-400/10"><Download className="h-3 w-3" />Download</button>}
                     </div>
                   ))}
-                  <p className="mt-2 flex items-center gap-2 text-[10px] text-slate-400"><Activity className="h-3 w-3" />{item.direction} · {messageStatusLabel(item.status)} · {dateLabel(item.createdAt)}</p>
+                  <p className="mt-2 flex items-center gap-2 text-[10px] text-slate-400"><Activity className="h-3 w-3" />{item.direction} · {messageStatusLabel(item.deliveryStatus ?? item.status)}{item.deliveryProviderStatus ? ` · provider: ${item.deliveryProviderStatus}` : ''} · {dateLabel(item.createdAt)}</p>
                 </article>
               </div>
             ))}
@@ -648,7 +648,7 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
             </section>
             <section className="space-y-2">
               <h3 className="text-xs font-semibold text-slate-200">Latest message status</h3>
-              <p className="rounded-lg border border-white/10 bg-slate-950/40 p-3 text-xs text-slate-300">{active.messages.at(-1) ? messageStatusLabel(active.messages.at(-1)!.status) : 'No message status available'}</p>
+              <p className="rounded-lg border border-white/10 bg-slate-950/40 p-3 text-xs text-slate-300">{active.messages.at(-1) ? messageStatusLabel(active.messages.at(-1)!.deliveryStatus ?? active.messages.at(-1)!.status) : 'No message status available'}{active.messages.at(-1)?.deliveryProviderStatus ? ` · provider: ${active.messages.at(-1)!.deliveryProviderStatus}` : ''}</p>
               <p className="text-[11px] leading-5 text-slate-500">Provider acceptance is not a delivery receipt. Final delivery state depends on a verified provider callback.</p>
             </section>
           </> : <p className="rounded-lg border border-dashed border-white/10 p-4 text-xs leading-5 text-slate-500">Select a conversation to inspect its channel identity, message counts and latest recorded status.</p>}
