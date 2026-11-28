@@ -640,3 +640,10 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Updated the Darkside milestone documentation and added regression assertions for Profile Settings, Copilot status labels, and the accessible neural identity name.
 - Preserved the persisted `showAlexStatus` preference key, `alex` identity lookup key, and existing backend handoff identifiers for compatibility; these are internal contracts, not user-facing labels. No API schema, authorization, persistence, deployment, or runtime behavior was changed.
 - Exact-head CI and test execution remain pending.
+
+## 2026-11-28 — Command Center mobile drawer accessibility
+
+- Hardened the conversation-history and live-telemetry mobile drawers with a shared keyboard Tab focus-trap utility and a `focusin` guard that returns escaped focus to the active drawer.
+- Added explicit `aria-controls` relationships from both drawer triggers to their corresponding modal panels; opening one drawer closes the other so only one modal is active.
+- Added unit coverage for forward/backward wrapping and focus that escapes the drawer. The existing Escape-close and trigger-focus restoration behavior is preserved.
+- Frontend interaction/accessibility only. Local test execution and exact-head CI/security checks remain pending; no backend, infrastructure, credential, migration, or deployment changes.
