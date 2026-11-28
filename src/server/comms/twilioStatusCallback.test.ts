@@ -20,6 +20,7 @@ const prisma = {
       channel: 'sms',
     }),
     update: vi.fn().mockResolvedValue({}),
+    updateMany: vi.fn().mockResolvedValue({ count: 1 }),
   },
   commsDeliveryReceipt: {
     findUnique: vi.fn().mockResolvedValue(null),
@@ -91,8 +92,8 @@ describe('Twilio delivery status callback', () => {
       expect(response.statusCode).toBe(202);
       expect(response.json()).toMatchObject({ accepted: true, state: 'delivered' });
       expect(prisma.commsDeliveryReceipt.create).toHaveBeenCalledTimes(1);
-      expect(prisma.outboundCommsDispatch.update).toHaveBeenCalledWith(expect.objectContaining({
-        where: { id: 'dispatch-1' },
+      expect(prisma.outboundCommsDispatch.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: { id: 'dispatch-1', state: { in: expect.arrayContaining(['accepted']) } },
         data: expect.objectContaining({ state: 'delivered' }),
       }));
       expect(received).toHaveBeenCalledTimes(1);
