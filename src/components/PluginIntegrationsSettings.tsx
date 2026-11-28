@@ -466,12 +466,12 @@ function PluginIntegrationsSettingsContent({
           ? 'Read-only mailbox API'
           : registryLoading
             ? 'Checking backend registry…'
-            : registryError
-              ? 'Registry unavailable'
-              : registry?.adapterStatus === 'adapter_registered'
-                ? 'Adapter registered'
-                : registry
-                  ? 'Adapter required'
+            : registry?.adapterStatus === 'adapter_registered'
+              ? 'Adapter registered'
+              : registry
+                ? 'Adapter required'
+                : registryError
+                  ? 'Registry unavailable'
                   : 'Not in backend registry';
         const connected = connection?.connectionState === 'connected';
         return <article key={plugin.id} data-plugin-id={plugin.id} className="rounded-xl border border-white/10 bg-slate-950/60 p-4">

@@ -953,6 +953,12 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Follow-up test correction: the GitHub identity-refresh regression now clicks the GitHub card's own Refresh control, not the separate registry/connection refresh control. The latter does not invoke /api/github/status.
 - The Framer Motion test double strips animation-only props from the rendered DOM while preserving ordinary dialog props and refs.
 
+## 2026-11-28 — Preserve verified plugin adapter status during transient registry failures
+
+- Kept the last verified adapter registration visible when a subsequent plugin-registry refresh fails; the separate registry error still communicates that the latest refresh is unavailable.
+- This prevents a transient transport/API failure from masking a previously verified adapter state as if it had disappeared.
+- Regression coverage: `PluginIntegrationsSettings.test.tsx` asserts the registered adapter remains visible after a failed refresh.
+- No production/provider configuration, deployment, database write or migration, credential change, or provider relinking was performed.
 
 ### 2026-11-28 — Bind outbound Comms idempotency to provider identity
 - When an outbound dispatch idempotency key collides, the replay lookup now includes the original provider and rejects a replay that attempts to switch providers.
