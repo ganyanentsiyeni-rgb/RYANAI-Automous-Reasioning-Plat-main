@@ -782,3 +782,10 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Kept the shared `trapDialogTabKey` helper isolated behind its existing utility tests; this page test verifies the actual Command Center state transitions and focus lifecycle.
 - No runtime behavior, API contract, authentication, provider configuration, deployment, migration, or credential state was changed.
 - Validation status: source committed on the repair branch; exact-head test execution is still required before this patch is considered verified.
+
+## 2026-11-28 — PR CI catalogue and Docker scan producer alignment
+
+- Updated CI execution completeness to select `required-staging-checks.json` for pull requests and non-main manual runs; the main-branch manual run retains the release catalogue. This prevents the main-only Render read-only configuration audit from being incorrectly required on a PR head.
+- Removed the Docker workflow's restrictive pull-request path filter so the API and web image build/scan contexts are produced for every pull request, including documentation-only and workflow-only changes. Publishing remains separately opt-in and is not enabled by PR validation.
+- The Railway source contract remains `railway.json`: Dockerfile builder with `Dockerfile.api`. The observed live Railway source/builder drift is not changed here; relinking or changing a live service requires separate authorization.
+- No merge, provider relink, live configuration change, production deployment, database operation, or credential change is included. Exact-SHA CI/security verification is required before any merge or deployment.
