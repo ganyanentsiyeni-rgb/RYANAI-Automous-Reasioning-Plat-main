@@ -78,7 +78,7 @@ export function assessSchema({ columns, tables, indexes, extensions, memoryColum
   const missingCacheColumns = requiredCacheColumns.filter((name) => !cacheColumns.has(name));
   const requiredIndexes = ['idx_reasoning_embedding', 'idx_agent_session', 'coding_tasks_status_next_attempt_idx', 'coding_tasks_status_lease_expiry_idx', 'coding_tasks_user_created_idx', 'coding_tasks_workbench_run_idx', 'agent_runs_queue_type_status_created_idx'];
   const missingIndexes = requiredIndexes.filter((name) => !indexes.has(name));
-  const requiredAgentRunIndexes = ['agent_runs_queue_type_status_created_idx', 'agent_runs_status_next_attempt_lease_idx', 'agent_runs_worker_lease_idx', 'agent_runs_approval_status_created_idx'];
+  const requiredAgentRunIndexes = ['agent_runs_user_id_created_at_idx', 'agent_runs_status_created_at_idx', 'agent_runs_status_locked_at_idx', 'agent_runs_status_next_attempt_at_idx', 'agent_runs_queue_type_status_created_idx', 'agent_runs_status_next_attempt_lease_idx', 'agent_runs_worker_lease_idx', 'agent_runs_approval_status_created_idx'];
   const missingAgentRunIndexes = requiredAgentRunIndexes.filter((name) => !indexes.has(name));
   const expectedAttemptTypes = { id: 'uuid', event_inbox_id: 'uuid', attempt: 'integer', worker_id: 'character varying(128)', status: 'character varying(24)', error: 'text', started_at: 'timestamp with time zone', finished_at: 'timestamp with time zone' };
   const missingAttemptColumns = eventAttemptColumns === null ? [] : Object.keys(expectedAttemptTypes).filter((name) => !eventAttemptColumns.some((column) => column.column_name === name));
