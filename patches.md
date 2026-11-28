@@ -782,3 +782,10 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Kept the shared `trapDialogTabKey` helper isolated behind its existing utility tests; this page test verifies the actual Command Center state transitions and focus lifecycle.
 - No runtime behavior, API contract, authentication, provider configuration, deployment, migration, or credential state was changed.
 - Validation status: source committed on the repair branch; exact-head test execution is still required before this patch is considered verified.
+
+## 2026-11-28 — Studio canonical repository handoff repair
+
+- Fixed the RyanAI Studio VS Code Web handoff to open the canonical repository `ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main` instead of the retired `RyanAI-Automated/RYANAI-Automous-Reasioning-Plat` source.
+- Added page-level `happy-dom` coverage for the repository handoff and Studio runtime boundary messaging.
+- No backend, authentication, credential, deployment, database migration, or provider configuration changes.
+- Exact-head CI/security execution remains required before this patch is considered verified.
