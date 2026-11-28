@@ -388,4 +388,27 @@ describe('Plugin integrations centre', () => {
     expect(api.authenticatedFetch).toHaveBeenCalledWith('/api/plugins/gmail/connect', { method: 'POST', headers: { Accept: 'application/json' } }, 'user-a');
     expect(assign).toHaveBeenCalledWith(expect.stringContaining('https://accounts.google.com/'));
   });
+  it('preserves the last verified GitHub identity when a later refresh fails', async () => {
+    let statusReads = 0;
+    api.authenticatedFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/github/status') {
+        statusReads += 1;
+        if (statusReads === 1) {
+          return { ok: true, json: async () => ({ status: 'connected', connected: true, account: { login: 'synthetic-owner' }, repository: { fullName: 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main' } }) };
+        }
+        return { ok: false, json: async () => ({ error: 'GitHub temporarily unavailable.' }) };
+      }
+      return { ok: true, json: async () => url === '/api/plugins/registry' ? { providers: [] } : { connections: [] } };
+    });
+    await mount();
+    await vi.waitFor(() => expect(container.textContent).toContain('@synthetic-owner'));
+    const refresh = [...container.querySelectorAll('button')].find(button => button.textContent === 'Refresh integration status');
+    expect(refresh).toBeDefined();
+    await click(refresh ?? null);
+    await vi.waitFor(() => expect(container.textContent).toContain('GitHub temporarily unavailable.'));
+    expect(container.textContent).toContain('@synthetic-owner');
+    expect(container.textContent).toContain('Verified repository: ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main');
+    expect(container.textContent).toContain('unverified');
+  });
+
 });
