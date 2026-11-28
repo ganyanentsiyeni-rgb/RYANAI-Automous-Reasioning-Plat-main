@@ -677,3 +677,9 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Authenticated `POST /api/agent/ops/tasks/reconcile` accepts batches of 1–20 stable task IDs plus objectives and queries only records owned by the authenticated user.
 - Exact ID + matching objective confirms the existing run; same-owner objective mismatch is a conflict; missing or cross-owner IDs remain unresolved without disclosing another account's record.
 - Local outbox entries are removed only after explicit exact-ID acceptance. Unresolved and uncertain entries remain retryable with the same task ID.
+
+
+### Operator Console reconciliation wiring (2026-11-28)
+- The reconnect flow now invokes exact-ID reconciliation for every replay item that was not explicitly accepted or definitively rejected by the sync response.
+- A reconciliation response can clear an outbox record only when it explicitly confirms the same task ID; unresolved, missing, or failed reconciliation keeps the task locally retryable.
+- Regression tests cover successful reconciliation after ambiguous dispatch and retention when exact-ID lookup remains unresolved.

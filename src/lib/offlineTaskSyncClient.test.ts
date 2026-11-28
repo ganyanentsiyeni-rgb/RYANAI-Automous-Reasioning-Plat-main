@@ -69,6 +69,34 @@ describe('offline task reconnect and recovery', () => {
     expect(await listOfflineTasks('user-a')).toMatchObject([{ taskId: firstId, attempts: 1, deliveryState: 'uncertain' }]);
   });
 
+  it('reconciles an ambiguous dispatch by exact ID before retaining the outbox record', async () => {
+    const first = await enqueueOfflineTask('user-a', 'Continue the report', firstId);
+    const reconcile = vi.fn().mockResolvedValue({
+      results: [{ taskId: firstId, accepted: true, status: 'queued' }],
+    });
+    const outcome = await replayOfflineTaskBatch(
+      'user-a',
+      [first],
+      async () => ({ results: [{ taskId: firstId, accepted: false, status: 'uncertain' }] }),
+      reconcile,
+    );
+    expect(reconcile).toHaveBeenCalledWith([{ taskId: firstId, objective: 'Continue the report' }]);
+    expect(outcome.acceptedIds).toEqual([firstId]);
+    expect(await listOfflineTasks('user-a')).toEqual([]);
+  });
+
+  it('keeps unresolved exact-ID reconciliation records retryable', async () => {
+    const first = await enqueueOfflineTask('user-a', 'Continue the report', firstId);
+    const outcome = await replayOfflineTaskBatch(
+      'user-a',
+      [first],
+      async () => ({ results: [{ taskId: firstId, accepted: false, status: 'uncertain' }] }),
+      async () => ({ results: [{ taskId: firstId, accepted: false, status: 'unresolved' }] }),
+    );
+    expect(outcome.acceptedIds).toEqual([]);
+    expect(await listOfflineTasks('user-a')).toMatchObject([{ taskId: firstId, deliveryState: 'uncertain' }]);
+  });
+
   it('keeps retrying the same ID safely after an ambiguous response', async () => {
     const first = await enqueueOfflineTask('user-a', 'Continue the report', firstId);
     const send = vi.fn()

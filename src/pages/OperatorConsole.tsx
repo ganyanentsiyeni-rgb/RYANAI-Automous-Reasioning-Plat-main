@@ -184,18 +184,24 @@ export default function OperatorConsole({ userId }: { userId: string }) {
         if (!isCurrentOwner()) return;
         const batch = pending.slice(offset, offset + 20);
         try {
-          const outcome = await replayOfflineTaskBatch(syncOwnerId, batch, async (items) => {
-            const response = await authenticatedFetch('/api/agent/ops/tasks/sync', {
+          const sendOfflineTasks = async (endpoint: '/api/agent/ops/tasks/sync' | '/api/agent/ops/tasks/reconcile', items: Array<{ taskId: string; objective: string }>) => {
+            const response = await authenticatedFetch(endpoint, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
               body: JSON.stringify({ tasks: items }),
             }, ownerId);
             const payload = await response.json() as OfflineSyncResponse;
             if (!Array.isArray(payload.results)) {
-              throw new Error(payload.error || 'The server did not return per-task sync results (' + response.status + ').');
+              throw new Error(payload.error || 'The server did not return per-task results (' + response.status + ').');
             }
             return payload;
-          });
+          };
+          const outcome = await replayOfflineTaskBatch(
+            syncOwnerId,
+            batch,
+            (items) => sendOfflineTasks('/api/agent/ops/tasks/sync', items),
+            (items) => sendOfflineTasks('/api/agent/ops/tasks/reconcile', items),
+          );
           if (!isCurrentOwner()) return;
           acceptedCount += outcome.acceptedIds.length;
           if (outcome.error) {
