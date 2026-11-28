@@ -625,3 +625,11 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Extended the exact-SHA validator to accept an explicit catalogue while preserving the release catalogue as the default.
 - Added regression coverage proving the staging catalogue excludes the main-only Render audit and contains unique contexts.
 - Expanded Docker PR path coverage so deployment-readiness changes trigger the API/web image build and scan producers required by the staging evidence contract.
+
+## 2026-11-28 — Agent UI approval dialog keyboard accessibility
+
+- Added initial focus to the safe Decline action when an agent UI approval request opens.
+- Added keyboard focus containment, Escape-to-decline behavior, and focus restoration to the invoking control when the dialog closes.
+- Added `aria-describedby` linkage for the exact approval summary and visible focus indicators on both decision controls.
+- Added regression coverage for initial focus, Escape dismissal, and focus restoration while preserving the server-authoritative authorization boundary.
+- This is a frontend accessibility repair only. Local test execution and exact-head CI/security evidence remain pending; no merge, deployment, migration, credential change, or authorization-policy change is included.
