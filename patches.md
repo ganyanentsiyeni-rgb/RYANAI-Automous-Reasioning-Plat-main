@@ -706,3 +706,11 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Aligned the primary U2EB API health check with the live API liveness endpoint `/health` and the standalone U2EB blueprint.
 - Updated deployment-contract assertions so automatic deployment cannot silently return to the primary U2EB blueprint.
 - This is a source-controlled proposal only. It does not change Render's live service settings, trigger a deployment, consume build minutes, or authorize production changes. Validation must pass on the exact PR SHA before merge.
+
+
+## 2026-11-28 — MCPJungle CI delegated-token claims
+
+- Fixed the CI-only delegated JWT minted for the MCPJungle upstream proxy to include the required `actorType: "service"` claim.
+- The MCP server's verifier rejects delegated tokens without an allowed actorType. The resulting 401 `WWW-Authenticate: Bearer` response was then misinterpreted by MCPJungle as an OAuth-protected-resource challenge, causing a failing dynamic OAuth registration attempt against a missing metadata route.
+- The token remains short-lived (110 seconds), scope-limited to `platform_health`, signed with the disposable CI delegation secret, and used only in the isolated Compose test.
+- Validation is pending on the updated PR head.
