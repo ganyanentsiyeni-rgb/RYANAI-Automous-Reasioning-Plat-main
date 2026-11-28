@@ -337,14 +337,16 @@ export default function OperatorConsole({ userId }: { userId: string }) {
           <li key={item.taskId} className="rounded-lg border border-white/5 bg-slate-950/50 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-medium text-slate-100">{item.objective}</span>
-              <span className="rounded-full border border-amber-300/20 px-2 py-0.5 text-[10px] uppercase text-amber-100">Waiting for server</span>
+              <span className={'rounded-full border px-2 py-0.5 text-[10px] uppercase ' + (item.deliveryState === 'uncertain' ? 'border-violet-300/30 text-violet-200' : item.deliveryState === 'rejected' ? 'border-rose-300/30 text-rose-200' : 'border-amber-300/20 text-amber-100')}>
+                {item.deliveryState === 'uncertain' ? 'Acceptance uncertain' : item.deliveryState === 'rejected' ? 'Rejected · retryable' : 'Waiting for server'}
+              </span>
             </div>
             <p className="mt-1 break-all font-mono text-[10px] text-slate-500">{item.taskId}</p>
             {item.lastError && <p className="mt-2 text-xs text-amber-200">Retry {item.attempts}: {item.lastError}</p>}
           </li>
         ))}</ul>}
         {accountOutboxTasks.length === 0 && !outboxError && <p className="mt-3 text-xs text-slate-500">No local tasks are waiting for server acceptance.</p>}
-        <p className="mt-3 text-[11px] leading-5 text-slate-500">Tasks are saved in browser IndexedDB and scoped to the signed-in account. A task leaves this outbox only after the API confirms acceptance. Local storage does not mean a worker is running it.</p>
+        <p className="mt-3 text-[11px] leading-5 text-slate-500">Tasks are saved in browser IndexedDB and scoped to the signed-in account. A task leaves this outbox only after the API confirms acceptance. An uncertain result means the request may have reached the server; retry reuses the same stable task ID to avoid duplicate executions. Local storage does not mean a worker is running it.</p>
       </section>
 
       {error && <p role="alert" className="rounded-lg border border-rose-400/25 bg-rose-950/20 p-3 text-sm text-rose-200">{error}</p>}
