@@ -288,6 +288,35 @@ describe('Twilio conversational voice webhooks', () => {
 // Delivery status callback behavior is covered by twilioStatusCallback.test.ts.
 
 describe('Comms conversation ownership', () => {
+  it('projects monotonic outbound dispatch state and latest receipt without mutating message or AgentRun state', async () => {
+    const app = Fastify();
+    apps.push(app);
+    app.decorateRequest('authUser', null);
+    app.addHook('preHandler', async (request) => {
+      request.authUser = { id: '11111111-1111-4111-8111-111111111111', role: 'user', isOwner: true };
+    });
+    app.decorate('prisma', prismaMock as never);
+    prismaMock.communicationConversation.findMany.mockResolvedValueOnce([{
+      id: 'conversation-1', channel: 'whatsapp', externalAddress: '+15555550123', updatedAt: new Date('2026-11-28T10:00:00.000Z'),
+      messages: [{
+        id: 'message-1', direction: 'outbound', body: 'Hello', status: 'accepted',
+        providerMessageId: 'SM123', metadata: null, createdAt: new Date('2026-11-28T09:59:00.000Z'), attachments: [],
+        outboundDispatch: { state: 'delivered', receipts: [{ providerStatus: 'delivered', deliveryState: 'delivered', occurredAt: new Date('2026-11-28T10:00:00.000Z') }] },
+      }],
+    }] as never);
+    await app.register(commsPlugin);
+
+    const response = await app.inject({ method: 'GET', url: '/api/comms/conversations' });
+    const body = response.json();
+
+    expect(response.statusCode).toBe(200);
+    expect(body.conversations[0].messages[0]).toMatchObject({
+      status: 'accepted', deliveryStatus: 'delivered', deliveryProviderStatus: 'delivered',
+    });
+    expect(prismaMock.communicationConversation.updateMany).not.toHaveBeenCalled();
+    expect(prismaMock.communicationMessage.updateMany).not.toHaveBeenCalled();
+  });
+
   it('never assigns legacy ownerless conversations to the requesting owner during a read', async () => {
     const app = Fastify();
     apps.push(app);
