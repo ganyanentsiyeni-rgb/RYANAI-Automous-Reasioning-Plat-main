@@ -5,7 +5,7 @@ import {
 } from './offlineTaskOutbox';
 
 export interface OfflineTaskSyncReply {
-  results?: Array<{ taskId: string; accepted: boolean; status?: string }>;
+  results?: Array<{ taskId: string; accepted: boolean; status?: string; createdAt?: string }>;
   error?: string;
   status?: string;
 }
@@ -44,7 +44,9 @@ export async function replayOfflineTaskBatch(
           ownerId,
           task.taskId,
           reply.error || 'Server did not confirm acceptance. This task remains saved locally for safe retry.',
-          resultById.has(task.taskId) ? 'rejected' : 'uncertain',
+          resultById.get(task.taskId)?.status === 'rejected' || resultById.get(task.taskId)?.status === 'conflict'
+            ? 'rejected'
+            : 'uncertain',
         );
       }
     }
