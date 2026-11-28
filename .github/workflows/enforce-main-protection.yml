@@ -87,7 +87,6 @@ jobs:
                       "exclude": []
                   }
               },
-              "rules": [
               "rules": preserved_rules + [
                   {"type": "deletion"},
                   {"type": "non_fast_forward"},
