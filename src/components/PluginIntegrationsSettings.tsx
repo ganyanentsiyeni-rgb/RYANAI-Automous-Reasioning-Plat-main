@@ -214,13 +214,13 @@ function PluginIntegrationsSettingsContent({
   }, [userId]);
 
   useEffect(() => {
-    const initialLoad = window.setTimeout(() => {
-      void loadConnections();
-      void loadRegistry();
-      void loadGitHubStatus();
-    }, 0);
+    // Start the first snapshot reads immediately. Deferring them with a timer
+    // lets a user-triggered refresh race ahead, then allows the delayed initial
+    // read to overwrite the newer result (or vice versa).
+    void loadConnections();
+    void loadRegistry();
+    void loadGitHubStatus();
     return () => {
-      window.clearTimeout(initialLoad);
       connectionRequestId.current += 1;
       registryRequestId.current += 1;
       githubRequestId.current += 1;
