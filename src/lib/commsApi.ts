@@ -24,6 +24,11 @@ export interface CommsMessage {
   body: string;
   status: string;
   providerMessageId: string | null;
+  /** Monotonic outbound dispatch projection; null for messages without a dispatch record. */
+  deliveryStatus?: string | null;
+  /** Latest append-only provider receipt details, when one exists. */
+  deliveryProviderStatus?: string | null;
+  deliveryOccurredAt?: string | null;
   metadata: Record<string, unknown> | null;
   createdAt: string;
   attachments?: CommsAttachment[];

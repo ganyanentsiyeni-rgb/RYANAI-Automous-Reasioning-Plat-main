@@ -858,6 +858,80 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Frontend-only isolation and stale-response safety. Backend authorization remains authoritative; no credentials, database, provider, deployment, or production state changed. Test execution and exact-head CI/security evidence remain pending.
 
 
+## 2026-11-28 — RyanAI Comms account-switch isolation
+
+- Clear the prior account's private conversation list, selected thread, channel configuration snapshot, draft message/recipient/subject, attachment selections, approval state, conversation intelligence output, filters, and transient notices when the authenticated app identity changes.
+- Invalidate the previous refresh generation before the next account's Comms status and conversation requests run, preventing an older inbox refresh from repopulating the newly selected account's view.
+- Added a deferred-response regression test: the previous owner's phone number and email conversation must disappear while the next owner's inbox is still loading; only the next owner's thread appears after its response resolves.
+- This is a frontend privacy boundary; server-side owner authorization remains authoritative. Test execution and exact-head CI/security evidence remain pending. No dispatch, backend, database, credential, provider, deployment, or production state changed.
+
+
+## 2026-11-28 — RyanAI Comms delivery-state presentation
+
+- Replaced raw internal message-state strings in the conversation timeline and latest-status panel with explicit, user-readable distinctions for pending_send, in_flight, uncertain, accepted, sent, delivered, read, answered, suppressed, failed, bounced, undelivered, received, and processing.
+- Provider acceptance is explicitly labelled as delivery-unconfirmed; uncertain outcomes instruct operators to reconcile before retrying; delivered/read labels require the corresponding provider receipt state supplied by the API.
+- Added regression coverage that checks accepted, uncertain, and delivered remain distinct in the Comms UI.
+- This is a presentation-only change; it does not manufacture receipts or alter AgentRun state. Test execution and exact-head CI/security evidence remain pending. No provider dispatch, backend, database, credential, deployment, or production state changed.
+
+
+## 2026-11-28 — Comms dispatch receipt race protection
+
+- Fixed a confirmed race in outbound dispatch state updates: a delayed provider-send response or timeout could previously overwrite a faster provider callback and downgrade an already delivered/failed dispatch.
+- Acceptance and uncertainty updates now use conditional atomic updates; acceptance cannot overwrite terminal receipt states and uncertainty only applies while the dispatch is still in flight.
+- Receipt advancement now uses atomic allowed-state predicates. Delivered evidence can supersede an earlier failed callback, while later accepted/failed callbacks cannot downgrade delivered or reconciled state.
+- Added unit coverage for conditional acceptance, in-flight-only uncertainty, and atomic receipt transition predicates. No AgentRun fields are written by these dispatch-state functions.
+- Test execution and exact-head CI/security evidence remain pending. No provider dispatch, database migration, credential, deployment, or production state changed.
+
+
+## 2026-11-28 — Comms PA receipt event replay identity
+
+- Reused the immutable CommsDeliveryReceipt UUID as the PA event ID instead of generating a fresh UUID for every Twilio webhook delivery.
+- Authenticated provider retries can still re-emit evidence if a prior callback was persisted before a process interruption, but every replay now carries the same event identity so downstream consumers can deduplicate it.
+- Added regression coverage for stable PA event identity across a repeated callback. Test execution and exact-head CI/security evidence remain pending; no provider dispatch, AgentRun state, database migration, credential, deployment, or production state changed.
+
+## 2026-11-28 — Comms approval/receipt race reconciliation
+
+- Closed a callback-ordering gap between the provider dispatch record and the separate owner approval record. A fast Twilio callback could be persisted before the approval row received its provider message ID; the callback would then update delivery evidence but miss the approval row, after which the delayed send response could leave the approval with stale provider status.
+- Send finalization now reconciles the latest immutable receipt for the provider message before finalizing the approval. The callback path likewise derives approval status and provider status from the latest receipt, allowing later delivered evidence to supersede an earlier failed callback without letting an older callback downgrade the current state.
+- Approval status remains a coarse authorization/dispatch lifecycle; detailed provider delivery events remain append-only in `CommsDeliveryReceipt`. AgentRun state is not modified.
+- Added regression assertions for receipt-based reconciliation. Test execution and exact-head CI/security evidence remain pending. No provider dispatch, migration, credential, deployment, or production state changed.
+
+## 2026-11-28 — Comms idempotency provider binding
+
+- Tightened outbound dispatch replay validation so an idempotency key cannot be replayed against a different provider, even when message, recipient, channel, and AgentRun attribution match.
+- The existing reservation lookup now retrieves and compares the provider as part of the immutable dispatch identity.
+- Added a regression case for cross-provider idempotency-key reuse.
+- Validation status: regression test authored; execution remains pending.
+
+## 2026-11-28 — Comms approval expiry projection
+
+- Corrected the owner approval-status read path so a pending approval whose expiry timestamp has passed is presented as `expired`, rather than remaining visually pending until another write happens.
+- This is a read-time projection only: it does not mutate approval rows, and it does not expire or interrupt an already-claimed `dispatching` action.
+- Added pure-function regression coverage for pending, unexpired, dispatching, and accepted states.
+- Validation status: regression test authored; execution remains pending.
+
+## 2026-11-28 — Comms conversation delivery projection
+
+- Extended the owner-scoped conversation-history read to include the outbound dispatch's monotonic state and the latest append-only provider receipt details.
+- The API exposes additive `deliveryStatus`, `deliveryProviderStatus`, and `deliveryOccurredAt` fields. Dispatch state remains the authoritative lifecycle projection; receipt details are evidence, not a mutable replacement for the receipt log.
+- Updated the Comms timeline and latest-status panel to show the dispatch projection and provider-reported status while preserving the original communication-message `status`.
+- Added a route regression test confirming that delivered evidence is visible even when the legacy message status remains `accepted`, and that the read path does not mutate communication messages or AgentRun state.
+- Validation status: regression test authored; execution and exact-head CI/security verification remain pending. No provider dispatch, AgentRun mutation, migration, credential, deployment, or production state changed.
+
+## 2026-11-28 — Comms dispatch-state UI contract alignment
+
+- Aligned the Comms status-label map with the actual outbound dispatch lifecycle values: `reserved`, `dispatching`, and `reconciled`, in addition to existing provider and delivery states.
+- The message timeline now shows the provider receipt occurrence time separately from the original communication-message creation time.
+- Added a component regression test for the three dispatch-only states and provider receipt timestamp visibility.
+- Validation status: test authored but not executed; exact-head CI/security checks remain subject to verification. No dispatch, provider, AgentRun, migration, credential, or production state changed.
+
+## 2026-11-28 — Comms provider callback lifecycle semantics
+
+- Prevented `queued` and `unknown` provider callbacks from promoting an outbound dispatch to `accepted`; these callbacks remain append-only evidence without claiming provider acceptance.
+- Kept voice `completed` mapped to `accepted_by_provider`, not `delivered`. A completed call is not proof that a recipient heard or read the message.
+- Added regression tests for queued/unknown no-op transitions and voice completion advancing only to accepted dispatch state.
+- Added explicit UI labels for queued, unknown, and accepted-by-provider states.
+- Validation status: tests authored but not executed; exact-head CI/security verification pending. No provider dispatch, AgentRun mutation, migration, credential, deployment, or production state changed.
 ## 2026-11-28 — UI and integration regression repair
 
 - Updated mobile Command Center drawer tests to wait for Framer Motion exit completion before asserting the dialog has left the DOM; focus restoration assertions remain in place.

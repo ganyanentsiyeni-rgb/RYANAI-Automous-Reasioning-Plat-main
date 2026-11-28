@@ -32,6 +32,32 @@ function dateLabel(value: string) {
   return Number.isNaN(date.getTime()) ? 'Unknown time' : date.toLocaleString();
 }
 
+function messageStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    reserved: 'Pending send · reserved, not dispatched',
+    pending_send: 'Pending send · not yet dispatched',
+    dispatching: 'In flight · provider request underway',
+    reconciled: 'Reconciled · operator reviewed outcome',
+    in_flight: 'In flight · provider outcome pending',
+    uncertain: 'Uncertain · reconcile before retrying',
+    accepted: 'Accepted by provider · delivery unconfirmed',
+    accepted_by_provider: 'Accepted by provider · delivery unconfirmed',
+    queued: 'Queued by provider · dispatch outcome pending',
+    unknown: 'Provider status unknown · delivery unconfirmed',
+    sent: 'Sent · delivery not yet confirmed',
+    delivered: 'Delivered · provider receipt confirmed',
+    read: 'Read · recipient read receipt confirmed',
+    answered: 'Answered · response recorded',
+    suppressed: 'Suppressed · duplicate or policy prevented dispatch',
+    failed: 'Failed · dispatch or processing failed',
+    bounced: 'Bounced · destination rejected the message',
+    undelivered: 'Undelivered · provider reports no delivery',
+    received: 'Received · inbound message recorded',
+    processing: 'Processing · RyanAI response pending',
+  };
+  return labels[status] ?? status.replaceAll('_', ' ');
+}
+
 export default function CommunicationsCenter({ userId, phoneLinkSettings }: { userId: string; phoneLinkSettings?: PhoneLinkSettings }) {
   const refreshRequestId = useRef(0);
   const [status, setStatus] = useState<CommsStatus | null>(null);
@@ -66,6 +92,33 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
     setAttachmentIds([]);
     setAttachmentStatuses([]);
   }
+
+  /* eslint-disable react-hooks/set-state-in-effect -- account changes must clear private Comms content before rendering the next identity's inbox */
+  useEffect(() => {
+    refreshRequestId.current += 1;
+    setStatus(null);
+    setConversations([]);
+    setActiveId('');
+    setRecipient('');
+    setSubject('');
+    setMessage('');
+    setIdempotencyKey(crypto.randomUUID());
+    setSelectedFiles([]);
+    setAttachmentIds([]);
+    setAttachmentStatuses([]);
+    setLoading(true);
+    setSending(false);
+    setReviewing(false);
+    setApprovalId('');
+    setApprovalStatus('');
+    setAssistBusy(false);
+    setAssistOutput('');
+    setError('');
+    setNotice('');
+    setConversationSearch('');
+    setChannelFilter('all');
+  }, [userId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const refresh = useCallback(async () => {
     const requestId = ++refreshRequestId.current;
@@ -506,7 +559,7 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
                       {attachment.status === 'clean' && <button type="button" onClick={() => void downloadAttachment(attachment)} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-cyan-400/30 px-2 py-1 text-[10px] text-cyan-200 hover:bg-cyan-400/10"><Download className="h-3 w-3" />Download</button>}
                     </div>
                   ))}
-                  <p className="mt-2 flex items-center gap-2 text-[10px] text-slate-400"><Activity className="h-3 w-3" />{item.direction} · {item.status} · {dateLabel(item.createdAt)}</p>
+                  <p className="mt-2 flex items-center gap-2 text-[10px] text-slate-400"><Activity className="h-3 w-3" />{item.direction} · {messageStatusLabel(item.deliveryStatus ?? item.status)}{item.deliveryProviderStatus ? ` · provider: ${item.deliveryProviderStatus}` : ''} · {dateLabel(item.createdAt)}{item.deliveryOccurredAt ? ` · receipt: ${dateLabel(item.deliveryOccurredAt)}` : ''}</p>
                 </article>
               </div>
             ))}
@@ -601,7 +654,7 @@ export default function CommunicationsCenter({ userId, phoneLinkSettings }: { us
             </section>
             <section className="space-y-2">
               <h3 className="text-xs font-semibold text-slate-200">Latest message status</h3>
-              <p className="rounded-lg border border-white/10 bg-slate-950/40 p-3 text-xs text-slate-300">{active.messages.at(-1)?.status ?? 'No message status available'}</p>
+              <p className="rounded-lg border border-white/10 bg-slate-950/40 p-3 text-xs text-slate-300">{active.messages.at(-1) ? messageStatusLabel(active.messages.at(-1)!.deliveryStatus ?? active.messages.at(-1)!.status) : 'No message status available'}{active.messages.at(-1)?.deliveryProviderStatus ? ` · provider: ${active.messages.at(-1)!.deliveryProviderStatus}` : ''}</p>
               <p className="text-[11px] leading-5 text-slate-500">Provider acceptance is not a delivery receipt. Final delivery state depends on a verified provider callback.</p>
             </section>
           </> : <p className="rounded-lg border border-dashed border-white/10 p-4 text-xs leading-5 text-slate-500">Select a conversation to inspect its channel identity, message counts and latest recorded status.</p>}
