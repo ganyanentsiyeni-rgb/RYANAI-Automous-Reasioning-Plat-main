@@ -464,12 +464,12 @@ function PluginIntegrationsSettingsContent({
         const registry = registryProviders.find(item => item.id === (OAUTH_PROVIDER_IDS[plugin.id] ?? plugin.id));
         const adapterLabel = plugin.id === 'gmail'
           ? 'Read-only mailbox API'
-          : registryLoading
-            ? 'Checking backend registry…'
-            : registry?.adapterStatus === 'adapter_registered'
-              ? 'Adapter registered'
-              : registry
-                ? 'Adapter required'
+          : registry?.adapterStatus === 'adapter_registered'
+            ? 'Adapter registered'
+            : registry
+              ? 'Adapter required'
+              : registryLoading
+                ? 'Checking backend registry…'
                 : registryError
                   ? 'Registry unavailable'
                   : 'Not in backend registry';
