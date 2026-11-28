@@ -752,6 +752,13 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Updated Render readiness-audit tests to match the committed U2EB Blueprint: `/health` is the configured health endpoint, and `autoDeployTrigger: off` preserves the explicit Push Deploy policy. No provider setting or live deployment was changed.
 - Exact-SHA CI rerun is required; these code changes are not considered verified until the MCPJungle auth/ACL job and full required checks pass.
 
+
+## 2026-11-28 — MCPJungle CI delegation claim completeness
+
+- The gateway registration now correctly uses the short-lived `MCP_PROXY_DELEGATION_TOKEN`, distinct from the MCP server's own `MCP_AUTH_TOKEN`.
+- A subsequent exact source audit found the CI JWT fixture still omitted `actorType`, which `mcp-server/delegation.js` requires and validates against `human`, `agent`, or `service`.
+- Added `actorType: "human"` to the disposable CI-only JWT. The token remains HMAC-signed, short-lived, and restricted to the read-only `platform_health` scope.
+- This is a CI fixture correction only. The MCPJungle authentication/ACL job and all required exact-SHA checks must pass before the repair is considered verified.
 ## 2026-11-28 — Landing Page health and navigation regression coverage
 
 - Added a dedicated `happy-dom` page test for the Landing Page.

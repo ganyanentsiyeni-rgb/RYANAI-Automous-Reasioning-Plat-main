@@ -15,6 +15,7 @@ const readyTables = {
   checkpoint_writes: true,
   checkpoint_migrations: true,
   checkpoint_task_path: true,
+  agent_runs_contract: true,
 };
 
 describe('inspectDatabaseSchema', () => {
@@ -30,6 +31,20 @@ describe('inspectDatabaseSchema', () => {
     });
     expect(query).toHaveBeenCalledTimes(2);
     expect(query.mock.calls[0][0]).not.toMatch(/CREATE|ALTER|DROP/i);
+  });
+
+
+  it('marks the database unready when agent_runs exists but its runtime contract is incomplete', async () => {
+    const query = vi.fn().mockResolvedValueOnce({
+      rows: [{ ...readyTables, agent_runs_contract: false }],
+    });
+
+    await expect(inspectDatabaseSchema(query)).resolves.toEqual({
+      communications: true,
+      requiredTables: false,
+      agentCheckpointer: false,
+    });
+    expect(query).toHaveBeenCalledOnce();
   });
 
   it('keeps the checkpointer degraded when its tables or task_path are missing', async () => {
