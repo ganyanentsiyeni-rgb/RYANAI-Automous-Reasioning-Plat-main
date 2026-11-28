@@ -122,6 +122,9 @@ describe('Twilio inbound SMS retry handling', () => {
     expect(response.statusCode).toBe(200);
     expect(response.body).toContain('Already processed.');
     expect(enqueueInboundCommunicationRun).not.toHaveBeenCalled();
+    expect(prismaMock.communicationMessage.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { providerMessageId: 'sms-reply:SM-duplicate-1' },
+    }));
   });
 
   it('requests a provider retry when a newly queued SMS AgentRun is still processing', async () => {
