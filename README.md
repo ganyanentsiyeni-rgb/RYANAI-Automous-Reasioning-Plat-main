@@ -2360,3 +2360,8 @@ Docker PR image scans are also triggered when deployment-readiness validation sc
 ## 2026-11-28 CI evidence correction
 
 The CI execution-completeness workflow must compare required check runs with the exact pull-request head SHA (`github.event.pull_request.head.sha`), not the synthetic merge SHA exposed as `github.sha` for a `pull_request` event. Manual workflow dispatch continues to use its selected workflow SHA. A queued, missing, failed, cancelled, or skipped required context is not a pass. The correction is tracked in the focused CI repair branch; it is not evidence that CI is green and does not authorize deployment.
+
+
+## 2026-11-28 MCPJungle CI authentication correction
+
+The disposable MCPJungle upstream proxy token must include the RyanAI MCP delegation claim `actorType: "service"` in addition to its role, scope, issuer, audience, timestamps, and token ID. Missing actor type causes the upstream to reject the bearer token; MCPJungle may then misreport the resulting 401 challenge as an OAuth discovery/registration “Not found” error. The correction is limited to CI's ephemeral token generation and does not enable OAuth or alter hosted credentials.
