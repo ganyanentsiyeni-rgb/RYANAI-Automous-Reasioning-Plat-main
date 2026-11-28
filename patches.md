@@ -834,3 +834,12 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Provider acceptance is explicitly labelled as delivery-unconfirmed; uncertain outcomes instruct operators to reconcile before retrying; delivered/read labels require the corresponding provider receipt state supplied by the API.
 - Added regression coverage that checks accepted, uncertain, and delivered remain distinct in the Comms UI.
 - This is a presentation-only change; it does not manufacture receipts or alter AgentRun state. Test execution and exact-head CI/security evidence remain pending. No provider dispatch, backend, database, credential, deployment, or production state changed.
+
+
+## 2026-11-28 — Comms dispatch receipt race protection
+
+- Fixed a confirmed race in outbound dispatch state updates: a delayed provider-send response or timeout could previously overwrite a faster provider callback and downgrade an already delivered/failed dispatch.
+- Acceptance and uncertainty updates now use conditional atomic updates; acceptance cannot overwrite terminal receipt states and uncertainty only applies while the dispatch is still in flight.
+- Receipt advancement now uses atomic allowed-state predicates. Delivered evidence can supersede an earlier failed callback, while later accepted/failed callbacks cannot downgrade delivered or reconciled state.
+- Added unit coverage for conditional acceptance, in-flight-only uncertainty, and atomic receipt transition predicates. No AgentRun fields are written by these dispatch-state functions.
+- Test execution and exact-head CI/security evidence remain pending. No provider dispatch, database migration, credential, deployment, or production state changed.
