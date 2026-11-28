@@ -700,3 +700,9 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Added a file-scoped `@vitest-environment happy-dom` directive to `src/lib/dialogFocus.test.ts`. The existing `happy-dom` development dependency is already declared, so no dependency or lockfile change is required.
 - This isolates browser-DOM requirements to the relevant UI test file without changing the environment for server-side Vitest suites.
 - Validation remains pending on the PR head SHA.
+## Render U2EB explicit deployment authorization
+
+- Changed the primary `render.yaml` U2EB API, Web, and MCP services from CI-triggered automatic deployment to `autoDeployTrigger: off`. A passing CI run is necessary but does not itself authorize a provider deployment; the separate explicit PUSH DEPLOY gate remains required.
+- Aligned the primary U2EB API health check with the live API liveness endpoint `/health` and the standalone U2EB blueprint.
+- Updated deployment-contract assertions so automatic deployment cannot silently return to the primary U2EB blueprint.
+- This is a source-controlled proposal only. It does not change Render's live service settings, trigger a deployment, consume build minutes, or authorize production changes. Validation must pass on the exact PR SHA before merge.
