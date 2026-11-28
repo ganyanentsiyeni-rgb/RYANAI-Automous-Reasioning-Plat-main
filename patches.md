@@ -772,3 +772,11 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Extended the read-only migration/schema audit to require the four AgentRun indexes used by queue selection, lease recovery, worker lease lookup, and approval filtering.
 - Added regression assertions that a missing AgentRun operational index is reported and that the complete-schema fixture includes all required indexes.
 - Local test execution and exact-head CI/security checks remain pending. No live database or deployment was changed.
+
+
+## 2026-11-28 — Complete AgentRun index readiness parity
+
+- Expanded the read-only Prisma migration-readiness audit to require all eight operational `agent_runs` indexes, matching the structural-contract audit and the migration definitions.
+- Updated the readiness test fixture and missing-index assertions to cover the complete eight-index contract.
+- The audit remains read-only; it does not create indexes or apply migrations.
+- Verification is source-level only until the Node test suite and live database audit are executed.
