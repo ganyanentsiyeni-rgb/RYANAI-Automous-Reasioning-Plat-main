@@ -318,6 +318,9 @@ describe('Twilio webhook provider authentication', () => {
       '<?xml version="1.0" encoding="UTF-8"?><Response><Message>Certainly, Sir G. Approved &lt;reply&gt; &amp; ready</Message></Response>',
     );
     expect(prismaMock.communicationMessage.create).toHaveBeenCalled();
+    expect(prismaMock.communicationMessage.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { providerMessageId: 'whatsapp-reply:SM123' },
+    }));
     expect(enqueueInboundCommunicationRun).toHaveBeenCalledExactlyOnceWith({
       messageId: 'message-1',
       ownerUserId: '11111111-1111-4111-8111-111111111111',
