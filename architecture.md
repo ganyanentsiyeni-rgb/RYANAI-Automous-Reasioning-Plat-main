@@ -320,3 +320,5 @@ The migration-readiness audit verifies the four operational indexes declared for
 ## AgentRun operational index readiness parity (2026-11-28)
 
 The read-only migration-readiness audit now checks all eight `agent_runs` indexes also defined by the structural-contract audit: user/created, status/created, status/locked, status/next-attempt, queue/status/created, status/next-attempt/lease, worker/lease, and approval-status/created. The test fixture covers all eight. Missing indexes block readiness; this check does not perform DDL.
+
+- AgentRun index structural validation now explicitly rejects unique indexes where Prisma declares non-unique indexes, in addition to checking B-tree type, ordered columns, and absence of partial predicates. Regression coverage includes an unexpectedly unique `agent_runs_user_id_created_at_idx`.
