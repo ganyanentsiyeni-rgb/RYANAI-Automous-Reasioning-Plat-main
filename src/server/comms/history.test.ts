@@ -25,6 +25,9 @@ describe('claimInboundCommunication', () => {
     const prisma = prismaMock(create);
 
     await expect(claimInboundCommunication(prisma, input)).resolves.toEqual({ claimed: true, messageId: 'message-1' });
+    expect(prisma.communicationConversation.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      update: { updatedAt: expect.any(Date) },
+    }));
     expect(create).toHaveBeenCalledWith({
       data: {
         conversationId: 'conversation-1',
@@ -64,6 +67,7 @@ describe('claimInboundCommunication', () => {
     const create = vi.fn().mockRejectedValue({ code: 'P2002' });
     const findUnique = vi.fn().mockResolvedValue({
       id: 'message-stale', status: 'processing', metadata: null, createdAt: stale, agentRunId: null,
+      body: input.body, conversation: { channel: 'whatsapp', ownerUserId: null },
     });
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });
     const prisma = {
@@ -94,6 +98,40 @@ describe('claimInboundCommunication', () => {
       claimed: false, existing: { messageId: 'message-fresh', status: 'processing', metadata: null, agentRunId: null, body: 'Hello RyanAI', channel: 'whatsapp', ownerUserId: null },
     });
     expect(updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects a provider event ID already bound to a different owner', async () => {
+    const create = vi.fn().mockRejectedValue({ code: 'P2002' });
+    const findUnique = vi.fn().mockResolvedValue({
+      id: 'message-other-owner',
+      status: 'replied',
+      metadata: { reply: 'Private response' },
+      agentRunId: 'run-other-owner',
+      body: input.body,
+      conversation: { channel: 'whatsapp', ownerUserId: 'owner-original' },
+    });
+    const prisma = prismaMock(create, findUnique);
+
+    await expect(claimInboundCommunication(prisma, {
+      ...input,
+      ownerUserId: 'owner-attacker',
+    })).rejects.toThrow('already bound to a different owner, channel, or message');
+  });
+
+  it('rejects a provider event ID reused with different inbound content', async () => {
+    const create = vi.fn().mockRejectedValue({ code: 'P2002' });
+    const findUnique = vi.fn().mockResolvedValue({
+      id: 'message-existing',
+      status: 'replied',
+      metadata: null,
+      agentRunId: 'run-existing',
+      body: 'Original content',
+      conversation: { channel: 'whatsapp', ownerUserId: null },
+    });
+    const prisma = prismaMock(create, findUnique);
+
+    await expect(claimInboundCommunication(prisma, input))
+      .rejects.toThrow('already bound to a different owner, channel, or message');
   });
 
   it('does not disguise database failures as duplicate deliveries', async () => {
