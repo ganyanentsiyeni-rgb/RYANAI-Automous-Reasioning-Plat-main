@@ -86,7 +86,7 @@ describe('Operations Center', () => {
     await mount(true);
     await vi.waitFor(() => expect(container.textContent).toContain('Send the approved project update.'));
 
-    apiFetch.mockImplementation(async (input, init) => {
+    apiFetch.mockImplementation(async (input, _init) => {
       const path = String(input);
       if (path === '/api/agent/ops/tasks') return response({ tasks: [] });
       if (path === '/api/actions') return response({ error: 'Approval queue temporarily unavailable' }, false);
