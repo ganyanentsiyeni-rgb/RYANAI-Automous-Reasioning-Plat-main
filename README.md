@@ -2362,6 +2362,6 @@ Docker PR image scans are also triggered when deployment-readiness validation sc
 The CI execution-completeness workflow must compare required check runs with the exact pull-request head SHA (`github.event.pull_request.head.sha`), not the synthetic merge SHA exposed as `github.sha` for a `pull_request` event. Manual workflow dispatch continues to use its selected workflow SHA. A queued, missing, failed, cancelled, or skipped required context is not a pass. The correction is tracked in the focused CI repair branch; it is not evidence that CI is green and does not authorize deployment.
 
 
-## 2026-11-28 — MCPJungle CI auth smoke correction
+## 2026-11-28 — MCPJungle CI delegated-identity correction
 
-The isolated MCPJungle test must source its generated CI-only `.env` file before passing `MCP_AUTH_TOKEN` to the CLI. Compose loads `.env` automatically, but shell variable expansion does not. The workflow now exports the fixture values and asserts that the upstream bearer token is non-empty before server registration. This fixes the identified CI wiring defect; runtime authentication and ACL results remain pending.
+The MCPJungle CI smoke test signs the short-lived delegated JWT injected by the private Caddy proxy. The MCP HTTP verifier requires the `actorType` claim (`human`, `agent`, or `service`) in addition to issuer, audience, subject, role, scope, timestamps, and signature. The CI token fixture now includes `actorType: "human"`; omitting it caused the MCP server to reject the delegation, after which MCPJungle's CLI attempted an unsupported upstream OAuth registration flow. This correction is source-only until the exact-SHA runtime authentication and ACL test passes.
