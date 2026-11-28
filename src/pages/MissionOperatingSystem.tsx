@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type KeyboardEvent } from 'react';
 import {
   Activity, ArrowRight, AudioLines, BookOpen, BrainCircuit, CheckCircle2,
   ChevronRight, CircleDot, Code2, GitBranch, Layers3, LockKeyhole,
@@ -66,7 +66,7 @@ export default function MissionOperatingSystem() {
   const currentPlane = planes.find((item) => item.name === plane) ?? planes[0];
   const selectedWorkspaceInfo = workspaces.find((item) => item.name === selectedWorkspace) ?? workspaces[0];
   const tabs = ['Overview', 'Architecture', 'Workspaces', 'Governance'] as const;
-  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+  const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     const currentIndex = tabs.indexOf(tab);
     let nextIndex = currentIndex;
     if (event.key === 'ArrowRight' || event.key === 'ArrowDown') nextIndex = (currentIndex + 1) % tabs.length;
