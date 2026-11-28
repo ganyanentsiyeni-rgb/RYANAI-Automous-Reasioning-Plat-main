@@ -803,3 +803,10 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Reset the refresh generation and loaded-state marker so stale in-flight requests cannot repopulate the newly selected account's view.
 - Added a regression test that switches the mounted PhoneLink workspace from one synthetic owner to another and asserts the prior owner's inbox event is no longer rendered.
 - No native Android, backend, provider, credential, database, deployment, or production changes. Physical-device validation remains separate.
+
+## 2026-11-28 — Operator Console account-switch isolation
+
+- Clear task history, selection, offline outbox snapshot, refresh metadata, and transient messages when the authenticated app `userId` changes.
+- Invalidate in-flight task-history and outbox reads and reset the current outbox owner/sync snapshot so prior-account data is not displayed while the next account loads.
+- Added a regression test that holds the next account's task-history request open and verifies the previous account's task objective disappears immediately before the new response resolves.
+- No backend, database, credential, provider, deployment, or production changes.
