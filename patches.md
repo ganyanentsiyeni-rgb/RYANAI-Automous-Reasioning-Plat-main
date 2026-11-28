@@ -810,3 +810,11 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Invalidate in-flight task-history and outbox reads and reset the current outbox owner/sync snapshot so prior-account data is not displayed while the next account loads.
 - Added a regression test that holds the next account's task-history request open and verifies the previous account's task objective disappears immediately before the new response resolves.
 - No backend, database, credential, provider, deployment, or production changes.
+
+
+## 2026-11-28 — Operations Center account-switch isolation
+
+- Clear prior-account task history, administrator approval actions, objective draft, confirmation/acting state, errors, and notices immediately when the authenticated app identity or admin UI scope changes.
+- Invalidate outstanding task and approval reads and guard task-submission/approval mutation completions with an account-generation token so late responses from the previous identity cannot update the newly mounted account's UI.
+- Added a deferred-response regression test proving previous task and approval content disappears while the next account's task and approval requests are still loading, then only the new account's results appear.
+- Frontend-only isolation and stale-response safety. Backend authorization remains authoritative; no credentials, database, provider, deployment, or production state changed. Test execution and exact-head CI/security evidence remain pending.
