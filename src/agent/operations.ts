@@ -953,13 +953,14 @@ export function getAgentTaskWorkerStatus(): AgentTaskWorkerStatus {
 
 /** LISTEN/NOTIFY is the fast wake-up path; committed rows and the periodic sweep remain authoritative. */
 export function startAgentTaskWorker(options: {
+  connectionString?: string;
   concurrency?: number;
   recoveryIntervalMs?: number;
   reconnectBaseDelayMs?: number;
   reconnectMaxDelayMs?: number;
   testBrainInvoker?: (brain: BrainId, prompt: string, signal?: AbortSignal) => Promise<BrainOutput>;
 } = {}) {
-  const databaseUrl = process.env.DATABASE_URL;
+  const databaseUrl = options.connectionString?.trim() || process.env.DATABASE_URL?.trim();
   if (!databaseUrl) {
     console.warn('[agent-worker] Disabled: DATABASE_URL is not configured.');
     agentTaskWorkerStatus = { ...agentTaskWorkerStatus, state: 'stopped' };
