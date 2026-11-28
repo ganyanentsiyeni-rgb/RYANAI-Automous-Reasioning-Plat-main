@@ -971,3 +971,12 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Added regression coverage for late accepted receipts and delivered-after-failed ordering.
 - Append-only receipt records remain unchanged; this updates only the dispatch summary state. No provider calls, AgentRun state changes, database schema changes, migrations, credentials, production configuration, or deployments.
 - Exact-SHA CI and security verification are required; this change is not merged.
+
+
+## 2026-11-28 — Repair merged CI regressions: schema query, Comms transitions, plugin snapshot
+
+- Corrected the read-only agent_runs schema inspection query: removed a duplicated SELECT and stale 18-column list, restoring one valid COUNT(*) = 32 contract check.
+- Rebuilt the Comms dispatch receipt transition as one conditional update, eliminating a malformed duplicate update block and retaining monotonic callback handling.
+- Repaired the corresponding regression test block after duplicate/malformed test content was present on main.
+- Keep a previously verified plugin adapter label visible while a refresh is loading or fails; only show checking/unavailable when no verified snapshot exists.
+- No database migration or write, provider call, outbound message, credentials, production configuration, or deployment. Exact-head CI/security validation remains required.
