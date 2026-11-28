@@ -751,3 +751,11 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Asserted that risk limits are presented as server-enforced and that emergency-stop reset requirements remain visible.
 - Mocked the paper-trading child panels to keep the page tests isolated from their own API and component contracts.
 - Validation status: test source added; local execution and exact-head CI remain pending. No runtime trading, payment, API, authentication, or provider behavior was changed.
+
+## 2026-11-28 — Command Center mobile drawer integration coverage
+
+- Added page-level `happy-dom` coverage for the Command Center mobile conversation-history and live-telemetry drawers.
+- Verified modal semantics, close controls, focus restoration after close/Escape, and the single-active-drawer behavior when switching between history and telemetry.
+- Kept the shared `trapDialogTabKey` helper isolated behind its existing utility tests; this page test verifies the actual Command Center state transitions and focus lifecycle.
+- No runtime behavior, API contract, authentication, provider configuration, deployment, migration, or credential state was changed.
+- Validation status: source committed on the repair branch; exact-head test execution is still required before this patch is considered verified.
