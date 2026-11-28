@@ -101,7 +101,7 @@ describe('Operator Console account ownership', () => {
 
     await act(async () => root.render(<OperatorConsole userId="operator-account-b" />));
     expect(container.textContent).not.toContain('Private task for account A');
-    expect(container.textContent).toContain('Loading task history');
+    expect(container.textContent).toContain('Loading tasks…');
 
     await act(async () => releaseNext({ ok: true, json: async () => ({ tasks: [{ id: 'task-b', objective: 'Account B task', status: 'queued', createdAt: '2026-11-28T00:01:00.000Z' }] }) } as Response));
     await vi.waitFor(() => expect(container.textContent).toContain('Account B task'));

@@ -112,7 +112,7 @@ describe('CommandCenter mobile drawers', () => {
       close!.click();
     });
 
-    expect(container.querySelector('#command-center-conversation-drawer')).toBeNull();
+    await vi.waitFor(() => expect(container.querySelector('#command-center-conversation-drawer')).toBeNull());
     expect(document.activeElement).toBe(trigger);
   });
 
@@ -128,14 +128,14 @@ describe('CommandCenter mobile drawers', () => {
 
     await act(async () => rightTrigger.click());
 
-    expect(container.querySelector('#command-center-conversation-drawer')).toBeNull();
+    await vi.waitFor(() => expect(container.querySelector('#command-center-conversation-drawer')).toBeNull());
     expect(container.querySelector('#command-center-telemetry-drawer')).not.toBeNull();
 
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
 
-    expect(container.querySelector('#command-center-telemetry-drawer')).toBeNull();
+    await vi.waitFor(() => expect(container.querySelector('#command-center-telemetry-drawer')).toBeNull());
     expect(document.activeElement).toBe(rightTrigger);
   });
 });

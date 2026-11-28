@@ -832,3 +832,13 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Invalidate outstanding task and approval reads and guard task-submission/approval mutation completions with an account-generation token so late responses from the previous identity cannot update the newly mounted account's UI.
 - Added a deferred-response regression test proving previous task and approval content disappears while the next account's task and approval requests are still loading, then only the new account's results appear.
 - Frontend-only isolation and stale-response safety. Backend authorization remains authoritative; no credentials, database, provider, deployment, or production state changed. Test execution and exact-head CI/security evidence remain pending.
+
+
+## 2026-11-28 — UI and integration regression repair
+
+- Updated mobile Command Center drawer tests to wait for Framer Motion exit completion before asserting the dialog has left the DOM; focus restoration assertions remain in place.
+- Aligned the Operator Console account-switch loading assertion with the rendered loading label while retaining the check that account A task history is removed immediately.
+- Tightened the database inspection read-only assertion to match standalone DDL keywords, avoiding false positives on identifiers such as `created_at`.
+- Made the plugin registry refresh test deterministic by keeping the initial registry snapshot successful until the explicit refresh action, then simulating a transient failure.
+- Preserved the last known GitHub identity during a failed status refresh and surfaced the backend error as an accessible alert instead of silently discarding the failure detail.
+- No provider configuration, credentials, production data, database migrations, deployments, or release settings were changed. Exact-SHA CI and security checks must pass before any merge or deployment.

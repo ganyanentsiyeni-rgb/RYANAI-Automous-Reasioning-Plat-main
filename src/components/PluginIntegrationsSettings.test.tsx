@@ -248,11 +248,10 @@ describe('Plugin integrations centre', () => {
   });
 
   it('preserves the last verified registry when a later refresh fails', async () => {
-    let registryReads = 0;
+    let refreshRequested = false;
     api.authenticatedFetch.mockImplementation(async (url: string) => {
       if (url === '/api/plugins/registry') {
-        registryReads += 1;
-        if (registryReads === 1) return { ok: true, json: async () => ({ providers: [{ id: 'google-calendar', adapterStatus: 'adapter_registered' }] }) };
+        if (!refreshRequested) return { ok: true, json: async () => ({ providers: [{ id: 'google-calendar', adapterStatus: 'adapter_registered' }] }) };
         return { ok: false, json: async () => ({ error: 'Registry temporarily unavailable.' }) };
       }
       return { ok: true, json: async () => ({ connections: [] }) };
@@ -260,6 +259,7 @@ describe('Plugin integrations centre', () => {
     await mount();
     await vi.waitFor(() => expect(container.querySelector('[data-plugin-id="google-calendar"]')?.textContent).toContain('Adapter registered'));
 
+    refreshRequested = true;
     await click([...container.querySelectorAll('button')].find(button => button.textContent === 'Refresh integration status') ?? null);
     await vi.waitFor(() => expect(container.textContent).toContain('Registry temporarily unavailable.'));
 
