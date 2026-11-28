@@ -4,7 +4,7 @@ import NeuralIdentity from './NeuralIdentity';
 import { NEURAL_IDENTITIES } from './neuralIdentityDefinitions';
 
 describe('NeuralIdentity', () => {
-  it('defines distinct identities for Ryan, Alex, Gen-X and specialists', () => {
+  it('defines distinct identities for Ryan, PA Agent, Gen-X and specialists', () => {
     expect(Object.keys(NEURAL_IDENTITIES)).toEqual([
       'ryan',
       'alex',
@@ -12,13 +12,20 @@ describe('NeuralIdentity', () => {
       'specialist',
     ]);
     expect(NEURAL_IDENTITIES.genx.role).toBe('Governance authority');
-    expect(NEURAL_IDENTITIES.alex.role).toBe('Collaboration partner');
+    expect(NEURAL_IDENTITIES.alex.role).toBe('PA coordination');
   });
 
   it('renders the identity and role accessibly', () => {
     const html = renderToStaticMarkup(<NeuralIdentity identity="ryan" />);
     expect(html).toContain('aria-label="Ryan, Primary assistant"');
     expect(html).toContain('Primary assistant');
+  });
+
+  it('renders the PA Agent identity using its product-facing name', () => {
+    const html = renderToStaticMarkup(<NeuralIdentity identity="alex" />);
+    expect(html).toContain('aria-label="PA Agent, PA coordination"');
+    expect(html).toContain('PA Agent');
+    expect(html).not.toContain('Alex');
   });
 
   it('supports a compact label without hiding the accessible identity', () => {

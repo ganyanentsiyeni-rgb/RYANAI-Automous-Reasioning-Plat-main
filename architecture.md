@@ -249,3 +249,8 @@ Docker PR image builds/scans also trigger when deployment-readiness scripts chan
 ## Agent UI approval presentation boundary (2026-11-28)
 
 The app-owned Agent UI approval prompt is a presentation-level confirmation only. It places initial focus on the non-approving Decline action, traps keyboard Tab navigation within the dialog, treats Escape as decline, restores focus to the invoking control, and exposes the requested action summary through the dialog's accessible description. The prompt does not grant server-side authority: authenticated backend authorization remains authoritative for every consequential action. Exact-head tests and CI/security evidence are required before release.
+
+
+## PA Agent identity presentation and compatibility (2026-11-28)
+
+The user-facing collaboration identity is presented as **PA Agent** across Profile Settings, Darkside Copilot, delegation controls, and neural identity components. Existing persisted preference key `showAlexStatus`, the internal neural identity lookup key `alex`, and backend handoff identifiers are retained as compatibility contracts; they must not leak into user-facing labels. This presentation-only naming alignment does not rename API fields, database values, authorization actors, or persisted records. Exact-head tests and CI/security evidence remain required before release.

@@ -15,11 +15,11 @@ The acceptance unit is a completed user mission with a durable record, visible e
 
 These are source-level observations, not proof of production availability or end-to-end operation:
 
-- `src/pages/DarksideCopilot.tsx` reuses the authenticated Command Center for text and realtime voice, displays a read-only Alex PA status observer, and conditionally exposes the existing PA delegation panel.
-- `src/components/PADelegationPanel` is the existing Ryan-to-Alex handoff surface. PR #1271 documents authenticated, owner-scoped, approval-gated delegation and Gen-X policy checks; its documented scope is reasoning over a supplied objective, not live repository editing or arbitrary tool execution.
+- `src/pages/DarksideCopilot.tsx` reuses the authenticated Command Center for text and realtime voice, displays a read-only PA Agent status observer, and conditionally exposes the existing PA delegation panel.
+- `src/components/PADelegationPanel` is the existing RyanAI-to-PA Agent handoff surface. PR #1271 documents authenticated, owner-scoped, approval-gated delegation and Gen-X policy checks; its documented scope is reasoning over a supplied objective, not live repository editing or arbitrary tool execution.
 - `src/pages/PhoneLinkWorkspace.tsx`, `src/server/routes/phoneLink.ts`, and `android/phonelink` provide a device-pairing and scoped mobile bridge. `docs/phonelink/README.md` explicitly records remaining native integration and physical-device validation.
 - `docs/COPILOT_VSCODE_SESSION_HANDOFF.md` correctly treats cross-app session transfer as capability-gated; automatic bidirectional transfer is not assumed.
-- Existing preference tests cover optional Alex/delegation panels and refresh intervals. They do not prove a complete mission lifecycle.
+- Existing preference tests cover optional PA Agent/delegation panels and refresh intervals. They do not prove a complete mission lifecycle.
 
 ## Milestone 1 — Darkside core completion
 
@@ -48,7 +48,7 @@ Acceptance gates:
 **Goal:** move from proposal-only delegation to bounded, evidence-producing execution.
 
 Deliver:
-1. Ryan as task-facing orchestrator; Alex as human-facing PA coordinator; specialist workers selected from a capability registry, not hard-coded personas.
+1. Ryan as task-facing orchestrator; PA Agent as the human-facing coordination surface; specialist workers selected from a capability registry, not hard-coded personas.
 2. Explicit task decomposition into dependency-linked steps with per-step input/output contracts and budgets.
 3. Parallel execution only for independent steps; deterministic aggregation and conflict handling.
 4. Tool adapters with least-privilege scopes, per-tool timeouts, idempotency keys, audit events and cancellation.

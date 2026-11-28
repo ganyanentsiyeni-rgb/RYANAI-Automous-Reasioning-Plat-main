@@ -633,3 +633,10 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Added `aria-describedby` linkage for the exact approval summary and visible focus indicators on both decision controls.
 - Added regression coverage for initial focus, Escape dismissal, and focus restoration while preserving the server-authoritative authorization boundary.
 - This is a frontend accessibility repair only. Local test execution and exact-head CI/security evidence remain pending; no merge, deployment, migration, credential change, or authorization-policy change is included.
+
+## 2026-11-28 — PA Agent terminology consistency
+
+- Replaced the legacy visible “Alex” persona label across Profile Settings, Darkside Copilot, the PA delegation desk, PA Agent capability copy, and the neural identity display with the product-facing name “PA Agent”.
+- Updated the Darkside milestone documentation and added regression assertions for Profile Settings, Copilot status labels, and the accessible neural identity name.
+- Preserved the persisted `showAlexStatus` preference key, `alex` identity lookup key, and existing backend handoff identifiers for compatibility; these are internal contracts, not user-facing labels. No API schema, authorization, persistence, deployment, or runtime behavior was changed.
+- Exact-head CI and test execution remain pending.
