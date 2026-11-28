@@ -280,5 +280,5 @@ test('Render and Railway are the only default deployment providers with distinct
 test('Render API deployment health check matches the configured liveness endpoint', async () => {
   const blueprint = await readFile(new URL('../render.yaml', import.meta.url), 'utf8');
   assert.ok(blueprint.includes('healthCheckPath: /health'));
-  assert.match(blueprint, /name: ryanai-api-u2eb[\s\S]*?healthCheckPath: \/readyz/);
+  assert.match(blueprint, /name: ryanai-api-u2eb[\s\S]*?healthCheckPath: \/health/);
 });
