@@ -83,9 +83,9 @@ export default function DarksideCopilot(props: DarksideCopilotProps) {
     };
   }, [refreshPA, props.copilotSettings.showAlexStatus, props.copilotSettings.refreshIntervalSeconds]);
 
-  const paLabel = paConnection === 'monitoring' ? 'Alex · Monitoring' :
-    paConnection === 'degraded' ? 'Alex · Degraded' :
-    paConnection === 'unavailable' ? 'Alex · Unavailable' : 'Alex · Checking';
+  const paLabel = paConnection === 'monitoring' ? 'PA Agent · Monitoring' :
+    paConnection === 'degraded' ? 'PA Agent · Degraded' :
+    paConnection === 'unavailable' ? 'PA Agent · Unavailable' : 'PA Agent · Checking';
 
   return (
     <section className="min-h-full overflow-hidden bg-[#080912] text-slate-100">
@@ -121,8 +121,8 @@ export default function DarksideCopilot(props: DarksideCopilotProps) {
             {props.copilotSettings.showAlexStatus && (
             <div className="rounded-2xl border border-cyan-300/15 bg-black/25 p-4 backdrop-blur-xl sm:p-5" aria-live="polite">
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200"><Users className="h-4 w-4" /> Alex · PA Agent</div>
-                <button type="button" onClick={() => void refreshPA()} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white" aria-label="Refresh PA Agent status"><RefreshCw className="h-3.5 w-3.5" /></button>
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200"><Users className="h-4 w-4" /> PA Agent</div>
+                <button type="button" onClick={() => void refreshPA()} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300" aria-label="Refresh PA Agent status" aria-busy={paConnection === "loading"}><RefreshCw className="h-3.5 w-3.5" /></button>
               </div>
               <p className="mt-3 text-lg font-semibold text-white">{paLabel}</p>
               <p className="mt-1 text-xs text-slate-400">{heartbeatLabel(paObserver?.lastHeartbeat)}</p>
@@ -144,7 +144,7 @@ export default function DarksideCopilot(props: DarksideCopilotProps) {
 
           <div className="grid gap-2 sm:grid-cols-3">
             <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 p-3"><Activity className="h-4 w-4 text-violet-300" /><div><p className="text-xs font-semibold text-white">One conversational identity</p><p className="text-[10px] text-slate-500">Ryan Copilot</p></div></div>
-            <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 p-3"><Workflow className="h-4 w-4 text-cyan-300" /><div><p className="text-xs font-semibold text-white">Operational partner</p><p className="text-[10px] text-slate-500">Alex PA partner</p></div></div>
+            <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 p-3"><Workflow className="h-4 w-4 text-cyan-300" /><div><p className="text-xs font-semibold text-white">Operational partner</p><p className="text-[10px] text-slate-500">PA Agent partner</p></div></div>
             <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 p-3"><ShieldCheck className="h-4 w-4 text-emerald-300" /><div><p className="text-xs font-semibold text-white">Human-controlled actions</p><p className="text-[10px] text-slate-500">Gen-X remains authoritative</p></div></div>
           </div>
         </div>
