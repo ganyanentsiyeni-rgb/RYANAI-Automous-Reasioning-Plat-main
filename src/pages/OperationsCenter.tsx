@@ -95,6 +95,7 @@ export default function OperationsCenter({ userId, isAdmin = false }: { userId: 
 
   const refreshTasks = useCallback(async () => {
     const requestId = ++taskRequestId.current;
+    setLoadingTasks(true);
     try {
       const response = await request('/api/agent/ops/tasks');
       const payload = await readPayload<ApiPayload<AgentTask>>(response, 'Could not load autonomous task history.');
@@ -110,6 +111,7 @@ export default function OperationsCenter({ userId, isAdmin = false }: { userId: 
 
   const refreshActions = useCallback(async () => {
     const requestId = ++actionRequestId.current;
+    setLoadingActions(isAdmin);
     if (!isAdmin) {
       setActions([]);
       setLoadingActions(false);
@@ -274,9 +276,10 @@ export default function OperationsCenter({ userId, isAdmin = false }: { userId: 
             </div>
           </div>
           {approvalError && <p role="alert" className="flex items-start gap-2 rounded-lg border border-rose-400/20 bg-rose-400/5 p-3 text-sm text-rose-200"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{approvalError}</p>}
+          {approvalError && actions.length > 0 && <p className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-3 text-xs text-amber-100">Previously loaded approvals are hidden until the latest approval queue can be verified. Retry before making a decision.</p>}
           {loadingActions && <p role="status" className="rounded-xl border border-white/10 p-4 text-sm text-slate-400">Loading pending approvals…</p>}
           {!loadingActions && !approvalError && actions.length === 0 && <p className="rounded-xl border border-dashed border-slate-700 p-5 text-sm text-slate-400">There are no pending actions awaiting an administrator decision.</p>}
-          {!loadingActions && actions.map((action) => {
+          {!loadingActions && !approvalError && actions.map((action) => {
             const confirming = confirmApproveId === action.id;
             const busy = actingId === action.id;
             return (

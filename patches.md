@@ -648,6 +648,12 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Added unit coverage for forward/backward wrapping and focus that escapes the drawer. The existing Escape-close and trigger-focus restoration behavior is preserved.
 - Frontend interaction/accessibility only. Local test execution and exact-head CI/security checks remain pending; no backend, infrastructure, credential, migration, or deployment changes.
 
+## 2026-11-28 — Operations Center stale approval safety
+
+- Prevent previously loaded administrator approval actions from remaining actionable when the latest approval-queue refresh fails or is still in progress.
+- Display an explicit warning that the old queue is hidden until a fresh queue response can be verified; retain the request error and retry path.
+- Added a regression test proving an approval action is not visible/actionable after the refresh endpoint returns an error.
+- Frontend-only safety behavior. Backend administrator authorization remains authoritative and unchanged. Test execution and exact-head CI/security checks remain pending.
 ## 2026-11-28 — PhoneLink async refresh and inbox error states
 
 - Fixed the Comms inbox refresh path so a failed inbox request no longer clears the last successfully loaded events or presents a false “No queued mobile updates” empty state.
