@@ -82,3 +82,9 @@ The administrator approval inbox now hides stale actions while a refresh is pend
 ## PhoneLink async state follow-up (2026-11-28)
 
 The PhoneLink Comms inbox now distinguishes a confirmed empty result from a failed request. On inbox failure, previously loaded events remain visible, an accessible error is shown with a retry action, and the interface states that inbox emptiness cannot be confirmed. A successful retry clears the error. Periodic polling no longer re-displays the initial device-loading placeholder after the first completed load. A regression test covers retention of the last known events after an inbox refresh failure. Exact-head test and CI/security results are still required before release.
+
+
+### Operator Console replay outcome truthfulness (2026-11-28)
+- Offline outbox entries retain an explicit delivery state: queued, rejected, or uncertain. Transport failures and malformed/missing per-task acknowledgements are uncertain because the server may have committed the stable task ID before the response was lost; explicit per-task negative acknowledgements are rejected.
+- Retries always reuse the original task ID. The API's AgentRun primary key plus owner/objective match is the idempotency boundary; an existing same-owner/same-objective run is returned rather than creating a second execution, while mismatched owner or objective reuse is rejected.
+- Local records are removed only after an explicit positive acknowledgement for that exact task ID. Uncertain and rejected records remain retryable and are presented distinctly; worker execution state remains separate in task history.
