@@ -789,3 +789,10 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Added page-level `happy-dom` coverage for the repository handoff and Studio runtime boundary messaging.
 - No backend, authentication, credential, deployment, database migration, or provider configuration changes.
 - Exact-head CI/security execution remains required before this patch is considered verified.
+
+## 2026-11-28 — UI integration resilience: GitHub provider refresh
+
+- Preserved the last verified GitHub account/repository identity in the Plugin & Integrations centre when a later status refresh fails.
+- Failed refreshes now mark the snapshot `unverified` instead of falsely replacing verified identity with `connected: false`.
+- Added regression coverage for the refresh-failure path.
+- No credential, provider configuration, backend, database, deployment, or production changes.
