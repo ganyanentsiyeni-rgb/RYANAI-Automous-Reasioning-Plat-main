@@ -1084,6 +1084,13 @@ export function startAgentTaskWorker(options: {
   };
 }
 
+export async function listAgentRunsByIds(userId: string, taskIds: string[]) {
+  return prisma.agentRun.findMany({
+    where: { userId, id: { in: taskIds } },
+    select: { id: true, userId: true, objective: true, status: true, createdAt: true },
+  });
+}
+
 export async function listAgentRuns(userId: string) {
   return prisma.agentRun.findMany({
     where: { userId },
