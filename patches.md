@@ -706,3 +706,10 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Aligned the primary U2EB API health check with the live API liveness endpoint `/health` and the standalone U2EB blueprint.
 - Updated deployment-contract assertions so automatic deployment cannot silently return to the primary U2EB blueprint.
 - This is a source-controlled proposal only. It does not change Render's live service settings, trigger a deployment, consume build minutes, or authorize production changes. Validation must pass on the exact PR SHA before merge.
+
+
+## 2026-11-28 — MCPJungle CI bearer-token environment repair
+
+- The isolated gateway workflow wrote `MCP_AUTH_TOKEN` to the Compose `.env` file, but then expanded `$MCP_AUTH_TOKEN` in the runner shell without sourcing that file. Compose could read the value while the CLI received an empty `--bearer-token`, causing MCPJungle to attempt OAuth dynamic client registration and fail with `OAuth error: Not found`.
+- The workflow now exports the disposable `.env` values into its own shell and fails immediately if `MCP_AUTH_TOKEN` is absent, before calling the registration CLI.
+- No production credentials are read or changed; the fixture token remains CI-only. Runtime verification must pass on the exact PR SHA.
