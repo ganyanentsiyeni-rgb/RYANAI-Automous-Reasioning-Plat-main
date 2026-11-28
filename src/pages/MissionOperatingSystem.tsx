@@ -118,7 +118,7 @@ export default function MissionOperatingSystem() {
           </section>
           <section className="rounded-2xl border border-slate-700/70 bg-slate-900 p-5">
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-200/70">Four planes</p><h2 className="mt-1 text-xl font-semibold text-white">Separate responsibility boundaries</h2>
-            <div className="mt-4 space-y-2">{planes.map((item) => <button key={item.name} type="button" onClick={() => { setPlane(item.name); setTab('Architecture'); }} aria-label={`Open ${item.name} architecture plane`} className="flex w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-950/40 p-3 text-left hover:border-cyan-300/40"><div><p className="text-sm font-semibold text-slate-100">{item.name}</p><p className="mt-1 text-xs text-slate-400">{item.question}</p></div><ChevronRight className="shrink-0 text-cyan-200" size={17} /></button>)}</div>
+            <div className="mt-4 space-y-2">{planes.map((item) => <button key={item.name} type="button" onClick={() => { setPlane(item.name); setTab('Architecture'); }} aria-label={`Open ${item.name} architecture plane`} aria-pressed={plane === item.name} className="flex w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-950/40 p-3 text-left hover:border-cyan-300/40"><div><p className="text-sm font-semibold text-slate-100">{item.name}</p><p className="mt-1 text-xs text-slate-400">{item.question}</p></div><ChevronRight className="shrink-0 text-cyan-200" size={17} /></button>)}</div>
           </section>
         </div>}
 
