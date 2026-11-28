@@ -6,7 +6,6 @@ import CommandCenter from './CommandCenter';
 
 vi.mock('framer-motion', async () => {
   const React = await import('react');
-  const MotionDiv = React.forwardRef((props: Record<string, unknown>, ref: React.ForwardedRef<HTMLDivElement>) =>
   const MotionDiv = React.forwardRef(({
     initial: _initial, animate: _animate, exit: _exit, transition: _transition,
     ...props
