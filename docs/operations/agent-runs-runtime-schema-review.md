@@ -13,7 +13,7 @@ Consequences:
 - A legacy table without `queue_type` receives the new column with the temporary `reasoning` default; existing rows are then quarantined as `unclassified` and `pending`.
 - Existing rows explicitly classified into a non-reasoning queue, such as `coding`, retain that queue classification.
 - A pre-classified row with a null approval state is retained in its queue but changed to `pending`.
-- New rows created after the migration receive `queue_type = 'reasoning'` and `approval_status = 'approved'` unless the caller supplies other values.
+- At this migration stage, new rows receive `queue_type = 'reasoning'` and `approval_status = 'approved'` unless the caller supplies other values. This default was subsequently superseded by `20261122100000_fail_closed_agent_run_approval`, which changes the database default to `pending` and moves queued reasoning rows without explicit approval evidence back to `pending`. The current contract is fail-closed: new AgentRuns remain pending until explicitly approved.
 
 This is a fail-closed legacy-row quarantine. It is not a no-data-update migration. Reviewers must assess whether the pending state and worker filters are consistent with the authorization contract before production approval.
 
