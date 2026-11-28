@@ -109,6 +109,35 @@ async function render() {
 }
 
 describe('RyanAI Comms inbox controls', () => {
+  it('clears the previous account inbox and draft while the next account loads', async () => {
+    await render();
+    expect(container.textContent).toContain('+27110000001');
+
+    let releaseStatus!: (value: { status: string; enabled: boolean; channels: Record<string, boolean>; note: string }) => void;
+    let releaseConversations!: (value: typeof conversations) => void;
+    comms.getCommsStatus.mockImplementationOnce(() => new Promise((resolve) => { releaseStatus = resolve; }));
+    comms.getCommsConversations.mockImplementationOnce(() => new Promise((resolve) => { releaseConversations = resolve; }));
+
+    await act(async () => root.render(<CommunicationsCenter userId="synthetic-user-b" />));
+    expect(container.textContent).not.toContain('+27110000001');
+    expect(container.textContent).not.toContain('client@example.com');
+    expect(container.textContent).toContain('Loading Comms configuration and persisted conversation history');
+
+    const accountBConversation = [{
+      ...conversations[0],
+      id: 'conversation-account-b',
+      externalAddress: '+27110000002',
+      messages: [{ ...conversations[0].messages[0], id: 'message-account-b', body: 'Account B private message.' }],
+    }];
+    await act(async () => {
+      releaseStatus({ status: 'configuration_snapshot', enabled: true, channels: { whatsapp: true }, note: 'Account B configuration.' });
+      releaseConversations(accountBConversation);
+    });
+    await act(async () => vi.waitFor(() => expect(container.textContent).toContain('+27110000002')));
+    expect(container.textContent).toContain('Account B private message.');
+    expect(container.textContent).not.toContain('+27110000001');
+  });
+
   it('searches persisted message bodies and recipient addresses', async () => {
     await render();
     expect(container.textContent).toContain('2 / 2');
@@ -125,6 +154,44 @@ describe('RyanAI Comms inbox controls', () => {
     const list = container.querySelector('aside');
     expect(list?.textContent).toContain('client@example.com');
     expect(list?.textContent).not.toContain('+27110000001');
+  });
+
+  it('labels provider acceptance, uncertainty and delivery receipts as distinct states', async () => {
+    const base = conversations[0];
+    comms.getCommsConversations.mockResolvedValueOnce([{
+      ...base,
+      messages: [
+        { ...base.messages[0], id: 'accepted-message', direction: 'outbound', status: 'accepted', body: 'Accepted, not delivered.' },
+        { ...base.messages[0], id: 'uncertain-message', direction: 'outbound', status: 'uncertain', body: 'Provider outcome unknown.' },
+        { ...base.messages[0], id: 'delivered-message', direction: 'outbound', status: 'delivered', body: 'Receipt confirmed.' },
+      ],
+    }]);
+    await act(async () => root.render(<CommunicationsCenter userId="synthetic-user-a" />));
+    await act(async () => vi.waitFor(() => expect(container.textContent).toContain('+27110000001')));
+    expect(container.textContent).toContain('Accepted by provider · delivery unconfirmed');
+    expect(container.textContent).toContain('Uncertain · reconcile before retrying');
+    expect(container.textContent).toContain('Delivered · provider receipt confirmed');
+    expect(container.textContent).not.toContain('Accepted by provider · delivery confirmed');
+  });
+
+  it('renders internal dispatch lifecycle states and provider receipt timestamps clearly', async () => {
+    const base = conversations[0];
+    comms.getCommsConversations.mockResolvedValueOnce([{
+      ...base,
+      messages: [
+        { ...base.messages[0], id: 'reserved-message', direction: 'outbound', status: 'accepted', deliveryStatus: 'reserved', body: 'Reserved before dispatch.' },
+        { ...base.messages[0], id: 'dispatching-message', direction: 'outbound', status: 'accepted', deliveryStatus: 'dispatching', body: 'Provider request underway.' },
+        { ...base.messages[0], id: 'reconciled-message', direction: 'outbound', status: 'accepted', deliveryStatus: 'reconciled', body: 'Operator reconciled.' },
+        { ...base.messages[0], id: 'receipt-message', direction: 'outbound', status: 'accepted', deliveryStatus: 'delivered', deliveryProviderStatus: 'delivered', deliveryOccurredAt: '2026-11-05T10:05:00.000Z', body: 'Delivery receipt timestamp.' },
+      ],
+    }]);
+    await act(async () => root.render(<CommunicationsCenter userId="synthetic-user-a" />));
+    await act(async () => vi.waitFor(() => expect(container.textContent).toContain('+27110000001')));
+    expect(container.textContent).toContain('Pending send · reserved, not dispatched');
+    expect(container.textContent).toContain('In flight · provider request underway');
+    expect(container.textContent).toContain('Reconciled · operator reviewed outcome');
+    expect(container.textContent).toContain('provider: delivered');
+    expect(container.textContent).toContain('receipt:');
   });
 
   it('filters the conversation list by channel', async () => {

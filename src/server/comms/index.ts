@@ -546,6 +546,16 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
           select: {
             id: true, direction: true, body: true, status: true,
             providerMessageId: true, metadata: true, createdAt: true,
+            outboundDispatch: {
+              select: {
+                state: true,
+                receipts: {
+                  orderBy: [{ occurredAt: 'desc' }, { createdAt: 'desc' }],
+                  take: 1,
+                  select: { providerStatus: true, deliveryState: true, occurredAt: true },
+                },
+              },
+            },
             attachments: { select: { id: true, fileName: true, mimeType: true, size: true, objectName: true } },
           },
         },
@@ -564,6 +574,10 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
         externalAddress: conversation.channel === 'in_app' ? 'RyanAI private chat' : conversation.externalAddress,
         messages: [...conversation.messages].reverse().map(message => ({
           ...message,
+          // Dispatch state is the monotonic projection; receipts remain append-only evidence.
+          deliveryStatus: message.outboundDispatch?.state ?? null,
+          deliveryProviderStatus: message.outboundDispatch?.receipts?.[0]?.providerStatus ?? null,
+          deliveryOccurredAt: message.outboundDispatch?.receipts?.[0]?.occurredAt ?? null,
           attachments: message.attachments.map(attachment => ({
             id: attachment.id, name: attachment.fileName, mimeType: attachment.mimeType,
             size: Number(attachment.size), status: states[attachment.id] || 'unavailable',

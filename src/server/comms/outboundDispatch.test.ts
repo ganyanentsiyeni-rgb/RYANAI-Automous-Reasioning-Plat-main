@@ -3,6 +3,9 @@ import type { PrismaClient } from '@prisma/client';
 import {
   buildCommsProviderEventKey,
   claimOutboundCommsDispatch,
+  markOutboundCommsDispatchAccepted,
+  markOutboundCommsDispatchUncertain,
+  advanceOutboundCommsDispatchFromReceipt,
   reconcileOutboundCommsDispatch,
   reconcileStaleOutboundCommsDispatches,
   reserveOutboundCommsDispatch,
@@ -10,6 +13,44 @@ import {
 import { appendCommsDeliveryReceiptIdempotent } from './deliveryReceipts.js';
 
 describe('outbound Comms dispatch', () => {
+  it('uses a conditional state transition so a late accepted receipt cannot overwrite delivered', async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 0 });
+    const findUnique = vi.fn().mockResolvedValue({ state: 'delivered' });
+    const prisma = { outboundCommsDispatch: { findUnique, updateMany } } as unknown as PrismaClient;
+
+    await advanceOutboundCommsDispatchFromReceipt(prisma, {
+      dispatchId: 'dispatch-delivered',
+      deliveryState: 'accepted',
+    });
+
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        id: 'dispatch-delivered',
+        state: { in: ['reserved', 'dispatching', 'accepted', 'uncertain'] },
+      },
+      data: expect.objectContaining({ state: 'accepted' }),
+    }));
+  });
+
+  it('allows an authoritative delivered receipt to supersede failed but blocks failed after delivered', async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const findUnique = vi.fn().mockResolvedValue({ state: 'failed' });
+    const prisma = { outboundCommsDispatch: { findUnique, updateMany } } as unknown as PrismaClient;
+
+    await advanceOutboundCommsDispatchFromReceipt(prisma, {
+      dispatchId: 'dispatch-failed',
+      deliveryState: 'delivered',
+    });
+
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        id: 'dispatch-failed',
+        state: { in: ['reserved', 'dispatching', 'accepted', 'uncertain', 'failed'] },
+      },
+      data: expect.objectContaining({ state: 'delivered' }),
+    }));
+  });
+
   it('deduplicates outbound idempotency reservations', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'dispatch-1', state: 'reserved', providerMessageId: null });
     const findUnique = vi.fn();
@@ -35,6 +76,7 @@ describe('outbound Comms dispatch', () => {
       agentRunId: 'run-1',
       channel: 'sms',
       recipient: '+27710000000',
+      provider: 'twilio',
     });
 
     await expect(reserveOutboundCommsDispatch(prisma, {
@@ -45,6 +87,35 @@ describe('outbound Comms dispatch', () => {
       idempotencyKey: 'outbound-key-0001',
       provider: 'twilio',
     })).resolves.toMatchObject({ id: 'dispatch-1', replayed: true });
+
+    create.mockRejectedValueOnce({ code: 'P2002' });
+    findUnique.mockResolvedValueOnce({
+      id: 'dispatch-1', state: 'reserved', providerMessageId: null,
+      communicationMessageId: 'message-1', agentRunId: 'run-1',
+      channel: 'sms', recipient: '+27710000000', provider: 'twilio',
+    });
+    await expect(reserveOutboundCommsDispatch(prisma, {
+      communicationMessageId: 'message-1', agentRunId: 'run-1',
+      channel: 'sms', recipient: '+27710000000',
+      idempotencyKey: 'outbound-key-0001', provider: 'resend',
+    })).rejects.toThrow('already bound to a different dispatch');
+      id: 'dispatch-1',
+      state: 'reserved',
+      providerMessageId: null,
+      communicationMessageId: 'message-1',
+      agentRunId: 'run-1',
+      channel: 'sms',
+      recipient: '+27710000000',
+      provider: 'another-provider',
+    });
+    await expect(reserveOutboundCommsDispatch(prisma, {
+      communicationMessageId: 'message-1',
+      agentRunId: 'run-1',
+      channel: 'sms',
+      recipient: '+27710000000',
+      idempotencyKey: 'outbound-key-0001',
+      provider: 'twilio',
+    })).rejects.toThrow('already bound to a different dispatch.');
   });
 
   it('moves stale in-flight dispatches to uncertain instead of retrying', async () => {
@@ -62,6 +133,62 @@ describe('outbound Comms dispatch', () => {
       where: expect.objectContaining({ id: 'dispatch-2', state: 'dispatching' }),
       data: expect.objectContaining({ state: 'uncertain' }),
     }));
+  });
+
+  it('does not let a late provider send response downgrade a terminal dispatch receipt', async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 0 });
+    const prisma = { outboundCommsDispatch: { updateMany } } as unknown as PrismaClient;
+    await markOutboundCommsDispatchAccepted(prisma, { dispatchId: 'dispatch-terminal', providerMessageId: 'SM' + 'a'.repeat(32) });
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'dispatch-terminal', state: { in: ['reserved', 'dispatching', 'uncertain', 'accepted'] } },
+      data: expect.objectContaining({ state: 'accepted' }),
+    }));
+  });
+
+  it('only marks a dispatch uncertain while it is still dispatching', async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 0 });
+    const prisma = { outboundCommsDispatch: { updateMany } } as unknown as PrismaClient;
+    await markOutboundCommsDispatchUncertain(prisma, 'dispatch-delivered', 'late provider error');
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'dispatch-delivered', state: 'dispatching' },
+      data: expect.objectContaining({ state: 'uncertain' }),
+    }));
+  });
+
+  it('uses atomic state predicates so out-of-order receipts cannot downgrade delivery', async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const findUnique = vi.fn();
+    const prisma = { outboundCommsDispatch: { updateMany, findUnique } } as unknown as PrismaClient;
+    await advanceOutboundCommsDispatchFromReceipt(prisma, { dispatchId: 'dispatch-4', deliveryState: 'delivered' });
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'dispatch-4', state: { in: ['reserved', 'dispatching', 'accepted', 'uncertain', 'failed', 'delivered'] } },
+      data: expect.objectContaining({ state: 'delivered' }),
+    }));
+    expect(findUnique).not.toHaveBeenCalled();
+  });
+
+  it.each(['queued', 'unknown'])('does not promote a dispatch on a %s provider callback', async (deliveryState) => {
+    const updateMany = vi.fn();
+    const findUnique = vi.fn();
+    const prisma = { outboundCommsDispatch: { updateMany, findUnique } } as unknown as PrismaClient;
+
+    await advanceOutboundCommsDispatchFromReceipt(prisma, { dispatchId: 'dispatch-pending', deliveryState });
+
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(findUnique).not.toHaveBeenCalled();
+  });
+
+  it('advances voice call completion only to provider acceptance, never delivery', async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const prisma = { outboundCommsDispatch: { updateMany } } as unknown as PrismaClient;
+
+    await advanceOutboundCommsDispatchFromReceipt(prisma, { dispatchId: 'voice-dispatch', deliveryState: 'accepted_by_provider' });
+
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'voice-dispatch', state: { in: ['reserved', 'dispatching', 'accepted', 'uncertain'] } },
+      data: expect.objectContaining({ state: 'accepted' }),
+    }));
+    expect(updateMany.mock.calls[0][0].data.state).not.toBe('delivered');
   });
 
   it('requires explicit operator reconciliation before an uncertain dispatch can become resolved', async () => {

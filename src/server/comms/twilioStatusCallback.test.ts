@@ -20,10 +20,11 @@ const prisma = {
       channel: 'sms',
     }),
     update: vi.fn().mockResolvedValue({}),
+    updateMany: vi.fn().mockResolvedValue({ count: 1 }),
   },
   commsDeliveryReceipt: {
     findUnique: vi.fn().mockResolvedValue(null),
-    create: vi.fn().mockResolvedValue({ id: 'receipt-1' }),
+    create: vi.fn().mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111' }),
   },
   $executeRawUnsafe: vi.fn().mockResolvedValue(1),
 };
@@ -91,12 +92,17 @@ describe('Twilio delivery status callback', () => {
       expect(response.statusCode).toBe(202);
       expect(response.json()).toMatchObject({ accepted: true, state: 'delivered' });
       expect(prisma.commsDeliveryReceipt.create).toHaveBeenCalledTimes(1);
-      expect(prisma.outboundCommsDispatch.update).toHaveBeenCalledWith(expect.objectContaining({
-        where: { id: 'dispatch-1' },
+      const approvalUpdate = prisma.$executeRawUnsafe.mock.calls[0][0] as string;
+      expect(approvalUpdate).toContain('public.comms_delivery_receipts');
+      expect(approvalUpdate).toContain('ORDER BY occurred_at DESC, created_at DESC');
+      expect(approvalUpdate).toContain("status IN ('dispatching', 'accepted', 'unknown', 'failed')");
+      expect(prisma.outboundCommsDispatch.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: { id: 'dispatch-1', state: { in: expect.arrayContaining(['accepted']) } },
         data: expect.objectContaining({ state: 'delivered' }),
       }));
       expect(received).toHaveBeenCalledTimes(1);
       expect(received.mock.calls[0][0]).toMatchObject({
+        eventId: '11111111-1111-4111-8111-111111111111',
         eventType: 'comms.delivery.receipt',
         source: 'ryanai-comms',
         channel: 'sms',
@@ -118,9 +124,33 @@ describe('Twilio delivery status callback', () => {
   });
 
   it('deduplicates an authenticated replay without creating a second receipt', async () => {
-    prisma.commsDeliveryReceipt.findUnique.mockResolvedValueOnce({ id: 'receipt-1' });
+    prisma.commsDeliveryReceipt.findUnique.mockResolvedValueOnce({ id: '11111111-1111-4111-8111-111111111111' });
     const response = await post({ AccountSid: 'AC' + 'c'.repeat(32), MessageSid: sid, MessageStatus: 'delivered' });
     expect(response.statusCode).toBe(202);
     expect(prisma.commsDeliveryReceipt.create).not.toHaveBeenCalled();
+  });
+
+  it('reuses the immutable receipt ID as the PA event ID on callback replay', async () => {
+    const received = vi.fn();
+    ryanAIPaEventBridge.on('event', received);
+    const body = {
+      AccountSid: 'AC' + 'c'.repeat(32),
+      MessageSid: sid,
+      MessageStatus: 'delivered',
+    };
+    try {
+      const first = await post(body);
+      prisma.commsDeliveryReceipt.findUnique.mockResolvedValueOnce({
+        id: '11111111-1111-4111-8111-111111111111',
+      });
+      const replay = await post(body);
+      expect(first.statusCode).toBe(202);
+      expect(replay.statusCode).toBe(202);
+      expect(received).toHaveBeenCalledTimes(2);
+      expect(received.mock.calls[0][0].eventId).toBe('11111111-1111-4111-8111-111111111111');
+      expect(received.mock.calls[1][0].eventId).toBe(received.mock.calls[0][0].eventId);
+    } finally {
+      ryanAIPaEventBridge.off('event', received);
+    }
   });
 });

@@ -166,6 +166,11 @@ function PluginIntegrationsSettingsContent({
     const requestId = ++githubRequestId.current;
     try {
       const response = await authenticatedFetch('/api/github/status', { headers: { Accept: 'application/json' } }, userId);
+      const payload = await response.json().catch(() => ({})) as GitHubIntegrationStatus;
+      if (!response.ok || typeof payload.status !== 'string') throw new Error('GitHub status is unavailable.');
+      if (requestId === githubRequestId.current) setGithubStatus(payload);
+    } catch {
+      if (requestId === githubRequestId.current) {
       const payload = await response.json().catch(() => ({})) as GitHubIntegrationStatus & { error?: string };
       if (!response.ok || typeof payload.status !== 'string') {
         throw new Error(payload.error || 'GitHub status is unavailable.');
