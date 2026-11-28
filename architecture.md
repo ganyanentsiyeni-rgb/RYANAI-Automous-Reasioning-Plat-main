@@ -297,3 +297,8 @@ The CI completeness workflow resolves the candidate commit differently by trigge
 ## Render U2EB explicit push authorization
 
 The primary Render U2EB blueprint must set `autoDeployTrigger: off` for API, Web, and MCP. CI success is a prerequisite, not deployment authorization. A provider deployment requires the separate explicit PUSH DEPLOY request and exact-SHA release gate. The API liveness health check is `/health`. Blueprint changes are source-only until reviewed, merged after required checks pass, and deliberately applied through an authorized provider operation; editing the blueprint does not imply that live Render settings have changed.
+
+
+## 2026-11-28 — MCPJungle CI upstream identity
+
+The disposable MCPJungle CI gateway proxy must mint a delegated identity that satisfies the RyanAI MCP server's full claim contract, including `actorType: "service"`. A rejected bearer token yields an HTTP 401 challenge that MCPJungle 0.4.6 may interpret as an OAuth discovery flow; the resulting “OAuth error: Not found” is therefore downstream symptom of the missing claim, not proof that dynamic registration itself needs to be enabled. The CI token remains short-lived, scoped to `platform_health`, and isolated to the disposable test stack.
