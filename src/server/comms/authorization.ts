@@ -178,7 +178,23 @@ export async function finishCommsAction(
 ): Promise<void> {
   await prisma.$executeRawUnsafe(
     `UPDATE public.comms_send_approvals
-       SET status = $2, provider_message_id = $3, provider_status = $4, updated_at = NOW()
+       SET status = CASE
+             WHEN (
+               SELECT delivery_state FROM public.comms_delivery_receipts
+                WHERE provider_message_id = $3
+                ORDER BY occurred_at DESC, created_at DESC
+                LIMIT 1
+             ) = 'failed' THEN 'failed'
+             ELSE $2
+           END,
+           provider_message_id = $3,
+           provider_status = COALESCE((
+             SELECT provider_status FROM public.comms_delivery_receipts
+              WHERE provider_message_id = $3
+              ORDER BY occurred_at DESC, created_at DESC
+              LIMIT 1
+           ), $4),
+           updated_at = NOW()
      WHERE id = $1::uuid AND status = 'dispatching'`,
     approvalId, outcome.status, outcome.providerMessageId ?? null, outcome.providerStatus ?? null,
   );
