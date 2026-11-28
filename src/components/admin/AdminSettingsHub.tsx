@@ -21,7 +21,7 @@ const settingsAreas: SettingsArea[] = [
   { id: 'account-security-title', title: 'Account security', description: 'Email/password changes and sign-out of other refresh-token sessions.', icon: LockKeyhole, capability: 'Existing Supabase Auth controls' },
 ];
 
-const workspaceAreas = [
+const workspaceAreas: Array<{ title: string; route: string; detail: string; ownerOnly?: boolean }> = [
   { title: 'Admin Console', route: 'admin', detail: 'Administrator-only control plane' },
   { title: 'PA Agent', route: 'pa', detail: 'Shared task delegation, Comms and release coordination' },
   { title: 'Darkside Copilot', route: 'copilot', detail: 'Shared PA capabilities and command surface' },
@@ -29,14 +29,14 @@ const workspaceAreas = [
   { title: 'Cockpit', route: 'cockpit', detail: 'Command and operational awareness' },
   { title: 'Quant Lab', route: 'quant', detail: 'Isolated research and paper trading' },
   { title: 'Audiobook Studio', route: 'audiobook', detail: 'Audiobook production workspace' },
-  { title: 'Agentic Comms', route: 'comms', detail: 'Owner-authorized communications' },
+  { title: 'Agentic Comms', route: 'comms', detail: 'Owner-authorized communications', ownerOnly: true },
   { title: 'GitHub Integration', route: 'settings', detail: 'GitHub authorization in Settings' },
   { title: 'Inference Console', route: 'workspace', detail: 'Inference controls within Workspace' },
   { title: 'Memory Vault', route: 'workspace', detail: 'Memory surfaces within Workspace' },
   { title: 'Voice Controls', route: 'settings', detail: 'Voice preferences in Settings' },
 ];
 
-export default function AdminSettingsHub({ userId }: { userId: string }) {
+export default function AdminSettingsHub({ userId, isOwner, isAdmin }: { userId: string; isOwner: boolean; isAdmin: boolean }) {
   return (
     <section id="admin-settings-hub" className="scroll-mt-6 space-y-5 rounded-2xl border border-cyan-300/20 bg-slate-900/70 p-5 sm:p-6" aria-labelledby="admin-settings-hub-title">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -65,12 +65,22 @@ export default function AdminSettingsHub({ userId }: { userId: string }) {
       <div className="border-t border-white/10 pt-4">
         <div className="mb-3 flex items-center gap-2"><Blocks className="h-4 w-4 text-cyan-300" /><h3 className="text-sm font-semibold text-white">RyanAI UI access directory</h3><span className="ml-auto text-[10px] text-slate-500">12 product areas</span></div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-          {workspaceAreas.map((area) => (
-            <a key={area.title} href={`#/${area.route}`} data-testid="workspace-area-link" className="rounded-lg border border-white/10 bg-slate-950/50 p-3 hover:border-cyan-300/30">
-              <span className="block text-xs font-semibold text-slate-200">{area.title}</span>
-              <span className="mt-1 block text-[10px] leading-4 text-slate-500">{area.detail}</span>
-            </a>
-          ))}
+          {workspaceAreas.map((area) => {
+            const restricted = area.ownerOnly && !isOwner;
+            const adminOnly = area.route === 'admin' && !isAdmin;
+            const unavailable = restricted || adminOnly;
+            return unavailable ? (
+              <div key={area.title} data-testid="workspace-area-link" aria-disabled="true" className="rounded-lg border border-white/5 bg-slate-950/30 p-3 opacity-60">
+                <span className="block text-xs font-semibold text-slate-300">{area.title}</span>
+                <span className="mt-1 block text-[10px] leading-4 text-slate-500">{restricted ? 'Owner authorization required' : 'Administrator authorization required'}</span>
+              </div>
+            ) : (
+              <a key={area.title} href={`#/${area.route}`} data-testid="workspace-area-link" className="rounded-lg border border-white/10 bg-slate-950/50 p-3 transition hover:border-cyan-300/30 focus-visible:outline focus-visible:ring-2 focus-visible:ring-cyan-300">
+                <span className="block text-xs font-semibold text-slate-200">{area.title}</span>
+                <span className="mt-1 block text-[10px] leading-4 text-slate-500">{area.detail}</span>
+              </a>
+            );
+          })}
         </div>
       </div>
 
@@ -79,7 +89,7 @@ export default function AdminSettingsHub({ userId }: { userId: string }) {
 
       <div className="rounded-xl border border-amber-300/20 bg-amber-300/[0.04] p-4">
         <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-amber-200" /><h3 className="text-sm font-semibold text-amber-100">Privileged controls still require server-side implementation</h3></div>
-        <p className="mt-2 text-xs leading-5 text-slate-400">This index does not fabricate tenant-wide user management, role assignment, account suspension, global module overrides, integration-secret editing or session revocation APIs. Comms remains owner-authorized; administrator visibility does not grant owner authority. These controls must be added behind dedicated administrator-protected endpoints with audit events and Gen-X policy checks before they can be enabled.</p>
+        <p className="mt-2 text-xs leading-5 text-slate-400">Privileged actions shown here are backed by the existing protected APIs only. Account-lifecycle requests remain explicit, auditable and owner-scoped; engineering approvals bind exact persisted hashes; Comms remains owner-authorized. The UI never grants authority, and unsupported controls are not presented as executable.</p>
       </div>
     </section>
   );

@@ -1,6 +1,6 @@
 # RyanAI Mission Operating UI — Implementation Boundary
 
-**Status:** Initial frontend architecture surface, under review  
+**Status:** UI hardening increment complete; live backend integration remains contract-gated  
 **Branch:** `feat/ryanai-mission-operating-ui-20261117`  
 **Route:** `#/architecture`  
 **Scope:** Frontend navigation and interactive architecture presentation only
@@ -43,17 +43,17 @@
 - Production deployment, production database migration, secret changes, paid upgrades, production infrastructure changes, outbound communications, live trading and automatic merge remain outside this increment and retain their separate approval gates.
 - No schema, migration, credential, environment variable, provider activation or infrastructure change is included.
 
-## Explicitly not implemented by this UI increment
+## Current implementation boundary
 
-The page is an interactive architecture and navigation surface, not a live operational dashboard. It does not yet connect its domain cards to mission, ontology, Gen-X decision, Jarvis queue, model registry, capability invocation, evidence ledger or Memory Vault APIs. It does not fabricate live health, queue, approval, deployment or test statuses; preview labels make the absence of live telemetry explicit.
+The architecture workspace remains a deliberately non-authoritative architecture surface: it does not fabricate live health, queue, approval, deployment or test statuses. The UI hardening increment now covers keyboard-focus visibility, responsive navigation behavior, explicit preview/live-state labeling, and protected workspace access presentation. Admin settings now distinguish owner-only Comms from administrator-accessible workspaces, and stale capability copy has been removed where protected APIs already exist.
 
-Backend integration must follow a separate repository/schema inventory and contract review. Before adding endpoints or persistence, reconcile existing API routes, Gen-X policy services, Jarvis orchestration, Prisma/Supabase ownership, current migrations, and the existing evidence/memory implementations. Do not create parallel tables or shadow authorization services.
+Live mission, ontology, Gen-X decision, Jarvis queue, model registry, capability invocation, evidence-ledger and Memory Vault telemetry must be connected only through existing authenticated contracts. Before adding endpoints or persistence, reconcile existing API routes, Gen-X policy services, Jarvis orchestration, Prisma/Supabase ownership, current migrations, and existing evidence/memory implementations. Do not create parallel tables or shadow authorization services.
 
 ## Validation required before merge
 
 - CI must run against the exact pull-request head SHA.
 - Require lint, application typecheck, tests, build, and applicable security checks.
-- Review the mobile navigation, accessibility, route authentication, role restrictions, and disabled-workspace behavior.
+- Review the mobile navigation, keyboard focus, accessibility semantics, route authentication, role restrictions, and disabled-workspace behavior. The current UI increment includes explicit non-interactive states for inaccessible privileged workspaces and visible focus rings for architecture controls.
 - Verify no existing route behavior or user preferences regress.
 - Treat queued, skipped, cancelled, missing, or provider-blocked checks as non-passing.
 - Human review is required. Do not auto-merge.
