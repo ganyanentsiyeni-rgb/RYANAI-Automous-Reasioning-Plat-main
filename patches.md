@@ -826,3 +826,11 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Invalidate the previous refresh generation before the next account's Comms status and conversation requests run, preventing an older inbox refresh from repopulating the newly selected account's view.
 - Added a deferred-response regression test: the previous owner's phone number and email conversation must disappear while the next owner's inbox is still loading; only the next owner's thread appears after its response resolves.
 - This is a frontend privacy boundary; server-side owner authorization remains authoritative. Test execution and exact-head CI/security evidence remain pending. No dispatch, backend, database, credential, provider, deployment, or production state changed.
+
+
+## 2026-11-28 — RyanAI Comms delivery-state presentation
+
+- Replaced raw internal message-state strings in the conversation timeline and latest-status panel with explicit, user-readable distinctions for pending_send, in_flight, uncertain, accepted, sent, delivered, read, answered, suppressed, failed, bounced, undelivered, received, and processing.
+- Provider acceptance is explicitly labelled as delivery-unconfirmed; uncertain outcomes instruct operators to reconcile before retrying; delivered/read labels require the corresponding provider receipt state supplied by the API.
+- Added regression coverage that checks accepted, uncertain, and delivered remain distinct in the Comms UI.
+- This is a presentation-only change; it does not manufacture receipts or alter AgentRun state. Test execution and exact-head CI/security evidence remain pending. No provider dispatch, backend, database, credential, deployment, or production state changed.
