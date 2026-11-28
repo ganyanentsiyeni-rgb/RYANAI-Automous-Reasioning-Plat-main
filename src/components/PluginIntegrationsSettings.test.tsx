@@ -260,7 +260,7 @@ describe('Plugin integrations centre', () => {
     await mount();
     await vi.waitFor(() => expect(container.querySelector('[data-plugin-id="google-calendar"]')?.textContent).toContain('Adapter registered'));
 
-    await click([...container.querySelectorAll('button')].find(button => button.getAttribute('aria-label') === 'Refresh plugin registry') ?? null);
+    await click([...container.querySelectorAll('button')].find(button => button.textContent === 'Refresh integration status') ?? null);
     await vi.waitFor(() => expect(container.textContent).toContain('Registry temporarily unavailable.'));
 
     expect(container.querySelector('[data-plugin-id="google-calendar"]')?.textContent).toContain('Adapter registered');
@@ -284,7 +284,7 @@ describe('Plugin integrations centre', () => {
     await mount();
     await vi.waitFor(() => expect(container.textContent).toContain('Connected · provider health not checked'));
 
-    await click([...container.querySelectorAll('button')].find(button => button.getAttribute('aria-label') === 'Refresh provider connections') ?? null);
+    await click([...container.querySelectorAll('button')].find(button => button.textContent === 'Refresh connection status') ?? null);
     await vi.waitFor(() => expect(container.textContent).toContain('Connections temporarily unavailable.'));
 
     expect(container.querySelector('[data-plugin-id="google-calendar"]')?.textContent).toContain('Connected · provider health not checked');
