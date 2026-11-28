@@ -850,3 +850,10 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Reused the immutable CommsDeliveryReceipt UUID as the PA event ID instead of generating a fresh UUID for every Twilio webhook delivery.
 - Authenticated provider retries can still re-emit evidence if a prior callback was persisted before a process interruption, but every replay now carries the same event identity so downstream consumers can deduplicate it.
 - Added regression coverage for stable PA event identity across a repeated callback. Test execution and exact-head CI/security evidence remain pending; no provider dispatch, AgentRun state, database migration, credential, deployment, or production state changed.
+
+## 2026-11-28 — Comms approval/receipt race reconciliation
+
+- Closed a callback-ordering gap between the provider dispatch record and the separate owner approval record. A fast Twilio callback could be persisted before the approval row received its provider message ID; the callback would then update delivery evidence but miss the approval row, after which the delayed send response could leave the approval with stale provider status.
+- Send finalization now reconciles the latest immutable receipt for the provider message before finalizing the approval. The callback path likewise derives approval status and provider status from the latest receipt, allowing later delivered evidence to supersede an earlier failed callback without letting an older callback downgrade the current state.
+- Approval status remains a coarse authorization/dispatch lifecycle; detailed provider delivery events remain append-only in `CommsDeliveryReceipt`. AgentRun state is not modified.
+- Added regression assertions for receipt-based reconciliation. Test execution and exact-head CI/security evidence remain pending. No provider dispatch, migration, credential, deployment, or production state changed.
