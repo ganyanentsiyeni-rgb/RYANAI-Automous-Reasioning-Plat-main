@@ -842,3 +842,11 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Made the plugin registry refresh test deterministic by keeping the initial registry snapshot successful until the explicit refresh action, then simulating a transient failure.
 - Preserved the last known GitHub identity during a failed status refresh and surfaced the backend error as an accessible alert instead of silently discarding the failure detail.
 - No provider configuration, credentials, production data, database migrations, deployments, or release settings were changed. Exact-SHA CI and security checks must pass before any merge or deployment.
+
+
+## 2026-11-28 — Integration initial-load race and deterministic drawer tests
+
+- Removed the zero-delay timer around initial plugin registry, provider-connection, and GitHub status reads. The deferred initial read could race a user-triggered refresh and overwrite a newer verified snapshot or error state.
+- Initial status requests now start immediately on mount; request-generation guards still prevent stale responses from updating state after newer requests or unmount.
+- Mocked Framer Motion's presence/transition layer in Command Center component tests so drawer open/close, Escape handling, and focus restoration are tested deterministically without depending on browser animation-frame completion. Production animation behavior is unchanged.
+- Exact-SHA CI must verify these corrections; no production/provider configuration, credentials, database migrations, deployment, or release settings were changed.
