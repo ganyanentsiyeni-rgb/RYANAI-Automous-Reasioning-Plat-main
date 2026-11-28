@@ -874,3 +874,9 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Extended the read-only Prisma structural migration-source audit to validate AgentRun and AgentHandoff cascading FK actions, CodingTask cascading deletes with PostgreSQL `NO ACTION` update defaults, and the full CodingTask `TIMESTAMPTZ(6)` lifecycle timestamp set.
 - Added explicit chronology validation that the historical `approved` AgentRun approval default is superseded by the later fail-closed `pending` migration.
 - Added regression fixture coverage. Source edits are committed on `repair/db-runtime-contract-20261128`; tests and live database verification have not yet been executed.
+
+
+### 2026-11-28 — Bootstrap migration parity and chronology
+- Audited the `20261122000000_prisma_runtime_schema_bootstrap` snapshot against the canonical Prisma migration files for AgentRun/AgentHandoff base schema, CodingTask queue, workbench approval fields, queue-classification correction, and lease heartbeat. Each of the five embedded migration blocks is present exactly once and byte-for-byte matches its Prisma source after trimming outer whitespace.
+- Confirmed the bootstrap snapshot predates the later `20261122100000_fail_closed_agent_run_approval` migration: it retains the historical `approved` default and does not embed the later `pending` ALTER. The follow-up Prisma migration is therefore required to establish the current fail-closed default; the audit now checks this chronology explicitly rather than treating the snapshot as current by itself.
+- Added regression coverage for embedded-block parity and the historical/follow-up boundary. Test execution and live database verification remain pending.
