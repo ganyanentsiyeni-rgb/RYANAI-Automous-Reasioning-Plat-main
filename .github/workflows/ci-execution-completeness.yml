@@ -49,4 +49,11 @@ jobs:
           EXPECTED_SHA: ${{ steps.candidate.outputs.sha }}
         run: |
           set -euo pipefail
-          node scripts/ci/verify-ci-execution.mjs scripts/ci/required-release-checks.json "$EXPECTED_SHA" 1800
+          # PRs use the staging catalogue: the Render configuration audit is
+          # main/release-only. A manual run on main uses the release catalogue.
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" || "$GITHUB_REF" != "refs/heads/main" ]]; then
+            catalog="scripts/ci/required-staging-checks.json"
+          else
+            catalog="scripts/ci/required-release-checks.json"
+          fi
+          node scripts/ci/verify-ci-execution.mjs "$catalog" "$EXPECTED_SHA" 1800
