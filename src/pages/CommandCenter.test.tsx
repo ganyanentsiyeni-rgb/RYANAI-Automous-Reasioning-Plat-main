@@ -4,6 +4,20 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CommandCenter from './CommandCenter';
 
+vi.mock('framer-motion', async () => {
+  const React = await import('react');
+  const MotionDiv = React.forwardRef((props: Record<string, unknown>, ref: React.ForwardedRef<HTMLDivElement>) =>
+  const MotionDiv = React.forwardRef(({
+    initial: _initial, animate: _animate, exit: _exit, transition: _transition,
+    ...props
+  }: Record<string, unknown>, ref: React.ForwardedRef<HTMLDivElement>) =>
+    React.createElement('div', { ...props, ref }));
+  return {
+    AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
+    motion: { div: MotionDiv },
+  };
+});
+
 vi.mock('@/lib/supabase', () => ({ supabase: null }));
 vi.mock('@/lib/useVoiceRecognition', () => ({
   VOICE_COMMANDS: {},
@@ -112,7 +126,7 @@ describe('CommandCenter mobile drawers', () => {
       close!.click();
     });
 
-    expect(container.querySelector('#command-center-conversation-drawer')).toBeNull();
+    await vi.waitFor(() => expect(container.querySelector('#command-center-conversation-drawer')).toBeNull());
     expect(document.activeElement).toBe(trigger);
   });
 
@@ -128,14 +142,14 @@ describe('CommandCenter mobile drawers', () => {
 
     await act(async () => rightTrigger.click());
 
-    expect(container.querySelector('#command-center-conversation-drawer')).toBeNull();
+    await vi.waitFor(() => expect(container.querySelector('#command-center-conversation-drawer')).toBeNull());
     expect(container.querySelector('#command-center-telemetry-drawer')).not.toBeNull();
 
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
 
-    expect(container.querySelector('#command-center-telemetry-drawer')).toBeNull();
+    await vi.waitFor(() => expect(container.querySelector('#command-center-telemetry-drawer')).toBeNull());
     expect(document.activeElement).toBe(rightTrigger);
   });
 });

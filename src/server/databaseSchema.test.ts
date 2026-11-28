@@ -31,6 +31,10 @@ describe('inspectDatabaseSchema', () => {
     });
     expect(query).toHaveBeenCalledTimes(2);
     expect(query.mock.calls[0][0]).not.toMatch(/CREATE|ALTER|DROP/i);
+    expect(query.mock.calls[0][0]).toContain("'plan_snapshot'");
+    expect(query.mock.calls[0][0]).toContain("'approved_diff_hash'");
+    expect(query.mock.calls[0][0]).toContain('COUNT(*) = 32');
+    expect(query.mock.calls[0][0]).not.toMatch(/\b(?:CREATE|ALTER|DROP)\b/i);
   });
 
 

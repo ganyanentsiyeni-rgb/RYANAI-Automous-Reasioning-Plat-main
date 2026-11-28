@@ -774,6 +774,30 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Asserted that risk limits are presented as server-enforced and that emergency-stop reset requirements remain visible.
 - Mocked the paper-trading child panels to keep the page tests isolated from their own API and component contracts.
 - Validation status: test source added; local execution and exact-head CI remain pending. No runtime trading, payment, API, authentication, or provider behavior was changed.
+\n\n## 2026-11-28 — Complete Prisma AgentRun runtime schema gate\n\n- The earlier startup guard checked only the 18 base queue columns. A source-to-source audit found that Prisma and worker claim/approval flows also depend on 14 additional AgentRun columns, including the immutable approval hashes, plan snapshot, cancellation marker, model selection, trace context, and execution scope.\n- Expanded the authoritative `database.yml` AgentRun required-column contract to all 32 mapped Prisma columns. Expanded the read-only startup inspection to require the same 32 columns and added regression assertions for the approval-plan fields and full count.\n- The guard remains read-only; it performs no DDL and does not run migrations. No database, credentials, provider configuration, deployment, or production state was changed.\n- Exact-head CI and security checks remain required; this source change is not runtime or deployment certification.\n
+
+## 2026-11-28 — Align migration audit with the full AgentRun contract
+
+- Expanded the Prisma migration-readiness schema audit from 15 AgentRun columns to all 32 columns declared by the Prisma model, database.yml, and startup readiness gate.
+- Expanded the complete-schema test fixture to all 32 columns so the audit cannot pass with a partial AgentRun table.
+- This is source/test coverage only. Local execution and exact-head CI/security validation remain pending; no live database migration or deployment was run.
+
+
+## 2026-11-28 — AgentRun operational index readiness audit
+
+- Extended the read-only migration/schema audit to require the four AgentRun indexes used by queue selection, lease recovery, worker lease lookup, and approval filtering.
+- Added regression assertions that a missing AgentRun operational index is reported and that the complete-schema fixture includes all required indexes.
+- Local test execution and exact-head CI/security checks remain pending. No live database or deployment was changed.
+
+
+## 2026-11-28 — Complete AgentRun index readiness parity
+
+- Expanded the read-only Prisma migration-readiness audit to require all eight operational `agent_runs` indexes, matching the structural-contract audit and the migration definitions.
+- Updated the readiness test fixture and missing-index assertions to cover the complete eight-index contract.
+- The audit remains read-only; it does not create indexes or apply migrations.
+- Verification is source-level only until the Node test suite and live database audit are executed.
+
+- AgentRun index structural validation now explicitly rejects unique indexes where Prisma declares non-unique indexes, in addition to checking B-tree type, ordered columns, and absence of partial predicates. Regression coverage includes an unexpectedly unique `agent_runs_user_id_created_at_idx`.
 
 ## 2026-11-28 — Command Center mobile drawer integration coverage
 
@@ -783,6 +807,20 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - No runtime behavior, API contract, authentication, provider configuration, deployment, migration, or credential state was changed.
 - Validation status: source committed on the repair branch; exact-head test execution is still required before this patch is considered verified.
 
+## 2026-11-28 — PR CI catalogue and Docker scan producer alignment
+
+- Updated CI execution completeness to select `required-staging-checks.json`
+  for pull requests and non-main manual runs. Manual runs on main retain the
+  release catalogue, keeping the main-only Render audit out of PR validation.
+- Removed the Docker workflow's restrictive PR path filter. API/web image
+  build and scan contexts now run for every pull request, including
+  documentation-only and workflow-only changes. PR validation does not publish.
+- The Railway source contract remains `railway.json`: Dockerfile builder with
+  `Dockerfile.api`. The observed live Railway source/builder drift is not
+  changed here; relinking or changing a live service requires authorization.
+- No provider relink, live configuration change, production deployment,
+  database operation, or credential change is included. Exact-SHA CI/security
+  verification is required before any merge or deployment.
 ## 2026-11-28 — Studio canonical repository handoff repair
 
 - Fixed the RyanAI Studio VS Code Web handoff to open the canonical repository `ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main` instead of the retired `RyanAI-Automated/RYANAI-Automous-Reasioning-Plat` source.
@@ -894,3 +932,23 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Added regression tests for queued/unknown no-op transitions and voice completion advancing only to accepted dispatch state.
 - Added explicit UI labels for queued, unknown, and accepted-by-provider states.
 - Validation status: tests authored but not executed; exact-head CI/security verification pending. No provider dispatch, AgentRun mutation, migration, credential, deployment, or production state changed.
+## 2026-11-28 — UI and integration regression repair
+
+- Updated mobile Command Center drawer tests to wait for Framer Motion exit completion before asserting the dialog has left the DOM; focus restoration assertions remain in place.
+- Aligned the Operator Console account-switch loading assertion with the rendered loading label while retaining the check that account A task history is removed immediately.
+- Tightened the database inspection read-only assertion to match standalone DDL keywords, avoiding false positives on identifiers such as `created_at`.
+- Made the plugin registry refresh test deterministic by keeping the initial registry snapshot successful until the explicit refresh action, then simulating a transient failure.
+- Preserved the last known GitHub identity during a failed status refresh and surfaced the backend error as an accessible alert instead of silently discarding the failure detail.
+- No provider configuration, credentials, production data, database migrations, deployments, or release settings were changed. Exact-SHA CI and security checks must pass before any merge or deployment.
+
+
+## 2026-11-28 — Integration initial-load race and deterministic drawer tests
+
+- Removed the zero-delay timer around initial plugin registry, provider-connection, and GitHub status reads. The deferred initial read could race a user-triggered refresh and overwrite a newer verified snapshot or error state.
+- Initial status requests now start immediately on mount; request-generation guards still prevent stale responses from updating state after newer requests or unmount.
+- Mocked Framer Motion's presence/transition layer in Command Center component tests so drawer open/close, Escape handling, and focus restoration are tested deterministically without depending on browser animation-frame completion. Production animation behavior is unchanged.
+- Exact-SHA CI must verify these corrections; no production/provider configuration, credentials, database migrations, deployment, or release settings were changed.
+
+
+- Follow-up test correction: the GitHub identity-refresh regression now clicks the GitHub card's own Refresh control, not the separate registry/connection refresh control. The latter does not invoke /api/github/status.
+- The Framer Motion test double strips animation-only props from the rendered DOM while preserving ordinary dialog props and refs.
