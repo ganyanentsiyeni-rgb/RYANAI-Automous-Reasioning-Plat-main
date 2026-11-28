@@ -302,3 +302,8 @@ The primary Render U2EB blueprint must set `autoDeployTrigger: off` for API, Web
 ## 2026-11-28 — MCPJungle CI authentication boundary
 
 The MCPJungle runtime smoke workflow now explicitly sources its generated, disposable Compose `.env` into the runner shell before expanding shell variables in the registration command. This closes the distinction between Compose's automatic `.env` loading and the shell's environment. An explicit non-empty bearer-token assertion prevents an empty token from silently selecting the OAuth dynamic-registration path. The test remains isolated to CI fixtures.
+
+
+### MCPJungle CI delegated identity contract (2026-11-28)
+
+The disposable MCPJungle runtime test uses a short-lived HMAC delegation JWT injected by the private Caddy proxy. The JWT must satisfy the same MCP HTTP verification contract as runtime-issued identities: issuer `ryanai-api`, audience `ryanai-mcp`, subject, role, actor type (`human`, `agent`, or `service`), allowlisted scope, issue/expiry times, and signature. CI fixtures must not omit `actorType`; otherwise the MCP server rejects the token and the registry CLI may enter an unrelated upstream OAuth flow. The smoke test remains restricted to the read-only `platform_health` capability.
