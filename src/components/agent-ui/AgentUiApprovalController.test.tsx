@@ -60,6 +60,8 @@ describe("AgentUiApprovalController", () => {
     const dialog = container.querySelector('[role="dialog"]');
     expect(dialog).toBeTruthy();
     expect(dialog?.textContent).toContain("Run the requested UI action?");
+    expect(document.activeElement?.textContent).toBe("Decline");
+    expect(dialog?.getAttribute("aria-describedby")).toBe("agent-ui-approval-summary");
 
     const approve = Array.from(dialog!.querySelectorAll("button")).find(
       (button) => button.textContent === "Approve",
@@ -73,4 +75,43 @@ describe("AgentUiApprovalController", () => {
 
     expect(container.querySelector('[role="dialog"]')).toBeNull();
   });
+
+  it("declines on Escape and restores focus to the invoking control", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+
+    let requestAction: (() => Promise<unknown>) | undefined;
+    let actPromise: Promise<unknown> | undefined;
+
+    await act(async () => {
+      root.render(
+        <AgentUiApprovalController>
+          {(agent) => {
+            requestAction = () => agent.act({
+              steps: [{ ref: "missing", action: "click", confirm: "Confirm this action?" }],
+            });
+            return <button type="button" id="agent-host">Agent host</button>;
+          }}
+        </AgentUiApprovalController>,
+      );
+    });
+
+    const trigger = container.querySelector<HTMLButtonElement>("#agent-host");
+    trigger?.focus();
+    await act(async () => {
+      actPromise = requestAction?.();
+      await Promise.resolve();
+    });
+
+    expect(document.activeElement?.textContent).toBe("Decline");
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      await actPromise;
+    });
+
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
 });
