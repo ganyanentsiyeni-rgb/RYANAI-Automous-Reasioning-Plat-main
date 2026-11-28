@@ -745,6 +745,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
             });
             await recordCommunication(fastify.prisma, {
               channel: 'sms', externalAddress: sender, direction: 'outbound', body: answer,
+              providerMessageId: `sms-reply:${body.MessageSid}`,
               status: 'response_generated', metadata: { inReplyTo: body.MessageSid }, ownerUserId,
             });
             return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(answer.slice(0, 1600))}</Message></Response>`;
@@ -786,6 +787,7 @@ export const commsPlugin: FastifyPluginAsync = async (fastify) => {
       });
       await recordCommunication(fastify.prisma, {
         channel: 'sms', externalAddress: sender, direction: 'outbound', body: answer,
+        providerMessageId: `sms-reply:${body.MessageSid}`,
         status: 'response_generated', metadata: { inReplyTo: body.MessageSid },
         ...(ownerUserId ? { ownerUserId } : {}),
       });
