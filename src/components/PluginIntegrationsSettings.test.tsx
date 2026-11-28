@@ -402,6 +402,7 @@ describe('Plugin integrations centre', () => {
     });
     await mount();
     await vi.waitFor(() => expect(container.textContent).toContain('@synthetic-owner'));
+    const refresh = [...container.querySelectorAll('button')].find(button => button.textContent === 'Refresh integration status');
     const githubCard = container.querySelector('[data-plugin-id="github"]');
     const refresh = [...(githubCard?.querySelectorAll('button') ?? [])].find(button => button.textContent === 'Refresh');
     expect(refresh).toBeDefined();

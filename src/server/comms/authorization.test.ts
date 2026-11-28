@@ -4,6 +4,8 @@ import {
   buildCommsActionPayload,
   claimCommsAction,
   decideCommsApprovalFromOwner,
+  finishCommsAction,
+  resolveCommsApprovalStatus,
   hashCommsActionPayload,
   normalizeCommsRecipient,
   type CommsActionPayload,
@@ -81,6 +83,31 @@ describe('owner communications authorization payload', () => {
     )).resolves.toBeUndefined();
     expect(query.mock.calls[1][0]).toContain("status = 'approved'");
     expect(query.mock.calls[1][0]).toContain('RETURNING id');
+  });
+
+  it('projects pending approvals as expired after their deadline without mutating persistence', () => {
+    const now = new Date('2026-11-28T10:00:00.000Z');
+    expect(resolveCommsApprovalStatus('pending', new Date('2026-11-28T09:59:59.000Z'), now)).toBe('expired');
+    expect(resolveCommsApprovalStatus('pending', new Date('2026-11-28T10:00:01.000Z'), now)).toBe('pending');
+    expect(resolveCommsApprovalStatus('dispatching', new Date('2026-11-28T09:00:00.000Z'), now)).toBe('dispatching');
+    expect(resolveCommsApprovalStatus('accepted', new Date('2026-11-28T09:00:00.000Z'), now)).toBe('accepted');
+  });
+
+  it('reconciles a fast provider callback before finishing the approval write', async () => {
+    const execute = vi.fn().mockResolvedValue(1);
+    await finishCommsAction(
+      { $executeRawUnsafe: execute },
+      '00000000-0000-4000-8000-000000000001',
+      { status: 'accepted', providerMessageId: 'SM' + 'a'.repeat(32), providerStatus: 'queued' },
+    );
+    const [sql, approvalId, status, providerId, providerStatus] = execute.mock.calls[0];
+    expect(sql).toContain('public.comms_delivery_receipts');
+    expect(sql).toContain('ORDER BY occurred_at DESC, created_at DESC');
+    expect(sql).toContain("= 'failed' THEN 'failed'");
+    expect(sql).toContain("status = 'dispatching'");
+    expect([approvalId, status, providerId, providerStatus]).toEqual([
+      '00000000-0000-4000-8000-000000000001', 'accepted', 'SM' + 'a'.repeat(32), 'queued',
+    ]);
   });
 
   it('accepts a verified inbound owner approval once and records the Gen-X rule', async () => {

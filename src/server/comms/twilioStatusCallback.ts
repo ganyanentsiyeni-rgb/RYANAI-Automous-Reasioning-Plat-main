@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import formbody from '@fastify/formbody';
 import twilio from 'twilio';
@@ -116,13 +116,25 @@ export const twilioStatusCallbackPlugin: FastifyPluginAsync = async (fastify) =>
     });
     await fastify.prisma.$executeRawUnsafe(
       `UPDATE public.comms_send_approvals
-          SET status = CASE WHEN $2 = 'failed' THEN 'failed' ELSE 'accepted' END,
-              provider_status = $3,
+          SET status = CASE
+                WHEN (
+                  SELECT delivery_state FROM public.comms_delivery_receipts
+                   WHERE provider_message_id = $1
+                   ORDER BY occurred_at DESC, created_at DESC
+                   LIMIT 1
+                ) = 'failed' THEN 'failed'
+                ELSE 'accepted'
+              END,
+              provider_status = COALESCE((
+                SELECT provider_status FROM public.comms_delivery_receipts
+                 WHERE provider_message_id = $1
+                 ORDER BY occurred_at DESC, created_at DESC
+                 LIMIT 1
+              ), $2),
               updated_at = NOW()
         WHERE provider_message_id = $1
-          AND status IN ('dispatching', 'accepted', 'unknown')`,
+          AND status IN ('dispatching', 'accepted', 'unknown', 'failed')`,
       providerMessageId,
-      deliveryState,
       providerStatus,
     );
 
@@ -140,7 +152,9 @@ export const twilioStatusCallbackPlugin: FastifyPluginAsync = async (fastify) =>
         source: 'ryanai-comms',
         repository: 'ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main',
         commitSha,
-        eventId: randomUUID(),
+        // The immutable receipt UUID is also the PA event id, so webhook replays
+        // carry the same identity and downstream consumers can deduplicate them.
+        eventId: receipt.receiptId,
         correlationId: `twilio:${providerMessageId}:dispatch:${dispatch.id}`,
         occurredAt: new Date().toISOString(),
         channel: channel as 'whatsapp' | 'sms' | 'voice',
