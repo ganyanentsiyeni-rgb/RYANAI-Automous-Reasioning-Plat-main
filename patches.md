@@ -864,3 +864,10 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - The existing reservation lookup now retrieves and compares the provider as part of the immutable dispatch identity.
 - Added a regression case for cross-provider idempotency-key reuse.
 - Validation status: regression test authored; execution remains pending.
+
+## 2026-11-28 — Comms approval expiry projection
+
+- Corrected the owner approval-status read path so a pending approval whose expiry timestamp has passed is presented as `expired`, rather than remaining visually pending until another write happens.
+- This is a read-time projection only: it does not mutate approval rows, and it does not expire or interrupt an already-claimed `dispatching` action.
+- Added pure-function regression coverage for pending, unexpired, dispatching, and accepted states.
+- Validation status: regression test authored; execution remains pending.
