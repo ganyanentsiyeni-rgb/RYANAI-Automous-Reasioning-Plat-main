@@ -20,8 +20,8 @@ projects:
             rootDir: .
             dockerContext: .
             dockerfilePath: ./Dockerfile.api
-            healthCheckPath: /readyz
-            autoDeployTrigger: checksPass
+            healthCheckPath: /health
+            autoDeployTrigger: off
             envVars:
               - key: NODE_ENV
                 value: staging
@@ -95,7 +95,7 @@ projects:
             dockerContext: .
             dockerfilePath: ./mcp-server/Dockerfile
             healthCheckPath: /health
-            autoDeployTrigger: checksPass
+            autoDeployTrigger: off
             envVars:
               - key: NODE_ENV
                 value: production
@@ -122,7 +122,7 @@ projects:
             branch: main
             buildCommand: npm ci --legacy-peer-deps && npm run build:web
             staticPublishPath: ./dist
-            autoDeployTrigger: checksPass
+            autoDeployTrigger: off
             envVars:
               - key: VITE_APP_ENV
                 value: staging

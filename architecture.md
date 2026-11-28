@@ -289,3 +289,8 @@ PhoneLink loads the device registry and capability catalog as its primary refres
 - The reconnect flow now invokes exact-ID reconciliation for every replay item that was not explicitly accepted or definitively rejected by the sync response.
 - A reconciliation response can clear an outbox record only when it explicitly confirms the same task ID; unresolved, missing, or failed reconciliation keeps the task locally retryable.
 - Regression tests cover successful reconciliation after ambiguous dispatch and retention when exact-ID lookup remains unresolved.
+
+
+## Render U2EB explicit push authorization
+
+The primary Render U2EB blueprint must set `autoDeployTrigger: off` for API, Web, and MCP. CI success is a prerequisite, not deployment authorization. A provider deployment requires the separate explicit PUSH DEPLOY request and exact-SHA release gate. The API liveness health check is `/health`. Blueprint changes are source-only until reviewed, merged after required checks pass, and deliberately applied through an authorized provider operation; editing the blueprint does not imply that live Render settings have changed.
