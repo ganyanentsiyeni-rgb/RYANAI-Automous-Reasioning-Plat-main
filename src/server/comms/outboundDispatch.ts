@@ -244,6 +244,11 @@ export async function advanceOutboundCommsDispatchFromReceipt(
   prisma: PrismaClient,
   input: { dispatchId: string; deliveryState: string },
 ): Promise<void> {
+  // Queueing and unknown provider events are evidence, not a delivery outcome.
+  // Preserve the current dispatch lifecycle until the provider confirms acceptance,
+  // delivery, or failure.
+  if (input.deliveryState === 'queued' || input.deliveryState === 'unknown') return;
+
   const nextState: OutboundCommsDispatchState =
     input.deliveryState === 'delivered'
       ? 'delivered'
