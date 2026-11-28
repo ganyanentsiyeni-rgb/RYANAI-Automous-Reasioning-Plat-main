@@ -98,6 +98,30 @@ describe('claimInboundCommunication', () => {
     }));
   });
 
+  it('does not reclaim an old processing message once its durable AgentRun is linked', async () => {
+    const stale = new Date(Date.now() - 6 * 60 * 1000);
+    const create = vi.fn().mockRejectedValue({ code: 'P2002' });
+    const findUnique = vi.fn().mockResolvedValue({
+      id: 'message-linked', status: 'processing', metadata: null, createdAt: stale,
+      agentRunId: 'run-active', body: input.body,
+      conversation: { channel: 'whatsapp', ownerUserId: null },
+    });
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const prisma = {
+      communicationConversation: {
+        upsert: vi.fn().mockResolvedValue({ id: 'conversation-1' }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      communicationMessage: { create, findUnique, updateMany },
+    } as unknown as PrismaClient;
+
+    await expect(claimInboundCommunication(prisma, input)).resolves.toMatchObject({
+      claimed: false,
+      existing: { messageId: 'message-linked', status: 'processing', agentRunId: 'run-active' },
+    });
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
   it('does not reclaim a fresh processing claim while another worker may own it', async () => {
     const create = vi.fn().mockRejectedValue({ code: 'P2002' });
     const findUnique = vi.fn().mockResolvedValue({
