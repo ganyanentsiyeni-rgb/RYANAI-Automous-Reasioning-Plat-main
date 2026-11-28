@@ -151,7 +151,8 @@ function PluginIntegrationsSettingsContent({
       setConnectionError('');
     } catch (cause) {
       if (requestId === connectionRequestId.current) {
-        setConnections([]);
+        // Keep the last verified connection snapshot visible during transient
+        // refresh failures. The error state makes freshness explicit.
         setConnectionError(controller.signal.aborted ? 'Provider connection status request timed out.' : cause instanceof Error ? cause.message : 'Provider connection status is unavailable.');
       }
     } finally {
@@ -188,7 +189,8 @@ function PluginIntegrationsSettingsContent({
       }
     } catch (cause) {
       if (requestId === registryRequestId.current) {
-        setRegistryProviders([]);
+        // Preserve the last verified registry during a transient refresh failure;
+        // an unavailable refresh is not proof that the catalogue became empty.
         setRegistryError(controller.signal.aborted ? 'Backend plugin registry request timed out.' : cause instanceof Error ? cause.message : 'Backend plugin registry is unavailable.');
       }
     } finally {

@@ -69,6 +69,27 @@ describe('PA Agent runtime refresh', () => {
     expect(container.textContent).toContain('Unverified');
   });
 
+  it('preserves the last verified snapshot when a later refresh fails', async () => {
+    let refreshNumber = 0;
+    authenticatedFetch.mockImplementation((url: string) => {
+      refreshNumber += 1;
+      if (refreshNumber <= 3) return Promise.resolve(responseFor(url, 'verified snapshot'));
+      return Promise.reject(new Error('temporary network failure'));
+    });
+
+    await act(async () => root.render(<PAAgentPage />));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    expect(container.textContent).toContain('verified snapshot');
+
+    await act(async () => window.dispatchEvent(new Event('focus')));
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+
+    expect(container.textContent).toContain('verified snapshot');
+    expect(container.textContent).toContain('PA status request failed.');
+    expect(container.textContent).toContain('Task Awareness request failed; task state remains unverified.');
+    expect(container.textContent).not.toContain('No authenticated PA observer report has been received.');
+  });
+
   it('ignores an older refresh that resolves after a newer snapshot', async () => {
     const pending: Array<{ url: string; resolve: (value: ReturnType<typeof responseFor>) => void }> = [];
     let call = 0;

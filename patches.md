@@ -1,3 +1,19 @@
+
+## 2026-11-28 — Frontend gate scope expanded for UI coverage
+
+- Expanded the frontend verification test step from a small regression list to the frontend-owned test directories: `src/config`, `src/lib`, `src/hooks`, `src/components`, `src/pages`, and `src/shared`.
+- This is test-scope expansion only; it does not authorize merge or deployment and does not change backend/provider behavior.
+- Exact-head CI execution is still required; no pass is claimed until GitHub reports the resulting run for the current SHA.
+
+
+## 2026-11-28 — UI refresh truthfulness for PA and Plugin Integrations
+
+- Fixed PA Agent periodic/focus refreshes so a transient API, task, or Task Awareness failure no longer clears the last verified snapshot or renders a false empty/unavailable runtime state. The UI now preserves known data while explicitly reporting the latest refresh as unverified.
+- Fixed Plugin & Integrations refresh handling so transient connection or registry failures preserve the last verified provider/adapter snapshot instead of converting it into an empty catalogue or disconnected state.
+- Added regression coverage for PA snapshot preservation and plugin registry/connection snapshot preservation after subsequent refresh failures.
+- No API, database, auth, credential, provider, deployment, or migration changes.
+- Exact-head CI/security execution remains required before this branch can be treated as verified.
+
 # RyanAI Patch Record — Shared PA / Darkside / Comms / Push Deploy
 
 **Status:** implementation record for the focused repair branch. This document records intended and implemented contract changes; it is not a deployment certification.
@@ -758,3 +774,11 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Asserted that risk limits are presented as server-enforced and that emergency-stop reset requirements remain visible.
 - Mocked the paper-trading child panels to keep the page tests isolated from their own API and component contracts.
 - Validation status: test source added; local execution and exact-head CI remain pending. No runtime trading, payment, API, authentication, or provider behavior was changed.
+
+## 2026-11-28 — Command Center mobile drawer integration coverage
+
+- Added page-level `happy-dom` coverage for the Command Center mobile conversation-history and live-telemetry drawers.
+- Verified modal semantics, close controls, focus restoration after close/Escape, and the single-active-drawer behavior when switching between history and telemetry.
+- Kept the shared `trapDialogTabKey` helper isolated behind its existing utility tests; this page test verifies the actual Command Center state transitions and focus lifecycle.
+- No runtime behavior, API contract, authentication, provider configuration, deployment, migration, or credential state was changed.
+- Validation status: source committed on the repair branch; exact-head test execution is still required before this patch is considered verified.

@@ -237,7 +237,7 @@ describe('Plugin integrations centre', () => {
     expect(container.textContent).toContain('session could not be verified');
   });
 
-  it('shows registry unavailable and clears readiness when the backend request fails', async () => {
+  it('shows registry unavailable when the initial backend request fails', async () => {
     api.authenticatedFetch.mockImplementation(async (url: string) => url === '/api/plugins/registry'
       ? { ok: false, json: async () => ({ error: 'Registry request failed.' }) }
       : { ok: true, json: async () => ({ connections: [] }) });
@@ -245,6 +245,49 @@ describe('Plugin integrations centre', () => {
     await vi.waitFor(() => expect(container.textContent).toContain('Backend registry could not be verified: Registry request failed.'));
     expect(container.querySelector('[data-plugin-id="google-calendar"]')?.textContent).toContain('Registry unavailable');
     expect(container.querySelector('[data-plugin-id="google-calendar"]')?.textContent).not.toContain('Adapter registered');
+  });
+
+  it('preserves the last verified registry when a later refresh fails', async () => {
+    let registryReads = 0;
+    api.authenticatedFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/plugins/registry') {
+        registryReads += 1;
+        if (registryReads === 1) return { ok: true, json: async () => ({ providers: [{ id: 'google-calendar', adapterStatus: 'adapter_registered' }] }) };
+        return { ok: false, json: async () => ({ error: 'Registry temporarily unavailable.' }) };
+      }
+      return { ok: true, json: async () => ({ connections: [] }) };
+    });
+    await mount();
+    await vi.waitFor(() => expect(container.querySelector('[data-plugin-id="google-calendar"]')?.textContent).toContain('Adapter registered'));
+
+    await click([...container.querySelectorAll('button')].find(button => button.textContent === 'Refresh integration status') ?? null);
+    await vi.waitFor(() => expect(container.textContent).toContain('Registry temporarily unavailable.'));
+
+    expect(container.querySelector('[data-plugin-id="google-calendar"]')?.textContent).toContain('Adapter registered');
+  });
+
+  it('preserves the last verified provider connections when a later refresh fails', async () => {
+    let connectionReads = 0;
+    api.authenticatedFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/plugins/connections') {
+        connectionReads += 1;
+        if (connectionReads === 1) {
+          return { ok: true, json: async () => ({ connections: [{
+            providerId: 'google-calendar', status: 'connected', connectionState: 'connected',
+            credentialState: 'access_token_valid_or_expiry_unknown', healthState: 'not_probed', lastHealthCheckAt: null,
+          }] }) };
+        }
+        return { ok: false, json: async () => ({ error: 'Connections temporarily unavailable.' }) };
+      }
+      return { ok: true, json: async () => url === '/api/plugins/registry' ? { providers: [] } : { status: 'not_connected', connected: false } };
+    });
+    await mount();
+    await vi.waitFor(() => expect(container.textContent).toContain('Connected · provider health not checked'));
+
+    await click([...container.querySelectorAll('button')].find(button => button.textContent === 'Refresh connection status') ?? null);
+    await vi.waitFor(() => expect(container.textContent).toContain('Connections temporarily unavailable.'));
+
+    expect(container.querySelector('[data-plugin-id="google-calendar"]')?.textContent).toContain('Connected · provider health not checked');
   });
 
   it('times out registry requests and reports an unverified state', async () => {
