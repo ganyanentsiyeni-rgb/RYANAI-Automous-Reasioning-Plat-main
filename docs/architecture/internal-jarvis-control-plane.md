@@ -20,3 +20,8 @@ The existing optional `mcp-gateway` Compose profile is paired with explicit serv
 ## Operational boundary
 
 This first vertical slice reuses RyanAI's persisted AgentRun worker queue. It establishes the internal authenticated API, registry policy and durable audit trail. It does not claim that repository sandboxing, patch application, test evidence, MCPJungle registration (operator action still pending), or end-to-end approval execution are complete. Those require separate adapters and acceptance tests before the control plane can be called operational.
+
+
+### MCPJungle CI registration note (2026-11-28)
+
+The Docker workflow's isolated Enterprise gateway smoke test now imports its generated `.env` into the shell before passing the upstream token to MCPJungle. A non-empty-token guard prevents an accidental empty bearer token and unintended OAuth client-registration attempt. The fixture is disposable and CI-only; this does not change live MCPJungle registration or credentials.

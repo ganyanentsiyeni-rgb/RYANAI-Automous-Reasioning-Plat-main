@@ -191,6 +191,13 @@ jobs:
           MCP_PROXY_DELEGATION_TOKEN=ci_only_bootstrap_placeholder
           MCPJUNGLE_IMAGE_TAG=0.4.6
           EOF
+          # Docker Compose reads .env itself, but the shell does not. The MCPJungle
+          # CLI flags below expand shell variables, so explicitly import this
+          # disposable CI-only environment before registering the upstream.
+          set -a
+          . ./.env
+          set +a
+          : "${MCP_AUTH_TOKEN:?CI MCP_AUTH_TOKEN was not loaded from .env}"
           export RYANAI_MCP_DELEGATION_SECRET=ci_only_mcp_delegation_secret_1234567890_abcdefgh
           export RYANAI_MCP_SERVICE_TOKEN=ci_only_mcp_service_token_1234567890_abcdefgh
           # Compose provisions only the disposable Auth compatibility objects; it does

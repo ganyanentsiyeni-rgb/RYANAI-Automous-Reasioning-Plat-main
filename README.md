@@ -2360,3 +2360,8 @@ Docker PR image scans are also triggered when deployment-readiness validation sc
 ## 2026-11-28 CI evidence correction
 
 The CI execution-completeness workflow must compare required check runs with the exact pull-request head SHA (`github.event.pull_request.head.sha`), not the synthetic merge SHA exposed as `github.sha` for a `pull_request` event. Manual workflow dispatch continues to use its selected workflow SHA. A queued, missing, failed, cancelled, or skipped required context is not a pass. The correction is tracked in the focused CI repair branch; it is not evidence that CI is green and does not authorize deployment.
+
+
+## 2026-11-28 — MCPJungle CI auth smoke correction
+
+The isolated MCPJungle test must source its generated CI-only `.env` file before passing `MCP_AUTH_TOKEN` to the CLI. Compose loads `.env` automatically, but shell variable expansion does not. The workflow now exports the fixture values and asserts that the upstream bearer token is non-empty before server registration. This fixes the identified CI wiring defect; runtime authentication and ACL results remain pending.

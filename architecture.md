@@ -297,3 +297,8 @@ The CI completeness workflow resolves the candidate commit differently by trigge
 ## Render U2EB explicit push authorization
 
 The primary Render U2EB blueprint must set `autoDeployTrigger: off` for API, Web, and MCP. CI success is a prerequisite, not deployment authorization. A provider deployment requires the separate explicit PUSH DEPLOY request and exact-SHA release gate. The API liveness health check is `/health`. Blueprint changes are source-only until reviewed, merged after required checks pass, and deliberately applied through an authorized provider operation; editing the blueprint does not imply that live Render settings have changed.
+
+
+## 2026-11-28 — MCPJungle CI authentication boundary
+
+The MCPJungle runtime smoke workflow now explicitly sources its generated, disposable Compose `.env` into the runner shell before expanding shell variables in the registration command. This closes the distinction between Compose's automatic `.env` loading and the shell's environment. An explicit non-empty bearer-token assertion prevents an empty token from silently selecting the OAuth dynamic-registration path. The test remains isolated to CI fixtures.
