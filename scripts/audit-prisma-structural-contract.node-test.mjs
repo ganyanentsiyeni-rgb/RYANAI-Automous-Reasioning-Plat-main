@@ -66,10 +66,11 @@ test('checks identity bridge, legacy queue correction and lease heartbeat migrat
     codingQueue: "id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE, workbench_run_id TEXT NOT NULL REFERENCES public.agent_runs(id) ON DELETE CASCADE, approval_id TEXT NOT NULL, plan_hash TEXT NOT NULL, base_commit_sha TEXT NOT NULL, proposed_diff_hash TEXT NOT NULL, agent TEXT NOT NULL, prompt TEXT NOT NULL, workspace_key TEXT NOT NULL, locked_at TIMESTAMPTZ(6), lease_expires_at TIMESTAMPTZ(6), next_attempt_at TIMESTAMPTZ(6) NOT NULL DEFAULT NOW(), cancel_requested_at TIMESTAMPTZ(6), created_at TIMESTAMPTZ(6) NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ(6) NOT NULL DEFAULT NOW(), completed_at TIMESTAMPTZ(6), coding_tasks_status_next_attempt_idx coding_tasks_status_lease_expiry_idx coding_tasks_user_created_idx coding_tasks_workbench_run_idx WHERE approval_status = 'pending' OR plan_snapshot IS NOT NULL OR proposed_diff_hash IS NOT NULL;",
     queueCorrection: "SET queue_type = 'unclassified' WHERE queue_type = 'coding' AND approval_status = 'pending' AND plan_snapshot IS NULL AND proposed_diff_hash IS NULL;",
     leaseHeartbeat: "ALTER TABLE public.agent_runs ADD COLUMN lease_expires_at TIMESTAMP(3), ADD COLUMN heartbeat_at TIMESTAMP(3); ALTER TABLE public.coding_tasks ADD COLUMN heartbeat_at TIMESTAMPTZ(6); UPDATE public.coding_tasks SET heartbeat_at = COALESCE(locked_at, NOW()) WHERE status = 'running' AND heartbeat_at IS NULL;",
+    approvalHistory: "ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'approved'; ALTER TABLE public.agent_runs ALTER COLUMN approval_status SET DEFAULT 'pending'; UPDATE public.agent_runs SET approval_status = 'pending' WHERE status = 'queued' AND approval_status IS NULL;",
   });
   assert.equal(result.counts.missing, 0);
   assert.equal(result.counts.structurally_wrong, 0);
-  assert.equal(result.counts.matching, 12);
+  assert.equal(result.counts.matching, 13);
 });
 
 test('flags weakened legacy coding classification', () => {
