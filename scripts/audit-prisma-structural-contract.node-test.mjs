@@ -59,24 +59,29 @@ test('does not mistake intentionally absent handoff updated_at for a defect', ()
   assert.equal(result.findings.find((item) => item.object === 'column public.agent_handoffs.updated_at')?.status, 'matching');
 });
 
-test('checks identity bridge, legacy queue correction and lease heartbeat migration source contracts', () => {
+test('checks identity bridge, migration chronology and bootstrap parity', () => {
+  const agentOperations = '"id" TEXT NOT NULL, "user_id" TEXT NOT NULL, "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "completed_at" TIMESTAMP(3), agent_runs_user_id_fkey FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE, "input" TEXT NOT NULL, "started_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, agent_handoffs_run_id_started_at_idx, agent_handoffs_run_id_fkey FOREIGN KEY ("run_id") REFERENCES "agent_runs"("id") ON DELETE CASCADE ON UPDATE CASCADE, "status" TEXT NOT NULL, agent_brain_health_brain_key';
+  const codingQueue = "id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE, workbench_run_id TEXT NOT NULL REFERENCES public.agent_runs(id) ON DELETE CASCADE, approval_id TEXT NOT NULL, plan_hash TEXT NOT NULL, base_commit_sha TEXT NOT NULL, proposed_diff_hash TEXT NOT NULL, agent TEXT NOT NULL, prompt TEXT NOT NULL, workspace_key TEXT NOT NULL, locked_at TIMESTAMPTZ(6), lease_expires_at TIMESTAMPTZ(6), next_attempt_at TIMESTAMPTZ(6) NOT NULL DEFAULT NOW(), cancel_requested_at TIMESTAMPTZ(6), created_at TIMESTAMPTZ(6) NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ(6) NOT NULL DEFAULT NOW(), completed_at TIMESTAMPTZ(6), coding_tasks_status_next_attempt_idx coding_tasks_status_lease_expiry_idx coding_tasks_user_created_idx coding_tasks_workbench_run_idx WHERE approval_status = 'pending' OR plan_snapshot IS NOT NULL OR proposed_diff_hash IS NOT NULL;";
+  const approvalBase = "ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'approved', ADD COLUMN approved_at TIMESTAMP(3), ADD COLUMN cancel_requested_at TIMESTAMP(3);";
+  const queueCorrection = "SET queue_type = 'unclassified' WHERE queue_type = 'coding' AND approval_status = 'pending' AND plan_snapshot IS NULL AND proposed_diff_hash IS NULL;";
+  const leaseHeartbeat = "ALTER TABLE public.agent_runs ADD COLUMN lease_expires_at TIMESTAMP(3), ADD COLUMN heartbeat_at TIMESTAMP(3); ALTER TABLE public.coding_tasks ADD COLUMN heartbeat_at TIMESTAMPTZ(6); UPDATE public.coding_tasks SET heartbeat_at = COALESCE(locked_at, NOW()) WHERE status = 'running' AND heartbeat_at IS NULL;";
+  const approvalFailClosed = "ALTER TABLE public.agent_runs ALTER COLUMN approval_status SET DEFAULT 'pending'; UPDATE public.agent_runs SET approval_status = 'pending' WHERE status = 'queued' AND approval_status IS NULL;";
+  const embedded = (name, source) => `-- BEGIN PRISMA MIGRATION ${name}\n${source}\n-- END PRISMA MIGRATION ${name}`;
+  const bootstrap = [
+    embedded('20261030120000_agent_operations', agentOperations),
+    embedded('20261104120000_isolated_coding_task_queue', codingQueue),
+    embedded('20261102235000_engineering_evidence_workbench', approvalBase),
+    embedded('20261108120000_correct_pending_reasoning_queue_classification', queueCorrection),
+    embedded('20261121120000_agent_run_lease_heartbeat', leaseHeartbeat),
+  ].join('\n') + "\napproval_status TEXT NOT NULL DEFAULT 'approved'";
   const result = assessMigrationSourceContracts({
     authBridge: "SECURITY DEFINER; SET search_path = ''; COALESCE(NULLIF(NEW.email, ''), 'auth-user-' || NEW.id::text || '@no-email.invalid'); COALESCE(EXCLUDED.name, public.users.name); CREATE TRIGGER ryanai_auth_user_sync_insert AFTER INSERT ON auth.users; CREATE TRIGGER ryanai_auth_user_sync_update AFTER UPDATE OF email, raw_user_meta_data ON auth.users; CREATE TRIGGER ryanai_auth_user_sync_delete AFTER DELETE ON auth.users; REVOKE ALL PRIVILEGES ON TABLE public.users FROM PUBLIC, anon, authenticated; GRANT ALL PRIVILEGES ON TABLE public.users TO service_role; COALESCE(au.created_at, pg_catalog.now())::timestamp(3) COALESCE(au.updated_at, au.created_at, pg_catalog.now())::timestamp(3)",
-    agentOperations: '"input" TEXT NOT NULL, "started_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, agent_handoffs_run_id_started_at_idx, agent_handoffs_run_id_fkey FOREIGN KEY (run_id) REFERENCES "agent_runs"("id") ON DELETE CASCADE ON UPDATE CASCADE, "status" TEXT NOT NULL, agent_brain_health_brain_key',
-    codingQueue: "id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES public.users(id) ON DELETE CASCADE, workbench_run_id TEXT NOT NULL REFERENCES public.agent_runs(id) ON DELETE CASCADE, approval_id TEXT NOT NULL, plan_hash TEXT NOT NULL, base_commit_sha TEXT NOT NULL, proposed_diff_hash TEXT NOT NULL, agent TEXT NOT NULL, prompt TEXT NOT NULL, workspace_key TEXT NOT NULL, coding_tasks_status_next_attempt_idx coding_tasks_status_lease_expiry_idx coding_tasks_user_created_idx coding_tasks_workbench_run_idx WHERE approval_status = 'pending' OR plan_snapshot IS NOT NULL OR proposed_diff_hash IS NOT NULL;",
-    queueCorrection: "SET queue_type = 'unclassified' WHERE queue_type = 'coding' AND approval_status = 'pending' AND plan_snapshot IS NULL AND proposed_diff_hash IS NULL;",
-    leaseHeartbeat: "ALTER TABLE public.agent_runs ADD COLUMN lease_expires_at TIMESTAMP(3), ADD COLUMN heartbeat_at TIMESTAMP(3); ALTER TABLE public.coding_tasks ADD COLUMN heartbeat_at TIMESTAMPTZ(6); UPDATE public.coding_tasks SET heartbeat_at = COALESCE(locked_at, NOW()) WHERE status = 'running' AND heartbeat_at IS NULL;",
+    agentOperations, codingQueue, queueCorrection, leaseHeartbeat, approvalBase, bootstrap,
+    approvalHistory: approvalBase + ' ' + approvalFailClosed,
   });
   assert.equal(result.counts.missing, 0);
   assert.equal(result.counts.structurally_wrong, 0);
-  assert.equal(result.counts.matching, 8);
-});
-
-test('requires the fail-closed pending default for newly created AgentRuns', () => {
-  const result = assessStructuralContract({ columns: [{ table_name: 'agent_runs', column_name: 'approval_status', formatted_type: 'text', is_nullable: false, column_default: "'approved'::text" }] });
-  const approval = result.findings.find((item) => item.object === 'column public.agent_runs.approval_status');
-  assert.equal(approval.status, 'structurally_wrong');
-  assert.equal(approval.expected.default, "'pending'");
+  assert.equal(result.counts.matching, 15);
 });
 
 test('flags weakened legacy coding classification', () => {
