@@ -871,3 +871,11 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - This is a read-time projection only: it does not mutate approval rows, and it does not expire or interrupt an already-claimed `dispatching` action.
 - Added pure-function regression coverage for pending, unexpired, dispatching, and accepted states.
 - Validation status: regression test authored; execution remains pending.
+
+## 2026-11-28 — Comms conversation delivery projection
+
+- Extended the owner-scoped conversation-history read to include the outbound dispatch's monotonic state and the latest append-only provider receipt details.
+- The API exposes additive `deliveryStatus`, `deliveryProviderStatus`, and `deliveryOccurredAt` fields. Dispatch state remains the authoritative lifecycle projection; receipt details are evidence, not a mutable replacement for the receipt log.
+- Updated the Comms timeline and latest-status panel to show the dispatch projection and provider-reported status while preserving the original communication-message `status`.
+- Added a route regression test confirming that delivered evidence is visible even when the legacy message status remains `accepted`, and that the read path does not mutate communication messages or AgentRun state.
+- Validation status: regression test authored; execution and exact-head CI/security verification remain pending. No provider dispatch, AgentRun mutation, migration, credential, deployment, or production state changed.
