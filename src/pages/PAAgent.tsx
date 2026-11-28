@@ -87,9 +87,9 @@ export default function PAAgentPage() {
     const timeoutId = window.setTimeout(() => controller.abort(), 10_000);
     const isCurrentRequest = () => requestId === refreshRequestId.current;
 
-    setStatus(null);
-    setTasks([]);
-    setTaskAwareness(null);
+    // Preserve the last verified snapshot while a refresh is in flight.
+    // Clearing it first makes periodic/focus refreshes render a false empty or
+    // unverified state before the new response arrives.
     setStatusState('loading');
     setTasksState('loading');
     setAwarenessState('loading');
@@ -114,12 +114,14 @@ export default function PAAgentPage() {
           setStatusState('ready');
         } catch (error) {
           if (!isCurrentRequest()) return;
-          setStatus(null);
+          // Preserve the last verified PA snapshot; only the freshness state
+          // changes when the refresh cannot be verified.
           setStatusState('unavailable');
           nextErrors.push(controller.signal.aborted ? 'PA status request timed out.' : error instanceof Error ? error.message : 'PA status could not be loaded.');
         }
       } else {
-        setStatus(null);
+        // Preserve the last verified PA snapshot; do not turn a transient
+        // request failure into a false "no runtime" state.
         setStatusState('unavailable');
         nextErrors.push(controller.signal.aborted ? 'PA status request timed out.' : 'PA status request failed.');
       }
@@ -135,12 +137,14 @@ export default function PAAgentPage() {
           setTasksState('ready');
         } catch (error) {
           if (!isCurrentRequest()) return;
-          setTasks([]);
+          // Keep the last verified task list visible when a refresh fails.
+          // The error state makes the freshness problem explicit without
+          // replacing known data with a misleading empty state.
           setTasksState('unavailable');
           nextErrors.push(controller.signal.aborted ? 'Task history request timed out.' : error instanceof Error ? error.message : 'Task history could not be loaded.');
         }
       } else {
-        setTasks([]);
+        // Keep the last verified task list visible when the request fails.
         setTasksState('unavailable');
         nextErrors.push(controller.signal.aborted ? 'Task history request timed out.' : 'Task history request failed.');
       }
@@ -156,12 +160,14 @@ export default function PAAgentPage() {
           setAwarenessState('ready');
         } catch {
           if (!isCurrentRequest()) return;
-          setTaskAwareness(null);
+          // Preserve the last verified awareness snapshot while surfacing
+          // that the latest refresh is unverified.
           setAwarenessState('unavailable');
           nextErrors.push(controller.signal.aborted ? 'Task Awareness request timed out; task state remains unverified.' : 'Task Awareness snapshot is unavailable; task state remains unverified.');
         }
       } else {
-        setTaskAwareness(null);
+        // Preserve the last verified awareness snapshot while surfacing
+        // that the latest refresh is unverified.
         setAwarenessState('unavailable');
         nextErrors.push(controller.signal.aborted ? 'Task Awareness request timed out; task state remains unverified.' : 'Task Awareness request failed; task state remains unverified.');
       }

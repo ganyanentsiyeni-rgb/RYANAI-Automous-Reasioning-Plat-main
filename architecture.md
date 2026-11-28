@@ -293,6 +293,17 @@ PhoneLink loads the device registry and capability catalog as its primary refres
 
 ## 2026-11-28 — Exact-SHA CI completeness
 
+Pull-request completeness selects `scripts/ci/required-staging-checks.json`, which
+excludes the main-only Render configuration audit. Manual validation on main
+uses `scripts/ci/required-release-checks.json`. The Docker workflow runs its
+API/web image build and scan producers on every pull request so documentation
+and workflow changes cannot silently omit required scan contexts. PR builds do
+not publish images. The live Railway service remains a separate provider-side
+configuration concern: source control specifies the Dockerfile builder and
+`Dockerfile.api`, but the live source/builder mismatch must be remediated only
+through an explicitly authorized provider change.
+
+
 The CI completeness workflow resolves the candidate commit differently by trigger: pull requests use `github.event.pull_request.head.sha`; manually dispatched runs use the selected workflow SHA. It validates the 40-character SHA, checks out that exact commit, and supplies the same value to the required-context verifier. This avoids comparing check runs attached to a PR head with GitHub's synthetic merge commit. The verifier still requires every catalogued context to complete successfully on that exact SHA; this workflow change is not release certification.
 ## Render U2EB explicit push authorization
 

@@ -539,7 +539,7 @@ export default function CodingStudio() {
       <section className="border-b border-cyan-300/10 bg-[#0d111b] px-5 py-4" aria-label="Browser coding environment">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-300">Browser IDE integration</p><h2 className="mt-1 text-sm font-semibold text-white">VS Code for the Web · RyanAI repository</h2><p className="mt-1 max-w-3xl text-xs leading-5 text-slate-400">Open the official repository in vscode.dev to browse and edit from your phone. GitHub handles sign-in and repository permissions; return to RyanAI Studio for governed plans, approvals and verification.</p></div>
-          <a href="https://vscode.dev/github/RyanAI-Automated/RYANAI-Automous-Reasioning-Plat" target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-cyan-300"><Code2 className="h-4 w-4" />Open in VS Code Web</a>
+          <a href="https://vscode.dev/github/ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main" target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-cyan-300"><Code2 className="h-4 w-4" />Open in VS Code Web</a>
         </div>
         <p className="mt-2 text-[10px] leading-5 text-amber-200/80">Browser-editor boundary: vscode.dev does not provide a terminal or full build/debug runtime. Use RyanAI's separately approved coding-worker queue for execution; changes still require exact-head checks and human review. No auto-merge or deployment.</p>
       </section>

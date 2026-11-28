@@ -42,6 +42,7 @@ export async function inspectDatabaseSchema(
       ) AS checkpoint_task_path,
       (
         SELECT COUNT(*) = 32
+        SELECT COUNT(*) = 18
         FROM information_schema.columns
         WHERE table_schema = 'public'
           AND table_name = 'agent_runs'
@@ -78,6 +79,11 @@ export async function inspectDatabaseSchema(
             'updated_at',
             'completed_at',
             'queue_type'
+            'id', 'user_id', 'objective', 'status', 'result', 'error',
+            'attempts', 'max_attempts', 'worker_id', 'locked_at',
+            'lease_expires_at', 'heartbeat_at', 'next_attempt_at',
+            'approval_status', 'queue_type', 'created_at', 'updated_at',
+            'completed_at'
           )
       ) AS agent_runs_contract
   `);

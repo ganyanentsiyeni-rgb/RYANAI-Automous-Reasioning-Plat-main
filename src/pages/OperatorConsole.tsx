@@ -120,6 +120,24 @@ export default function OperatorConsole({ userId }: { userId: string }) {
     };
   }, []);
 
+  useEffect(() => {
+    // Do not carry task history or an outbox snapshot across an authenticated app-account switch.
+    refreshRequestId.current += 1;
+    outboxRequestId.current += 1;
+    ownerIdRef.current = null;
+    syncingRef.current = false;
+    setOwnerId(null);
+    setTasks([]);
+    setSelectedId('');
+    setOutboxTasks([]);
+    setOutboxError('');
+    setError('');
+    setNotice('');
+    setRefreshedAt(null);
+    setLoading(Boolean(userId));
+    setSyncing(false);
+  }, [userId]);
+
   const refresh = useCallback(async () => {
     const requestId = ++refreshRequestId.current;
     if (!userId) {

@@ -1,3 +1,19 @@
+
+## 2026-11-28 — Frontend gate scope expanded for UI coverage
+
+- Expanded the frontend verification test step from a small regression list to the frontend-owned test directories: `src/config`, `src/lib`, `src/hooks`, `src/components`, `src/pages`, and `src/shared`.
+- This is test-scope expansion only; it does not authorize merge or deployment and does not change backend/provider behavior.
+- Exact-head CI execution is still required; no pass is claimed until GitHub reports the resulting run for the current SHA.
+
+
+## 2026-11-28 — UI refresh truthfulness for PA and Plugin Integrations
+
+- Fixed PA Agent periodic/focus refreshes so a transient API, task, or Task Awareness failure no longer clears the last verified snapshot or renders a false empty/unavailable runtime state. The UI now preserves known data while explicitly reporting the latest refresh as unverified.
+- Fixed Plugin & Integrations refresh handling so transient connection or registry failures preserve the last verified provider/adapter snapshot instead of converting it into an empty catalogue or disconnected state.
+- Added regression coverage for PA snapshot preservation and plugin registry/connection snapshot preservation after subsequent refresh failures.
+- No API, database, auth, credential, provider, deployment, or migration changes.
+- Exact-head CI/security execution remains required before this branch can be treated as verified.
+
 # RyanAI Patch Record — Shared PA / Darkside / Comms / Push Deploy
 
 **Status:** implementation record for the focused repair branch. This document records intended and implemented contract changes; it is not a deployment certification.
@@ -782,3 +798,71 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Verification is source-level only until the Node test suite and live database audit are executed.
 
 - AgentRun index structural validation now explicitly rejects unique indexes where Prisma declares non-unique indexes, in addition to checking B-tree type, ordered columns, and absence of partial predicates. Regression coverage includes an unexpectedly unique `agent_runs_user_id_created_at_idx`.
+
+## 2026-11-28 — Command Center mobile drawer integration coverage
+
+- Added page-level `happy-dom` coverage for the Command Center mobile conversation-history and live-telemetry drawers.
+- Verified modal semantics, close controls, focus restoration after close/Escape, and the single-active-drawer behavior when switching between history and telemetry.
+- Kept the shared `trapDialogTabKey` helper isolated behind its existing utility tests; this page test verifies the actual Command Center state transitions and focus lifecycle.
+- No runtime behavior, API contract, authentication, provider configuration, deployment, migration, or credential state was changed.
+- Validation status: source committed on the repair branch; exact-head test execution is still required before this patch is considered verified.
+
+## 2026-11-28 — PR CI catalogue and Docker scan producer alignment
+
+- Updated CI execution completeness to select `required-staging-checks.json`
+  for pull requests and non-main manual runs. Manual runs on main retain the
+  release catalogue, keeping the main-only Render audit out of PR validation.
+- Removed the Docker workflow's restrictive PR path filter. API/web image
+  build and scan contexts now run for every pull request, including
+  documentation-only and workflow-only changes. PR validation does not publish.
+- The Railway source contract remains `railway.json`: Dockerfile builder with
+  `Dockerfile.api`. The observed live Railway source/builder drift is not
+  changed here; relinking or changing a live service requires authorization.
+- No provider relink, live configuration change, production deployment,
+  database operation, or credential change is included. Exact-SHA CI/security
+  verification is required before any merge or deployment.
+## 2026-11-28 — Studio canonical repository handoff repair
+
+- Fixed the RyanAI Studio VS Code Web handoff to open the canonical repository `ganyanentsiyeni-rgb/RYANAI-Automous-Reasioning-Plat-main` instead of the retired `RyanAI-Automated/RYANAI-Automous-Reasioning-Plat` source.
+- Added page-level `happy-dom` coverage for the repository handoff and Studio runtime boundary messaging.
+- No backend, authentication, credential, deployment, database migration, or provider configuration changes.
+- Exact-head CI/security execution remains required before this patch is considered verified.
+
+## 2026-11-28 — UI integration resilience: GitHub provider refresh
+
+- Preserved the last verified GitHub account/repository identity in the Plugin & Integrations centre when a later status refresh fails.
+- Failed refreshes now mark the snapshot `unverified` instead of falsely replacing verified identity with `connected: false`.
+- Added regression coverage for the refresh-failure path.
+- No credential, provider configuration, backend, database, deployment, or production changes.
+
+## 2026-11-28 — PhoneLink account-switch isolation
+
+- Clear the previous mounted account's PhoneLink devices, capabilities, inbox events, pairing state, and transient messages when the authenticated `userId` changes.
+- Reset the refresh generation and loaded-state marker so stale in-flight requests cannot repopulate the newly selected account's view.
+- Added a regression test that switches the mounted PhoneLink workspace from one synthetic owner to another and asserts the prior owner's inbox event is no longer rendered.
+- No native Android, backend, provider, credential, database, deployment, or production changes. Physical-device validation remains separate.
+
+## 2026-11-28 — Operator Console account-switch isolation
+
+- Clear task history, selection, offline outbox snapshot, refresh metadata, and transient messages when the authenticated app `userId` changes.
+- Invalidate in-flight task-history and outbox reads and reset the current outbox owner/sync snapshot so prior-account data is not displayed while the next account loads.
+- Added a regression test that holds the next account's task-history request open and verifies the previous account's task objective disappears immediately before the new response resolves.
+- No backend, database, credential, provider, deployment, or production changes.
+
+
+## 2026-11-28 — Operations Center account-switch isolation
+
+- Clear prior-account task history, administrator approval actions, objective draft, confirmation/acting state, errors, and notices immediately when the authenticated app identity or admin UI scope changes.
+- Invalidate outstanding task and approval reads and guard task-submission/approval mutation completions with an account-generation token so late responses from the previous identity cannot update the newly mounted account's UI.
+- Added a deferred-response regression test proving previous task and approval content disappears while the next account's task and approval requests are still loading, then only the new account's results appear.
+- Frontend-only isolation and stale-response safety. Backend authorization remains authoritative; no credentials, database, provider, deployment, or production state changed. Test execution and exact-head CI/security evidence remain pending.
+
+
+## 2026-11-28 — UI and integration regression repair
+
+- Updated mobile Command Center drawer tests to wait for Framer Motion exit completion before asserting the dialog has left the DOM; focus restoration assertions remain in place.
+- Aligned the Operator Console account-switch loading assertion with the rendered loading label while retaining the check that account A task history is removed immediately.
+- Tightened the database inspection read-only assertion to match standalone DDL keywords, avoiding false positives on identifiers such as `created_at`.
+- Made the plugin registry refresh test deterministic by keeping the initial registry snapshot successful until the explicit refresh action, then simulating a transient failure.
+- Preserved the last known GitHub identity during a failed status refresh and surfaced the backend error as an accessible alert instead of silently discarding the failure detail.
+- No provider configuration, credentials, production data, database migrations, deployments, or release settings were changed. Exact-SHA CI and security checks must pass before any merge or deployment.

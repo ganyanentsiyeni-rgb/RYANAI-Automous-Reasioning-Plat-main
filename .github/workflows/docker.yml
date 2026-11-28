@@ -7,38 +7,6 @@ on:
     tags: ['v*.*.*']
   pull_request:
     branches: [main, master]
-    paths:
-      - 'Dockerfile'
-      - 'Dockerfile.api'
-      - 'Dockerfile.database'
-      - 'index.html'
-      - 'mcp-server/**'
-      - 'docker-compose.yml'
-      - 'scripts/docker-init/**'
-      - 'docker-entrypoint.sh'
-      - 'nginx.conf'
-      - 'nginx.conf.template'
-      - '.dockerignore'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'src/**'
-      - 'prisma/**'
-      - 'models/**'
-      - 'app/**'
-      - 'store/**'
-      - 'stacks/**'
-      - 'scripts/copy-server-assets.mjs'
-      - '.github/workflows/ci.yml'
-      - 'scripts/check-platform-wiring.mjs'
-      - 'scripts/validate-github-workflows.mjs'
-      - 'scripts/readiness-audits.node-test.mjs'
-      - 'scripts/validate-deployment-contracts.mjs'
-      - 'quant-engine/**'
-      - 'certs/**'
-      - 'scripts/backup-on-startup.mjs'
-      - 'scripts/verify-node-ca.sh'
-      - 'tsconfig*.json'
-      - '.github/workflows/docker.yml'
   workflow_dispatch:
     inputs:
       publish_images:

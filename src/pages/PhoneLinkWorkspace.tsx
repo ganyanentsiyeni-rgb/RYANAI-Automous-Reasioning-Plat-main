@@ -84,6 +84,24 @@ export default function PhoneLinkWorkspace({ userId, settings }: { userId: strin
   }, [userId]);
 
   useEffect(() => {
+    // A workspace can remain mounted while the authenticated account changes.
+    // Clear the prior account's device and inbox snapshot before the new owner's refresh.
+    refreshRequestId.current += 1;
+    hasLoadedRef.current = false;
+    setDevices([]);
+    setEvents([]);
+    setCapabilities([]);
+    setSelectedCapabilities([]);
+    setPairingCode('');
+    setExpiresAt('');
+    setNativeExchangeLink('');
+    setError('');
+    setInboxError('');
+    setNotice('');
+    setLoading(true);
+  }, [userId]);
+
+  useEffect(() => {
     const initialRefresh = window.setTimeout(() => { void refresh(); }, 0);
     const timer = window.setInterval(() => void refresh(), 15000);
     return () => { refreshRequestId.current += 1; window.clearTimeout(initialRefresh); window.clearInterval(timer); };
