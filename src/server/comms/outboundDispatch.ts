@@ -253,12 +253,18 @@ export async function advanceOutboundCommsDispatchFromReceipt(
         ? 'failed'
         : 'accepted';
 
-  // Provider receipts may arrive late or out of order. Never let a later
-  // non-terminal event downgrade a terminal dispatch state.
-  if (current.state === 'failed' && nextState !== 'delivered') return;
+  // Use a conditional write as the concurrency boundary. A read followed by
+  // an unconditional update lets an older callback overwrite a newer receipt.
+  // Delivered may supersede failed (a later authoritative delivery receipt),
+  // but no non-terminal event may overwrite delivered/failed/reconciled.
+  const allowedPriorStates = nextState === 'delivered'
+    ? ['reserved', 'dispatching', 'accepted', 'uncertain', 'failed']
+    : nextState === 'failed'
+      ? ['reserved', 'dispatching', 'accepted', 'uncertain']
+      : ['reserved', 'dispatching', 'accepted', 'uncertain'];
 
-  await prisma.outboundCommsDispatch.update({
-    where: { id: input.dispatchId },
+  await prisma.outboundCommsDispatch.updateMany({
+    where: { id: input.dispatchId, state: { in: allowedPriorStates } },
     data: { state: nextState, updatedAt: new Date() },
   });
 }
