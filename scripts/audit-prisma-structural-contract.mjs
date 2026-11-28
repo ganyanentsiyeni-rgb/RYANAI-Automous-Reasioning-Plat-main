@@ -300,21 +300,21 @@ export function assessMigrationSourceContracts(sources) {
     'AgentRun user and AgentHandoff run foreign keys both ON DELETE CASCADE ON UPDATE CASCADE',
     agentOperations,
     Boolean(agentOperations
-      && /agent_runs_user_id_fkey[\\s\\S]*?FOREIGN KEY \\("user_id"\\) REFERENCES "users"\\("id"\\) ON DELETE CASCADE ON UPDATE CASCADE/i.test(agentOperations)
-      && /agent_handoffs_run_id_fkey[\\s\\S]*?FOREIGN KEY \\("run_id"\\) REFERENCES "agent_runs"\\("id"\\) ON DELETE CASCADE ON UPDATE CASCADE/i.test(agentOperations)));
+      && /agent_runs_user_id_fkey[\s\S]*?FOREIGN KEY \("user_id"\) REFERENCES "users"\\("id"\\) ON DELETE CASCADE ON UPDATE CASCADE/i.test(agentOperations)
+      && /agent_handoffs_run_id_fkey[\s\S]*?FOREIGN KEY \("run_id"\) REFERENCES "agent_runs"\\("id"\\) ON DELETE CASCADE ON UPDATE CASCADE/i.test(agentOperations)));
   add('migration CodingTask foreign-key actions',
     'CodingTask user and workbench-run foreign keys ON DELETE CASCADE with PostgreSQL default ON UPDATE NO ACTION',
     coding,
     Boolean(coding
-      && /user_id TEXT NOT NULL REFERENCES public\\.users\\(id\\) ON DELETE CASCADE(?!\\s+ON UPDATE)/i.test(coding)
-      && /workbench_run_id TEXT NOT NULL REFERENCES public\\.agent_runs\\(id\\) ON DELETE CASCADE(?!\\s+ON UPDATE)/i.test(coding)));
+      && /user_id TEXT NOT NULL REFERENCES public\.users\\(id\\) ON DELETE CASCADE(?!\\s+ON UPDATE)/i.test(coding)
+      && /workbench_run_id TEXT NOT NULL REFERENCES public\.agent_runs\\(id\\) ON DELETE CASCADE(?!\\s+ON UPDATE)/i.test(coding)));
   add('migration AgentRun and AgentHandoff timestamp precision',
     'AgentRun lifecycle timestamps and AgentHandoff started_at/completed_at use TIMESTAMP(3) without time zone',
     agentOperations,
     Boolean(agentOperations
-      && /"created_at" TIMESTAMP\\(3\\) NOT NULL DEFAULT CURRENT_TIMESTAMP/i.test(agentOperations)
-      && /"completed_at" TIMESTAMP\\(3\\)/i.test(agentOperations)
-      && /"started_at" TIMESTAMP\\(3\\) NOT NULL DEFAULT CURRENT_TIMESTAMP/i.test(agentOperations)));
+      && /"created_at" TIMESTAMP\(3\) NOT NULL DEFAULT CURRENT_TIMESTAMP/i.test(agentOperations)
+      && /"completed_at" TIMESTAMP\(3\)/i.test(agentOperations)
+      && /"started_at" TIMESTAMP\(3\) NOT NULL DEFAULT CURRENT_TIMESTAMP/i.test(agentOperations)));
   add('migration CodingTask lifecycle timestamp precision',
     'CodingTask locked_at, lease_expires_at, next_attempt_at, cancel_requested_at, created_at, updated_at and completed_at use TIMESTAMPTZ(6)',
     coding,
@@ -326,7 +326,7 @@ export function assessMigrationSourceContracts(sources) {
     Boolean(sources.approvalHistory
       && /ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'approved'/i.test(sources.approvalHistory)
       && /ALTER COLUMN approval_status SET DEFAULT 'pending'/i.test(sources.approvalHistory)
-      && /UPDATE public\\.agent_runs[\\s\\S]*?approval_status = 'pending'/i.test(sources.approvalHistory)));
+      && /UPDATE public\.agent_runs[\s\S]*?approval_status = 'pending'/i.test(sources.approvalHistory)));
   add('migration coding queue legacy classification',
     "approval_status = 'pending' OR plan_snapshot IS NOT NULL OR proposed_diff_hash IS NOT NULL",
     coding,
