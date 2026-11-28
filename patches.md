@@ -974,3 +974,11 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Kept provider delivery separate: these identifiers are internal history idempotency keys and do not trigger a second provider send or claim provider acceptance.
 - Added route regression assertions for stable WhatsApp and SMS reply IDs on the completed/replay paths.
 - Validation status: tests authored but not executed. Exact-head CI/security checks remain unpassed; no provider dispatch, merge, deployment, migration, credential, or production changes were made.
+
+## 2026-11-28 — Inbound recovery avoids reclaiming linked AgentRuns
+
+- Stale inbound-message recovery now refuses to reclaim a message once its durable `agentRunId` is linked. The conditional update also requires `agentRunId: null`, so a concurrent link wins over a stale webhook retry.
+- This keeps an active or completed durable run as the recovery authority and prevents a provider replay from re-entering attachment/claim processing for a message already assigned to that run.
+- Added regression coverage for an old `processing` message with a linked run; the retry is returned as an existing event and does not attempt a lease reclaim.
+- Remaining limitation: unlinked messages still use immutable `createdAt` as their five-minute fallback lease because the current `CommunicationMessage` schema has no renewable lease field. A renewable lease needs a schema-level field and a reviewed migration; none was created or applied in this repair.
+- Validation status: tests authored but not executed; exact-head CI/security checks remain unpassed. No migration, provider dispatch, merge, deployment, credential, or production change was made.
