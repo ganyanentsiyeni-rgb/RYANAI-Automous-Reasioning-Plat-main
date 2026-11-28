@@ -300,14 +300,14 @@ export function assessMigrationSourceContracts(sources) {
     'AgentRun user and AgentHandoff run foreign keys both ON DELETE CASCADE ON UPDATE CASCADE',
     agentOperations,
     Boolean(agentOperations
-      && /agent_runs_user_id_fkey[\s\S]*?FOREIGN KEY \("user_id"\) REFERENCES "users"\\("id"\\) ON DELETE CASCADE ON UPDATE CASCADE/i.test(agentOperations)
-      && /agent_handoffs_run_id_fkey[\s\S]*?FOREIGN KEY \("run_id"\) REFERENCES "agent_runs"\\("id"\\) ON DELETE CASCADE ON UPDATE CASCADE/i.test(agentOperations)));
+      && /agent_runs_user_id_fkey[\s\S]*?FOREIGN KEY \("user_id"\) REFERENCES "users"\("id"\) ON DELETE CASCADE ON UPDATE CASCADE/i.test(agentOperations)
+      && /agent_handoffs_run_id_fkey[\s\S]*?FOREIGN KEY \("run_id"\) REFERENCES "agent_runs"\("id"\) ON DELETE CASCADE ON UPDATE CASCADE/i.test(agentOperations)));
   add('migration CodingTask foreign-key actions',
     'CodingTask user and workbench-run foreign keys ON DELETE CASCADE with PostgreSQL default ON UPDATE NO ACTION',
     coding,
     Boolean(coding
-      && /user_id TEXT NOT NULL REFERENCES public\.users\\(id\\) ON DELETE CASCADE(?!\\s+ON UPDATE)/i.test(coding)
-      && /workbench_run_id TEXT NOT NULL REFERENCES public\.agent_runs\\(id\\) ON DELETE CASCADE(?!\\s+ON UPDATE)/i.test(coding)));
+      && /user_id TEXT NOT NULL REFERENCES public\.users\(id\) ON DELETE CASCADE(?!\\s+ON UPDATE)/i.test(coding)
+      && /workbench_run_id TEXT NOT NULL REFERENCES public\.agent_runs\(id\) ON DELETE CASCADE(?!\\s+ON UPDATE)/i.test(coding)));
   add('migration AgentRun and AgentHandoff timestamp precision',
     'AgentRun lifecycle timestamps and AgentHandoff started_at/completed_at use TIMESTAMP(3) without time zone',
     agentOperations,
