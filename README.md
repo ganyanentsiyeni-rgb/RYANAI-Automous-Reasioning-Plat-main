@@ -2355,3 +2355,8 @@ A successful `docker compose config --quiet` validates Compose configuration onl
 RyanAI maintains separate evidence catalogues for PR staging and main/release gates. Isolated Render/Railway staging validates scripts/ci/required-staging-checks.json, while the main/release gate uses scripts/ci/required-release-checks.json. The staging catalogue intentionally excludes main-only checks such as Audit Render API configuration (read-only). The exact-SHA validator accepts an explicit catalogue and rejects missing, pending, failed, or differently-SHA latest attempts.
 
 Docker PR image scans are also triggered when deployment-readiness validation scripts change, ensuring the required API/web image-scan contexts are produced for those changes.
+
+
+## 2026-11-28 CI evidence correction
+
+The CI execution-completeness workflow must compare required check runs with the exact pull-request head SHA (`github.event.pull_request.head.sha`), not the synthetic merge SHA exposed as `github.sha` for a `pull_request` event. Manual workflow dispatch continues to use its selected workflow SHA. A queued, missing, failed, cancelled, or skipped required context is not a pass. The correction is tracked in the focused CI repair branch; it is not evidence that CI is green and does not authorize deployment.

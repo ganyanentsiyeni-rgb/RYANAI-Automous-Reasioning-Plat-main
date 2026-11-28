@@ -291,6 +291,9 @@ PhoneLink loads the device registry and capability catalog as its primary refres
 - Regression tests cover successful reconciliation after ambiguous dispatch and retention when exact-ID lookup remains unresolved.
 
 
+## 2026-11-28 — Exact-SHA CI completeness
+
+The CI completeness workflow resolves the candidate commit differently by trigger: pull requests use `github.event.pull_request.head.sha`; manually dispatched runs use the selected workflow SHA. It validates the 40-character SHA, checks out that exact commit, and supplies the same value to the required-context verifier. This avoids comparing check runs attached to a PR head with GitHub's synthetic merge commit. The verifier still requires every catalogued context to complete successfully on that exact SHA; this workflow change is not release certification.
 ## Render U2EB explicit push authorization
 
 The primary Render U2EB blueprint must set `autoDeployTrigger: off` for API, Web, and MCP. CI success is a prerequisite, not deployment authorization. A provider deployment requires the separate explicit PUSH DEPLOY request and exact-SHA release gate. The API liveness health check is `/health`. Blueprint changes are source-only until reviewed, merged after required checks pass, and deliberately applied through an authorized provider operation; editing the blueprint does not imply that live Render settings have changed.

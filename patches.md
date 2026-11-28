@@ -685,6 +685,21 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Regression tests cover successful reconciliation after ambiguous dispatch and retention when exact-ID lookup remains unresolved.
 
 
+## 2026-11-28 — CI completeness exact PR-head SHA repair
+
+- Corrected `.github/workflows/ci-execution-completeness.yml` to resolve pull-request candidates from `github.event.pull_request.head.sha`, rather than `github.sha` (which is the synthetic pull-request merge ref for `pull_request` events).
+- Manual `workflow_dispatch` runs continue to validate the selected workflow SHA.
+- The candidate SHA is validated as a 40-character lowercase hexadecimal commit before checkout and is passed explicitly to the 19-context verifier.
+- This repairs the false “all required contexts missing” result caused by comparing PR-head checks against a synthetic merge SHA. It does not waive any required check or certify a PR; all contexts must still complete successfully on the exact candidate SHA.
+- Validation status: code change proposed; CI execution and exact-SHA green status remain pending.
+
+
+## 2026-11-28 — Dialog focus tests use a DOM runtime
+
+- The dialog keyboard-focus regression suite creates DOM nodes and asserts active-element behavior; the repository-wide Vitest default is Node.
+- Added a file-scoped `@vitest-environment happy-dom` directive to `src/lib/dialogFocus.test.ts`. The existing `happy-dom` development dependency is already declared, so no dependency or lockfile change is required.
+- This isolates browser-DOM requirements to the relevant UI test file without changing the environment for server-side Vitest suites.
+- Validation remains pending on the PR head SHA.
 ## Render U2EB explicit deployment authorization
 
 - Changed the primary `render.yaml` U2EB API, Web, and MCP services from CI-triggered automatic deployment to `autoDeployTrigger: off`. A passing CI run is necessary but does not itself authorize a provider deployment; the separate explicit PUSH DEPLOY gate remains required.
