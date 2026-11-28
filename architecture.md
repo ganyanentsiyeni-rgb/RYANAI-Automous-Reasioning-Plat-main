@@ -311,3 +311,7 @@ MCPJungle's upstream registration points at the private Caddy MCP proxy and must
 
 ### Migration audit parity
 The Prisma migration-readiness audit now checks the same 32 `agent_runs` columns as the startup readiness predicate and `database.yml`. Its complete-schema fixture includes all 32 columns, preventing the migration audit from accepting a table that would fail API startup. This remains a read-only validation contract; it does not apply migrations.
+
+
+### AgentRun operational index readiness
+The migration-readiness audit verifies the four operational indexes declared for AgentRun queue selection and lease/approval filtering: `agent_runs_queue_type_status_created_idx`, `agent_runs_status_next_attempt_lease_idx`, `agent_runs_worker_lease_idx`, and `agent_runs_approval_status_created_idx`. Missing indexes now fail the audit independently of the vector-memory index checks.
