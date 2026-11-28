@@ -879,3 +879,10 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Updated the Comms timeline and latest-status panel to show the dispatch projection and provider-reported status while preserving the original communication-message `status`.
 - Added a route regression test confirming that delivered evidence is visible even when the legacy message status remains `accepted`, and that the read path does not mutate communication messages or AgentRun state.
 - Validation status: regression test authored; execution and exact-head CI/security verification remain pending. No provider dispatch, AgentRun mutation, migration, credential, deployment, or production state changed.
+
+## 2026-11-28 — Comms dispatch-state UI contract alignment
+
+- Aligned the Comms status-label map with the actual outbound dispatch lifecycle values: `reserved`, `dispatching`, and `reconciled`, in addition to existing provider and delivery states.
+- The message timeline now shows the provider receipt occurrence time separately from the original communication-message creation time.
+- Added a component regression test for the three dispatch-only states and provider receipt timestamp visibility.
+- Validation status: test authored but not executed; exact-head CI/security checks remain subject to verification. No dispatch, provider, AgentRun, migration, credential, or production state changed.
