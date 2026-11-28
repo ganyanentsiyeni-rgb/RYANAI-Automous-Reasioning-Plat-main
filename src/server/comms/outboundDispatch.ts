@@ -67,6 +67,7 @@ export async function reserveOutboundCommsDispatch(
         agentRunId: true,
         channel: true,
         recipient: true,
+        provider: true,
       },
     });
     if (!existing) throw error;
@@ -75,6 +76,7 @@ export async function reserveOutboundCommsDispatch(
       existing.communicationMessageId !== input.communicationMessageId
       || existing.channel !== input.channel
       || existing.recipient !== input.recipient
+      || existing.provider !== input.provider
       || (existing.agentRunId ?? null) !== (input.agentRunId ?? null)
     ) {
       throw new Error('This outbound idempotency key is already bound to a different dispatch.', { cause: error });
