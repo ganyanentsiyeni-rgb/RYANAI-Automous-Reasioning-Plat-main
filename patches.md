@@ -647,3 +647,8 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Added explicit `aria-controls` relationships from both drawer triggers to their corresponding modal panels; opening one drawer closes the other so only one modal is active.
 - Added unit coverage for forward/backward wrapping and focus that escapes the drawer. The existing Escape-close and trigger-focus restoration behavior is preserved.
 - Frontend interaction/accessibility only. Local test execution and exact-head CI/security checks remain pending; no backend, infrastructure, credential, migration, or deployment changes.
+
+
+### Operator Console offline outbox account-switch safety (2026-11-28)
+- Scoped outbox reads and sync UI updates to the account and request generation that initiated them; late IndexedDB/network completions are ignored after an auth-account change.
+- Clear prior-account queue/error presentation on account changes and filter rendered records by the active owner as a final UI boundary. Existing stable task IDs and server acceptance rules remain unchanged.
