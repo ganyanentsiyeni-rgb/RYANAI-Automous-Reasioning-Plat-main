@@ -785,7 +785,15 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 
 ## 2026-11-28 — PR CI catalogue and Docker scan producer alignment
 
-- Updated CI execution completeness to select `required-staging-checks.json` for pull requests and non-main manual runs; the main-branch manual run retains the release catalogue. This prevents the main-only Render read-only configuration audit from being incorrectly required on a PR head.
-- Removed the Docker workflow's restrictive pull-request path filter so the API and web image build/scan contexts are produced for every pull request, including documentation-only and workflow-only changes. Publishing remains separately opt-in and is not enabled by PR validation.
-- The Railway source contract remains `railway.json`: Dockerfile builder with `Dockerfile.api`. The observed live Railway source/builder drift is not changed here; relinking or changing a live service requires separate authorization.
-- No merge, provider relink, live configuration change, production deployment, database operation, or credential change is included. Exact-SHA CI/security verification is required before any merge or deployment.
+- Updated CI execution completeness to select `required-staging-checks.json`
+  for pull requests and non-main manual runs. Manual runs on main retain the
+  release catalogue, keeping the main-only Render audit out of PR validation.
+- Removed the Docker workflow's restrictive PR path filter. API/web image
+  build and scan contexts now run for every pull request, including
+  documentation-only and workflow-only changes. PR validation does not publish.
+- The Railway source contract remains `railway.json`: Dockerfile builder with
+  `Dockerfile.api`. The observed live Railway source/builder drift is not
+  changed here; relinking or changing a live service requires authorization.
+- No provider relink, live configuration change, production deployment,
+  database operation, or credential change is included. Exact-SHA CI/security
+  verification is required before any merge or deployment.
