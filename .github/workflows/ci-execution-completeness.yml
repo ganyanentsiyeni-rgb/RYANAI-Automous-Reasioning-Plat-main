@@ -1,9 +1,9 @@
 name: CI execution completeness
 
 on:
-  # This gate validates PR check contexts on the PR head SHA. A post-merge
-  # push produces a new merge SHA that never carried the PR's check contexts,
-  # so running the same exact-SHA assertion on main is structurally invalid.
+  # Validate checks against the contributor's exact PR head, not GitHub's
+  # synthetic refs/pull/<number>/merge commit. Manual runs validate their
+  # explicitly selected workflow SHA.
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -13,7 +13,7 @@ permissions:
   checks: read
 
 concurrency:
-  group: ci-execution-completeness-${{ github.ref }}
+  group: ci-execution-completeness-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -22,15 +22,31 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 32
     steps:
+      - name: Resolve candidate SHA
+        id: candidate
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          candidate_sha="${PR_HEAD_SHA:-$WORKFLOW_SHA}"
+          if [[ ! "$candidate_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid candidate SHA: $candidate_sha" >&2
+            exit 2
+          fi
+          echo "sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+          echo "Validating exact candidate SHA: $candidate_sha"
+
       - name: Checkout candidate SHA
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ steps.candidate.outputs.sha }}
 
       - name: Verify required CI contexts execute on this exact SHA
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          EXPECTED_SHA: ${{ steps.candidate.outputs.sha }}
         run: |
           set -euo pipefail
-          node scripts/ci/verify-ci-execution.mjs scripts/ci/required-release-checks.json "${GITHUB_SHA}" 1800
+          node scripts/ci/verify-ci-execution.mjs scripts/ci/required-release-checks.json "$EXPECTED_SHA" 1800
