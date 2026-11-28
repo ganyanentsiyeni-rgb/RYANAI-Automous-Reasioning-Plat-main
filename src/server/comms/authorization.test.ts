@@ -5,6 +5,7 @@ import {
   claimCommsAction,
   decideCommsApprovalFromOwner,
   finishCommsAction,
+  resolveCommsApprovalStatus,
   hashCommsActionPayload,
   normalizeCommsRecipient,
   type CommsActionPayload,
@@ -82,6 +83,14 @@ describe('owner communications authorization payload', () => {
     )).resolves.toBeUndefined();
     expect(query.mock.calls[1][0]).toContain("status = 'approved'");
     expect(query.mock.calls[1][0]).toContain('RETURNING id');
+  });
+
+  it('projects pending approvals as expired after their deadline without mutating persistence', () => {
+    const now = new Date('2026-11-28T10:00:00.000Z');
+    expect(resolveCommsApprovalStatus('pending', new Date('2026-11-28T09:59:59.000Z'), now)).toBe('expired');
+    expect(resolveCommsApprovalStatus('pending', new Date('2026-11-28T10:00:01.000Z'), now)).toBe('pending');
+    expect(resolveCommsApprovalStatus('dispatching', new Date('2026-11-28T09:00:00.000Z'), now)).toBe('dispatching');
+    expect(resolveCommsApprovalStatus('accepted', new Date('2026-11-28T09:00:00.000Z'), now)).toBe('accepted');
   });
 
   it('reconciles a fast provider callback before finishing the approval write', async () => {
