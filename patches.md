@@ -720,3 +720,10 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - The Agent API regression run on merge commit `014724fe9a69b02f6c55cb8ad165519cfc114c09` exposed a test-only mock defect: `replayOfflineTaskBatch` was mocked with no resolved value, while the component correctly consumes its `acceptedIds`, `rejectedIds`, and `error` outcome contract.
 - Updated `src/pages/OperatorConsole.test.tsx` to return an explicit empty sync outcome from the mock before each test. This preserves the account-ownership assertion and prevents the test harness from simulating an impossible undefined sync result.
 - No production behavior, provider configuration, database, credentials, or deployment state was changed. Validation is pending on this repair branch's exact SHA.
+
+
+## 2026-11-28 — Stack validator fixture completeness
+
+- The repository stack manifest correctly declares `Dockerfile.database` for its local PostgreSQL/pgvector service, and the Dockerfile exists in the repository. The validator test fixture omitted that file, so its positive-path test failed with a false missing-Dockerfile error.
+- Added `Dockerfile.database` to the isolated fixture. The negative-path tests still exercise missing/unsafe paths through their own mutations; no production Dockerfile or deployment configuration changed.
+- Exact-SHA CI rerun is required before this repair can be considered verified.
