@@ -1,8 +1,9 @@
 name: CI execution completeness
 
 on:
-  push:
-    branches: [main]
+  # This gate validates PR check contexts on the PR head SHA. A post-merge
+  # push produces a new merge SHA that never carried the PR's check contexts,
+  # so running the same exact-SHA assertion on main is structurally invalid.
   pull_request:
     branches: [main]
   workflow_dispatch:
