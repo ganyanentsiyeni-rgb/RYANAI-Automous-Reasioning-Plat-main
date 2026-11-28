@@ -15,7 +15,7 @@ import { appendCommsDeliveryReceiptIdempotent } from './deliveryReceipts.js';
 describe('outbound Comms dispatch', () => {
   it('uses a conditional state transition so a late accepted receipt cannot overwrite delivered', async () => {
     const updateMany = vi.fn().mockResolvedValue({ count: 0 });
-    const findUnique = vi.fn().mockResolvedValue({ state: 'delivered' });
+    const findUnique = vi.fn().mockResolvedValue({ id: 'dispatch-delivered' });
     const prisma = { outboundCommsDispatch: { findUnique, updateMany } } as unknown as PrismaClient;
 
     await advanceOutboundCommsDispatchFromReceipt(prisma, {
@@ -24,18 +24,15 @@ describe('outbound Comms dispatch', () => {
     });
 
     expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: {
-        id: 'dispatch-delivered',
-        state: { in: ['reserved', 'dispatching', 'accepted', 'uncertain'] },
-      },
+      where: { id: 'dispatch-delivered', state: { in: ['reserved', 'dispatching', 'accepted', 'uncertain'] } },
       data: expect.objectContaining({ state: 'accepted' }),
     }));
+    expect(findUnique).toHaveBeenCalledOnce();
   });
 
-  it('allows an authoritative delivered receipt to supersede failed but blocks failed after delivered', async () => {
+  it('allows delivered evidence to supersede failed while preventing a late failed callback from overwriting delivered', async () => {
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });
-    const findUnique = vi.fn().mockResolvedValue({ state: 'failed' });
-    const prisma = { outboundCommsDispatch: { findUnique, updateMany } } as unknown as PrismaClient;
+    const prisma = { outboundCommsDispatch: { updateMany, findUnique: vi.fn() } } as unknown as PrismaClient;
 
     await advanceOutboundCommsDispatchFromReceipt(prisma, {
       dispatchId: 'dispatch-failed',
@@ -43,10 +40,7 @@ describe('outbound Comms dispatch', () => {
     });
 
     expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: {
-        id: 'dispatch-failed',
-        state: { in: ['reserved', 'dispatching', 'accepted', 'uncertain', 'failed'] },
-      },
+      where: { id: 'dispatch-failed', state: { in: ['reserved', 'dispatching', 'accepted', 'uncertain', 'failed', 'delivered'] } },
       data: expect.objectContaining({ state: 'delivered' }),
     }));
   });
