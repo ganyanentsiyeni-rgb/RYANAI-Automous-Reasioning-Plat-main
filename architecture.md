@@ -302,3 +302,8 @@ The primary Render U2EB blueprint must set `autoDeployTrigger: off` for API, Web
 ## 2026-11-28 — MCPJungle CI authentication boundary
 
 The MCPJungle runtime smoke workflow now explicitly sources its generated, disposable Compose `.env` into the runner shell before expanding shell variables in the registration command. This closes the distinction between Compose's automatic `.env` loading and the shell's environment. An explicit non-empty bearer-token assertion prevents an empty token from silently selecting the OAuth dynamic-registration path. The test remains isolated to CI fixtures.
+
+
+### MCPJungle upstream identity boundary
+
+MCPJungle's upstream registration points at the private Caddy MCP proxy and must store the short-lived RyanAI delegation JWT as its static bearer token. This is distinct from `MCP_AUTH_TOKEN`, which authenticates the MCP server directly. Caddy replaces the gateway's inbound Authorization header with the delegated token; the API then enforces JWT signature, audience, expiry, and tool scope. CI generates the delegated token with only `platform_health` permission and never promotes this test credential to a hosted environment.

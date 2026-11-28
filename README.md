@@ -2365,3 +2365,8 @@ The CI execution-completeness workflow must compare required check runs with the
 ## 2026-11-28 — MCPJungle CI auth smoke correction
 
 The isolated MCPJungle test must source its generated CI-only `.env` file before passing `MCP_AUTH_TOKEN` to the CLI. Compose loads `.env` automatically, but shell variable expansion does not. The workflow now exports the fixture values and asserts that the upstream bearer token is non-empty before server registration. This fixes the identified CI wiring defect; runtime authentication and ACL results remain pending.
+
+
+### MCPJungle gateway authentication in CI
+
+The disposable MCPJungle registry connects to RyanAI through the private Caddy proxy. Registration must use the short-lived `MCP_PROXY_DELEGATION_TOKEN` minted for the `platform_health` scope; `MCP_AUTH_TOKEN` belongs to the MCP server's own authentication boundary and is not the proxy credential. The proxy replaces the inbound Authorization header with the delegated JWT, which the API validates for signature, expiry, audience, and scope. The CI test keeps the two credentials separate and verifies the restricted/allowlisted MCPJungle client behavior.

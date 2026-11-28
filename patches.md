@@ -727,3 +727,11 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - The repository stack manifest correctly declares `Dockerfile.database` for its local PostgreSQL/pgvector service, and the Dockerfile exists in the repository. The validator test fixture omitted that file, so its positive-path test failed with a false missing-Dockerfile error.
 - Added `Dockerfile.database` to the isolated fixture. The negative-path tests still exercise missing/unsafe paths through their own mutations; no production Dockerfile or deployment configuration changed.
 - Exact-SHA CI rerun is required before this repair can be considered verified.
+
+
+## 2026-11-28 — MCPJungle delegated-token registration and Render gate assertions
+
+- The MCPJungle CI registration targeted the MCP proxy but supplied `MCP_AUTH_TOKEN`, which authenticates the MCP server itself. The Caddy proxy intentionally replaces the incoming Authorization header with the short-lived `MCP_PROXY_DELEGATION_TOKEN`; passing the server token to the gateway therefore produced an unauthorized proxy response and MCPJungle incorrectly attempted OAuth dynamic client registration.
+- Registration now supplies the generated short-lived delegated JWT to `--bearer-token`, matching the Caddy proxy contract. The JWT remains limited to the `platform_health` scope and is generated only inside the disposable CI job. The MCP server's own token remains separate and is not passed to the proxy registration.
+- Updated Render readiness-audit tests to match the committed U2EB Blueprint: `/health` is the configured health endpoint, and `autoDeployTrigger: off` preserves the explicit Push Deploy policy. No provider setting or live deployment was changed.
+- Exact-SHA CI rerun is required; these code changes are not considered verified until the MCPJungle auth/ACL job and full required checks pass.
