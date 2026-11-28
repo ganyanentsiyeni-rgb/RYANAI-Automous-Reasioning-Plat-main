@@ -866,3 +866,5 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Made the plugin registry refresh test deterministic by keeping the initial registry snapshot successful until the explicit refresh action, then simulating a transient failure.
 - Preserved the last known GitHub identity during a failed status refresh and surfaced the backend error as an accessible alert instead of silently discarding the failure detail.
 - No provider configuration, credentials, production data, database migrations, deployments, or release settings were changed. Exact-SHA CI and security checks must pass before any merge or deployment.
+
+- Corrected the AgentRun approval-default contract: the later `20261122100000_fail_closed_agent_run_approval` migration supersedes the earlier `approved` default. Prisma, `database.yml`, and the structural audit now consistently require `approval_status = 'pending'` by default; explicit approval is required before reasoning-worker claim. Historical migration review documentation now distinguishes the superseded intermediate default from the current fail-closed behavior.
