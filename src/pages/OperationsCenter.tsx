@@ -94,6 +94,7 @@ export default function OperationsCenter({ userId, isAdmin = false }: { userId: 
   const actionRequestId = useRef(0);
   const accountGeneration = useRef(0);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- account changes must synchronously clear prior-identity UI before the next account's data is rendered */
   useEffect(() => {
     // Clear account-bound content immediately and invalidate every request or mutation from the prior identity.
     accountGeneration.current += 1;
@@ -111,6 +112,7 @@ export default function OperationsCenter({ userId, isAdmin = false }: { userId: 
     setApprovalError('');
     setNotice('');
   }, [userId, isAdmin]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const refreshTasks = useCallback(async () => {
     const requestId = ++taskRequestId.current;
