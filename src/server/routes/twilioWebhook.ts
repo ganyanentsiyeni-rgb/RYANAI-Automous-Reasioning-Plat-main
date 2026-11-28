@@ -94,7 +94,8 @@ export const twilioWebhookPlugin: FastifyPluginAsync = async (fastify) => {
             });
             await recordCommunication(fastify.prisma, {
               channel: 'whatsapp', externalAddress: senderPhone, direction: 'outbound',
-              body: answer, status: 'response_generated', metadata: { inReplyTo: body.MessageSid }, ownerUserId,
+              body: answer, providerMessageId: `whatsapp-reply:${body.MessageSid}`,
+              status: 'response_generated', metadata: { inReplyTo: body.MessageSid }, ownerUserId,
             });
             reply.type('text/xml');
             return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escapeXml(answer.slice(0, 4000))}</Message></Response>`;
@@ -256,7 +257,8 @@ export const twilioWebhookPlugin: FastifyPluginAsync = async (fastify) => {
       });
       await recordCommunication(fastify.prisma, {
         channel: 'whatsapp', externalAddress: senderPhone, direction: 'outbound',
-        body: agentReply, status: 'response_generated', metadata: { inReplyTo: body.MessageSid },
+        body: agentReply, providerMessageId: `whatsapp-reply:${body.MessageSid}`,
+        status: 'response_generated', metadata: { inReplyTo: body.MessageSid },
         ownerUserId,
       });
       reply.type('text/xml');
