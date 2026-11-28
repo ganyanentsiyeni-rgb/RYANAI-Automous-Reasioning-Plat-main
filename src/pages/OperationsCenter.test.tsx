@@ -101,6 +101,41 @@ describe('Operations Center', () => {
     expect(container.textContent).toContain('Previously loaded approvals are hidden');
   });
 
+  it('clears prior-account task and approval data while the next account is loading', async () => {
+    await mount(true);
+    await vi.waitFor(() => {
+      expect(container.textContent).toContain('Review the platform wiring');
+      expect(container.textContent).toContain('Send the approved project update.');
+    });
+
+    let releaseTasks!: (value: Response) => void;
+    let releaseActions!: (value: Response) => void;
+    apiFetch.mockImplementation((input, _init, ownerId) => {
+      const path = String(input);
+      if (ownerId !== 'synthetic-user-b') throw new Error('Unexpected owner for account B request: ' + ownerId);
+      if (path === '/api/agent/ops/tasks') return new Promise<Response>((resolve) => { releaseTasks = resolve; });
+      if (path === '/api/actions') return new Promise<Response>((resolve) => { releaseActions = resolve; });
+      throw new Error('Unexpected API request: ' + path);
+    });
+
+    await act(async () => root.render(<OperationsCenter userId="synthetic-user-b" isAdmin />));
+    expect(container.textContent).not.toContain('Review the platform wiring');
+    expect(container.textContent).not.toContain('Send the approved project update.');
+    expect(container.textContent).toContain('Loading task history');
+    expect(container.textContent).toContain('Loading pending approvals');
+
+    await act(async () => {
+      releaseTasks(response({ tasks: [{ id: 'task-b', objective: 'Account B task', status: 'queued', createdAt: '2026-11-28T09:00:00.000Z' }] }));
+      releaseActions(response({ actions: [{ id: 'action-b', tool: 'review', summary: 'Account B approval', createdAt: '2026-11-28T09:01:00.000Z', expiresAt: '2026-11-28T10:01:00.000Z' }] }));
+    });
+    await vi.waitFor(() => {
+      expect(container.textContent).toContain('Account B task');
+      expect(container.textContent).toContain('Account B approval');
+    });
+    expect(container.textContent).not.toContain('Review the platform wiring');
+    expect(container.textContent).not.toContain('Send the approved project update.');
+  });
+
   it('clears the administrator approval inbox when the account loses admin UI scope', async () => {
     await mount(true);
     await vi.waitFor(() => expect(container.textContent).toContain('Administrator approval inbox'));
