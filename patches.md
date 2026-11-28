@@ -980,3 +980,10 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 - Added exact single-copy parity checks for five embedded Prisma migration blocks in the Supabase bootstrap snapshot and explicitly verified that the snapshot predates the fail-closed migration.
 - Updated the runtime schema review to distinguish the initial migration's temporary `approved` default from the current `pending` default.
 - Regression tests are authored but have not yet been executed; no live database state is asserted. No migration, deployment, credential, or production change was performed.
+
+
+## 2026-11-28 — Repair GitHub integration status loader syntax
+
+- Removed a malformed duplicated response-parsing fragment from `PluginIntegrationsSettings` that caused TypeScript parser errors and prevented the API/UI regression workflow from reaching its tests.
+- The loader now parses the response once, validates HTTP status and payload shape, clears the status error on success, and retains the last known connection identity while marking the status unverified on failure.
+- Exact-SHA build and regression verification are pending; no provider configuration, credentials, production data, deployment, or PR readiness state was changed.
