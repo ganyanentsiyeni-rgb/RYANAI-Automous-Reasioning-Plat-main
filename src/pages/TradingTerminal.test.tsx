@@ -1,8 +1,11 @@
 // @vitest-environment happy-dom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TradingTerminalPage from './TradingTerminal';
+
+vi.mock('@/components/quant/PaperTradingPanel', () => ({ default: () => null }));
+vi.mock('@/components/quant/PaperStrategyAllocations', () => ({ default: () => null }));
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
