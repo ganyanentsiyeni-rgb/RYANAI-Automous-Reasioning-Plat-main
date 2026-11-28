@@ -21,7 +21,7 @@ const COLUMN_CONTRACTS = {
   agent_runs: {
     id: ['text', false, null], user_id: ['text', false, null], objective: ['text', false, null],
     requested_model: ['text', true, null], trace_context: ['jsonb', true, null],
-    execution_scope: ['jsonb', false, "'{}'"], approval_status: ['text', false, "'approved'"],
+    execution_scope: ['jsonb', false, "'{}'"], approval_status: ['text', false, "'pending'"],
     plan_snapshot: ['jsonb', true, null], plan_hash: ['text', true, null],
     base_commit_sha: ['text', true, null], proposed_diff_hash: ['text', true, null],
     approved_plan_hash: ['text', true, null], approved_commit_sha: ['text', true, null],
