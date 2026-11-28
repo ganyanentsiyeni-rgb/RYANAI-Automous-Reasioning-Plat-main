@@ -77,7 +77,6 @@ export async function reserveOutboundCommsDispatch(
       || existing.channel !== input.channel
       || existing.provider !== input.provider
       || existing.recipient !== input.recipient
-      || existing.provider !== input.provider
       || (existing.agentRunId ?? null) !== (input.agentRunId ?? null)
     ) {
       throw new Error('This outbound idempotency key is already bound to a different dispatch.', { cause: error });
@@ -245,9 +244,7 @@ export async function advanceOutboundCommsDispatchFromReceipt(
   prisma: PrismaClient,
   input: { dispatchId: string; deliveryState: string },
 ): Promise<void> {
-  // Queueing and unknown provider events are evidence, not a delivery outcome.
-  // Preserve the current dispatch lifecycle until the provider confirms acceptance,
-  // delivery, or failure.
+  // Queueing and unknown provider events are evidence, not delivery outcomes.
   if (input.deliveryState === 'queued' || input.deliveryState === 'unknown') return;
 
   const nextState: OutboundCommsDispatchState =
@@ -257,27 +254,15 @@ export async function advanceOutboundCommsDispatchFromReceipt(
         ? 'failed'
         : 'accepted';
 
-  // Use a conditional write as the concurrency boundary. A read followed by
-  // an unconditional update lets an older callback overwrite a newer receipt.
-  // Delivered may supersede failed (a later authoritative delivery receipt),
-  // but no non-terminal event may overwrite delivered/failed/reconciled.
-  const allowedPriorStates = nextState === 'delivered'
-    ? ['reserved', 'dispatching', 'accepted', 'uncertain', 'failed']
-    : nextState === 'failed'
-      ? ['reserved', 'dispatching', 'accepted', 'uncertain']
-      : ['reserved', 'dispatching', 'accepted', 'uncertain'];
-
-  await prisma.outboundCommsDispatch.updateMany({
-    where: { id: input.dispatchId, state: { in: allowedPriorStates } },
-    data: { state: nextState, updatedAt: new Date() },
-  // Apply receipt transitions atomically. A late accepted/failed callback must
-  // not downgrade delivered/reconciled state; delivered evidence may supersede
-  // a prior failed callback when provider events arrive out of order.
+  // Conditional update is the concurrency boundary: late non-terminal events
+  // cannot overwrite a terminal delivery/failure state. Delivered evidence may
+  // supersede failed evidence when provider callbacks arrive out of order.
   const allowedCurrentStates = nextState === 'delivered'
     ? ['reserved', 'dispatching', 'accepted', 'uncertain', 'failed', 'delivered']
     : nextState === 'failed'
       ? ['reserved', 'dispatching', 'accepted', 'uncertain', 'failed']
       : ['reserved', 'dispatching', 'accepted', 'uncertain'];
+
   const updated = await prisma.outboundCommsDispatch.updateMany({
     where: { id: input.dispatchId, state: { in: allowedCurrentStates } },
     data: { state: nextState, updatedAt: new Date() },

@@ -42,48 +42,18 @@ export async function inspectDatabaseSchema(
       ) AS checkpoint_task_path,
       (
         SELECT COUNT(*) = 32
-        SELECT COUNT(*) = 18
         FROM information_schema.columns
         WHERE table_schema = 'public'
           AND table_name = 'agent_runs'
           AND column_name IN (
-            'id',
-            'user_id',
-            'objective',
-            'requested_model',
-            'trace_context',
-            'execution_scope',
-            'approval_status',
-            'plan_snapshot',
-            'plan_hash',
-            'base_commit_sha',
-            'proposed_diff_hash',
-            'approved_plan_hash',
-            'approved_commit_sha',
-            'approved_diff_hash',
-            'approved_by',
-            'approved_at',
-            'steering_notes',
-            'cancel_requested_at',
-            'status',
-            'result',
-            'error',
-            'attempts',
-            'max_attempts',
-            'worker_id',
-            'locked_at',
-            'lease_expires_at',
-            'heartbeat_at',
-            'next_attempt_at',
-            'created_at',
-            'updated_at',
-            'completed_at',
-            'queue_type'
-            'id', 'user_id', 'objective', 'status', 'result', 'error',
-            'attempts', 'max_attempts', 'worker_id', 'locked_at',
-            'lease_expires_at', 'heartbeat_at', 'next_attempt_at',
-            'approval_status', 'queue_type', 'created_at', 'updated_at',
-            'completed_at'
+            'id', 'user_id', 'objective', 'requested_model', 'trace_context',
+            'execution_scope', 'approval_status', 'plan_snapshot', 'plan_hash',
+            'base_commit_sha', 'proposed_diff_hash', 'approved_plan_hash',
+            'approved_commit_sha', 'approved_diff_hash', 'approved_by',
+            'approved_at', 'steering_notes', 'cancel_requested_at', 'status',
+            'result', 'error', 'attempts', 'max_attempts', 'worker_id',
+            'locked_at', 'lease_expires_at', 'heartbeat_at', 'next_attempt_at',
+            'created_at', 'updated_at', 'completed_at', 'queue_type'
           )
       ) AS agent_runs_contract
   `);
