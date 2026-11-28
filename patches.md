@@ -878,3 +878,9 @@ The PR Docker workflow no longer runs a separate application/MCP/Compose validat
 
 - Follow-up test correction: the GitHub identity-refresh regression now clicks the GitHub card's own Refresh control, not the separate registry/connection refresh control. The latter does not invoke /api/github/status.
 - The Framer Motion test double strips animation-only props from the rendered DOM while preserving ordinary dialog props and refs.
+
+
+### 2026-11-28 — Bind outbound Comms idempotency to provider identity
+- When an outbound dispatch idempotency key collides, the replay lookup now includes the original provider and rejects a replay that attempts to switch providers.
+- Added a focused regression case for a Twilio reservation replayed with a different provider.
+- This change is isolated to outbound dispatch reservation identity; it does not send communications or alter provider configuration, credentials, database schema, or AgentRun state.
