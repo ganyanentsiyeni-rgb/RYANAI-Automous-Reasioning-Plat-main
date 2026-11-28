@@ -74,6 +74,7 @@ export async function reserveOutboundCommsDispatch(
     if (
       existing.communicationMessageId !== input.communicationMessageId
       || existing.channel !== input.channel
+      || existing.provider !== input.provider
       || existing.recipient !== input.recipient
       || (existing.agentRunId ?? null) !== (input.agentRunId ?? null)
     ) {
