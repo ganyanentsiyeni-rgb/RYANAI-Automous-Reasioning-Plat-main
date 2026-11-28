@@ -166,11 +166,6 @@ function PluginIntegrationsSettingsContent({
     const requestId = ++githubRequestId.current;
     try {
       const response = await authenticatedFetch('/api/github/status', { headers: { Accept: 'application/json' } }, userId);
-      const payload = await response.json().catch(() => ({})) as GitHubIntegrationStatus;
-      if (!response.ok || typeof payload.status !== 'string') throw new Error('GitHub status is unavailable.');
-      if (requestId === githubRequestId.current) setGithubStatus(payload);
-    } catch {
-      if (requestId === githubRequestId.current) {
       const payload = await response.json().catch(() => ({})) as GitHubIntegrationStatus & { error?: string };
       if (!response.ok || typeof payload.status !== 'string') {
         throw new Error(payload.error || 'GitHub status is unavailable.');
@@ -182,6 +177,8 @@ function PluginIntegrationsSettingsContent({
     } catch (cause) {
       if (requestId === githubRequestId.current) {
         setGithubStatusError(cause instanceof Error ? cause.message : 'GitHub status is unavailable.');
+        // Retain the last verified account and repository identity, but mark
+        // the current connection status unverified until a refresh succeeds.
         setGithubStatus((current) => ({
           status: 'unverified',
           connected: current.connected,
