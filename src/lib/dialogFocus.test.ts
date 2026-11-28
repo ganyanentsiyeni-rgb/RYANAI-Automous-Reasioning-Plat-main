@@ -1,5 +1,4 @@
 // @vitest-environment happy-dom
-
 import { afterEach, describe, expect, it } from 'vitest';
 import { trapDialogTabKey } from './dialogFocus';
 

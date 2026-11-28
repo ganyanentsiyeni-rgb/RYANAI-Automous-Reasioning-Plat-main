@@ -177,9 +177,10 @@ export default function OperatorConsole({ userId }: { userId: string }) {
     let acceptedCount = 0;
     let failureMessage: string | null = null;
     try {
-      const pending = await listOfflineTasks(syncOwnerId);
+      // Only replay outbox records owned by the signed-in account; never send another account's tasks.
+      const pending = (await listOfflineTasks(syncOwnerId)).filter((record) => record.ownerId === syncOwnerId);
       if (!isCurrentOwner()) return;
-      setOutboxTasks(pending.filter((record) => record.ownerId === syncOwnerId));
+      setOutboxTasks(pending);
       for (let offset = 0; offset < pending.length; offset += 20) {
         if (!isCurrentOwner()) return;
         const batch = pending.slice(offset, offset + 20);
