@@ -171,6 +171,10 @@ export async function claimCommsAction(
   if (claimed.length !== 1) throw new Error('The approved communications action is expired, changed, or already claimed.');
 }
 
+export function resolveCommsApprovalStatus(status: string, expiresAt: Date, now = new Date()): string {
+  return status === 'pending' && expiresAt.getTime() <= now.getTime() ? 'expired' : status;
+}
+
 export async function finishCommsAction(
   prisma: { $executeRawUnsafe(query: string, ...values: unknown[]): Promise<number> },
   approvalId: string,
@@ -407,7 +411,7 @@ export const commsAuthorizationRoutes: FastifyPluginAsync = async (fastify) => {
     );
     const item = rows[0];
     if (!item) return reply.code(404).send({ error: 'Approval request not found.' });
-    return { approvalId: request.params.id, status: item.status, channel: item.channel, recipient: item.recipient, expiresAt: item.expires_at.toISOString() };
+    return { approvalId: request.params.id, status: resolveCommsApprovalStatus(item.status, item.expires_at), channel: item.channel, recipient: item.recipient, expiresAt: item.expires_at.toISOString() };
   });
 
   fastify.post<{ Params: { id: string } }>('/api/comms/approvals/:id/approve', async (request, reply) => {
