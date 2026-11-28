@@ -101,3 +101,9 @@ The PhoneLink Comms inbox now distinguishes a confirmed empty result from a fail
 - The reconnect flow now invokes exact-ID reconciliation for every replay item that was not explicitly accepted or definitively rejected by the sync response.
 - A reconciliation response can clear an outbox record only when it explicitly confirms the same task ID; unresolved, missing, or failed reconciliation keeps the task locally retryable.
 - Regression tests cover successful reconciliation after ambiguous dispatch and retention when exact-ID lookup remains unresolved.
+
+
+### Dialog focus test runtime (2026-11-28)
+- `src/lib/dialogFocus.test.ts` explicitly selects Vitest's `happy-dom` environment because it creates DOM nodes and verifies keyboard focus. The repository default remains `node` for non-browser suites.
+- `happy-dom` is already a declared development dependency; no additional package installation is needed.
+- Exact-head CI is required to validate the regression suite.
