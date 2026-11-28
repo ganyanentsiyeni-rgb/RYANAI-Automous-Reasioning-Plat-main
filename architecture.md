@@ -243,3 +243,9 @@ Issuance creates an owner-scoped, idempotent internal Comms AgentRun for PA to c
 The exact-SHA evidence contract uses separate check catalogues for different lifecycle gates. scripts/ci/required-staging-checks.json contains only contexts that can execute on an open PR head. scripts/ci/required-release-checks.json remains the main/release catalogue and may include main-only checks such as the read-only Render API configuration audit. Render and Railway isolated staging workflows consume the PR-staging catalogue; release enforcement continues to use the main/release catalogue. This prevents a main-only producer from making a PR staging gate permanently impossible while preserving the stronger release evidence contract.
 
 Docker PR image builds/scans also trigger when deployment-readiness scripts change, including scripts/readiness-audits.node-test.mjs and scripts/validate-deployment-contracts.mjs, so the required API/web image-scan contexts are actually producible for those changes.
+
+
+
+## Agent UI approval presentation boundary (2026-11-28)
+
+The app-owned Agent UI approval prompt is a presentation-level confirmation only. It places initial focus on the non-approving Decline action, traps keyboard Tab navigation within the dialog, treats Escape as decline, restores focus to the invoking control, and exposes the requested action summary through the dialog's accessible description. The prompt does not grant server-side authority: authenticated backend authorization remains authoritative for every consequential action. Exact-head tests and CI/security evidence are required before release.
